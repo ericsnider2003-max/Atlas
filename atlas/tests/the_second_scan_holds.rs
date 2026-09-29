@@ -998,7 +998,9 @@ fn live_pages_poll_a_few_bytes_and_reload_only_on_a_change() {
 #[test]
 fn another_model_server_is_asked_about_off_the_turn_and_at_most_once_a_minute() {
     let src = std::fs::read_to_string("src/daemon.rs").unwrap();
-    let start = src.find("fn keep_model_server(").expect("keep_model_server");
+    // The work moved into `keep_model_server_waiting` (29 Sep 2026: the loop
+    // calls it with no wait); `keep_model_server` only passes the usual wait.
+    let start = src.find("fn keep_model_server_waiting(").expect("keep_model_server_waiting");
     let body = &src[start..start + src[start..].find("\n    }\n").unwrap()];
     let cached = body.find("model_server_seen").expect("the finding is kept");
     let scan = body.find("scan_reporting").expect("the folder is still scanned when starting one");

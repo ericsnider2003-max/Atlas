@@ -127,6 +127,13 @@ impl Player {
                         Outcome::Whole
                     } else {
                         failed = true;
+                        let why = match &r {
+                            Ok(Err(e)) => e.to_string(),
+                            _ => "the voice stopped unexpectedly".to_string(),
+                        };
+                        if let Ok(mut g) = LAST_FAILURE.lock() {
+                            *g = Some(why);
+                        }
                         Outcome::Failed
                     };
                     let _ = ev.send(Event::Done(i, o));
@@ -174,7 +181,13 @@ pub trait Host {
     fn hush(&mut self) -> Option<String> {
         None
     }
+    /// A sentence couldn't be played, and why: written down, so a reply that
+    /// failed isn't silence with no reason anywhere (29 Sep 2026).
+    fn trouble(&mut self, _why: &str) {}
 }
+
+/// Why the last sentence failed to play, for the host to write down.
+static LAST_FAILURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// Why a reply stopped before its end.
 #[derive(Debug, Clone, PartialEq)]
@@ -370,13 +383,23 @@ impl<'m> Saying<'m> {
                             }
                         }
                         Outcome::Failed => {
+                            if let Some(why) = LAST_FAILURE.lock().ok().and_then(|mut g| g.take()) {
+                                host.trouble(&why);
+                            }
                             if self.stop.is_none() {
                                 self.halt(Stop::Failed);
                             }
                         }
                     }
                 }
-                Event::Skipped(i) => self.through = self.through.max(i + 1),
+                Event::Skipped(i) => {
+                    // Not played (an earlier sentence failed), but still
+                    // shown and written down, so the reply isn't lost.
+                    if let Some(c) = self.chunks.get(i) {
+                        host.line(c);
+                    }
+                    self.through = self.through.max(i + 1);
+                }
             }
         }
     }

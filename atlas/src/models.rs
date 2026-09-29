@@ -555,11 +555,25 @@ pub fn launch(
         // unknown variable, where an unknown flag stops the server.
         .env(CACHE_IDLE_SLOTS_ENV, "0")
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        // What it says goes to data/logs/model-server.log (29 Sep 2026): a
+        // server that died loading its model (a bad file, not enough
+        // graphics memory) left no reason anywhere.
+        .stderr(model_server_log())
         .spawn()
         .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))?;
     LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
+}
+
+/// Where the model server's own messages go: `data/logs/model-server.log`,
+/// started afresh each launch. Nowhere, when that can't be opened.
+fn model_server_log() -> std::process::Stdio {
+    let dir = crate::roots::data_dir().join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    match std::fs::File::create(dir.join("model-server.log")) {
+        Ok(f) => std::process::Stdio::from(f),
+        Err(_) => std::process::Stdio::null(),
+    }
 }
 
 /// llama.cpp's switch for clearing idle slots, by its environment name.
@@ -899,6 +913,14 @@ pub fn server_get() -> ExternalTool {
     }
 }
 
+/// Does a health reply say llama-server is up and ready?
+pub fn health_says_ok(body: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(body.trim())
+        .ok()
+        .and_then(|v| v.get("status").and_then(|s| s.as_str()).map(|s| s == "ok"))
+        .unwrap_or(false)
+}
+
 /// Is the server already up?
 ///
 /// A URL rather than a request, because the caller owns the HTTP tool — this
@@ -908,7 +930,11 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
     let mut v = vars.clone();
     v.insert("url".into(), at_listen_host(health_url(cfg.port), cfg));
     match http.run(&v, None) {
-        Ok(body) => body.contains("\"status\"") || body.contains("ok"),
+        // llama-server's own answer, `{"status":"ok"}`, and nothing else
+        // (29 Sep 2026): any reply containing the letters "ok" -- "token",
+        // "book" -- from some other program on the port counted as the model
+        // being up, and Atlas never started its own.
+        Ok(body) => health_says_ok(&body),
         Err(_) => false,
     }
 }

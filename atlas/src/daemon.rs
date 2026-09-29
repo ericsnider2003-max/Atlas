@@ -891,6 +891,10 @@ pub struct Daemon<'a> {
     starts_model_server: bool,
     /// When to look again for a model, while there's none (`keep_model_server`).
     model_look_at: u64,
+    /// When typing-only last looked again at whether the voice tools work.
+    audio_look_at: u64,
+    /// The voice tools weren't there at start (not a failing microphone).
+    audio_tools_missing: bool,
     /// What was typed or said on the hub's Talk page, waiting for its turn:
     /// (words, said aloud). Answered on the next tick rather than inside the
     /// request, so sending never hangs the page while the model thinks.
@@ -1595,6 +1599,8 @@ impl<'a> Daemon<'a> {
             // running Supervisor.
             starts_model_server: false,
             model_look_at: 0,
+            audio_look_at: 0,
+            audio_tools_missing: false,
             talk_queue: Vec::new(),
             pending_turn: None,
             pending_seq: 0,
@@ -6835,10 +6841,18 @@ impl<'a> Daemon<'a> {
                     // A question Atlas has no way to answer here is said to
                     // be one, rather than "I didn't catch that" -- which tells
                     // a person who spoke clearly that they didn't.
+                    // The reason as far as it's known (29 Sep 2026): this
+                    // said "there isn't one on this machine yet" whenever no
+                    // model was loaded -- also when one was there and hadn't
+                    // started, or didn't fit the memory free at that moment.
                     None if self.llm.is_none() && crate::wanted::is_a_question(raw) => {
-                        "I can't answer that one here — general questions need my language model, and there \
-                         isn't one on this machine yet. Start Atlas again and its setup fetches it (about 3 GB); the hub's Health page says where it stands."
-                            .into()
+                        let why = self.model_server_trouble.clone().unwrap_or_else(|| {
+                            "it isn't loaded yet".to_string()
+                        });
+                        format!(
+                            "I can't answer that one yet: general questions need my language model, and {why}. \
+                             The hub's Health page says where it stands."
+                        )
                     }
                     None => "I didn't catch that.".into(),
                 },
@@ -19296,6 +19310,34 @@ impl<'a> Daemon<'a> {
     /// (Ollama, your own server) is yours to run. A server someone started
     /// by hand is left alone. Nothing is waited for here.
     fn keep_model_server(&mut self, t: u64) {
+        self.keep_model_server_waiting(t, MODEL_PROBE_WAIT);
+    }
+
+    /// At typing-only, look once a minute at whether the voice tools work
+    /// now, and come back to listening if they do (29 Sep 2026). The check
+    /// was made once at start: a download still finishing, or a tool briefly
+    /// held by antivirus, left Atlas deaf and silent for the whole session.
+    fn look_again_at_audio(&mut self, ears: &dyn Ears, t: u64) {
+        if !self.audio_tools_missing || self.tiers.tier != Tier::Typed || t < self.audio_look_at {
+            return;
+        }
+        self.audio_look_at = t + 60;
+        if crate::input::audio_available(self.tools_ref()).unwrap_or(false) {
+            self.audio_tools_missing = false;
+            if let Some(m) = self.tiers.heard_you() {
+                self.log.info(&format!("the voice tools are there now. {m}"));
+            }
+            self.ensure_mic(ears);
+            self.steer_mic();
+        }
+    }
+
+    /// `keep_model_server`, waiting at most `wait` for the "is it up?"
+    /// answer. The loop calls it with no wait on every pass (29 Sep 2026):
+    /// at start-up the first check hadn't answered in time, and nothing
+    /// asked again until you said something -- so with the microphone not
+    /// working, the model never started at all.
+    fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration) {
         // No model when Atlas started (none downloaded yet, or none judged to
         // fit): look again once a minute rather than for the rest of the
         // session. Setup fetches the model while Atlas is already running.
@@ -19334,7 +19376,7 @@ impl<'a> Daemon<'a> {
         // HTTP check of up to ten seconds, on the loop).
         let up = match self.model_server_seen.lock().ok().and_then(|g| *g) {
             Some((at, up)) if at.elapsed() < MODEL_SERVER_RECHECK => up,
-            _ => match self.probe_model_server(&cfg, &vars) {
+            _ => match self.probe_model_server(&cfg, &vars, wait) {
                 Some(up) => up,
                 // Still asking: decided on a later turn.
                 None => return,
@@ -19351,6 +19393,12 @@ impl<'a> Daemon<'a> {
         let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&cfg));
         let machine = crate::fit::measure();
         let Some(model) = crate::models::pick(&registry, &cfg, &machine).cloned() else {
+            // Said once, not silently skipped: this is why nothing answers.
+            let why = "no language model in the models folder fits this machine".to_string();
+            if self.model_server_trouble.as_deref() != Some(why.as_str()) {
+                self.log.warn(&format!("couldn't start the model server: {why}"));
+                self.model_server_trouble = Some(why);
+            }
             return;
         };
         let layers = crate::models::layers_here(&model, &cfg, &machine);
@@ -19374,7 +19422,7 @@ impl<'a> Daemon<'a> {
     /// Ask, on a thread of its own, whether a model server is answering;
     /// wait for the answer up to `MODEL_PROBE_WAIT`. `None` while it is
     /// still being asked -- the answer lands in `model_server_seen`.
-    fn probe_model_server(&mut self, cfg: &crate::models::ModelsConfig, vars: &crate::tools::Vars) -> Option<bool> {
+    fn probe_model_server(&mut self, cfg: &crate::models::ModelsConfig, vars: &crate::tools::Vars, wait: std::time::Duration) -> Option<bool> {
         use std::sync::atomic::Ordering;
         if !self.model_probe_busy.swap(true, Ordering::SeqCst) {
             let (seen, busy, cfg, vars) =
@@ -19391,7 +19439,7 @@ impl<'a> Daemon<'a> {
                 return None;
             }
         }
-        let until = std::time::Instant::now() + MODEL_PROBE_WAIT;
+        let until = std::time::Instant::now() + wait;
         while std::time::Instant::now() < until {
             if let Some((at, up)) = self.model_server_seen.lock().ok().and_then(|g| *g) {
                 if at.elapsed() < MODEL_SERVER_RECHECK {
@@ -20599,8 +20647,11 @@ impl<'a> Daemon<'a> {
         self.keep_model_server(clock());
         let _ = self.warm_the_model(clock());
         if !audio_ok {
+            self.audio_tools_missing = true;
             if let Some(m) = self.tiers.audio_unavailable() {
                 println!("{m}");
+                // Written down too: this program has no console window.
+                self.log.warn(&m);
             }
         }
 
@@ -20741,11 +20792,6 @@ impl<'a> Daemon<'a> {
             if let Some(ev) = self.hotkeys.as_ref().and_then(|h| h.poll()) {
                 self.log.info(&format!("key: {}", ev.plain()));
                 match ev {
-                    crate::hotkeys::Pressed::TalkStart if self.tiers.tier == Tier::Typed => {
-                        // The key works; there's nothing to hear with. Said,
-                        // rather than a held key that silently does nothing.
-                        self.say(mouth, "I can't hear on this machine yet — the speech tools aren't set up. Start Atlas again and its setup fetches them. The typing box works meanwhile.");
-                    }
                     crate::hotkeys::Pressed::TalkStart => {
                         // The wake word's recorder lets go of the microphone
                         // while the key is held.
@@ -20758,6 +20804,9 @@ impl<'a> Daemon<'a> {
                         self.mic_busy(false);
                         match heard {
                             Ok(Some(said)) => {
+                                if let Some(m) = self.tiers.heard_you() {
+                                    self.log.info(&m);
+                                }
                                 self.heard_through_this_ear(&said);
                                 self.converse(&said, ears, mouth, clock)
                             }
@@ -20908,6 +20957,11 @@ impl<'a> Daemon<'a> {
                 }
             }
 
+            // The model server, looked after on every pass without waiting:
+            // started once the first check answers, not at the first thing
+            // you say (29 Sep 2026).
+            self.keep_model_server_waiting(clock(), std::time::Duration::ZERO);
+            self.look_again_at_audio(ears, clock());
             let signals = self.observe(clock());
             let nap = throttle.next_interval(&signals, self.power);
             if self.tiers.tier == Tier::Typed {
@@ -21210,6 +21264,11 @@ impl<'a> Daemon<'a> {
                 }
                 self.heard_through_this_ear(&said);
                 self.converse(&said, ears, mouth, clock);
+            }
+            // Your name, then nothing: answered, and not a failure.
+            crate::micthread::Heard::Wake(Err(why)) if why.contains(crate::voice::HEARD_NOTHING) => {
+                self.log.info("heard my name, then nothing");
+                self.say(mouth, "I heard my name but nothing after it.");
             }
             crate::micthread::Heard::Wake(Err(why)) | crate::micthread::Heard::Trouble(why) => {
                 self.log.info(&format!("listening for the wake word: {why}"));
@@ -21592,14 +21651,26 @@ impl<'a> Daemon<'a> {
     /// as before.
     fn follow_up(&mut self, ears: &dyn Ears, secs: u32) -> Option<String> {
         let Some(id) = self.mic.as_ref().filter(|m| !m.is_stopped()).map(|m| m.follow_up(secs)) else {
-            return ears.listen_briefly(secs).ok().flatten().filter(|n| !n.trim().is_empty());
+            return match ears.listen_briefly(secs) {
+                Ok(got) => got.filter(|n| !n.trim().is_empty()),
+                Err(e) => {
+                    self.log.warn(&format!("listening after a reply failed: {e}"));
+                    None
+                }
+            };
         };
         // The window, then time for the words to be made out.
         let until = std::time::Instant::now() + std::time::Duration::from_secs(u64::from(secs) + FOLLOW_UP_HEARING_SECS);
         loop {
             match self.mic.as_ref().and_then(|m| m.poll()) {
                 Some(crate::micthread::Heard::FollowUp(n, got)) if n == id => {
-                    return got.ok().flatten().filter(|n| !n.trim().is_empty());
+                    return match got {
+                        Ok(got) => got.filter(|n| !n.trim().is_empty()),
+                        Err(e) => {
+                            self.log.warn(&format!("listening after a reply failed: {e}"));
+                            None
+                        }
+                    };
                 }
                 // An earlier one nobody waited for.
                 Some(crate::micthread::Heard::FollowUp(..)) => {}
@@ -21632,6 +21703,12 @@ impl<'a> Daemon<'a> {
     /// so a microphone that didn't exist looked exactly like a quiet room
     /// (29 Sep 2026).
     fn degrade_because(&mut self, mouth: &dyn Mouth, why: &dyn std::fmt::Display) {
+        let why = why.to_string();
+        // Silence isn't a broken microphone (`voice::HEARD_NOTHING`).
+        if why.contains(crate::voice::HEARD_NOTHING) {
+            self.log.info("listened and heard nothing");
+            return;
+        }
         self.log.warn(&format!("listening failed: {why}"));
         self.degrade(mouth);
     }
@@ -21659,11 +21736,16 @@ impl<'a> Daemon<'a> {
         // logged, but the speaker stays silent. `may_speak` existed to
         // answer exactly this and `say` never asked, so a scheduled job
         // finishing mid-pause talked over the quiet you asked for.
-        if self.tiers.tier != Tier::Typed && self.attention.may_speak() && self.sound_allows_speaking() {
+        let speakable = self.tiers.tier != Tier::Typed || crate::input::can_speak(self.tools_ref());
+        if speakable && self.attention.may_speak() && self.sound_allows_speaking() {
             // The screen got the line as written; the speaker gets it as
             // said. "$2.35" reads as words, "mph" is spoken not spelled,
             // a stray markdown marker is dropped rather than pronounced.
-            let _ = mouth.speak(&crate::spoken_form::for_speech(line));
+            if let Err(e) = mouth.speak(&crate::spoken_form::for_speech(line)) {
+                // Written down: a reply that failed to play was silence with
+                // no reason anywhere (29 Sep 2026).
+                self.log.warn(&format!("couldn't say it out loud: {e}"));
+            }
         }
     }
 
@@ -21692,7 +21774,7 @@ impl<'a> Daemon<'a> {
     /// sound says not now; the microphone watched for your voice when
     /// cutting in by voice is on and Atlas isn't paused (`micthread`).
     fn start_saying<'m>(&self, mouth: &'m dyn Mouth) -> crate::speakthread::Saying<'m> {
-        let typed = self.tiers.tier == Tier::Typed || !self.sound_allows_speaking();
+        let typed = (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
         let watching = if typed || self.attention.is_paused() {
             None
         } else {
@@ -21809,6 +21891,9 @@ impl crate::speakthread::Host for Daemon<'_> {
         // is answered while a sentence plays): quiet at once, the rest kept
         // for "carry on".
         self.attention.is_paused().then(|| "pause".to_string())
+    }
+    fn trouble(&mut self, why: &str) {
+        self.log.warn(&format!("couldn't say it out loud: {why}"));
     }
 }
 
@@ -25078,7 +25163,13 @@ impl<'a> Daemon<'a> {
         if let Some(line) = self.note_how_well_i_heard(understood) {
             self.heard_note = Some(line);
         }
-        let mic = self.tools_ref().and_then(|t| t.vars.get("mic_device").cloned()).unwrap_or_default();
+        // By the microphone's own name: `mic_device` holds what ffmpeg opens,
+        // which on Windows is now the device's id (29 Sep 2026), and the
+        // record of which microphone understands you is kept by name.
+        let mic = self
+            .tools_ref()
+            .and_then(|t| t.vars.get("mic_name").or_else(|| t.vars.get("mic_device")).cloned())
+            .unwrap_or_default();
         if mic.is_empty() {
             return;
         }

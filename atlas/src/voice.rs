@@ -576,6 +576,17 @@ impl ToolsConfig {
         }
         self.models.dir =
             crate::roots::under_install(&self.models.dir).to_string_lossy().into_owned();
+        // The tools and model files named in `vars` too (29 Sep 2026):
+        // "tools/whisper/whisper-cli.exe", "models/ggml-base.en.bin" and the
+        // rest were relative to whatever folder Atlas was started from. The
+        // sign-in Run entry has no working folder, so from there Atlas found
+        // no speech tools, dropped to typing only and stopped speaking.
+        for v in self.vars.values_mut() {
+            let rel = v.replace('\\', "/");
+            if rel.starts_with("tools/") || rel.starts_with("models/") {
+                *v = crate::roots::under_install(&*v).to_string_lossy().into_owned();
+            }
+        }
         self
     }
 }
@@ -855,8 +866,12 @@ impl<'a> Voice<'a> {
         // through to the fixed-length path below, because a slower turn is a
         // far better outcome than a failed one.
         let device = self.cfg.vars.get("mic_device").cloned().unwrap_or_default();
+        let streamed = self.cfg.endpoint.enabled && !device.trim().is_empty();
         match self.listen_until_you_stop(&self.cfg.endpoint, &device) {
             Ok(Some(text)) => return Ok(text),
+            // It listened, and you said nothing: that is the answer, not a
+            // reason to record for another eight seconds (29 Sep 2026).
+            Ok(None) if streamed => return Err(AtlasError::Platform(HEARD_NOTHING.into())),
             Ok(None) => {}
             Err(_) => {}
         }
@@ -873,9 +888,7 @@ impl<'a> Voice<'a> {
         );
         let text = clean_transcript(&raw);
         if text.is_empty() {
-            return Err(AtlasError::Platform(
-                "heard nothing — check the microphone on the Connections page".into(),
-            ));
+            return Err(AtlasError::Platform(HEARD_NOTHING.into()));
         }
         Ok(text)
     }
@@ -1287,6 +1300,12 @@ impl<'a> Voice<'a> {
         Ok(loose(&clean_transcript(&raw)).contains(&loose(&wake.phrase)))
     }
 }
+
+/// A listen that worked and heard no words. Not a broken microphone: the
+/// daemon answers it and doesn't count it towards dropping to push-to-talk
+/// (29 Sep 2026: three hesitations after the wake word switched the wake word
+/// off as "not working").
+pub const HEARD_NOTHING: &str = "heard nothing";
 
 /// Lowercase, strip everything that isn't a letter or digit. "Hey, Atlas!"
 /// and "hey atlas" and "HEY ATLAS." all collapse to the same string.

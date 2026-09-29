@@ -64,8 +64,10 @@ fn the_program_path_is_quoted_because_real_installs_have_spaces() {
 
     // A path without spaces is quoted too, deliberately: one shape for both
     // means the one with spaces is never the untested branch.
+    // `--wake` since 29 Sep 2026: `--voice` is the press-Enter-to-talk loop,
+    // and at sign-in there is no keyboard, so it recorded clip after clip.
     let plain = startup::task_command(&PathBuf::from("/opt/atlas/atlas"), Mode::Listening);
-    assert_eq!(plain, "\"/opt/atlas/atlas\" --voice");
+    assert_eq!(plain, "\"/opt/atlas/atlas\" --wake");
 }
 
 // ================= the run contract =================

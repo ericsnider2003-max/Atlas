@@ -59,7 +59,9 @@ impl Mode {
     pub fn flag(self) -> &'static str {
         match self {
             Mode::Background => "--daemon",
-            Mode::Listening => "--voice",
+            // The wake word's own loop. `--voice` is the press-Enter-to-talk
+            // loop, which at sign-in has no keyboard to wait on (29 Sep 2026).
+            Mode::Listening => "--wake",
         }
     }
 
@@ -549,7 +551,8 @@ mod tests {
     fn the_flag_matches_the_mode_asked_for() {
         let exe = PathBuf::from("/opt/atlas/atlas");
         assert!(task_command(&exe, Mode::Background).ends_with("--daemon"));
-        assert!(task_command(&exe, Mode::Listening).ends_with("--voice"));
+        // `--wake`, the wake word's own loop (29 Sep 2026).
+        assert!(task_command(&exe, Mode::Listening).ends_with("--wake"));
     }
 
     #[test]
