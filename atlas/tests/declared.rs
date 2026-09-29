@@ -37,8 +37,9 @@ fn every_source_file_is_declared_in_lib() {
         // A module split into `src/<stem>.rs` + `src/<stem>/*.rs` (the plan for
         // daemon.rs and main.rs, 27 Sep 2026): each child file must be declared
         // by its parent, or it sits on disk compiled by nothing -- the same
-        // failure one level down. No such folder exists yet, so today this
-        // adds nothing to the result.
+        // failure one level down. Since 29 Sep 2026 this reads the sixteen
+        // files of `src/daemon/`. main.rs is skipped above (it is not a
+        // library module); its `src/main/*.rs` are checked by the test below.
         let parent = path.clone();
         let children = std::path::Path::new("src").join(stem);
         if children.is_dir() {
@@ -68,6 +69,34 @@ fn every_source_file_is_declared_in_lib() {
          whole suite down and stops every other guard running.",
         undeclared.join("\n  ")
     );
+}
+
+/// The binary's half (29 Sep 2026, when main.rs was split into
+/// `src/main/*.rs`). A crate root's `mod x;` looks in `src/x.rs`, so each
+/// child is declared with `#[path = "main/x.rs"]`; a file in `src/main/`
+/// that main.rs never names is compiled by nothing and would sit there
+/// looking like a command that exists.
+#[test]
+fn every_file_of_the_binary_is_declared_in_main() {
+    let main = fs::read_to_string("src/main.rs").expect("src/main.rs");
+    let Ok(dir) = fs::read_dir("src/main") else { return };
+    let mut undeclared = Vec::new();
+    for entry in dir.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let child = p.file_stem().unwrap().to_string_lossy().to_string();
+        let lines: Vec<&str> = main.lines().map(str::trim).collect();
+        let declared = lines.windows(2).any(|w| {
+            w[0] == format!("#[path = \"main/{child}.rs\"]") && w[1] == format!("mod {child};")
+        });
+        if !declared {
+            undeclared.push(child);
+        }
+    }
+    undeclared.sort();
+    assert!(undeclared.is_empty(), "files in src/main/ that main.rs never declares: {undeclared:?}");
 }
 
 #[test]

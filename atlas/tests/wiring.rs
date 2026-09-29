@@ -157,8 +157,8 @@ fn module_sources() -> HashMap<String, String> {
         }
         // `src/<stem>.rs` plus everything under `src/<stem>/` (27 Sep 2026,
         // ahead of splitting daemon.rs into src/daemon/*.rs: a child module
-        // is part of its parent's wiring, not a module of its own). No such
-        // folder exists today, so this reads exactly the one file it did.
+        // is part of its parent's wiring, not a module of its own). Since the
+        // split on 29 Sep 2026 this is how `daemon` reads its sixteen children.
         out.insert(stem.clone(), crate::common::source_of(&stem));
     }
     let platform = Path::new("src/platform/mod.rs");
