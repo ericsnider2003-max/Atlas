@@ -461,6 +461,10 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "content", what: "run your content -- why a post worked, a signal told from a fluke, the mistake you're about to repeat", area: Writing, state: Untested, needs: Some("your posts' numbers"), offline: true, added: 40, runs: &[Needs::Files], modules: &["content", "reach"] },
         Capability { id: "opsec", what: "check a post before it goes out for what's visible in the frame -- a patch, a tail number -- until the date the rules stop applying to you", area: Writing, state: Off, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["opsec"] },
         Capability { id: "edit", what: "edit a video from what you describe -- the plan first, then the cut -- with ffmpeg or an editor you already own", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["edit", "editors"] },
+        // 29 Sep 2026: photos, by voice or typing, on a new copy. Run for
+        // real here with ffmpeg 9.0 and the two cut-out models in tract;
+        // never yet on Eric's laptop, hence untested.
+        Capability { id: "photo", what: "edit a photo or a folder of them on a new copy -- brighter, fixed colours, straightened (offered, never forced), cropped for Instagram or a YouTube thumbnail, background blurred or removed -- and take it back", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches; the cut-out models for backgrounds"), offline: true, added: 41, runs: &[Needs::Files], modules: &["photo", "straighten", "cutout"] },
         Capability { id: "grade", what: "measure a clip's loudness, dialogue and colour, say what a viewer will notice first -- in your words, not the jargon -- and fix it", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["grade", "measure", "plainly"] },
         Capability { id: "voiceover", what: "lay your script over your footage -- where each line lands, the gaps, the music ducked under your voice", area: Files, state: Blocked, needs: Some("piper"), offline: true, added: 40, runs: &[Needs::Files], modules: &["voiceover"] },
         Capability { id: "viewing", what: "watch a video rather than only hear it -- the frames that matter read alongside what's said", area: Seeing, state: Untested, needs: Some("ffmpeg and the picture reader, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["viewing"] },
@@ -1313,7 +1317,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `himalaya` (reading mail through the Himalaya program).
 // 411 -> 410 (28 Sep): `ladder` left personal Atlas; it was not general
 // trading knowledge (tests/personal_atlas_is_its_own.rs).
-pub const MODULES_IN_TREE: usize = 410;
+// 410 -> 413 (29 Sep): `photo`, `straighten` and `cutout` (photo editing).
+pub const MODULES_IN_TREE: usize = 413;
 
 /// Every module no capability claims, and why it is not one.
 ///

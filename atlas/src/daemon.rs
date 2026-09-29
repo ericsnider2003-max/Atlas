@@ -4507,6 +4507,7 @@ impl<'a> Daemon<'a> {
             Intent::MoveBigFiles(said) => self.move_big_files(said, crate::store::now()),
             // A video edited on a copy; the original only after you say (G8).
             Intent::EditMedia(said) => self.edit_media(said, crate::store::now()),
+            Intent::EditPhoto(said) => self.edit_photo(said),
             Intent::Clock => crate::localclock::spoken_now(crate::store::now(), crate::localclock::offset_secs()),
             Intent::SetKey(said) => self.set_key(said),
             Intent::Languages(_) => self.languages_heard(),
@@ -24539,6 +24540,21 @@ impl<'a> Daemon<'a> {
             format!("Working on a copy of {path} — the original isn't touched. I'll show you the result.")
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()
+        }
+    }
+
+    /// A photo, or a folder of them, edited on a new copy (`photo`).
+    fn edit_photo(&mut self, said: &str) -> String {
+        // The clipboard only when the words point at it, as "explain this" does.
+        let copied = if crate::clipboard::refers_to_clipboard(said) { self.clipboard_text.clone().or_else(|| self.plat.read_clipboard().ok().flatten()) } else { None };
+        let handed = crate::photo::which_photo(said, copied.as_deref(), self.file_meant(said, crate::photo::PHOTO_EXTS));
+        let setup = crate::photo::Setup::here(&self.tools_cfg().video.ffmpeg.command, self.store.root());
+        match crate::photo::ask(said, handed, setup) {
+            crate::photo::Plan::Now(answer) => answer,
+            crate::photo::Plan::Later { start, work } => {
+                let work: crew::Work = Box::new(move |c: &crew::Control| Ok(work(&|| c.stopping())));
+                if self.hand_off("photo", crate::store::now(), work, Some(said.to_string()), SpeakPolicy::Always) { start } else { "I'm swamped with background work right now — ask me again in a moment.".into() }
+            }
         }
     }
 }

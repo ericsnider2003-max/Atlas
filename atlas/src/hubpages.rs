@@ -209,6 +209,37 @@ pub struct DocRow {
     pub when: String,
     /// "Read", "Waiting to be read", "Couldn't read".
     pub state: String,
+    /// Where a photo is kept on this machine, so it can be edited from here
+    /// (`photo`). `None` for anything that isn't a photo file.
+    pub photo: Option<String>,
+}
+
+/// The photo edits offered on the Documents page: the words sent, as if
+/// typed on Talk, after "edit this photo" and the photo's path.
+pub const PHOTO_EDITS: &[(&str, &str)] = &[
+    ("fix the colours and exposure", "Fix colours and light"),
+    ("brighter", "Brighter"),
+    ("straighten", "Check it's level"),
+    ("crop it for instagram", "Instagram 4:5"),
+    ("crop it for an instagram story", "Instagram story"),
+    ("resize it for a youtube thumbnail", "YouTube thumbnail"),
+    ("blur the background", "Blur the background"),
+    ("remove the background", "Remove the background"),
+    ("undo the photo edit", "Take the last edit back"),
+];
+
+/// A photo's "Edit a copy" form: one choice, sent to Talk as a sentence, so
+/// the page and your voice are the same path.
+fn photo_form(id: u64, name: &str, path: &str) -> String {
+    let opts: String = PHOTO_EDITS
+        .iter()
+        .map(|(said, label)| format!("<option value=\"edit this photo &quot;{}&quot; {}\">{}</option>", esc(path), esc(said), esc(label)))
+        .collect();
+    format!(
+        "<form class=inline method=post action='/hub/talk'><label class=sr for=ped{id}>Edit a copy of {name}</label>\
+         <select id=ped{id} name=text>{opts}</select><button aria-label='Edit a copy of {name}'>Edit a copy</button></form>",
+        name = esc(name),
+    )
 }
 
 /// `people`: who a document can be sent to (paired, by name).
@@ -226,7 +257,7 @@ pub fn documents_page(docs: &[DocRow], people: &[String], notice: Option<&str>) 
     body.push_str(
         "<div class=tablewrap tabindex=0 role=region aria-label='Documents, scrolls sideways'><table class=data><caption class=sr>Documents</caption><thead><tr>\
          <th scope=col>Name</th><th scope=col>Kind</th><th scope=col>Area</th><th scope=col>Shared</th>\
-         <th scope=col>State</th><th scope=col>Added</th><th scope=col>Send</th></tr></thead><tbody>",
+         <th scope=col>State</th><th scope=col>Added</th><th scope=col>Send</th><th scope=col>Edit</th></tr></thead><tbody>",
     );
     for d in docs {
         let send = if people.is_empty() {
@@ -241,8 +272,10 @@ pub fn documents_page(docs: &[DocRow], people: &[String], notice: Option<&str>) 
                 name = esc(&d.name),
             )
         };
+        // Photos can be edited from here; the copy lands beside the file.
+        let edit = d.photo.as_deref().map(|p| photo_form(d.id, &d.name, p)).unwrap_or_default();
         body.push_str(&format!(
-            "<tr><th scope=row>{}</th><td>{}</td><td><span class=area>{}</span></td><td>{}</td><td>{}</td><td>{}</td><td>{send}</td></tr>",
+            "<tr><th scope=row>{}</th><td>{}</td><td><span class=area>{}</span></td><td>{}</td><td>{}</td><td>{}</td><td>{send}</td><td>{edit}</td></tr>",
             esc(&d.name),
             esc(&d.kind),
             esc(&d.area),

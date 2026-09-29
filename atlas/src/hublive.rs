@@ -2406,6 +2406,10 @@ impl Daemon<'_> {
                             crate::tray::State::Done => "Done with",
                         }
                         .into(),
+                        photo: (i.sort == crate::tray::Sort::Image)
+                            .then(|| i.stored_at.clone())
+                            .flatten()
+                            .filter(|p| std::path::Path::new(p).is_file()),
                     })
                     .collect();
                 let people: Vec<String> =

@@ -57,7 +57,7 @@ pub fn what_to_do_with(label: &str) -> After {
         "mail" | "unsubscribe" | "outreach" | "outlook-connect" | "pictures" | "call-notes"
         // Acting as you on a site, or a code that has expired by now.
         | "code" | "sign-in" | "security-change" | "sign-up"
-        | "mail-sort" | "mail-sort-apply" | "post" | "move-files" | "edit-media" | "decide" | "teach-gesture"
+        | "mail-sort" | "mail-sort-apply" | "post" | "move-files" | "edit-media" | "photo" | "decide" | "teach-gesture"
         // Another program's tool: it may have acted; never redone unasked.
         | "mcp" => After::Ask,
         _ => After::Skip,

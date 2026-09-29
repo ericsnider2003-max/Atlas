@@ -94,6 +94,8 @@ pub enum Intent {
     MoveBigFiles(String),
     /// Edit a video you name, on a copy (G8). The whole utterance.
     EditMedia(String),
+    /// Edit a photo, or every photo in a folder, on a new copy (`photo`). The whole utterance.
+    EditPhoto(String),
     /// What time and day it is, from this machine's clock.
     Clock,
     /// Change the push-to-talk key or the typing-box key by saying it (Eric,
@@ -531,6 +533,7 @@ impl Intent {
             Intent::PressButton(s) => format!("pressing a button: {s}"),
             Intent::MoveBigFiles(_) => "moving big files to another drive".to_string(),
             Intent::EditMedia(_) => "editing your video on a copy".to_string(),
+            Intent::EditPhoto(_) => "editing your photo on a copy".to_string(),
             Intent::Clock => "the time and date".to_string(),
             Intent::SetKey(_) => "changing your push-to-talk or typing-box key".to_string(),
             Intent::Languages(_) => "which languages Atlas can hear".to_string(),
@@ -1196,6 +1199,7 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "press_button" => Intent::PressButton(raw.trim().to_string()),
         "move_big_files" => Intent::MoveBigFiles(raw.trim().to_string()),
         "edit_media" => Intent::EditMedia(raw.trim().to_string()),
+        "edit_photo" => Intent::EditPhoto(raw.trim().to_string()),
         "clock" => Intent::Clock,
         "set_key" => Intent::SetKey(raw.trim().to_string()),
         "languages" => Intent::Languages(raw.trim().to_string()),

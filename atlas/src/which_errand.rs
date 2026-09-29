@@ -230,6 +230,7 @@ pub fn describe(c: &Candidate) -> String {
         "addon-share" => "the add-on share",
         "friend-knock" => "the knock on a friend's Atlas",
         "phone-code" => "the phone's code",
+        "photo" => "the photo edit",
         "pictures" => {
             return match &c.topic {
                 Some(t) if !t.trim().is_empty() => format!("the look at your {}", t.trim()),
@@ -336,6 +337,7 @@ fn aliases(label: &str) -> &'static [&'static str] {
         // A window Atlas is working for you (`daemon::WorkingForYou`); its
         // topic is the app, so "stop the Slack one" names it.
         "pictures" => &["looking", "look", "picture", "pictures", "screen", "webcam"],
+        "photo" => &["photo", "photos", "edit", "editing", "background", "crop", "straighten"],
         "call-notes" => &["call", "notes", "writeup", "write", "transcript"],
         "conversation" => &["conversation", "chat", "reply", "replying", "replies", "draft", "drafting", "window", "messages"],
         _ => &[],
