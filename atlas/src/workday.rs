@@ -35,6 +35,8 @@ pub struct WorkdayConfig {
     pub cards: crate::srs::SrsConfig,
     pub translate: crate::translation::TranslateConfig,
     pub chords: crate::chords::ChordsConfig,
+    /// Your social accounts and the people you watch (`social`).
+    pub social: crate::social::SocialConfig,
     /// Minutes before a meeting that its prep is offered; 0 is off.
     pub meeting_prep_minutes: u64,
     /// Days of mail kept in the local cache.
@@ -56,6 +58,7 @@ impl Default for WorkdayConfig {
             cards: Default::default(),
             translate: Default::default(),
             chords: Default::default(),
+            social: Default::default(),
             meeting_prep_minutes: 15,
             mail_keep_days: 60,
             signature_png: String::new(),
@@ -183,6 +186,11 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
             return Some((Intent::Feeds(own()), "feeds"));
         }
     }
+    // "Watch @name on YouTube", "follow the #rust hashtag on Mastodon":
+    // the watch list (`social`), only when a source is named by its mark.
+    if crate::social::spoken_watch(said) {
+        return Some((Intent::Social(own()), "social"));
+    }
     if crate::snippets::read_save(said).is_some() {
         return Some((Intent::Snippet(own()), "snippet"));
     }
@@ -218,6 +226,7 @@ pub fn reads_whole(i: &Intent) -> bool {
             | Intent::Pdf(_)
             | Intent::People(_)
             | Intent::Feeds(_)
+            | Intent::Social(_)
             | Intent::Receipt(_)
             | Intent::Habit(_)
             | Intent::Cards(_)
@@ -254,6 +263,8 @@ pub struct Kit {
     feed_in_flight: Option<std::sync::mpsc::Receiver<(String, Result<crate::feeds::Parsed, String>)>>,
     chords: Option<std::sync::mpsc::Receiver<crate::chords::Does>>,
     chords_failed: Vec<crate::chords::Does>,
+    /// What `social` keeps between turns (`social::glue`).
+    pub(crate) social: crate::social::Live,
 }
 
 macro_rules! loaded {
@@ -1326,6 +1337,7 @@ impl Daemon<'_> {
         }
         self.clip_tick(t);
         self.feeds_tick(t, online);
+        self.social_tick(t, online);
         // The calendar and the market clock are looked at once a minute.
         if t.saturating_sub(self.workday.last_look) < 60 {
             return out;
@@ -1459,6 +1471,7 @@ impl Daemon<'_> {
         if cards > 0 {
             out.push(item("cards".into(), "Cards", format!("{} due", plural(cards, "card")), Weight::Info));
         }
+        out.extend(self.social_brief_items(t));
         out
     }
 }

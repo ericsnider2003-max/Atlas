@@ -1,0 +1,244 @@
+{
+ "feed": [
+  {
+   "post": {
+    "uri": "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.post/3mw2cdr44fc2a",
+    "cid": "bafyreicrjbyelww7gvuymagi7g2rirokyrvedwzeh5vflmsvnwhnwjvnyi",
+    "author": {
+     "did": "did:plc:z72i7hdynmk6r22z27h6tvur",
+     "handle": "bsky.app",
+     "displayName": "Bluesky",
+     "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:z72i7hdynmk6r22z27h6tvur/bafkreihwihm6kpd6zuwhhlro75p5qks5qtrcu55jp3gddbfjsieiv7wuka",
+     "associated": {
+      "chat": {
+       "allowIncoming": "none"
+      },
+      "activitySubscription": {
+       "allowSubscriptions": "followers"
+      }
+     },
+     "labels": [],
+     "createdAt": "2023-04-12T04:53:57.057Z",
+     "verification": {
+      "verifications": [],
+      "verifiedStatus": "none",
+      "trustedVerifierStatus": "valid"
+     }
+    },
+    "record": {
+     "$type": "app.bsky.feed.post",
+     "createdAt": "2026-09-21T18:04:06.128Z",
+     "embed": {
+      "$type": "app.bsky.embed.record",
+      "record": {
+       "cid": "bafyreifd67sicomhdgbt453dm4uuez5qzg3g2kktr7s5kclchkfdl7izui",
+       "uri": "at://did:web:bsky38.com/app.bsky.feed.post/3muphbj35cs2h"
+      }
+     },
+     "facets": [
+      {
+       "$type": "app.bsky.richtext.facet",
+       "features": [
+        {
+         "$type": "app.bsky.richtext.facet#mention",
+         "did": "did:web:bsky38.com"
+        }
+       ],
+       "index": {
+        "byteEnd": 41,
+        "byteStart": 30
+       }
+      }
+     ],
+     "langs": [
+      "en"
+     ],
+     "text": "If you're in line to vote for @bsky38.com, please stay in line! Polls close in just under 5 hours."
+    },
+    "embed": {
+     "record": {
+      "uri": "at://did:web:bsky38.com/app.bsky.feed.post/3muphbj35cs2h",
+      "cid": "bafyreifd67sicomhdgbt453dm4uuez5qzg3g2kktr7s5kclchkfdl7izui",
+      "author": {
+       "did": "did:web:bsky38.com",
+       "handle": "bsky38.com",
+       "displayName": "38 Influential Posters",
+       "avatar": "https://cdn.bsky.app/img/avatar/plain/did:web:bsky38.com/bafkreibtvmc5rhz3s4zbrxwdox2zfjst3u7w2enygx7hzanp3ryjg3j4m4",
+       "associated": {
+        "chat": {
+         "allowIncoming": "all",
+         "allowGroupInvites": "all"
+        },
+        "activitySubscription": {
+         "allowSubscriptions": "followers"
+        }
+       },
+       "labels": [],
+       "createdAt": "2026-09-04T03:34:09.569Z"
+      },
+      "value": {
+       "$type": "app.bsky.feed.post",
+       "createdAt": "2026-09-04T17:07:50.559Z",
+       "embed": {
+        "$type": "app.bsky.embed.external",
+        "external": {
+         "description": "Vote for the 38 most influential Bluesky posters of 2026.",
+         "thumb": {
+          "$type": "blob",
+          "ref": {
+           "$link": "bafkreichgy3lksnaylnb44tlsju5ura23td6ukahe5gyyjj66ew6dnetvy"
+          },
+          "mimeType": "image/jpeg",
+          "size": 212885
+         },
+         "title": "38 Most Influential Bluesky Posters of 2026",
+         "uri": "https://bsky38.com/"
+        }
+       },
+       "facets": [
+        {
+         "features": [
+          {
+           "$type": "app.bsky.richtext.facet#link",
+           "uri": "https://bsky38.com/"
+          }
+         ],
+         "index": {
+          "byteEnd": 262,
+          "byteStart": 252
+         }
+        }
+       ],
+       "langs": [
+        "en"
+       ],
+       "text": "Who are the 38 most influential Bluesky posters of 2026?\n\nYou get 10 votes, anyone with a Bluesky account can be voted for. The 38 with the most votes make the list. 🗳️\n\nVoting ends the 21st night of September. 🌎 🌬️🔥\n\nCast your ballot: bsky38.com"
+      },
+      "labels": [],
+      "likeCount": 912,
+      "replyCount": 382,
+      "repostCount": 310,
+      "quoteCount": 2072,
+      "indexedAt": "2026-09-04T17:07:51.868Z",
+      "embeds": [
+       {
+        "external": {
+         "uri": "https://bsky38.com/",
+         "title": "38 Most Influential Bluesky Posters of 2026",
+         "description": "Vote for the 38 most influential Bluesky posters of 2026.",
+         "thumb": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:web:bsky38.com/bafkreichgy3lksnaylnb44tlsju5ura23td6ukahe5gyyjj66ew6dnetvy"
+        },
+        "$type": "app.bsky.embed.external#view"
+       }
+      ],
+      "$type": "app.bsky.embed.record#viewRecord"
+     },
+     "$type": "app.bsky.embed.record#view"
+    },
+    "bookmarkCount": 40,
+    "replyCount": 100,
+    "repostCount": 92,
+    "likeCount": 755,
+    "quoteCount": 47,
+    "indexedAt": "2026-09-21T18:04:06.866Z",
+    "labels": [],
+    "threadgate": {
+     "uri": "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.threadgate/3mw2cdr44fc2a",
+     "cid": "bafyreifpuh6s76t3d6mhugwqom5bhsbg6iw5ajsj3uj3r7cevpoj2cgmka",
+     "record": {
+      "$type": "app.bsky.feed.threadgate",
+      "createdAt": "2026-09-21T18:08:17.808Z",
+      "hiddenReplies": [
+       "at://did:plc:us3bkeij77l3fz4v5uwugqvd/app.bsky.feed.post/3mw2cgnq7xc2c",
+       "at://did:plc:ngmjkjvsdof2wuj3lqxb2z4m/app.bsky.feed.post/3mw2cih3x4k23"
+      ],
+      "post": "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.post/3mw2cdr44fc2a"
+     },
+     "lists": []
+    }
+   }
+  },
+  {
+   "post": {
+    "uri": "at://did:plc:zbrhmanjs62oyqywjwdazxz3/app.bsky.feed.post/3mvta262ufs27",
+    "cid": "bafyreihz2vc5ioeb2oyaofmkiv3irn3ldqh332go2uvya6gib4bkfqb4dq",
+    "author": {
+     "did": "did:plc:zbrhmanjs62oyqywjwdazxz3",
+     "handle": "kenjennings.bsky.social",
+     "displayName": "Ken Jennings",
+     "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:zbrhmanjs62oyqywjwdazxz3/bafkreicpymtnc6ooeoz4jyb5oaxbf6smrmsd634texeshjmfpths6qusta",
+     "associated": {
+      "chat": {
+       "allowIncoming": "none",
+       "allowGroupInvites": "none"
+      },
+      "activitySubscription": {
+       "allowSubscriptions": "followers"
+      }
+     },
+     "labels": [],
+     "createdAt": "2023-04-27T21:46:36.549Z",
+     "verification": {
+      "verifications": [
+       {
+        "issuer": "did:plc:z72i7hdynmk6r22z27h6tvur",
+        "issuerDisplayName": "Bluesky",
+        "issuerHandle": "bsky.app",
+        "uri": "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.graph.verification/3lv4s73gz6k2w",
+        "isValid": true,
+        "createdAt": "2025-07-29T19:01:44.515Z"
+       }
+      ],
+      "verifiedStatus": "valid",
+      "trustedVerifierStatus": "none"
+     }
+    },
+    "record": {
+     "$type": "app.bsky.feed.post",
+     "createdAt": "2026-09-18T22:34:18.503Z",
+     "langs": [
+      "en"
+     ],
+     "text": "I don’t usually meddle on the writing side of Jeopardy!, but tonight I called in a favor for our Bluesky viewers."
+    },
+    "bookmarkCount": 221,
+    "replyCount": 157,
+    "repostCount": 774,
+    "likeCount": 10268,
+    "quoteCount": 110,
+    "indexedAt": "2026-09-18T22:34:19.460Z",
+    "labels": []
+   },
+   "reason": {
+    "by": {
+     "did": "did:plc:z72i7hdynmk6r22z27h6tvur",
+     "handle": "bsky.app",
+     "displayName": "Bluesky",
+     "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:z72i7hdynmk6r22z27h6tvur/bafkreihwihm6kpd6zuwhhlro75p5qks5qtrcu55jp3gddbfjsieiv7wuka",
+     "associated": {
+      "chat": {
+       "allowIncoming": "none"
+      },
+      "activitySubscription": {
+       "allowSubscriptions": "followers"
+      }
+     },
+     "labels": [],
+     "createdAt": "2023-04-12T04:53:57.057Z",
+     "verification": {
+      "verifications": [],
+      "verifiedStatus": "none",
+      "trustedVerifierStatus": "valid"
+     }
+    },
+    "uri": "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.repost/3mvtagpxpgm2j",
+    "cid": "bafyreid4dxcfpwhjcbn3yvpmhs3bydggb7p5jlffuqszvh23gmcpj4n2by",
+    "indexedAt": "2026-09-18T22:41:20.071Z",
+    "$type": "app.bsky.feed.defs#reasonRepost"
+   },
+   "opThreadPostIndex": 1,
+   "opThreadPostCount": 2
+  }
+ ],
+ "cursor": "2026-09-14T20:12:36.768Z"
+}

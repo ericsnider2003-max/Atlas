@@ -447,6 +447,12 @@ impl<'a> Daemon<'a> {
         self.hand_off_as("reclaim", t, work, None, SpeakPolicy::ViaWatcher)
     }
 
+    /// `social`'s errands (29 Sep 2026): `asked` is something you asked for
+    /// and is said when it ends; otherwise a chore the watcher decides on.
+    pub(crate) fn hand_off_social(&mut self, name: &'static str, t: u64, work: crew::Work, topic: Option<String>, asked: bool) -> Option<u64> {
+        self.hand_off_as(name, t, work, topic, if asked { SpeakPolicy::Always } else { SpeakPolicy::ViaWatcher })
+    }
+
     /// Write down the work in hand (`resume::RECORD`).
     fn keep_unfinished(&self) {
         let list: Vec<&crate::resume::Unfinished> = self.unfinished.values().collect();
@@ -731,6 +737,14 @@ impl<'a> Daemon<'a> {
             if matches!(link.label, "mail-sort" | "mail-sort-apply") {
                 self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.mail_sort_news(link.label, &news.ending) {
+                    out.push(said);
+                }
+                continue;
+            }
+            // Your accounts' numbers and what you watch (`social::glue`).
+            if link.label.starts_with("social-") {
+                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                if let Some(said) = self.social_news(link.label, &news.ending, t) {
                     out.push(said);
                 }
                 continue;

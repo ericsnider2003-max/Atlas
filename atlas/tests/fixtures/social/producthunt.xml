@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xml:lang="en-US" xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:www.producthunt.com,2005:/feed?category=undefined</id>
+  <link rel="alternate" type="text/html" href="https://www.producthunt.com"/>
+  <link rel="self" type="application/atom+xml" href="https://www.producthunt.com/feed?category=undefined"/>
+  <title>Product Hunt — The best new products, every day</title>
+  <updated>2026-09-29T00:01:00-07:00</updated>
+  <entry>
+    <id>tag:www.producthunt.com,2005:Post/1260285</id>
+    <published>2026-09-24T08:33:36-07:00</published>
+    <updated>2026-09-29T06:02:17-07:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.producthunt.com/products/declutr"/>
+    <title>Declutr</title>
+    <content type="html">          &lt;p&gt;
+            Tidy your Mac's desktop and downloads in one click
+          &lt;/p&gt;
+          &lt;p&gt;
+            &lt;a href="https://www.producthunt.com/products/declutr?utm_campaign=producthunt-atom-posts-feed&amp;amp;utm_medium=rss-feed&amp;amp;utm_source=producthunt-atom-posts-feed"&gt;Discussion&lt;/a&gt;
+            |
+            &lt;a href="https://www.producthunt.com/r/p/1260285?app_id=339"&gt;Link&lt;/a&gt;
+          &lt;/p&gt;
+</content>
+    <author>
+      <name>Elior Pommier</name>
+    </author>
+  </entry><entry>
+    <id>tag:www.producthunt.com,2005:Post/1263960</id>
+    <published>2026-09-28T16:43:10-07:00</published>
+    <updated>2026-09-29T06:02:17-07:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.producthunt.com/products/ship-happens-automate-asc-localization"/>
+    <title>ShipHappens: </title>
+    <content type="html">          &lt;p&gt;
+            ASO, keywords &amp; screenshots for the app store
+          &lt;/p&gt;
+          &lt;p&gt;
+            &lt;a href="https://www.producthunt.com/products/ship-happens-automate-asc-localization?utm_campaign=producthunt-atom-posts-feed&amp;amp;utm_medium=rss-feed&amp;amp;utm_source=producthunt-atom-posts-feed"&gt;Discussion&lt;/a&gt;
+            |
+            &lt;a href="https://www.producthunt.com/r/p/1263960?app_id=339"&gt;Link&lt;/a&gt;
+          &lt;/p&gt;
+</content>
+    <author>
+      <name>JC</name>
+    </author>
+  </entry><entry>
+    <id>tag:www.producthunt.com,2005:Post/1257320</id>
+    <published>2026-09-21T08:42:28-07:00</published>
+    <updated>2026-09-29T06:10:07-07:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.producthunt.com/products/hopscotch-7"/>
+    <title>Hopscotch AI</title>
+    <content type="html">          &lt;p&gt;
+            500+ AI models available via a single API
+          &lt;/p&gt;
+          &lt;p&gt;
+            &lt;a href="https://www.producthunt.com/products/hopscotch-7?utm_campaign=producthunt-atom-posts-feed&amp;amp;utm_medium=rss-feed&amp;amp;utm_source=producthunt-atom-posts-feed"&gt;Discussion&lt;/a&gt;
+            |
+            &lt;a href="https://www.producthunt.com/r/p/1257320?app_id=339"&gt;Link&lt;/a&gt;
+          &lt;/p&gt;
+</content>
+    <author>
+      <name>Alexander Norman</name>
+    </author>
+  </entry>
+</feed>

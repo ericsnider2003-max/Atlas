@@ -154,6 +154,7 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
     ("What it may touch", "Changes it can make to this machine and to its own work, without asking each time."),
     ("Your accounts and secrets", "The vault, signing in, and how carefully it treats what it holds."),
     ("Reaching outside this machine", "Anything that leaves the laptop: the web, your phone, your mail, a paid model."),
+    ("Social", "Your social accounts' numbers and the people you watch: which of them Atlas reads on its own."),
     ("Your devices", "Where your devices meet to carry things between them, and what this one is called. Set on the Sync page."),
 ];
 
@@ -443,6 +444,43 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
             "Look things up and write them into a note.",
             "The only thing here that leaves your machine.",
             t.research.enabled, Sensitive, "Reaching outside this machine"),
+        // Social (29 Sep 2026): the two parts that fetch on their own. Asking
+        // works with both off; these are only the schedules.
+        toggle("workday.social.own_refresh", "Your accounts' numbers",
+            "Once a day, read your own YouTube, Instagram, Threads, Facebook Page, TikTok and Bluesky numbers from their free official APIs (the ones you set up on the Social page) and keep them, so the history outlives the platforms' 28 to 90 days.",
+            "Uses your keys from the vault. About four of YouTube's 10,000 daily units, and 27 Instagram calls.",
+            t.workday.social.own_refresh, Sensitive, "Social"),
+        toggle("workday.social.scan", "Watching others",
+            "Read the channels, hashtags and topics you watch from their public feeds, and say what's working for them.",
+            "One read of a source an hour at most, spaced out per site. Never TikTok, Instagram or X -- those only when you ask, one page.",
+            t.workday.social.scan, Sensitive, "Social"),
+        // Which of your own accounts the refresh reads (29 Sep 2026), set
+        // from the Social page. Each needs its key in the vault; one that's
+        // on without it is named as not set up.
+        toggle("workday.social.instagram", "Instagram numbers",
+            "Your Instagram's followers and each post's views, reach, saves and shares, through the Instagram API.",
+            "Needs a Professional account and a token in the vault (the Social page says how).",
+            t.workday.social.instagram, Sensitive, "Social"),
+        toggle("workday.social.threads", "Threads numbers",
+            "Your Threads followers and each post's views, likes, replies, reposts, quotes and shares.",
+            "Needs a token from your own Meta app in the vault.",
+            t.workday.social.threads, Sensitive, "Social"),
+        toggle("workday.social.facebook_page", "Facebook Page numbers",
+            "Your Page's followers and each post's views, reactions, comments and shares.",
+            "Needs a Page token in the vault. A personal profile has no numbers to read.",
+            t.workday.social.facebook_page, Sensitive, "Social"),
+        toggle("workday.social.tiktok", "TikTok numbers",
+            "Your TikTok followers and each video's views, likes, comments and shares, through TikTok's Display API.",
+            "Needs your own TikTok app's Sandbox and a sign-in from the Social page. TikTok gives no watch time.",
+            t.workday.social.tiktok, Sensitive, "Social"),
+        toggle("workday.social.youtube_analytics", "YouTube retention",
+            "How much of each video was watched, and watch time, from the YouTube Analytics API.",
+            "Needs a Google sign-in from the Social page.",
+            t.workday.social.youtube_analytics, Sensitive, "Social"),
+        toggle("workday.social.google_app_in_testing", "Google app testing",
+            "On while your Google app is in Testing: Google ends its sign-ins after seven days, and I warn you a day before.",
+            "",
+            t.workday.social.google_app_in_testing, Preference, "Social"),
         // The switch that used to be a line in tools.yaml and two terminal
         // commands. It is here because the person it is for does not type
         // commands, and a protection nobody can find is not a protection.
@@ -629,6 +667,27 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         default: Value::Text(t.sync.folder.clone()),
         weight: Sensitive,
         group: "Your devices".into(),
+    });
+    // Your own handles, for the Social page's refresh (29 Sep 2026).
+    items.push(Setting {
+        key: "workday.social.youtube_channel".into(),
+        name: "Your YouTube channel".into(),
+        what: "Your channel's @handle or its UC... id, for reading your own numbers.".into(),
+        cost: "".into(),
+        value: Value::Text(t.workday.social.youtube_channel.clone()),
+        default: Value::Text(String::new()),
+        weight: Preference,
+        group: "Social".into(),
+    });
+    items.push(Setting {
+        key: "workday.social.bluesky_handle".into(),
+        name: "Your Bluesky handle".into(),
+        what: "Like name.bsky.social, for reading your own followers and posts.".into(),
+        cost: "".into(),
+        value: Value::Text(t.workday.social.bluesky_handle.clone()),
+        default: Value::Text(String::new()),
+        weight: Preference,
+        group: "Social".into(),
     });
     // Your own SearXNG, for research to search with (28 Sep 2026). Read at
     // the moment research runs, so a change applies to the next one.

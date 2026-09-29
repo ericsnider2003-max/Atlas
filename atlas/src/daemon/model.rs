@@ -474,7 +474,7 @@ impl<'a> Daemon<'a> {
     ///
     /// A write that fails must not fail the call it is recording, so the
     /// failure goes to the ordinary log and the turn carries on.
-    pub(super) fn record_model_call(
+    pub(crate) fn record_model_call(
         &mut self,
         asked_by: &str,
         took_ms: u64,

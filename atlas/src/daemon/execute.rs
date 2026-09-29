@@ -233,6 +233,7 @@ impl<'a> Daemon<'a> {
             Intent::Pdf(said) => self.wd_pdf(said, clock()),
             Intent::People(said) => self.wd_people(said, clock()),
             Intent::Feeds(said) => self.wd_feeds(said, clock()),
+            Intent::Social(said) => self.social_said(said, clock()),
             Intent::Receipt(said) => self.wd_receipt(said, clock()),
             Intent::Habit(said) => self.wd_habit(said, clock()),
             Intent::Cards(said) => self.wd_cards(said, clock()),

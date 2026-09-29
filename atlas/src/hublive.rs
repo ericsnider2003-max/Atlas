@@ -651,6 +651,7 @@ impl Daemon<'_> {
             | Page::Help
             | Page::Updates
             | Page::Feedback
+            | Page::Social
             | Page::Phone => self.hub_page_q(page, ""),
             Page::Gestures => {
                 // What he has taught, or the defaults read off his recordings
@@ -2724,6 +2725,7 @@ impl Daemon<'_> {
             Page::Feedback => crate::hubpages::feedback_page(&self.feedback_view(), said.as_deref()),
             // What "Have a go" or "Not worth it" did, said on the page -- the
             // same as every other page (below).
+            Page::Social => self.social_page(said.as_deref()),
             Page::Phone => {
                 let kind = field_of(&fields, "kind").and_then(|k| crate::phoneadd::Kind::parse(&k));
                 let v = self.phone_view(kind);
@@ -3269,6 +3271,10 @@ impl Daemon<'_> {
         let now = crate::store::now();
         let what = field_of(f, "what").unwrap_or_default();
         match path {
+            "/hub/social" => {
+                let said = self.social_post(f, now);
+                hub::back_with(Page::Social.href(), "", &said)
+            }
             "/hub/messages" => {
                 if what == "start" {
                     let who = field_of(f, "who").unwrap_or_default();

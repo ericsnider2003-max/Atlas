@@ -305,6 +305,8 @@ pub enum Intent {
     People(String),
     /// Sites you follow: what's new, read one, save one for later. (round 11, `workday`)
     Feeds(String),
+    /// Your social accounts' numbers and the people you watch. (`social`)
+    Social(String),
     /// Keep a receipt off the screen or the clipboard; what you spent where. (round 11, `workday`)
     Receipt(String),
     /// Habits, counted by strength rather than streaks. (round 11, `workday`)
@@ -600,6 +602,7 @@ impl Intent {
             Intent::Pdf(_) => "working on a PDF".into(),
             Intent::People(_) => "your people".into(),
             Intent::Feeds(_) => "your feeds".into(),
+            Intent::Social(_) => "your social accounts".into(),
             Intent::Receipt(_) => "your receipts".into(),
             Intent::Habit(_) => "your habits".into(),
             Intent::Cards(_) => "your flashcards".into(),
@@ -1171,6 +1174,7 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "pdf" => Intent::Pdf(raw.trim().to_string()),
         "people" => Intent::People(raw.trim().to_string()),
         "feeds" => Intent::Feeds(raw.trim().to_string()),
+        "social" => Intent::Social(raw.trim().to_string()),
         "receipt" => Intent::Receipt(raw.trim().to_string()),
         "habit" => Intent::Habit(raw.trim().to_string()),
         "cards" => Intent::Cards(raw.trim().to_string()),

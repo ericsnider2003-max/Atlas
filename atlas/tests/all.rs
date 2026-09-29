@@ -559,6 +559,8 @@ mod round9;
 mod round10;
 #[path = "round11.rs"]
 mod round11;
+#[path = "social.rs"]
+mod social;
 #[path = "wants.rs"]
 mod wants;
 #[path = "workday_through_the_daemon.rs"]

@@ -245,6 +245,62 @@ pub fn https_post_json(host: &str, path: &str, body: &str, token: Option<&str>, 
     parse_response(&raw)
 }
 
+/// A request over TLS that says who is asking and hands back the headers.
+///
+/// For the public sites `social` reads (29 Sep 2026): a feed server asks for
+/// a descriptive `User-Agent`, answers `If-Modified-Since` with a cheap 304,
+/// and says `Retry-After` when it wants you to slow down -- none of which
+/// `https_get` can send or see. `body` is `(content type, text)`: Google's
+/// token endpoint takes a form, not JSON. Same certificate rules as
+/// `https_get`: the system's, never turned down.
+pub fn https_call(
+    method: &str,
+    host: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<(&str, &str)>,
+    timeout: Duration,
+) -> Result<(Response, Vec<(String, String)>)> {
+    use std::net::ToSocketAddrs;
+    let addr = format!("{host}:443")
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut a| a.next())
+        .ok_or_else(|| AtlasError::Platform(format!("cannot resolve {host}")))?;
+    let tcp = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| AtlasError::Platform(format!("connect {host}: {e}")))?;
+    tcp.set_read_timeout(Some(timeout))?;
+    tcp.set_write_timeout(Some(timeout))?;
+    let connector = native_tls::TlsConnector::new()
+        .map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
+    let mut s = connector
+        .connect(host, tcp)
+        .map_err(|e| AtlasError::Platform(format!("TLS to {host}: {e}")))?;
+    let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: */*\r\n");
+    for (k, v) in headers {
+        // A header value with a line break in it is a second header someone
+        // else wrote; refused rather than sent.
+        if k.contains(['\r', '\n']) || v.contains(['\r', '\n']) {
+            return Err(AtlasError::Platform("a header with a line break in it".into()));
+        }
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    match body {
+        Some((kind, text)) => req.push_str(&format!("Content-Type: {kind}\r\nContent-Length: {}\r\n\r\n{text}", text.len())),
+        None => req.push_str("\r\n"),
+    }
+    s.write_all(req.as_bytes())?;
+    let raw = read_bounded(&mut s, MAX_RESPONSE)?;
+    let head_end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap_or(raw.len());
+    let head = String::from_utf8_lossy(&raw[..head_end]).into_owned();
+    let got: Vec<(String, String)> = head
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())))
+        .collect();
+    Ok((parse_response(&raw)?, got))
+}
+
 /// The most Atlas will hold from one response.
 ///
 /// `read_to_end` had no limit. The read timeout does not bound the total: a
