@@ -485,6 +485,11 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "social", what: "keep your own accounts' numbers as a daily record -- from each platform's own export (X, TikTok, Instagram, LinkedIn, YouTube Studio) and the free APIs (YouTube, Instagram, Threads, a Facebook Page, TikTok, Bluesky) -- and say how your last video did, what worked this month and why, when to post, and your followers over time, naming what each platform doesn't give", area: Writing, state: Untested, needs: Some("a platform's export, or its key in the vault"), offline: true, added: 41, runs: &[Needs::Files], modules: &["social", "snapshots", "exports", "xlsx", "apis", "analysis", "page", "glue"] },
         Capability { id: "watchlist", what: "watch the channels, hashtags and topics you name through their public feeds -- YouTube, Mastodon, Bluesky, Hacker News, Product Hunt, Google trends, Reddit -- and say what's working for them; TikTok, Instagram and X one page when you ask, never on a schedule", area: Web, state: Untested, needs: None, offline: false, added: 41, runs: &[Needs::Background], modules: &["watchlist", "onepage"] },
         Capability { id: "appearance", what: "look the way you choose -- light, dark, or following this computer's own settings -- everywhere at once", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["appearance", "oslook"] },
+        // 29 Sep 2026. Off as shipped: it reaches public sites once a day, so
+        // it waits for you to turn it on. Never applies, replies or spends.
+        Capability { id: "hunt", what: "look once a day for gigs, jobs, grants, contracts and niches -- Hacker News hiring threads, Grants.gov, SAM.gov, Reddit, Product Hunt, the App Store charts, GitHub, your feeds and searches, and job alerts in your mail -- and bring the best few with why, to read more, drop or save; it never applies or replies", area: Web, state: Off, needs: None, offline: false, added: 41, runs: &[Needs::Background], modules: &["hunt", "hunting"] },
+        // 29 Sep 2026, Eric: "Can we give Atlas the ability to be a smart ass".
+        Capability { id: "wit", what: "be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying \"tone it down\" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else", area: Speaking, state: Working, needs: None, offline: true, added: 41, runs: &[Needs::JustThinking], modules: &["wit", "talkback"] },
     ]
 }
 
@@ -1328,7 +1333,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (on PLUMBING), and `src/main/*.rs` are still the binary.
 // 410 -> 413 (29 Sep): `photo`, `straighten` and `cutout` (photo editing).
 // 413 -> 414 (29 Sep): `social` (its `src/social/*.rs` fold into it).
-pub const MODULES_IN_TREE: usize = 414;
+// 414 -> 418 (29 Sep): `hunt`, `hunting` (opportunity hunting), `wit`, `talkback`.
+pub const MODULES_IN_TREE: usize = 418;
 
 /// Every module no capability claims, and why it is not one.
 ///

@@ -1,0 +1,51 @@
+{
+ "feed": {
+  "title": "Top Free Apps",
+  "id": "https://rss.marketingtools.apple.com/api/v2/us/apps/top-free/25/apps.json",
+  "author": {
+   "name": "Apple",
+   "url": "https://www.apple.com/"
+  },
+  "links": [
+   {
+    "self": "https://rss.marketingtools.apple.com/api/v2/us/apps/top-free/25/apps.json"
+   }
+  ],
+  "copyright": "Copyright \u00a9 2026 Apple Inc. All rights reserved.",
+  "country": "us",
+  "icon": "https://www.apple.com/favicon.ico",
+  "updated": "Tue, 29 Sep 2026 13:20:11 +0000",
+  "results": [
+   {
+    "artistName": "Northwind Labs",
+    "id": "6760173601",
+    "name": "Northwind Notes",
+    "releaseDate": "2026-09-08",
+    "kind": "apps",
+    "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/x/100x100bb.png",
+    "genres": [],
+    "url": "https://apps.apple.com/us/app/northwind-notes/id6760173601"
+   },
+   {
+    "artistName": "Quillbrook Inc.",
+    "id": "1500000002",
+    "name": "Quillbrook Video Cutter",
+    "releaseDate": "2025-02-11",
+    "kind": "apps",
+    "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/y/100x100bb.png",
+    "genres": [],
+    "url": "https://apps.apple.com/us/app/quillbrook-video-cutter/id1500000002"
+   },
+   {
+    "artistName": "Harbor Games",
+    "id": "1400000003",
+    "name": "Harbor Match",
+    "releaseDate": "2024-06-01",
+    "kind": "apps",
+    "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/z/100x100bb.png",
+    "genres": [],
+    "url": "https://apps.apple.com/us/app/harbor-match/id1400000003"
+   }
+  ]
+ }
+}

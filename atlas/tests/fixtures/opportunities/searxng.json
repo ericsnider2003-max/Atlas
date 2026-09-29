@@ -1,0 +1,22 @@
+{
+ "query": "video editing gigs",
+ "number_of_results": 0,
+ "results": [
+  {
+   "url": "https://www.example.org/jobs/video-editor-remote?utm_source=x",
+   "title": "Remote video editor wanted (part-time)",
+   "content": "Part-time remote video editor for a small studio, $30/hour.",
+   "engine": "duckduckgo",
+   "score": 1.0
+  },
+  {
+   "url": "javascript:alert(1)",
+   "title": "bad",
+   "content": "",
+   "engine": "x",
+   "score": 0.1
+  }
+ ],
+ "answers": [],
+ "suggestions": []
+}

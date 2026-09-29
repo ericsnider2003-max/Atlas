@@ -285,6 +285,10 @@ pub struct ToolsConfig {
     /// check-in, feeds, cards, translation, key chords, meeting prep.
     #[serde(default)]
     pub workday: crate::workday::WorkdayConfig,
+    /// Looking for gigs, grants and niches once a day (`hunt`). Off until
+    /// you turn it on.
+    #[serde(default)]
+    pub hunt: crate::hunt::HuntConfig,
     #[serde(default)]
     pub routine: crate::routine::RoutineConfig,
     /// Long jobs left to run on their own (Eric, E3).

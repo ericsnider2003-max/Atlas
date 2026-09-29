@@ -1,0 +1,26 @@
+{
+ "total_count": 2,
+ "incomplete_results": false,
+ "items": [
+  {
+   "id": 880000001,
+   "name": "shortcut-cutter",
+   "full_name": "northwind/shortcut-cutter",
+   "html_url": "https://github.com/northwind/shortcut-cutter",
+   "description": "Cut long video into shorts from the command line, in Rust",
+   "stargazers_count": 1840,
+   "created_at": "2026-09-23T10:00:00Z",
+   "language": "Rust"
+  },
+  {
+   "id": 880000002,
+   "name": "ledgerlite",
+   "full_name": "quillbrook/ledgerlite",
+   "html_url": "https://github.com/quillbrook/ledgerlite",
+   "description": "Invoicing for one-person shops",
+   "stargazers_count": 950,
+   "created_at": "2026-09-24T08:30:00Z",
+   "language": "TypeScript"
+  }
+ ]
+}

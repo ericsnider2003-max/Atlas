@@ -307,6 +307,11 @@ pub enum Intent {
     Feeds(String),
     /// Your social accounts' numbers and the people you watch. (`social`)
     Social(String),
+    /// Opportunities the hunter found (gigs, grants, niches): the list, more
+    /// on one, not interested, save, and what to look for. (`hunting`)
+    Opportunities(String),
+    /// How much of a smart-ass Atlas may be: "tone it down". (`talkback`)
+    Wit(String),
     /// Keep a receipt off the screen or the clipboard; what you spent where. (round 11, `workday`)
     Receipt(String),
     /// Habits, counted by strength rather than streaks. (round 11, `workday`)
@@ -603,6 +608,8 @@ impl Intent {
             Intent::People(_) => "your people".into(),
             Intent::Feeds(_) => "your feeds".into(),
             Intent::Social(_) => "your social accounts".into(),
+            Intent::Opportunities(_) => "the opportunities I found".into(),
+            Intent::Wit(_) => "how much of a smart-ass I am".into(),
             Intent::Receipt(_) => "your receipts".into(),
             Intent::Habit(_) => "your habits".into(),
             Intent::Cards(_) => "your flashcards".into(),
@@ -1175,6 +1182,10 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "people" => Intent::People(raw.trim().to_string()),
         "feeds" => Intent::Feeds(raw.trim().to_string()),
         "social" => Intent::Social(raw.trim().to_string()),
+        // The whole sentence: "look for video editing gigs" is read by
+        // `hunt::understand`, which needs the verb as much as the words.
+        "opportunities" => Intent::Opportunities(raw.trim().to_string()),
+        "wit" => Intent::Wit(raw.trim().to_string()),
         "receipt" => Intent::Receipt(raw.trim().to_string()),
         "habit" => Intent::Habit(raw.trim().to_string()),
         "cards" => Intent::Cards(raw.trim().to_string()),

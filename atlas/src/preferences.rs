@@ -42,6 +42,11 @@ use std::path::Path;
 /// declarations of one fact start.
 const ALIASES: &[(&str, &str)] = &[("voice.enabled", "enabled")];
 
+/// Settings that were numbers in an older `tools.yaml` and are words now.
+/// `persona.wit` was a 0-to-1 dial until 29 Sep 2026 and is off/dry/full;
+/// `wit::Wit` still reads the number, so both shapes load.
+const NOW_WORDS: &[&str] = &["persona.wit"];
+
 /// Where a Settings key lives in `tools.yaml`.
 pub fn path_for(key: &str) -> &str {
     ALIASES.iter().find(|(k, _)| *k == key).map(|(_, p)| *p).unwrap_or(key)
@@ -188,6 +193,11 @@ fn set_at(root: &mut Value, path: &str, raw: &str) -> bool {
         Some(Value::Number(_)) => match raw.trim().parse::<f64>() {
             Ok(f) if f.fract() == 0.0 && f.abs() < 9e15 => Value::Number((f as i64).into()),
             Ok(f) => Value::Number(f.into()),
+            // A setting that was a number and is now a word: an older
+            // tools.yaml still holds the number, and the word is what the
+            // setting takes now. Named, not inferred -- any other number
+            // slot given a word is still refused.
+            Err(_) if NOW_WORDS.contains(&path) => Value::String(raw.to_string()),
             Err(_) => return false,
         },
         Some(Value::String(_)) => Value::String(raw.to_string()),

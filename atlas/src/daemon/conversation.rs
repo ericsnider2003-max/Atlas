@@ -238,7 +238,7 @@ impl<'a> Daemon<'a> {
             ));
             now.push_str(&crate::capability::about_atlas(said, 6));
         }
-        now.push_str(&persona.for_this_turn(register, persona.max_spoken_sentences));
+        now.push_str(&persona.for_this_turn_on(register, persona.max_spoken_sentences, said, self.mid_flow()));
 
         let tools = if handed_over { Vec::new() } else { self.turn_tools(said) };
         let core_tools = if handed_over { 0 } else { self.tool_book.for_sentence("", 0).len() };

@@ -175,8 +175,8 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "fxday::day_of",
     "gaze::spoken",
     "gaze::verdict",
-    // `getpieces::catalogue` joined 28 Sep 2026, the same shape as
-    // `feeds::text_of`: it is live -- `getpieces::setup_pieces` and the
+    // `getpieces::catalogue` joined 28 Sep 2026, the shape
+    // `feeds::text_of` had: it is live -- `getpieces::setup_pieces` and the
     // `voice` piece set call it bare -- but its one module-qualified caller
     // was `setupwin::setup_pieces`, and that moved into `getpieces` so the
     // phone builds compile (69b6aba). `tts` and `palette` also define a

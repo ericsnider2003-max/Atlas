@@ -207,6 +207,11 @@ pub const THE_OWNERS_OWN: &[&str] = &[
     "pdf",
     "people",
     "feeds",
+    // The opportunities found for you, what you look for and skip (29 Sep
+    // 2026); and how Atlas talks to you -- someone holding the laptop
+    // doesn't get to turn your wit up or read your leads.
+    "opportunities",
+    "wit",
     "receipt",
     "habit",
     "cards",

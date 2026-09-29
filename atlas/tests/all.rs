@@ -862,3 +862,7 @@ mod speed_measured;
 mod the_phone_build_reaches_no_desktop_module;
 #[path = "photo_editing.rs"]
 mod photo_editing;
+#[path = "opportunity_hunting.rs"]
+mod opportunity_hunting;
+#[path = "wit_setting.rs"]
+mod wit_setting;

@@ -231,6 +231,29 @@ impl Opportunity {
         Verdict::Worth { because, weakest }
     }
 
+    /// For putting several side by side (the opportunity hunter's list,
+    /// 29 Sep 2026): the mean of the grounded scores, with `heavier` counted
+    /// twice -- for a list found for you, Fit, because a real thing that
+    /// isn't yours is still not for you. Unknown and blocked axes add
+    /// nothing either way: they are missing, not middling, which is the
+    /// point of this module. `None` when nothing is scored, or when the
+    /// verdict already set it aside -- a sunk axis is not averaged away.
+    pub fn rank(&self, heavier: Axis) -> Option<f32> {
+        if matches!(self.verdict(), Verdict::SetAside { .. }) {
+            return None;
+        }
+        let (sum, n) = self
+            .looks
+            .iter()
+            .filter(|l| l.finding.is_grounded())
+            .filter_map(|l| l.finding.score().map(|s| (l.axis, s)))
+            .fold((0f32, 0f32), |(sum, n), (a, v)| {
+                let w = if a == heavier { 2.0 } else { 1.0 };
+                (sum + v as f32 * w, n + w)
+            });
+        (n > 0.0).then(|| sum / n)
+    }
+
     /// How it reads when presented.
     ///
     /// Weakest axis first. The strong ones are why you would want to do it and

@@ -359,12 +359,16 @@ fn the_riskiest_new_capabilities_are_findable_and_explain_their_limits() {
 fn a_number_you_never_touched_is_not_reported_as_changed() {
     // An f32 config value widened to f64 is 0.3499999940395355, not 0.35.
     // Comparing exactly makes the hub claim you changed things you didn't.
+    //
+    // 29 Sep 2026: this used `persona.wit`, the one f32 setting it had to
+    // hand; wit became a choice (off / dry / full), so the f32 now checked is
+    // the voice's speed, which has the same widening.
     let s = s();
-    let wit = s.get("persona.wit").unwrap();
-    assert!(!wit.changed(), "a fresh config should have nothing changed");
+    let speed = s.get("voice_settings.speed").unwrap();
+    assert!(!speed.changed(), "a fresh config should have nothing changed");
     let mut s2 = s;
-    s2.set("persona.wit", "0.9").unwrap();
-    assert!(s2.get("persona.wit").unwrap().changed());
+    s2.set("voice_settings.speed", "1.4").unwrap();
+    assert!(s2.get("voice_settings.speed").unwrap().changed());
 }
 
 #[test]
