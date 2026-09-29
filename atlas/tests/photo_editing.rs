@@ -869,8 +869,24 @@ fn real_photos_are_measured_for_tilt_and_say_how_sure() {
         let t = atlas::straighten::measure(&atlas::straighten::grey(&seen.small.rgb), seen.small.width as usize, seen.small.height as usize);
         eprintln!("{name}: {t:?}");
         if let Some(t) = t {
-            assert!(t.fix.abs() <= atlas::straighten::MAX_TILT && (0.0..=1.0).contains(&t.confidence));
-            eprintln!("  -> {}", atlas::straighten::offer(&t, name));
+            assert!(t.fix.abs() <= atlas::straighten::MAX_TILT, "{name}: a tilt past the search range: {t:?}");
+            assert!(t.confidence >= 0.0 && t.confidence <= 1.0, "{name}: confidence out of 0..1: {t:?}");
+            // What it says follows what it measured (29 Sep 2026: this test
+            // only printed the sentence, so a photo it was unsure of could
+            // have been offered a fix and nothing would notice). A fix is
+            // offered only when it is sure and the photo is off level; the
+            // number in the offer is the one it measured.
+            let said = atlas::straighten::offer(&t, name);
+            eprintln!("  -> {said}");
+            let offered = said.contains("Straighten it?");
+            assert_eq!(offered, t.sure() && !t.level(), "{name}: {t:?} was answered with {said:?}");
+            let unsure = said.contains("can't tell which way is level");
+            assert_eq!(unsure, !t.sure(), "{name}: {t:?} was answered with {said:?}");
+            if offered {
+                let degrees = format!("{:.1}°", t.fix.abs());
+                let names_it = said.contains(&degrees);
+                assert!(names_it, "{name}: the offer doesn't give the {degrees} it measured: {said:?}");
+            }
         }
     }
 }

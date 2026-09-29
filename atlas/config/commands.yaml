@@ -728,15 +728,19 @@ commands:
     # Phrases start the sentence ("make this photo brighter"), so each names
     # a photo or a photo-only act: "make it brighter" or a bare "undo" could
     # be about anything and are left to the rest of Atlas.
+    # "straighten" on its own and "rotate it" joined 29 Sep 2026: Atlas tells
+    # you to say "straighten" with a photo's name (a folder's tilt report)
+    # and "rotate it 2 degrees clockwise" (a photo it can't level itself).
+    # Nothing else in Atlas straightens or rotates, so neither is a guess.
     phrases: ["edit this photo", "edit the photo", "edit my photo", "edit photo", "edit this picture", "this photo",
               "make this photo", "make the photo", "make my photo", "make this picture", "make these photos",
               "brighten this photo", "brighten the photo", "darken this photo", "fix this photo", "fix the photo",
               "fix all the photos", "fix all my photos", "fix these photos", "fix the photos", "fix the colours in",
-              "straighten this", "straighten it", "straighten the photo", "straighten my photo", "straighten these",
+              "straighten", "straighten this", "straighten it", "straighten the photo", "straighten my photo", "straighten these",
               "yes straighten it", "is this photo level", "is the photo level",
               "crop it for", "crop this for", "crop this photo", "crop the photo", "crop these for",
               "resize these for", "resize it for", "resize this for", "resize this photo", "resize the photo", "resize these photos",
-              "rotate this photo", "rotate the photo", "flip this photo", "turn this photo", "convert this photo", "convert these photos",
+              "rotate it", "rotate this photo", "rotate the photo", "flip this photo", "turn this photo", "convert this photo", "convert these photos",
               "sharpen this photo", "denoise this photo", "blur the background", "remove the background",
               "cut out the background", "take the background out", "undo the photo edit", "undo that photo edit",
               "get the photo models",

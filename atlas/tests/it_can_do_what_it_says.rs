@@ -293,6 +293,15 @@ const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
          a follow-up for ten minutes after the list is shown.",
     ),
     (
+        "tell me more about 1",
+        "an answer to the opportunities list just shown (`hunt::understand`, read \
+         by `workday::read_first` while `Follow::Opportunities` is live -- \
+         tests/opportunity_hunting.rs parses \"tell me more about #3\" through the \
+         parser with that list showing). On its own there is no opportunity 1. \
+         Listed 29 Sep 2026, when the hunt's own sentence was changed from a bare \
+         \"tell me more about\" to the phrase you actually say.",
+    ),
+    (
         "show",
         "an answer during a flashcard quiz -- turn the card over. Read as a \
          follow-up while a card is up (`workday::Follow::Quiz`); on its own \

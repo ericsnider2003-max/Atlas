@@ -329,7 +329,11 @@ pub fn cost(source: Source, cfg: &HuntConfig, searxng: bool) -> u32 {
 
 /// Is this source due today? `last` is when it was last read (0: never);
 /// `day` and `day_of_month` are local.
-pub fn due(source: Source, last: u64, now: u64, day_of_month: u32) -> bool {
+///
+/// Named `source_due` rather than `due` (29 Sep 2026): a second free `due`
+/// beside `brief::due` made both ambiguous to the deadness scan
+/// (tests/one_word_is_not_an_address.rs).
+pub fn source_due(source: Source, last: u64, now: u64, day_of_month: u32) -> bool {
     if last == 0 {
         return true;
     }

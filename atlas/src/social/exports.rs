@@ -362,9 +362,24 @@ fn post(platform: Platform, id: String, posted: Option<u64>, text: &str, url: St
 
 // ---------------------------------------------------------------- X
 
+/// The folder an X archive keeps its files in -- X's layout, inside the
+/// archive you downloaded, not anything of Atlas's.
+///
+/// Named on its own (29 Sep 2026) because `tests/one_install_root.rs` reads a
+/// `"data/..."` literal as one of Atlas's own install paths, which only
+/// `roots` and `store` may spell. These are not: they are names inside
+/// somebody else's zip, matched against the archive's own entry names.
+const X_ARCHIVE_FOLDER: &str = "data";
+
+/// Is entry `n` of an X archive the file `name`, either in the archive's own
+/// folder or loose (a folder of just the `.js` files)?
+fn in_x_archive(n: &str, name: &str) -> bool {
+    n == name || n.ends_with(&format!("{X_ARCHIVE_FOLDER}/{name}"))
+}
+
 fn x_archive(b: &Bundle, as_of: u64, now: u64) -> Result<Imported, String> {
     let mut as_of = as_of;
-    if let Some(m) = b.find(|n| n.ends_with("data/manifest.js") || n == "manifest.js").first() {
+    if let Some(m) = b.find(|n| in_x_archive(n, "manifest.js")).first() {
         let text = b.text(m).unwrap_or_default();
         if let Some(i) = text.find("\"generationDate\"") {
             let rest = &text[i + 16..];
@@ -379,7 +394,7 @@ fn x_archive(b: &Bundle, as_of: u64, now: u64) -> Result<Imported, String> {
         }
     }
     let mut handle = String::new();
-    if let Some(a) = b.find(|n| n.ends_with("data/account.js") || n == "account.js").first() {
+    if let Some(a) = b.find(|n| in_x_archive(n, "account.js")).first() {
         if let Ok(arr) = ytd_array(&b.text(a)?) {
             handle = arr.first().and_then(|v| v.pointer("/account/username")).and_then(|v| v.as_str()).unwrap_or("").to_string();
         }
@@ -410,7 +425,7 @@ fn x_archive(b: &Bundle, as_of: u64, now: u64) -> Result<Imported, String> {
     }
     let posts = records.len();
     let mut account_days = 0;
-    if let Some(f) = b.find(|n| n.ends_with("data/follower.js") || n == "follower.js").first() {
+    if let Some(f) = b.find(|n| in_x_archive(n, "follower.js")).first() {
         let followers = ytd_array(&b.text(f)?)?.len() as u64;
         records.push(Record::Account(AccountSnap {
             platform: Platform::X,

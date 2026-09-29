@@ -257,6 +257,16 @@ pub const NEVER: &[(&str, &str)] = &[
     ("keep_at_it", "it keeps changing Atlas's own code"),
     // 25k's, decided when 25k was merged in (26 Sep 2026).
     ("clock", "it's yours to ask; an add-on can read the time itself"),
+    // Round 6's four, decided when they were merged onto the split (29 Sep
+    // 2026), each held back for the same reason as its nearest neighbour:
+    // photo edits write files as `edit_media` does; social reads your own
+    // accounts and fetches as you as `feeds` does; the hunt reads your mail
+    // for job alerts and keeps your list; wit changes how Atlas talks from
+    // now on, as `got_it_wrong` does.
+    ("edit_photo", "it writes files beside yours"),
+    ("social", "it reads your own accounts and fetches from the web as you"),
+    ("opportunities", "it reads your mail for job alerts and keeps your own list"),
+    ("wit", "it changes how Atlas behaves from now on"),
 ];
 
 /// Said alone, these answer a question Atlas asked. An add-on may never be

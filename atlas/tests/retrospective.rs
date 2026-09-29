@@ -123,6 +123,23 @@ const PROSE_ONLY_BASELINE: &[&str] = &[
     "other_programs_tools::a_tool_whose_program_has_gone_is_said_plainly_through_the_daemon",
     "reading_without_the_picture_reader::a_handed_photo_is_read_by_the_recognizer_when_atlas_has_no_reading_models",
     "a_brief_without_an_inbox::most_blocking_finally_has_something_to_work_on",
+    // 29 Sep 2026, round 6 merge: behavioural, misread by the shape
+    // heuristic. The five social ones build a record book from made-up posts
+    // and account snapshots and check the numbers the analysis worked out of
+    // it (medians, week and month deltas, per-slot bests, escaping on the
+    // rendered page); the wit one asks the persona for a turn on money, a
+    // rough patch and a chat and checks what it tells the model, then scans
+    // the drafting modules. The capital-letter `::` lines are enum variants
+    // (`Platform::Youtube`, `Record::Account`, `Register::Rough`), not
+    // constants. (`photo_editing::real_photos_are_measured_for_tilt_and_say_how_sure`
+    // was flagged too, and really did only print what it said: it now checks
+    // the sentence against what was measured, so it is not listed.)
+    "social::under_the_pattern_floor_it_gives_numbers_and_calls_patterns_noise",
+    "social::over_the_floor_it_names_the_opening_length_and_retention_that_did_best",
+    "social::posting_times_need_enough_posts_in_each_slot",
+    "social::followers_over_time_per_platform_and_together_naming_the_gaps",
+    "social::the_social_page_escapes_what_it_shows_and_says_when_the_vault_is_locked",
+    "wit_setting::the_model_is_told_no_jokes_when_it_matters_and_never_asked_for_one_in_a_draft",
     // 22 Sep 2026: afterme_companion::an_arrangement_someone_has_not_been_told_about_is_not_one now asserts telling the person empties the gap list.
     // 22 Sep 2026: afterme_companion::an_envelope_nobody_can_find_is_the_same_as_no_envelope now asserts the gap is ranked top-tier (urgency >= 0.9).
     // 22 Sep 2026: afterme_companion::no_envelope_at_all_is_the_top_of_the_list now asserts the gap's urgency is the maximum 1.0.

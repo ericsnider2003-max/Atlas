@@ -123,6 +123,21 @@ pub fn catalogue() -> Vec<Entry> {
             does: Does::Go("/hub/give"),
             also: &["give", "hand", "share", "upload", "send a file", "drop", "attach", "paste a link"],
         },
+        // Social and Opportunities joined the hub's "Your work" menu on 29 Sep
+        // 2026 (the social and hunting merges); the palette gets them the
+        // same day, so neither depends on which way in you reach for.
+        Entry {
+            label: "See how your posts are doing",
+            hint: "Your accounts' numbers over time, and what's working for the people you watch",
+            does: Does::Go("/hub/social"),
+            also: &["social", "followers", "my posts", "my videos", "best time to post", "watch list", "trending", "analytics"],
+        },
+        Entry {
+            label: "See the opportunities found",
+            hint: "Gigs, jobs, grants and niches Atlas found, with why -- read more, drop or save",
+            does: Does::Go("/hub/opportunities"),
+            also: &["opportunities", "gigs", "jobs", "grants", "contracts", "leads", "hunting", "saved opportunities"],
+        },
         Entry {
             label: "Check on a business",
             hint: "A business at a glance: open work, people, clients",

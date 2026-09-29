@@ -10,6 +10,11 @@ target/
 # churned the working tree on every run; it does not belong in the repo.
 atlas/data/
 data/
+# ...except a fixture that copies somebody else's layout: an X archive keeps
+# its files under its own `data/` (29 Sep 2026 -- the folder form of the X
+# fixture was ignored by the line above and never reached git, so the test
+# that reads it failed on every fresh checkout).
+!atlas/tests/fixtures/social/exports/x_archive/data/
 
 # Local logs and OS cruft
 *.log

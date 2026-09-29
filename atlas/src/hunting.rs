@@ -139,7 +139,7 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
     // Your own mail first: on this machine, no request made.
     if sources.contains(&Source::Mail) {
         let last = state(d).sources.get("mail").map(|s| s.last_read).unwrap_or(0);
-        if hunt::due(Source::Mail, last, t, dom) {
+        if hunt::source_due(Source::Mail, last, t, dom) {
             let book: crate::mailbook::MailBook = d.store.load(crate::mailbook::MailBook::FILE);
             let since = if last == 0 { t.saturating_sub(7 * 86_400) } else { last };
             let found = hunt::alerts_in_mail(&book.letters, since);
@@ -159,7 +159,7 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
     let mut over: Vec<Source> = Vec::new();
     for src in sources.iter().copied().filter(|s| *s != Source::Mail) {
         let last = s.sources.get(src.key()).map(|x| x.last_read).unwrap_or(0);
-        if !hunt::due(src, last, t, dom) {
+        if !hunt::source_due(src, last, t, dom) {
             // Not due: nothing to do, and nothing to say.
             continue;
         }
@@ -323,7 +323,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
             }
             show(d, top.iter().map(|r| r.found.id.clone()).collect(), t);
             let mut lines: Vec<String> = top.iter().enumerate().map(|(i, r)| hunt::line(i + 1, r)).collect();
-            lines.push("Say \"tell me more about\", \"not interested in\" or \"save\" and a number.".into());
+            lines.push("Say \"tell me more about 1\", \"not interested in 1\" or \"save 1\" -- or any other number on the list.".into());
             lines.join("\n")
         }
         Said::More(i) => {

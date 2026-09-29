@@ -67,6 +67,10 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
     // Moving the owner's files between drives.
     "move_big_files",
     "edit_media",
+    // Editing a photo writes a new file beside the owner's original, and
+    // "undo the last photo edit" removes one -- the owner's files, the same
+    // as `edit_media` above (29 Sep 2026, when photo editing was merged).
+    "edit_photo",
     "set_key",
     "languages",
     "teach_gesture",
@@ -212,6 +216,10 @@ pub const THE_OWNERS_OWN: &[&str] = &[
     // doesn't get to turn your wit up or read your leads.
     "opportunities",
     "wit",
+    // Your own social accounts -- how your posts did, your followers, your
+    // imported archives -- and the channels you watch are yours to read,
+    // the same as "feeds" above (29 Sep 2026, when social was merged).
+    "social",
     "receipt",
     "habit",
     "cards",

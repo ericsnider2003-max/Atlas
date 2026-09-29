@@ -322,10 +322,10 @@ fn a_whole_days_read_stays_well_under_the_budget_and_the_ceiling() {
     assert!(total <= 20, "a day's read is {total} requests; far inside 300");
     assert!(total <= cfg.budget());
     // Read once a day; HN weekly after the first week of the month.
-    assert!(!hunt::due(Source::Grants, NOW - 3600, NOW, 29));
-    assert!(hunt::due(Source::Grants, NOW - 86_400, NOW, 29));
-    assert!(!hunt::due(Source::Hn, NOW - 2 * 86_400, NOW, 29));
-    assert!(hunt::due(Source::Hn, NOW - 86_400, NOW, 3));
+    assert!(!hunt::source_due(Source::Grants, NOW - 3600, NOW, 29));
+    assert!(hunt::source_due(Source::Grants, NOW - 86_400, NOW, 29));
+    assert!(!hunt::source_due(Source::Hn, NOW - 2 * 86_400, NOW, 29));
+    assert!(hunt::source_due(Source::Hn, NOW - 86_400, NOW, 3));
 }
 
 #[test]

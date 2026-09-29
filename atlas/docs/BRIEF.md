@@ -73,7 +73,8 @@ consequential still needs a spoken yes.
 | Browser control without API keys | built, unverified live |
 | Watch machine health and another machine | built |
 | Named modes: focus, call, research | built |
-| Image generation, "put me in this photo" | possible on your hardware, not built |
+| Photo editing on a copy: brighter, straighter, cropped, background cut out | built |
+| Image generation, "put me in a picture of the beach" | possible on your hardware, not built |
 | Video generation | not possible on your hardware |
 
 ---
