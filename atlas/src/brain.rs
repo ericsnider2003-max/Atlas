@@ -955,6 +955,10 @@ impl<'a> Brain<'a> {
 pub struct Turn {
     /// What was said.
     pub said: String,
+    /// Asked while another conversation turn holds the model's conversation
+    /// slot: this one uses the other slot (`ChatRequest::aside`) rather than
+    /// waiting behind it (29 Sep 2026).
+    pub aside: bool,
     /// Who Atlas is, about the user, and today. The same bytes from one
     /// turn to the next while none of those changed.
     pub system: String,
@@ -1186,7 +1190,7 @@ impl<'a> Brain<'a> {
     /// The chat call. `None` when it failed before anything was passed on,
     /// and the one-prompt path should answer instead.
     fn converse_with_tools(&self, turn: &Turn, on_text: &mut dyn FnMut(&str) -> bool, also: &mut Vec<String>) -> Option<Decision> {
-        let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: turn.stable_tools, aside: false };
+        let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: turn.stable_tools, aside: turn.aside };
         let earlier: Vec<&str> =
             turn.history.iter().filter(|m| m.role == Role::Assistant).map(|m| m.content.as_str()).collect();
         let (reply, gate) = self.chat_gated(&req, turn.max_sentences, &earlier, on_text);
@@ -1236,7 +1240,7 @@ impl<'a> Brain<'a> {
         // Asked once more with a tool call required; what it said already
         // stands, and the tool's answer follows it.
         if reply.tool_calls.is_empty() && !turn.tools.is_empty() && announces_an_action(&reply.text) {
-            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: true, stable_tools: turn.stable_tools, aside: false };
+            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside };
             if let Ok(forced) = self.llm.chat(&req, &mut |_| true) {
                 let mut more = Vec::new();
                 let f = decision_from_chat_noting(&forced, &turn.said, &turn.tools, &mut more);

@@ -263,7 +263,7 @@ impl OnlyOne {
                 found.plain()
             ));
         }
-        let wrote = std::fs::write(&self.path, stamp(now))
+        let wrote = std::fs::write(&self.path, lock_line(now))
             .map_err(|e| format!("couldn't take the lock at {}: {e}", self.path.display()));
         let _ = std::fs::remove_file(&claim);
         wrote?;
@@ -283,7 +283,7 @@ impl OnlyOne {
     /// folder. The holder never learned it had lost the lock. Now the caller
     /// can say so.
     pub fn beat(&self, now: u64) -> bool {
-        std::fs::write(&self.path, stamp(now)).is_ok()
+        std::fs::write(&self.path, lock_line(now)).is_ok()
     }
 
     /// Should it beat yet?
@@ -377,7 +377,7 @@ impl Watching {
 }
 
 /// What a lock holds: the moment, then this process's id.
-pub fn stamp(now: u64) -> String {
+fn lock_line(now: u64) -> String {
     format!("{now} {}", std::process::id())
 }
 
@@ -395,7 +395,7 @@ pub fn holder_in(text: &str) -> Option<u32> {
 /// Is the process `pid` certainly gone? Only a sure answer says yes: a
 /// process that can't be asked (another user's, or a platform with no way
 /// to ask) is treated as still there, and the moment decides as before.
-pub fn process_gone(pid: u32) -> bool {
+fn process_gone(pid: u32) -> bool {
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER};

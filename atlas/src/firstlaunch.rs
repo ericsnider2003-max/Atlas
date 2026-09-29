@@ -707,7 +707,7 @@ impl First {
 /// Where a background Atlas that could not start says why (29 Sep 2026):
 /// it has no window and no terminal, so without this a start that failed
 /// was silent, and opening Atlas showed a hub nothing answered.
-pub fn start_problem_file(root: &Path) -> std::path::PathBuf {
+fn start_problem_file(root: &Path) -> std::path::PathBuf {
     root.join("data").join("logs").join("start-problem.txt")
 }
 

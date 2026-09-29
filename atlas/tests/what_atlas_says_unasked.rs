@@ -215,7 +215,11 @@ fn what_it_cannot_do_here_is_said_at_start_up_when_there_is_anything() {
     let c = cfg();
     let p = plat();
     let d = daemon(c, &p, "limits");
-    let limits = atlas::fit::limits(&d.fit);
+    // 29 Sep 2026: the sizing plan's limits are checked against what is
+    // installed (`daemon::what_this_machine_cant_do`) -- the plan said "can't
+    // look at your screen" on a laptop whose picture reader was there.
+    let pictures = Some(atlas::picture_talk::ready(&atlas::picture_talk::PictureTalkConfig::default(), &atlas::roots::install_root()));
+    let limits = atlas::daemon::what_this_machine_cant_do(atlas::fit::limits(&d.fit), pictures, false);
     match d.cant_do_here() {
         Some(line) => {
             assert!(!limits.is_empty());

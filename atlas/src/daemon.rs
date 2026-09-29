@@ -3099,16 +3099,13 @@ impl<'a> Daemon<'a> {
                         return String::new();
                     }
                     // A model call is already out (a Talk page turn still
-                    // thinking): this one waits its turn in the Talk page's
-                    // queue rather than being asked here, on the loop (29 Sep
-                    // 2026: asked here it waited behind the first for the one
-                    // model slot, and the hub, the typing box and Pause all
-                    // went unanswered for minutes).
-                    if needs_model && self.pending_turn.is_some() {
-                        self.talk_queue.push((said.to_string(), false));
-                        self.this_turn_register = None;
-                        self.this_turn_cap = None;
-                        return STILL_ON_THE_LAST_ONE.to_string();
+                    // thinking) and holds the conversation's slot: this one
+                    // uses the other slot rather than waiting behind it on the
+                    // loop (29 Sep 2026: both named slot 0, so this waited for
+                    // the first to finish, and the hub, the typing box and
+                    // Pause all went unanswered for minutes).
+                    if self.pending_turn.is_some() {
+                        turn.aside = true;
                     }
                     // The words so far are the Talk page's to show -- unless a
                     // Talk turn is still thinking, whose words they are
@@ -10818,6 +10815,9 @@ impl<'a> Daemon<'a> {
         // time it is needed it is started again rather than trusted.
         for (name, how) in self.helpers.died() {
             self.log.warn(&format!("{name} stopped on its own ({how}); it will be started again when next needed"));
+            if name == "model-server" {
+                self.model_server_died();
+            }
         }
         for said in self.helpers.reap(t) {
             self.log.info(&said);
@@ -19447,21 +19447,6 @@ impl<'a> Daemon<'a> {
         if up {
             return;
         }
-        // Ours ended soon after it was started (29 Sep 2026: one that died
-        // while loading -- too many layers for the graphics, the port taken,
-        // a bad file -- was started again on the very next pass, reading the
-        // whole model off the disk every time, and nobody was told).
-        if let Some(started) = self.model_started.take() {
-            if started.elapsed() < MODEL_SERVER_YOUNG {
-                self.model_deaths = self.model_deaths.saturating_add(1);
-                let why = match crate::models::model_server_last_words() {
-                    Some(w) => format!("my language model stopped soon after starting ({w})"),
-                    None => "my language model stopped soon after starting".to_string(),
-                };
-                self.log.warn(&format!("the model server ended soon after starting: {why}"));
-                self.model_server_trouble = Some(why);
-            }
-        }
         // Tried a moment ago and it didn't start: not again on every turn,
         // and longer each time one dies young.
         if self.model_start_tried.is_some_and(|at| at.elapsed() < model_server_pause(self.model_deaths)) {
@@ -19484,9 +19469,10 @@ impl<'a> Daemon<'a> {
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
             Ok(_) => {
                 self.log.info(&format!("started the model server: {} ({layers} layers on the graphics)", model.id));
-                // Watched for dying young; one let go later, after use, is
-                // not a failure (merge 28 Sep 2026), and `model_started` is
-                // cleared once it has lived past MODEL_SERVER_YOUNG.
+                // The pause between tries is for a start that failed, not one
+                // that worked and was later let go (merge 28 Sep 2026). A
+                // start that dies young is caught by `model_server_died`.
+                self.model_start_tried = None;
                 self.model_started = Some(std::time::Instant::now());
                 None
             }
@@ -19496,6 +19482,30 @@ impl<'a> Daemon<'a> {
             self.log.warn(&format!("couldn't start the model server: {}", trouble.as_deref().unwrap_or("")));
         }
         self.model_server_trouble = trouble;
+    }
+
+    /// Our model server stopped on its own (not let go for being idle). One
+    /// that died soon after being started is counted, and the next start
+    /// waits a doubling pause from now (29 Sep 2026: one that died while
+    /// loading -- too many layers for the graphics, the port taken, a bad
+    /// file -- was started again on the very next pass, reading the whole
+    /// model off the disk every time, and nobody was told).
+    fn model_server_died(&mut self) {
+        let Some(started) = self.model_started.take() else { return };
+        if started.elapsed() >= MODEL_SERVER_YOUNG {
+            return;
+        }
+        self.model_deaths = self.model_deaths.saturating_add(1);
+        self.model_start_tried = Some(std::time::Instant::now());
+        let why = match crate::models::model_server_last_words() {
+            Some(w) => format!("my language model stopped soon after starting ({w})"),
+            None => "my language model stopped soon after starting".to_string(),
+        };
+        self.log.warn(&format!(
+            "the model server ended soon after starting; trying again in {} min: {why}",
+            model_server_pause(self.model_deaths).as_secs() / 60
+        ));
+        self.model_server_trouble = Some(why);
     }
 
     /// Ask, on a thread of its own, whether a model server is answering;
@@ -24138,7 +24148,9 @@ impl<'a> Daemon<'a> {
     /// F10: the plain "what I can't do on this machine", for start-up.
     /// Nothing when there's nothing missing.
     pub fn cant_do_here(&self) -> Option<String> {
-        let limits = crate::fit::limits(&self.fit);
+        let root = crate::roots::install_root();
+        let pictures = self.tools_ref().map(|t| crate::picture_talk::ready(&t.picture_talk, &root));
+        let limits = what_this_machine_cant_do(crate::fit::limits(&self.fit), pictures, self.llm.is_some());
         (!limits.is_empty()).then(|| format!("Before we start — on this machine: {}", limits.join(" ")))
     }
 }
@@ -25941,6 +25953,7 @@ impl<'a> Daemon<'a> {
         let core_tools = if handed_over { 0 } else { self.tool_book.for_sentence("", 0).len() };
         let mut turn = brain::Turn {
             said: said.to_string(),
+            aside: false,
             system,
             history: self.thread.messages(HISTORY_EXCHANGES, HISTORY_TOKENS),
             now,
@@ -26560,10 +26573,6 @@ fn one_at_a_time(also: &[String]) -> String {
 /// How long a finding that another model server is (or isn't) up holds.
 const MODEL_SERVER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Said when a question arrives while the model is still answering another.
-pub const STILL_ON_THE_LAST_ONE: &str =
-    "I'm still working on your last question. This one's next -- its answer will be on the Talk page.";
-
 /// A model server that ends within this long of being started died young.
 const MODEL_SERVER_YOUNG: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -26822,9 +26831,38 @@ impl<'a> Daemon<'a> {
 /// tries again (`brain` puts "Model unreachable: <why>" in `say`).
 pub fn model_failed_words(why: &str) -> String {
     let why = why.trim().trim_start_matches("Model unreachable:").trim().trim_end_matches('.');
+    // Names the source the way the connections board does
+    // (`integrations::MODEL`) and says what it cost: the answer is missing.
+    let model = crate::integrations::MODEL;
     if why.is_empty() {
-        "I couldn't get an answer from my language model. I'll try again with your next message.".into()
+        format!("I couldn't get an answer from {model}, so the answer you asked for is missing. I'll try again with your next message.")
     } else {
-        format!("I couldn't get an answer from my language model: {why}. I'll try again with your next message.")
+        format!("I couldn't get an answer from {model} ({why}), so the answer you asked for is missing. I'll try again with your next message.")
     }
+}
+
+/// The start-up "what I can't do here", checked against what is really
+/// installed (29 Sep 2026: Eric's Atlas said "I can't look at your screen
+/// and understand it" at every start, from a sizing rule that wanted 6 GB of
+/// graphics memory of its own, while the picture reader setup fetched --
+/// Qwen3-VL and its picture encoder -- was on the laptop and working). The
+/// sizing plan says what a machine like this could run; the files say what
+/// this one does. `pictures` is the picture reader's own readiness.
+pub fn what_this_machine_cant_do(limits: Vec<String>, pictures: Option<std::result::Result<(), String>>, have_model: bool) -> Vec<String> {
+    limits
+        .into_iter()
+        .filter_map(|l| {
+            if l.contains("look at your screen") {
+                return match &pictures {
+                    Some(Ok(())) => None,
+                    Some(Err(why)) => Some(format!("I can't look at your screen and understand it: {why}.")),
+                    None => Some(l),
+                };
+            }
+            if l.starts_with("No language model fits") && have_model {
+                return None;
+            }
+            Some(l)
+        })
+        .collect()
 }

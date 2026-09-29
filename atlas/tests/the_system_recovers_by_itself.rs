@@ -25,9 +25,14 @@ fn scratch(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn the_lock_names_its_holder_and_still_reads_the_old_form() {
-    let s = atlas::onlyone::stamp(1_000);
+    // What `take` writes: the moment, then this process.
+    let dir = scratch("lock-line");
+    let lock = atlas::onlyone::OnlyOne::at(&dir);
+    lock.take(1_000).unwrap();
+    let s = std::fs::read_to_string(lock.path()).unwrap();
     assert_eq!(atlas::onlyone::moment_in(&s), Some(1_000));
     assert_eq!(atlas::onlyone::holder_in(&s), Some(std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     // Written before 29 Sep 2026: a moment alone.
     assert_eq!(atlas::onlyone::moment_in("1000\n"), Some(1_000));
     assert_eq!(atlas::onlyone::holder_in("1000\n"), None);
@@ -162,12 +167,16 @@ fn no_model_is_explained_by_what_was_found() {
 }
 
 #[test]
-fn a_second_question_while_one_is_thinking_waits_in_the_queue() {
+fn a_second_question_while_one_is_thinking_takes_the_other_slot() {
+    // Both turns named the model's conversation slot, so the second waited
+    // on the loop for the first to finish. It now takes the other slot, and
+    // is still answered at once (`the_second_scan_holds` measures that).
     let daemon = source("src/daemon.rs");
-    let queued = daemon.find("if needs_model && self.pending_turn.is_some() {").expect("a second question is asked on the loop again");
-    let asked = daemon[queued..].find(".converse_noting(").map(|i| i + queued).expect("converse_noting");
-    let between = &daemon[queued..asked];
-    assert!(between.contains("talk_queue.push(") && between.contains("STILL_ON_THE_LAST_ONE"));
+    let aside = daemon.find("if self.pending_turn.is_some() {\n                        turn.aside = true;").expect("a second turn waits behind the first again");
+    let asked = daemon[aside..].find(".converse_noting(").map(|i| i + aside).expect("converse_noting");
+    assert!(aside < asked);
+    let brain = source("src/brain.rs");
+    assert_eq!(brain.matches("aside: turn.aside").count(), 2, "the conversation call no longer carries the choice");
 }
 
 // ------------------------------------------------------------- the Talk page
@@ -195,4 +204,38 @@ fn a_rule_windows_shows_with_a_variable_in_it_is_still_ours() {
     let elsewhere = "Program:                              C:\\Other\\Atlas\\atlas.exe\r\n";
     assert!(!atlas::doorrule::describes_rule_for(elsewhere, exe));
     assert_eq!(atlas::doorrule::expand_vars("%NOT_A_VAR_ATLAS%\\x"), "%NOT_A_VAR_ATLAS%\\x");
+}
+
+// ------------------------------------------------ what it says it can't do
+
+#[test]
+fn atlas_doesnt_say_it_cant_see_the_screen_when_the_picture_reader_is_there() {
+    let plan_says = vec![
+        "I can't look at your screen and understand it — I can read text off it.".to_string(),
+        "No language model fits, so I'll follow rules rather than reason. Most of what I do doesn't need one.".to_string(),
+        "One thing at a time here.".to_string(),
+    ];
+    let said = atlas::daemon::what_this_machine_cant_do(plan_says.clone(), Some(Ok(())), true);
+    assert_eq!(said, vec!["One thing at a time here.".to_string()], "the start-up notice contradicts what's installed");
+    let missing = atlas::daemon::what_this_machine_cant_do(plan_says, Some(Err("I don't have its picture encoder yet".into())), false);
+    assert!(missing[0].contains("picture encoder"), "{missing:?}");
+    assert!(missing.iter().any(|l| l.starts_with("No language model fits")));
+}
+
+// -------------------------------------------------- is the internet there
+
+#[test]
+fn the_internet_check_asks_more_than_one_door() {
+    // A network that blocks TCP to 1.1.1.1:53 read as offline all day.
+    assert_eq!(atlas::connectivity::ConnectivityConfig::default().probe, atlas::connectivity::SHIPPED_PROBE);
+    assert!(atlas::connectivity::ALSO_TRIED.iter().all(|a| a.ends_with(":443")));
+    assert_eq!(atlas::connectivity::probe_targets("1.1.1.1:53, 8.8.8.8:443"), vec!["1.1.1.1:53", "8.8.8.8:443"]);
+    // An address you chose is asked alone: nothing listening is offline.
+    let mut c = atlas::connectivity::Connectivity::new(atlas::connectivity::ConnectivityConfig {
+        probe: "127.0.0.1:1".into(),
+        timeout_ms: 50,
+        cache_secs: 9999,
+        assume_offline: false,
+    });
+    assert_eq!(c.status(1), atlas::connectivity::Reach::Offline);
 }
