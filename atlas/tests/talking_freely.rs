@@ -690,7 +690,7 @@ fn live_llama_server_smoke() {
             said: said.into(),
             system: format!("{}\n\nApps you can open, close or switch to by name: chrome, discord, notepad.", persona.character()),
             history,
-            now: persona.for_this_turn(atlas::register::Register::Chatting, 3),
+            now: persona.for_this_turn_on(atlas::register::Register::Chatting, 3, said, false),
             tools: book.for_sentence(said, 6),
             // 28 Sep 2026: how many of the tools are the every-turn ones
             // (`ChatRequest::stable_tools`); not what this measures.

@@ -2272,7 +2272,7 @@ impl<'a> Daemon<'a> {
         // `Intent::Unknown`. The word cap and exact-match lists in
         // `social_reply` are what stop a real instruction being swallowed as a
         // pleasantry.
-        if let Some(reply) = crate::persona::social_reply(said, crate::localclock::hour_here(t) as u8) {
+        if let Some(reply) = self.persona_now().social(said, crate::localclock::hour_here(t) as u8, t, self.last_turn_failed || self.mid_flow()) {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -3583,7 +3583,7 @@ impl<'a> Daemon<'a> {
         // words it was given: "now" belongs on something being done, not on
         // something being reported.
         let reply = if decision.model == brain::Reached::NotNeeded && brain::is_an_action(&intent) {
-            persona.acknowledge(&reply, _t)
+            persona.acknowledge_in(&reply, _t, register, self.mid_flow() || crate::wit::fenced_intent(&intent))
         } else {
             reply
         };
@@ -4069,6 +4069,23 @@ impl<'a> Daemon<'a> {
     /// which is what lets a change apply without a restart.
     pub(crate) fn tools_ref(&self) -> Option<&crate::voice::ToolsConfig> {
         self.tools_live.as_ref().or(self.cfg.tools.as_ref())
+    }
+
+    /// A security, vault or confirmation step is waiting on you: no wit
+    /// until it's done (`wit::holds_back`).
+    fn mid_flow(&self) -> bool {
+        self.pending_security.is_some()
+            || self.pending_signin.is_some()
+            || self.pending_window_confirm.is_some()
+            || self.pending_post_approval.is_some()
+            || self.pending_press.is_some()
+            || self.pending_offer.is_some()
+    }
+
+    /// The settings folder being watched, when Atlas runs for real: where a
+    /// setting changed by voice is kept (`talkback`, `hunting`).
+    pub(crate) fn settings_dir(&self) -> Option<std::path::PathBuf> {
+        self.settings_watch.as_ref().map(|(d, _)| d.clone())
     }
 
     /// Watch this folder's settings, so a change made in the settings window,
@@ -4566,6 +4583,8 @@ impl<'a> Daemon<'a> {
             Intent::Pdf(said) => self.wd_pdf(said, clock()),
             Intent::People(said) => self.wd_people(said, clock()),
             Intent::Feeds(said) => self.wd_feeds(said, clock()),
+            Intent::Opportunities(said) => crate::hunting::said(self, said, clock()),
+            Intent::Wit(said) => crate::talkback::said(self, said),
             Intent::Receipt(said) => self.wd_receipt(said, clock()),
             Intent::Habit(said) => self.wd_habit(said, clock()),
             Intent::Cards(said) => self.wd_cards(said, clock()),
@@ -25724,7 +25743,7 @@ impl<'a> Daemon<'a> {
             ));
             now.push_str(&crate::capability::about_atlas(said, 6));
         }
-        now.push_str(&persona.for_this_turn(register, persona.max_spoken_sentences));
+        now.push_str(&persona.for_this_turn_on(register, persona.max_spoken_sentences, said, self.mid_flow()));
 
         let tools = if handed_over { Vec::new() } else { self.turn_tools(said) };
         let core_tools = if handed_over { 0 } else { self.tool_book.for_sentence("", 0).len() };

@@ -154,6 +154,7 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
     ("What it may touch", "Changes it can make to this machine and to its own work, without asking each time."),
     ("Your accounts and secrets", "The vault, signing in, and how carefully it treats what it holds."),
     ("Reaching outside this machine", "Anything that leaves the laptop: the web, your phone, your mail, a paid model."),
+    ("Looking for opportunities", "Gigs, grants and niches found once a day: where from, how many requests, and what makes the brief."),
     ("Your devices", "Where your devices meet to carry things between them, and what this one is called. Set on the Sync page."),
 ];
 
@@ -642,6 +643,53 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Sensitive,
         group: "Reaching outside this machine".into(),
     });
+    // Opportunity hunting (29 Sep 2026). Off as shipped: it reaches public
+    // sites, so turning it on is yours.
+    items.push(toggle("hunt.enabled", "Opportunity hunting",
+        "Once a day, look for gigs, jobs, grants, contracts and niches in the sources below, and bring the best few with why.",
+        "Reads public listings (and job alerts already in your mail). Never applies, replies, contacts anyone or spends.",
+        t.hunt.enabled, Sensitive, "Looking for opportunities"));
+    let text = |key: &str, name: &str, what: &str, cost: &str, v: &str| Setting {
+        key: key.into(),
+        name: name.into(),
+        what: what.into(),
+        cost: cost.into(),
+        value: Value::Text(v.to_string()),
+        // Placeholder; `registry` derives the real default. See `build`.
+        default: Value::Text(v.to_string()),
+        weight: Preference,
+        group: "Looking for opportunities".into(),
+    };
+    items.push(text("hunt.sources", "Opportunity sources",
+        "Comma-separated: hn, grants, sam, reddit, producthunt, appstore, github, mail, feeds, search.",
+        "SAM.gov needs a free key in the vault under the name below.", &t.hunt.sources));
+    items.push(text("hunt.subreddits", "Subreddits to read", "Without the r/, comma-separated.", "", &t.hunt.subreddits));
+    items.push(text("hunt.feeds", "Opportunity feeds", "Any RSS or Atom addresses to read too, comma-separated.", "", &t.hunt.feeds));
+    items.push(text("hunt.searches", "Opportunity searches", "Searches to run each day, comma-separated.",
+        "Needs a SearXNG address set above.", &t.hunt.searches));
+    items.push(text("hunt.keywords", "Grant keywords", "What Grants.gov and SAM.gov are asked for.", "", &t.hunt.keywords));
+    items.push(text("hunt.sam_key_vault", "SAM.gov key name", "The vault entry holding your SAM.gov key.",
+        "The key never leaves the vault except in the one request to SAM.gov.", &t.hunt.sam_key_vault));
+    items.push(Setting {
+        key: "hunt.top_n".into(),
+        name: "Opportunities per brief".into(),
+        what: "How many make the morning brief.".into(),
+        cost: String::new(),
+        value: Value::Number { value: t.hunt.top_n as f64, min: 1.0, max: 10.0 },
+        default: Value::Number { value: t.hunt.top_n as f64, min: 1.0, max: 10.0 },
+        weight: Preference,
+        group: "Looking for opportunities".into(),
+    });
+    items.push(Setting {
+        key: "hunt.max_requests_per_day".into(),
+        name: "Daily request limit".into(),
+        what: "All sources together. A source that would go past it waits for tomorrow.".into(),
+        cost: format!("Never above {}, whatever this says.", crate::hunt::HARD_CEILING),
+        value: Value::Number { value: t.hunt.max_requests_per_day as f64, min: 1.0, max: crate::hunt::HARD_CEILING as f64 },
+        default: Value::Number { value: t.hunt.max_requests_per_day as f64, min: 1.0, max: crate::hunt::HARD_CEILING as f64 },
+        weight: Preference,
+        group: "Looking for opportunities".into(),
+    });
     items.push(Setting {
         key: "household.device_name".into(),
         name: "This device's name".into(),
@@ -857,14 +905,17 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         group: "Talking to it".into(),
     });
 
+    // A choice of three since 29 Sep 2026 (was a 0-to-1 number): off, dry,
+    // or full -- "a smart-ass", Eric's word. `wit.rs` holds the fence.
+    let wit_options: Vec<String> = crate::wit::LEVELS.iter().map(|s| s.to_string()).collect();
     items.push(Setting {
         key: "persona.wit".into(),
         name: "Wit".into(),
-        what: "How often a dry remark is welcome in conversation.".into(),
-        cost: "Never during a task, and never when something has gone wrong.".into(),
-        value: Value::Number { value: t.persona.wit as f64, min: 0.0, max: 1.0 },
+        what: "Off, dry (the odd aside in conversation), or full: a smart-ass, after the answer.".into(),
+        cost: "Wording only, never the facts. Never when something went wrong or you're fed up, never about money, health, security or bad news, and never in anything written for someone else.".into(),
+        value: Value::Choice { value: t.persona.wit.word().into(), options: wit_options.clone() },
         // Placeholder; `registry` derives the real default. See `build`.
-        default: Value::Number { value: t.persona.wit as f64, min: 0.0, max: 1.0 },
+        default: Value::Choice { value: t.persona.wit.word().into(), options: wit_options },
         weight: Weight::Preference,
         group: "How it talks back".into(),
     });

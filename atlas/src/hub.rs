@@ -99,6 +99,8 @@ pub enum Page {
     Feedback,
     /// Putting Atlas on your phone or iPad: pick which, scan a code (D5).
     Phone,
+    /// Gigs, grants and niches the hunter found, with why (`hunting`).
+    Opportunities,
 }
 
 
@@ -137,7 +139,7 @@ pub const NAV: &[(&str, &[Page])] = &[
     // and who may be sent to without asking.
     ("People", &[Page::Friends, Page::Groups, Page::Trusted]),
     // Your work in other shapes, and handing Atlas something.
-    ("Your work", &[Page::Workspace, Page::LookingBack, Page::Give]),
+    ("Your work", &[Page::Workspace, Page::LookingBack, Page::Give, Page::Opportunities]),
     // The business section: under More until a business exists, when each
     // business also gets its own group in the sidebar.
     ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners]),
@@ -221,6 +223,7 @@ impl Page {
             Page::Updates => "/hub/updates",
             Page::Phone => "/hub/phone",
             Page::Feedback => "/hub/feedback",
+            Page::Opportunities => "/hub/opportunities",
         }
     }
 
@@ -268,6 +271,7 @@ impl Page {
             Page::Updates => "Updates",
             Page::Phone => "Your phone",
             Page::Feedback => "Feedback",
+            Page::Opportunities => "Opportunities",
         }
     }
 
@@ -314,6 +318,7 @@ impl Page {
             Page::Updates => "Which Atlas this is, what's new, putting it in, and going back if you'd rather.",
             Page::Phone => "Putting Atlas on your phone or iPad: pick which, and scan a code with it.",
             Page::Feedback => "Tell whoever sends you Atlas that something's wrong — you see exactly what goes — and hear back what they did.",
+            Page::Opportunities => "Gigs, grants and niches from the sources you picked, weighed and with why. Nothing is applied for or sent.",
         }
     }
 
@@ -694,6 +699,7 @@ pub fn route(path: &str) -> Option<Page> {
         "/hub/updates" => Some(Page::Updates),
         "/hub/phone" => Some(Page::Phone),
         "/hub/feedback" => Some(Page::Feedback),
+        "/hub/opportunities" => Some(Page::Opportunities),
         _ => None,
     }
 }
@@ -1160,6 +1166,7 @@ fn icon(page: Page) -> &'static str {
         Page::Sound => "<path d='M11 5L6 9H2v6h4l5 4V5z'/><path d='M15.5 8.5a5 5 0 0 1 0 7'/>",
         Page::Trusted => "<path d='M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z'/><path d='M9 12l2 2 4-4'/>",
         Page::Give => "<path d='M12 5v14M5 12h14'/>",
+        Page::Opportunities => "<circle cx=11 cy=11 r=7 /><path d='M21 21l-5-5'/>",
         Page::Offline => "<path d='M2 8.8a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0'/><path d='M12 20h.01'/>",
         Page::Talk => "<rect x=9 y=3 width=6 height=12 rx=3 /><path d='M6 11a6 6 0 0 0 12 0M12 17v4'/>",
         Page::Help => "<circle cx=12 cy=12 r=9 /><path d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01'/>",
@@ -1247,7 +1254,7 @@ fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     };
     out.push_str(&folded(
         "More",
-        &[("Your work", &[Page::Workspace, Page::LookingBack, Page::Give]), ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners])],
+        &[("Your work", &[Page::Workspace, Page::LookingBack, Page::Give, Page::Opportunities]), ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners])],
     ));
     out.push_str(&folded(
         "Atlas setup",

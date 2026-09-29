@@ -262,6 +262,8 @@ pub fn need_of(intent: &Intent) -> Need {
         | Intent::Pdf(_)
         | Intent::People(_)
         | Intent::Feeds(_)
+        | Intent::Opportunities(_)
+        | Intent::Wit(_)
         | Intent::Receipt(_)
         | Intent::Habit(_)
         | Intent::Cards(_)

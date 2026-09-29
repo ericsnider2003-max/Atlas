@@ -1141,6 +1141,28 @@ commands:
               "any new articles", "reading list", "what am i following"]
     takes_argument: true
     argument_optional: true
+  # Opportunity hunting (29 Sep 2026): gigs, jobs, grants, contracts and
+  # niches found once a day. Numbered follow-ups ("tell me more about 3",
+  # "save 2") and whole-sentence shapes ("look for video editing gigs", "not
+  # interested in crypto") are read first by `hunt::understand` through
+  # `workday::read_first`; these phrases are the ways in that start a
+  # sentence. It never applies, replies or spends.
+  - intent: opportunities
+    describe: "Opportunities (gigs, jobs, grants, niches) Atlas found for the user: list them, more on one, not interested, save, or what to look for and skip. Never trading. arg: the user's sentence."
+    phrases: ["any opportunities", "any new opportunities", "show me opportunities", "show me the opportunities",
+              "what opportunities have you found", "any gigs", "any new gigs", "find me gigs", "find me opportunities",
+              "saved opportunities", "start hunting for opportunities", "stop hunting for opportunities",
+              "look for opportunities", "skip opportunities about", "my skills are"]
+    takes_argument: true
+    argument_optional: true
+  # How much of a smart-ass Atlas may be (29 Sep 2026). The whole sentence
+  # only: "tone it down in the email to Maya" is about the email.
+  - intent: wit
+    describe: "Change how much of a smart-ass Atlas is: more, less, off, dry or full. arg: the user's sentence."
+    phrases: ["be more of a smartass", "be more of a smart ass", "be a smartass", "be a smart ass", "tone it down",
+              "dial it back", "less sarcasm", "no more jokes", "be more sarcastic", "be less sarcastic",
+              "stop being a smartass", "stop being a smart ass"]
+    anchored: true
   - intent: receipt
     describe: "Keep or read a receipt, and what the user spent at a place or this month. arg: what."
     phrases: ["keep this receipt", "read this receipt", "save this receipt", "what did i spend at", "what did i spend this month",

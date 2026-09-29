@@ -188,6 +188,13 @@ pub fn post_kept(stream: &mut TcpStream, host: &str, path: &str, body: &str, tim
 /// There is no setting for that and there should not be: a switch for
 /// accepting bad certificates is a switch that ends up on.
 pub fn https_get(host: &str, path: &str, timeout: Duration) -> Result<Response> {
+    https_get_with(host, path, &[], timeout)
+}
+
+/// `https_get` with extra request headers -- a `User-Agent` that says who is
+/// asking, which Reddit answers and a bare request gets refused with 429
+/// (the opportunity hunter, 29 Sep 2026). Same verification rules.
+pub fn https_get_with(host: &str, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Response> {
     use std::net::ToSocketAddrs;
     let addr = format!("{host}:443")
         .to_socket_addrs()
@@ -206,7 +213,16 @@ pub fn https_get(host: &str, path: &str, timeout: Duration) -> Result<Response> 
         .connect(host, tcp)
         .map_err(|e| AtlasError::Platform(format!("TLS to {host}: {e}")))?;
 
-    let req = build_request("GET", host, path, None);
+    let mut req = build_request("GET", host, path, None);
+    let at = req.find("\r\n").map(|i| i + 2).unwrap_or(0);
+    for (k, v) in headers {
+        // A header is one line: anything that could start another is refused
+        // rather than sent.
+        if k.contains(['\r', '\n', ':']) || v.contains(['\r', '\n']) {
+            return Err(AtlasError::Platform(format!("a request header for {host} had a line break in it")));
+        }
+        req.insert_str(at, &format!("{k}: {v}\r\n"));
+    }
     s.write_all(req.as_bytes())?;
     let raw = read_bounded(&mut s, MAX_RESPONSE)?;
     parse_response(&raw)

@@ -651,6 +651,7 @@ impl Daemon<'_> {
             | Page::Help
             | Page::Updates
             | Page::Feedback
+            | Page::Opportunities
             | Page::Phone => self.hub_page_q(page, ""),
             Page::Gestures => {
                 // What he has taught, or the defaults read off his recordings
@@ -2718,6 +2719,7 @@ impl Daemon<'_> {
                 crate::hubpages::updates_page(&v, said.as_deref())
             }
             Page::Feedback => crate::hubpages::feedback_page(&self.feedback_view(), said.as_deref()),
+            Page::Opportunities => crate::hunting::opportunities_page(self, &fields),
             // What "Have a go" or "Not worth it" did, said on the page -- the
             // same as every other page (below).
             Page::Phone => {
@@ -3405,6 +3407,7 @@ impl Daemon<'_> {
                 };
                 hub::back_with(Page::Trusted.href(), "", &said)
             }
+            "/hub/opportunities" => crate::hunting::post(self, f),
             "/hub/give" => {
                 let text = field_of(f, "text").unwrap_or_default();
                 let asked = field_of(f, "asked").filter(|a| !a.trim().is_empty());

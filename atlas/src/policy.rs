@@ -135,6 +135,8 @@ pub fn classify(intent: &Intent) -> Decision {
         | Intent::FindFile(_)
         | Intent::People(_)
         | Intent::Feeds(_)
+        | Intent::Opportunities(_)
+        | Intent::Wit(_)
         | Intent::Receipt(_)
         | Intent::Habit(_)
         | Intent::Cards(_)

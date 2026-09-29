@@ -166,6 +166,9 @@ pub mod mend;
 pub mod contents;
 pub mod integrations;
 pub mod opportunity;
+// Finding opportunities on a polite daily schedule, and the daemon's side of it.
+pub mod hunt;
+pub mod hunting;
 pub mod dash;
 pub mod decide;
 pub mod trace;
@@ -263,6 +266,9 @@ pub mod perf;
 pub mod person;
 pub mod pipeline;
 pub mod persona;
+// How much of a smart-ass Atlas may be, and the fence around it.
+pub mod wit;
+pub mod talkback;
 pub mod firstlaunch;
 pub mod getpieces;
 pub mod glance;

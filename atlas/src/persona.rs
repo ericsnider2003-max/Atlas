@@ -36,9 +36,11 @@ pub struct Persona {
     /// TTS voice model, and how fast it speaks.
     pub voice_model: String,
     pub speaking_rate: f32,
-    /// How often a dry remark is welcome, 0 to 1. Never during a failure or a
-    /// task — only in conversation.
-    pub wit: f32,
+    /// How much of a smart-ass it may be: off, dry or full (`wit.rs`, which
+    /// also holds the fence -- never on errors, frustration, money, health,
+    /// security, bad news, or anything written for someone else). Reads the
+    /// old 0-to-1 number too.
+    pub wit: crate::wit::Wit,
     /// Say when it disagrees, rather than going along with things.
     pub argues: bool,
     /// Talk about things that aren't work.
@@ -55,7 +57,7 @@ impl Default for Persona {
             greet: false,
             voice_model: "en_US-ryan-medium".into(),
             speaking_rate: 1.05,
-            wit: 0.35,
+            wit: crate::wit::Wit::Dry,
             argues: true,
             converses: true,
         }
@@ -150,11 +152,9 @@ impl Persona {
                  Do not soften it into agreement. If they are right, say that too.",
             );
         }
-        if self.wit > 0.5 && register.humour_welcome() {
-            p.push_str("\n\nA dry remark is welcome when it's actually funny. Never forced.");
-        } else if self.wit > 0.0 && register.humour_welcome() {
-            p.push_str("\n\nAn occasional dry aside is fine. Rarely, and never instead of the answer.");
-        }
+        // What humour is allowed, from the one place that decides it. `dry`
+        // is word for word what this said before the setting had levels.
+        p.push_str(&crate::wit::prompt_line(self.wit, &crate::wit::Moment::new(register, "", ""), false));
         if !self.converses && register == R::Chatting {
             p.push_str("\n\nKeep it short even so — the user prefers not to chat.");
         }
@@ -169,7 +169,7 @@ impl Persona {
     /// sentences" on its third line, and the register's instructions after
     /// it, so a question after a command changed the prompt near the top and
     /// the whole conversation was read again, every turn (27 Sep 2026). The
-    /// length and the kind of moment now go last (`for_this_turn`).
+    /// length and the kind of moment now go last (`for_this_turn_on`).
     pub fn character(&self) -> String {
         let tone = match self.tone {
             Tone::Dry => "Understated and faintly dry. Never chirpy.",
@@ -213,8 +213,16 @@ impl Persona {
     }
 
     /// What changes every turn, for the end of the prompt: the kind of
-    /// moment this is, and how long to be.
-    pub fn for_this_turn(&self, register: crate::register::Register, sentences: usize) -> String {
+    /// moment this is, and how long to be -- knowing what was said and
+    /// whether a security, vault or confirmation step is under way, so a
+    /// question about a bill, a password or a diagnosis, or a turn in the
+    /// middle of a sign-in, gets "no jokes" whatever the wit setting
+    /// (`wit::holds_back`).
+    ///
+    /// 29 Sep 2026: this replaced `for_this_turn(register, sentences)`, which
+    /// is gone rather than kept beside it, so a caller that doesn't say what
+    /// was said fails to build instead of quietly skipping the fence.
+    pub fn for_this_turn_on(&self, register: crate::register::Register, sentences: usize, said: &str, in_a_flow: bool) -> String {
         use crate::register::Register as R;
         let moment = match register {
             R::Working => "This is a task: confirm or answer briefly.",
@@ -228,7 +236,7 @@ impl Persona {
             }
             R::Rough => "Something went wrong or they're frustrated: be direct and useful, no jokes.",
         };
-        let humour = if self.wit > 0.0 && register.humour_welcome() { " A dry aside is fine when it's actually funny." } else { "" };
+        let humour = crate::wit::prompt_line(self.wit, &crate::wit::Moment::new(register, said, "").during_a_flow(in_a_flow), true);
         let length = match sentences {
             0 | 1 => "Answer in one sentence.".to_string(),
             n if n >= 8 => format!("Up to about {n} sentences; longer only if they asked for detail, a story or a list of ideas."),
@@ -355,6 +363,33 @@ impl Persona {
             "" => format!("{dressed}."),
             who => format!("{dressed}, {who}."),
         }
+    }
+
+    /// `acknowledge`, and at `persona.wit: full` sometimes a short tail after
+    /// it -- only when the moment allows one (`wit::holds_back`: never after a
+    /// failure, on an error, on anything serious, or while a security, vault
+    /// or confirmation step is under way -- `in_a_flow`). The
+    /// acknowledgement itself is unchanged and comes first.
+    pub fn acknowledge_in(&self, said: &str, seed: u64, register: crate::register::Register, in_a_flow: bool) -> String {
+        let plain = self.acknowledge(said, seed);
+        let m = crate::wit::Moment::new(register, "", &plain).during_a_flow(in_a_flow);
+        crate::wit::dress(self.wit, &plain, crate::wit::Canned::Done, &m, seed)
+    }
+
+    /// A greeting, a thanks or a goodbye answered (`social_reply`), with a
+    /// tail at `persona.wit: full` when nothing just went wrong.
+    /// `hold_back`: the last turn failed, or a security, vault or
+    /// confirmation step is under way.
+    pub fn social(&self, said: &str, hour: u8, seed: u64, hold_back: bool) -> Option<String> {
+        let plain = social_reply(said, hour)?;
+        let kind = match bare(said) {
+            t if THANKS.iter().any(|g| t == *g) => crate::wit::Canned::Thanks,
+            t if FAREWELLS.iter().any(|g| t == *g) => crate::wit::Canned::Goodbye,
+            _ => crate::wit::Canned::Greeting,
+        };
+        let register = if hold_back { crate::register::Register::Rough } else { crate::register::Register::Chatting };
+        let m = crate::wit::Moment::new(register, said, &plain);
+        Some(crate::wit::dress(self.wit, &plain, kind, &m, seed))
     }
 
     /// What Atlas says when you come back. Not a greeting — a continuation.

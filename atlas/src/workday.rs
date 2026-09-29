@@ -73,6 +73,8 @@ pub enum Follow {
     Launch(usize),
     Waiting(usize),
     Feeds(usize),
+    /// The opportunities just listed, in the brief or asked for (`hunting`).
+    Opportunities(usize),
     Quiz,
     /// The notes review just listed this many.
     Review(usize),
@@ -136,6 +138,7 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
             return Some((Intent::WaitingFor(own()), "waiting_for"))
         }
         Some(Follow::Feeds(n)) if numbered_reply(said, &["read", "open", "save", "skip", "keep"], *n).is_some() => return Some((Intent::Feeds(own()), "feeds")),
+        Some(Follow::Opportunities(n)) if crate::hunt::understand(said, *n).is_some() => return Some((Intent::Opportunities(own()), "opportunities")),
         Some(Follow::Quiz) if crate::srs::Grade::read(said).is_some() || matches!(said.to_ascii_lowercase().trim_end_matches(['.', '!']), "show" | "show me" | "flip" | "answer" | "stop" | "that's enough" | "done") => {
             return Some((Intent::Cards(own()), "cards"))
         }
@@ -183,6 +186,15 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
             return Some((Intent::Feeds(own()), "feeds"));
         }
     }
+    // The opportunity hunter's own sentences ("look for video editing gigs",
+    // "not interested in crypto") and the wit ("tone it down"), whole
+    // sentences only, so nothing longer is swallowed.
+    if crate::hunt::understand(said, 0).is_some() {
+        return Some((Intent::Opportunities(own()), "opportunities"));
+    }
+    if crate::wit::level_asked(said).is_some() {
+        return Some((Intent::Wit(own()), "wit"));
+    }
     if crate::snippets::read_save(said).is_some() {
         return Some((Intent::Snippet(own()), "snippet"));
     }
@@ -218,6 +230,7 @@ pub fn reads_whole(i: &Intent) -> bool {
             | Intent::Pdf(_)
             | Intent::People(_)
             | Intent::Feeds(_)
+            | Intent::Opportunities(_)
             | Intent::Receipt(_)
             | Intent::Habit(_)
             | Intent::Cards(_)
@@ -254,6 +267,8 @@ pub struct Kit {
     feed_in_flight: Option<std::sync::mpsc::Receiver<(String, Result<crate::feeds::Parsed, String>)>>,
     chords: Option<std::sync::mpsc::Receiver<crate::chords::Does>>,
     chords_failed: Vec<crate::chords::Does>,
+    /// The opportunity hunter's running state (`hunting`).
+    pub(crate) hunt: crate::hunting::Live,
 }
 
 macro_rules! loaded {
@@ -280,6 +295,12 @@ impl Kit {
 
     fn set_follow(&mut self, f: Option<Follow>, now: u64) {
         self.follow = f.map(|f| (f, now));
+    }
+
+    /// The opportunities just listed (`hunting`): "save 2" means the second
+    /// of them for the next ten minutes, like every other numbered list.
+    pub(crate) fn follow_opportunities(&mut self, n: usize, now: u64) {
+        self.set_follow((n > 0).then_some(Follow::Opportunities(n)), now);
     }
 
     pub fn known(&mut self, store: &crate::store::Store, now: u64) -> Known {
@@ -1326,6 +1347,7 @@ impl Daemon<'_> {
         }
         self.clip_tick(t);
         self.feeds_tick(t, online);
+        crate::hunting::tick(self, t, online);
         // The calendar and the market clock are looked at once a minute.
         if t.saturating_sub(self.workday.last_look) < 60 {
             return out;
@@ -1459,6 +1481,9 @@ impl Daemon<'_> {
         if cards > 0 {
             out.push(item("cards".into(), "Cards", format!("{} due", plural(cards, "card")), Weight::Info));
         }
+        // The best opportunities found, with why (`hunting`); nothing when
+        // hunting is off.
+        out.extend(crate::hunting::brief_items(self, t));
         out
     }
 }

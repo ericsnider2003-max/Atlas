@@ -479,6 +479,11 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "settings", what: "keep every switch on one page, and keep what you change -- sound and voice too: when it speaks, how loud, when it may pop up", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["settings", "preferences", "sound"] },
         Capability { id: "dash", what: "arrange the hub's home the way you want it -- which parts, in what order, how big", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["dash", "layout_prefs"] },
         Capability { id: "appearance", what: "look the way you choose -- light, dark, or following this computer's own settings -- everywhere at once", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["appearance", "oslook"] },
+        // 29 Sep 2026. Off as shipped: it reaches public sites once a day, so
+        // it waits for you to turn it on. Never applies, replies or spends.
+        Capability { id: "hunt", what: "look once a day for gigs, jobs, grants, contracts and niches -- Hacker News hiring threads, Grants.gov, SAM.gov, Reddit, Product Hunt, the App Store charts, GitHub, your feeds and searches, and job alerts in your mail -- and bring the best few with why, to read more, drop or save; it never applies or replies", area: Web, state: Off, needs: None, offline: false, added: 41, runs: &[Needs::Background], modules: &["hunt", "hunting"] },
+        // 29 Sep 2026, Eric: "Can we give Atlas the ability to be a smart ass".
+        Capability { id: "wit", what: "be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying \"tone it down\" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else", area: Speaking, state: Working, needs: None, offline: true, added: 41, runs: &[Needs::JustThinking], modules: &["wit", "talkback"] },
     ]
 }
 
@@ -1313,7 +1318,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `himalaya` (reading mail through the Himalaya program).
 // 411 -> 410 (28 Sep): `ladder` left personal Atlas; it was not general
 // trading knowledge (tests/personal_atlas_is_its_own.rs).
-pub const MODULES_IN_TREE: usize = 410;
+pub const MODULES_IN_TREE: usize = 414;
 
 /// Every module no capability claims, and why it is not one.
 ///

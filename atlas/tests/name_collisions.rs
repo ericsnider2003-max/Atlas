@@ -162,12 +162,9 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "explain::check",
     "facts::slug",
     "faithful::check",
-    // `feeds::text_of` joined 26 Sep 2026 when 25j's `pdftext` brought its own
-    // private `text_of`. It is live -- `feeds` calls it bare, three times, to
-    // strip tags from titles and summaries -- and `tests/round11.rs` calls it
-    // too; nothing outside `feeds` names it with its module, which is all this
-    // scan can see.
-    "feeds::text_of",
+    // `feeds::text_of` was here 26-29 Sep 2026 (25j's `pdftext` brought its
+    // own private `text_of`); it came off when `hunt` began calling it
+    // `crate::feeds::text_of`, by name.
     "files::join",
     // finance::review and finance::summary came off 19 Sep 2026: `atlas money`
     // calls both module-qualified, so the scan can see which `review` and
@@ -178,8 +175,8 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "fxday::day_of",
     "gaze::spoken",
     "gaze::verdict",
-    // `getpieces::catalogue` joined 28 Sep 2026, the same shape as
-    // `feeds::text_of`: it is live -- `getpieces::setup_pieces` and the
+    // `getpieces::catalogue` joined 28 Sep 2026, the shape
+    // `feeds::text_of` had: it is live -- `getpieces::setup_pieces` and the
     // `voice` piece set call it bare -- but its one module-qualified caller
     // was `setupwin::setup_pieces`, and that moved into `getpieces` so the
     // phone builds compile (69b6aba). `tts` and `palette` also define a

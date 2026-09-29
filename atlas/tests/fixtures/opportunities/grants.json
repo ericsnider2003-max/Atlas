@@ -1,0 +1,71 @@
+{
+ "errorcode": 0,
+ "msg": "Webservice Succeeds",
+ "token": "redacted",
+ "data": {
+  "searchParams": {
+   "resultType": "json",
+   "searchOnly": false,
+   "oppNum": "",
+   "cfda": "",
+   "sortBy": "",
+   "oppStatuses": "forecasted|posted",
+   "startRecordNum": 0,
+   "eligibilities": "",
+   "fundingInstruments": "",
+   "fundingCategories": "",
+   "agencies": "",
+   "rows": 25,
+   "keyword": "small business",
+   "keywordEncoded": true
+  },
+  "hitCount": 518,
+  "startRecord": 0,
+  "oppHits": [
+   {
+    "id": "360101",
+    "number": "SBA-OED-26-001",
+    "title": "Small Business Video Production Training &amp; Outreach",
+    "agencyCode": "SBA",
+    "agency": "Small Business Administration",
+    "openDate": "09/15/2026",
+    "closeDate": "11/30/2026",
+    "oppStatus": "posted",
+    "docType": "synopsis",
+    "cfdaList": [
+     "59.037"
+    ]
+   },
+   {
+    "id": "336962",
+    "number": "FA8651-22-S0021",
+    "title": "Partnership Intermediary Agreement (PIA)",
+    "agencyCode": "DOD-AFRL-RW",
+    "agency": "Munitions Directorate",
+    "openDate": "12/14/2021",
+    "closeDate": "",
+    "oppStatus": "forecasted",
+    "docType": "forecast",
+    "cfdaList": [
+     "12.630"
+    ]
+   },
+   {
+    "id": "329000",
+    "number": "OLD-2020-01",
+    "title": "A rural small business grant that closed years ago",
+    "agencyCode": "USDA",
+    "agency": "Rural Business-Cooperative Service",
+    "openDate": "01/10/2020",
+    "closeDate": "03/01/2020",
+    "oppStatus": "posted",
+    "docType": "synopsis",
+    "cfdaList": [
+     "10.351"
+    ]
+   }
+  ],
+  "oppStatusOptions": [],
+  "dateRangeOptions": []
+ }
+}

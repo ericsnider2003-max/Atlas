@@ -1,0 +1,74 @@
+{
+ "hits": [
+  {
+   "created_at": "2026-09-01T15:01:17Z",
+   "title": "Ask HN: Who is hiring? (September 2026)",
+   "url": null,
+   "author": "whoishiring",
+   "points": 321,
+   "num_comments": 255,
+   "created_at_i": 1788274877,
+   "objectID": "49522897",
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_49522897",
+    "ask_hn"
+   ]
+  },
+  {
+   "created_at": "2026-09-01T15:01:17Z",
+   "title": "Ask HN: Who wants to be hired? (September 2026)",
+   "url": null,
+   "author": "whoishiring",
+   "points": 120,
+   "num_comments": 180,
+   "created_at_i": 1788274877,
+   "objectID": "49522896",
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_49522896",
+    "ask_hn"
+   ]
+  },
+  {
+   "created_at": "2026-09-01T15:01:17Z",
+   "title": "Ask HN: Freelancer? Seeking freelancer? (September 2026)",
+   "url": null,
+   "author": "whoishiring",
+   "points": 90,
+   "num_comments": 140,
+   "created_at_i": 1788274877,
+   "objectID": "49522898",
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_49522898",
+    "ask_hn"
+   ]
+  },
+  {
+   "created_at": "2026-08-03T15:00:54Z",
+   "title": "Ask HN: Who is hiring? (August 2026)",
+   "url": null,
+   "author": "whoishiring",
+   "points": 400,
+   "num_comments": 300,
+   "created_at_i": 1786114854,
+   "objectID": "49156683",
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_49156683",
+    "ask_hn"
+   ]
+  }
+ ],
+ "nbHits": 4,
+ "page": 0,
+ "nbPages": 1,
+ "hitsPerPage": 10,
+ "query": "",
+ "params": "tags=story%2Cauthor_whoishiring&hitsPerPage=10"
+}

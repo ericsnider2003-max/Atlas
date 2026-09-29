@@ -588,7 +588,12 @@ persona:
   voice_model: "en_US-ryan-medium"
   speaking_rate: 1.05
   # Character, not voice.
-  wit: 0.35        # a dry remark, in conversation only — never during a task
+  # off | dry | full. Wording only, never facts. `dry` is the odd aside in
+  # conversation (what 0.35 meant before this was a choice); `full` is a
+  # smart-ass, after the answer. Never on errors, when you're fed up, about
+  # money, health, security or bad news, or in anything written for someone
+  # else. Say "be more of a smart-ass" or "tone it down" to change it.
+  wit: dry
   argues: true     # says when it disagrees, once, with the reason
   converses: true  # talks about things that are not work
 
@@ -2624,3 +2629,21 @@ workday:
   mail_keep_days: 60
   signature_png: ""           # a PNG of your signature, for "sign the pdf"
   market_in_brief: false      # on by itself once you've done a trading check-in
+
+# Opportunity hunting (`hunt`): gigs, jobs, grants, contracts and niches, read
+# once a day from the sources below, filtered by what you told Atlas to look
+# for, weighed on five counts, and brought as a short list in the morning
+# brief and on the Opportunities page. It never applies, replies, contacts
+# anyone or spends anything. Off until you turn it on.
+hunt:
+  enabled: false
+  # hn, grants, sam, reddit, producthunt, appstore, github, mail, feeds, search
+  sources: "hn, grants, reddit, producthunt, appstore, github, mail"
+  subreddits: "forhire, SideProject, Entrepreneur, smallbusiness"
+  feeds: ""               # extra RSS/Atom addresses, comma-separated
+  searches: ""            # SearXNG searches, when research.searxng_url is set
+  keywords: "small business"   # what Grants.gov and SAM.gov are asked for
+  sam_key_vault: "sam.gov"     # the vault entry holding your free SAM.gov key
+  top_n: 3                # how many make the brief
+  max_requests_per_day: 60     # all sources together; never above 300
+  from_hour: 5            # the earliest local hour it goes looking
