@@ -198,6 +198,11 @@ pub mod hearing;
 pub mod goingaway;
 pub mod goodbye;
 pub mod grade;
+// Photo editing on a copy (29 Sep 2026): ffmpeg does the work, `straighten`
+// measures the tilt, `cutout` finds the subject (tract, behind `onnx`).
+pub mod photo;
+pub mod straighten;
+pub mod cutout;
 pub mod grading;
 pub mod grants;
 pub mod household;

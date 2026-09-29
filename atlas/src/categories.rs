@@ -178,6 +178,8 @@ pub fn category_of(intent: &Intent) -> Category {
         Intent::PressButton(_) => Category::LocalOperational,
         Intent::MoveBigFiles(_) => Category::LocalOperational,
         Intent::EditMedia(_) => media_category(MediaOp::Edit, false),
+        // A new file beside the original; the original is only read.
+        Intent::EditPhoto(_) => media_category(MediaOp::Edit, false),
         Intent::Clock => Category::LocalOperational,
         Intent::SetKey(_) => Category::LocalOperational,
         Intent::Languages(_) => Category::LocalOperational,

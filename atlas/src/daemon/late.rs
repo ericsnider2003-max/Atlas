@@ -1943,4 +1943,19 @@ impl<'a> Daemon<'a> {
             Err(why) => format!("I've left it as it was: {why}."),
         }
     }
+
+    /// A photo, or a folder of them, edited on a new copy (`photo`).
+    pub(super) fn edit_photo(&mut self, said: &str) -> String {
+        // The clipboard only when the words point at it, as "explain this" does.
+        let copied = if crate::clipboard::refers_to_clipboard(said) { self.clipboard_text.clone().or_else(|| self.plat.read_clipboard().ok().flatten()) } else { None };
+        let handed = crate::photo::which_photo(said, copied.as_deref(), self.file_meant(said, crate::photo::PHOTO_EXTS));
+        let setup = crate::photo::Setup::here(&self.tools_cfg().video.ffmpeg.command, self.store.root());
+        match crate::photo::ask(said, handed, setup) {
+            crate::photo::Plan::Now(answer) => answer,
+            crate::photo::Plan::Later { start, work } => {
+                let work: crew::Work = Box::new(move |c: &crew::Control| Ok(work(&|| c.stopping())));
+                if self.hand_off("photo", crate::store::now(), work, Some(said.to_string()), SpeakPolicy::Always) { start } else { "I'm swamped with background work right now — ask me again in a moment.".into() }
+            }
+        }
+    }
 }

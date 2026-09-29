@@ -49,12 +49,13 @@ The phone app shows Atlas's pages from the laptop. When the laptop can't be reac
 
 ## Seeing, and reading pictures
 
-Two optional downloads, each one command (or ATLAS.bat, menu item 8, for the first):
+Three optional downloads, each one command (or ATLAS.bat, menu item 8, for the first):
 
 - `atlas get seeing` fetches eight small models, about 133 MB. They let Atlas find faces and tell them apart, name things in front of the camera, follow your hand, and read the words on your screen. Then turn on **Recognising things** in Settings.
 - `atlas get pictures` fetches the picture reader, about 3 GB. Then "what does this chart show?" or "look at my screen" gets a spoken answer about what's there. It uses about 3 GB of memory while it answers and none otherwise. The screenshot is deleted once it's been read, and nothing leaves the laptop.
+- `atlas get photos` (or say "get the photo models") fetches the two cut-out models, about 31 MB, so "blur the background" and "remove the background" work on a photo. Every other photo edit -- brighter, fixed colours, straightened, cropped for Instagram or a YouTube thumbnail -- needs only ffmpeg, which setup already fetches. Edits always make a new copy beside the photo.
 
-Every file in both is checked against a fingerprint before it's used.
+Every file in all three is checked against a fingerprint before it's used.
 
 ## If something goes wrong
 

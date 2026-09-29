@@ -719,6 +719,34 @@ commands:
     argument_optional: true
     raw_argument: true
 
+  # Editing a photo, or every photo in a folder, on a new copy beside it
+  # (`photo`, 29 Sep 2026). The whole sentence goes through: it says both
+  # what to do and, often, which photo.
+  - intent: edit_photo
+    describe: "Edit a photo (or every photo in a folder) on a new copy beside the original: brighter/darker, fix colours, straighten, rotate, crop for Instagram/YouTube/stories, denoise, sharpen, blur or remove the background, convert to JPEG/PNG/WebP; or undo the last photo edit. arg: what to do, and the photo's path if given."
+    expose: core
+    # Phrases start the sentence ("make this photo brighter"), so each names
+    # a photo or a photo-only act: "make it brighter" or a bare "undo" could
+    # be about anything and are left to the rest of Atlas.
+    phrases: ["edit this photo", "edit the photo", "edit my photo", "edit photo", "edit this picture", "this photo",
+              "make this photo", "make the photo", "make my photo", "make this picture", "make these photos",
+              "brighten this photo", "brighten the photo", "darken this photo", "fix this photo", "fix the photo",
+              "fix all the photos", "fix all my photos", "fix these photos", "fix the photos", "fix the colours in",
+              "straighten this", "straighten it", "straighten the photo", "straighten my photo", "straighten these",
+              "yes straighten it", "is this photo level", "is the photo level",
+              "crop it for", "crop this for", "crop this photo", "crop the photo", "crop these for",
+              "resize these for", "resize it for", "resize this for", "resize this photo", "resize the photo", "resize these photos",
+              "rotate this photo", "rotate the photo", "flip this photo", "turn this photo", "convert this photo", "convert these photos",
+              "sharpen this photo", "denoise this photo", "blur the background", "remove the background",
+              "cut out the background", "take the background out", "undo the photo edit", "undo that photo edit",
+              "get the photo models",
+              "do the same to the whole folder", "do the same to the folder", "do the same to all the photos",
+              "do the same to all of them", "do the same to these", "do the same to the rest", "do the same to this photo",
+              "do the same to that photo", "same again for the folder", "do that to the whole folder", "do that to all the photos"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
   - intent: move_big_files
     describe: "Move Atlas's big folders to another drive to free space. arg: where, optional."
     # Making room by moving Atlas's big folders to another drive (Eric, G5).

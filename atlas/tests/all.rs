@@ -858,3 +858,5 @@ mod the_other_device_reads_whole_files;
 mod speed_measured;
 #[path = "the_phone_build_reaches_no_desktop_module.rs"]
 mod the_phone_build_reaches_no_desktop_module;
+#[path = "photo_editing.rs"]
+mod photo_editing;

@@ -367,6 +367,8 @@ pub fn need_of(intent: &Intent) -> Need {
         | Intent::MoveBigFiles(_)
         // ffmpeg and the local model.
         | Intent::EditMedia(_)
+        // ffmpeg and the cut-out models, on this machine.
+        | Intent::EditPhoto(_)
         // This machine's own clock.
         | Intent::Clock
         // Your settings are on this machine.

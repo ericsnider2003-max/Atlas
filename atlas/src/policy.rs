@@ -292,6 +292,8 @@ pub fn classify(intent: &Intent) -> Decision {
         | Intent::MoveBigFiles(_)
         // Works on a copy; the original is only touched after two yeses.
         | Intent::EditMedia(_)
+        // Writes a new file beside the original, never over it.
+        | Intent::EditPhoto(_)
         | Intent::Clock
         | Intent::SetKey(_)
         | Intent::Languages(_)

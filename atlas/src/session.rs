@@ -235,6 +235,7 @@ pub fn kind_of(i: &Intent) -> &'static str {
         Intent::PressButton(_) => "press_button",
         Intent::MoveBigFiles(_) => "move_big_files",
         Intent::EditMedia(_) => "edit_media",
+        Intent::EditPhoto(_) => "edit_photo",
         Intent::Clock => "clock",
         Intent::SetKey(_) => "set_key",
         Intent::Languages(_) => "languages",

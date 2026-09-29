@@ -120,14 +120,23 @@ pub fn catalogue() -> Vec<Piece> {
             bytes: 4_882,
             lands: Lands::File("models/en_US-amy-medium.onnx.json"),
         },
+        // 29 Sep 2026: moved from 7.1.1 to 9.0.2. An iPhone photo (HEIC) is
+        // a grid of 512x512 tiles, and ffmpeg assembles the grid only from
+        // 8.1 on: 7.1.1 handed back one tile, so every iPhone photo came in
+        // as a 512-pixel corner of itself. 9.0.2 is gyan.dev's current
+        // release (19 Sep 2026); this SHA-256 is the one gyan.dev publishes
+        // beside its own copy (packages/ffmpeg-9.0.2-essentials_build.zip
+        // .sha256), and the GitHub mirror's file was downloaded and hashed
+        // to the same value on 29 Sep 2026. `tests/photo_editing.rs` decodes a
+        // tiled HEIC and checks the whole picture comes back.
         Piece {
             name: "the sound tools",
-            for_what: "recording and playing sound",
-            url: "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip",
-            sha256: "04861d3339c5ebe38b56c19a15cf2c0cc97f5de4fa8910e4d47e5e6404e4a2d4",
-            bytes: 92_234_348,
+            for_what: "recording and playing sound, and editing photos",
+            url: "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+            sha256: "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+            bytes: 114_768_076,
             lands: Lands::Zip {
-                inside: "ffmpeg-7.1.1-essentials_build/bin",
+                inside: "ffmpeg-9.0.2-essentials_build/bin",
                 dir: "tools/ffmpeg",
                 key: "tools/ffmpeg/ffmpeg.exe",
             },
@@ -300,14 +309,48 @@ pub fn tor() -> Vec<Piece> {
     }
 }
 
+/// Cutting out a photo's subject (`cutout`): blurring or removing the
+/// background. Optional -- nothing else needs them, and the photo editing
+/// works without. Both Apache-2.0, code and weights. Hashes and sizes from
+/// Hugging Face's record and the rembg release, checked by downloading each
+/// on 29 Sep 2026, and each loaded and run in tract (`tests/photo_editing.rs`).
+///
+/// - MODNet, portrait matting (github.com/ZHKKKe/MODNet), as exported to
+///   ONNX by Xenova, pinned to the commit rather than `main`.
+/// - u2netp, the small U^2-Net (github.com/xuebinqin/U-2-Net), the file
+///   rembg (MIT) publishes and checks by MD5 8e83ca70e441ab06c318d82300c84806.
+///
+/// Not RMBG: BRIA's licence is non-commercial.
+pub fn photos() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the portrait cut-out model",
+            for_what: "blurring or removing the background behind people",
+            url: "https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model.onnx",
+            sha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+            bytes: 25_888_640,
+            lands: Lands::File("models/modnet.onnx"),
+        },
+        Piece {
+            name: "the general cut-out model",
+            for_what: "blurring or removing the background behind anything else",
+            url: "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+            sha256: "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+            bytes: 4_574_861,
+            lands: Lands::File("models/u2netp.onnx"),
+        },
+    ]
+}
+
 /// A set by the word you'd type after `atlas get`: nothing for the voice
-/// pieces, `seeing`, `pictures`, or `tor`.
+/// pieces, `seeing`, `pictures`, `photos`, or `tor`.
 pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
     match word.map(|w| w.trim().to_lowercase()).as_deref() {
         None | Some("") | Some("voice") => Some(("what Atlas needs to hear you and talk back", catalogue())),
         Some("seeing") => Some(("what Atlas needs to see faces, things, hands and the words on your screen", seeing())),
         Some("pictures") => Some(("what Atlas needs to read charts and screens (about 3 GB)", pictures())),
         Some("tor" | "friends") => Some(("Tor, so friends can reach your Atlas from anywhere", tor())),
+        Some("photos" | "photo") => Some(("the cut-out models Atlas needs to blur or remove a photo's background", photos())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,
     }
