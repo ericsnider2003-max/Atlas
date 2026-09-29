@@ -339,7 +339,7 @@ pub fn pid_file(dir: &Path) -> PathBuf {
 }
 
 /// The program a running process is, if it's running and the system says.
-fn process_program(pid: u32) -> Option<PathBuf> {
+pub(crate) fn process_program(pid: u32) -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     {
         std::fs::read_link(format!("/proc/{pid}/exe")).ok()
@@ -370,7 +370,7 @@ fn process_program(pid: u32) -> Option<PathBuf> {
     }
 }
 
-fn kill_process(pid: u32) -> bool {
+pub(crate) fn kill_process(pid: u32) -> bool {
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::CloseHandle;

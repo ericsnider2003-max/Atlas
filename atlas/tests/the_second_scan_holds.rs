@@ -1011,3 +1011,41 @@ fn another_model_server_is_asked_about_off_the_turn_and_at_most_once_a_minute() 
     let probe = &src[probe..probe + src[probe..].find("\n    }\n").unwrap()];
     assert!(probe.contains("spawn(") && probe.contains("is_running("), "the check isn't on its own thread");
 }
+
+#[test]
+fn a_talk_message_given_up_on_is_kept_and_answered_later() {
+    // 29 Sep 2026: typed on the Talk page while Atlas was stuck, answered
+    // "busy", and never run -- what you typed was gone. A Talk message is the
+    // one post that is kept (anything else answered busy still never runs).
+    let server = a_server().with_answer_wait(Duration::from_millis(300));
+    let port = server.port();
+    let door = server.threaded().unwrap();
+    let body = "text=what+is+on+my+calendar+today";
+    let got = ask(port, &format!("POST /hub/talk HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}", body.len()));
+    assert!(got.starts_with("HTTP/1.1 5"), "{}", &got[..got.len().min(200)]);
+    let ran = AtomicUsize::new(0);
+    door.answer_waiting(&mut |_a| {
+        ran.fetch_add(1, Ordering::SeqCst);
+        Reply::ok("{}")
+    });
+    assert_eq!(ran.load(Ordering::SeqCst), 0, "a request answered busy was run as a request");
+    let kept = door.take_late_talk();
+    assert_eq!(kept, vec![("what is on my calendar today".to_string(), false)], "the message was dropped");
+    assert!(door.take_late_talk().is_empty(), "kept twice");
+}
+
+#[test]
+fn the_friends_door_opens_once_its_port_is_free() {
+    // 29 Sep 2026: a port busy at start kept the door friends reach you on
+    // shut for the whole session. It is tried again once a minute.
+    let blocker = std::net::TcpListener::bind(("::", 0)).or_else(|_| std::net::TcpListener::bind(("0.0.0.0", 0))).unwrap();
+    let port = blocker.local_addr().unwrap().port();
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, story_or_islands(), "friends-door").with_signal_door_later(port, Vec::new());
+    d.open_signal_door_again(100);
+    drop(blocker);
+    d.open_signal_door_again(120);
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "tried again before a minute was up");
+    d.open_signal_door_again(161);
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_ok(), "the door never opened once the port was free");
+}

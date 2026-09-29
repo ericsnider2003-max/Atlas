@@ -179,6 +179,12 @@ pub trait Platform {
 
     /// Enumerated fresh every time. Displays get unplugged.
     fn monitors(&self) -> Result<Vec<Monitor>>;
+    /// Is this machine's own screen on -- a laptop with its lid open?
+    /// `Some(false)`: it has one and it is off (the lid shut behind other
+    /// monitors). `None`: it has none (a desktop), or this can't be told.
+    fn built_in_screen_on(&self) -> Option<bool> {
+        None
+    }
     fn launch(&self, spec: &AppSpec) -> Result<()>;
     /// None means "not up yet" — the caller retries.
     fn find_window(&self, spec: &AppSpec) -> Result<Option<WindowId>>;

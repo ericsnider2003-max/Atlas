@@ -461,15 +461,18 @@ mod win {
             let mut problems = Vec::new();
             if let Some((vk, _)) = keys.talk {
                 let _ = SHARED.set(Shared { vk, tx: tx.clone(), gate, started: std::time::Instant::now() });
-                if SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0).is_err() {
-                    problems.push("Windows wouldn't let me watch the push-to-talk key".to_string());
+                if let Err(e) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0) {
+                    problems.push(format!("Windows wouldn't let me watch the push-to-talk key ({e})"));
                 }
             }
             const TYPING_ID: i32 = 0xA71A;
             if let Some((mods, vk)) = keys.typing {
                 let m = HOT_KEY_MODIFIERS(mods) | MOD_NOREPEAT;
-                if RegisterHotKey(HWND::default(), TYPING_ID, m, vk).is_err() {
-                    problems.push("another program already uses the typing-box key — pick another in settings".to_string());
+                if let Err(e) = RegisterHotKey(HWND::default(), TYPING_ID, m, vk) {
+                    // Only "already registered" (1409) means another program
+                    // has the key; anything else is said as Windows said it
+                    // (29 Sep 2026: every failure was blamed on another program).
+                    problems.push(crate::hotkeys::typing_key_refused(e.code().0 as u32 & 0xFFFF, &e.to_string()));
                 }
             }
             let _ = ready_tx.send(problems);
@@ -498,5 +501,15 @@ mod win {
             });
         }
         ready_rx.recv().map_err(|_| "the key watcher didn't start".to_string())
+    }
+}
+
+/// Why Windows refused the typing-box key, from its error code: 1409
+/// (ERROR_HOTKEY_ALREADY_REGISTERED) is another program holding it.
+pub fn typing_key_refused(code: u32, message: &str) -> String {
+    if code == 1409 {
+        "another program already uses the typing-box key — pick another in settings".into()
+    } else {
+        format!("Windows wouldn't give me the typing-box key ({message}) — pick another in settings")
     }
 }

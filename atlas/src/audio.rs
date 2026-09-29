@@ -634,3 +634,55 @@ pub fn stream_args(device: &str, rate_hz: u32, hard_stop_secs: u32) -> Vec<Strin
     ]);
     a
 }
+
+// ---------------------------------------------------------------------------
+// Cameras, from the same listing (29 Sep 2026: `webcam_device` was the
+// shipped guess "Integrated Camera", never checked against the machine).
+// ---------------------------------------------------------------------------
+
+/// The cameras in a dshow listing, by the name ffmpeg opens them with.
+pub fn parse_cameras(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.contains("Alternative name") && l.to_lowercase().contains("(video)"))
+        .filter_map(|l| {
+            let (a, b) = (l.find('"')?, l.rfind('"')?);
+            (b > a + 1).then(|| l[a + 1..b].to_string())
+        })
+        .collect()
+}
+
+/// The camera to use: the configured one when this machine has it, else the
+/// built-in one, else any real one (not a virtual camera). `None` when the
+/// machine has none.
+pub fn pick_camera(cameras: &[String], configured: &str) -> Option<String> {
+    if let Some(c) = cameras.iter().find(|c| c.as_str() == configured) {
+        return Some(c.clone());
+    }
+    let low = |c: &String| c.to_lowercase();
+    let virtual_cam = |c: &String| ["virtual", "obs", "snap camera", "droidcam", "nvidia broadcast"].iter().any(|v| low(c).contains(v));
+    let real: Vec<&String> = cameras.iter().filter(|c| !virtual_cam(c)).collect();
+    real.iter()
+        .find(|c| ["integrated", "built-in", "front", "facetime", "user facing"].iter().any(|k| low(c).contains(k)))
+        .or_else(|| real.first())
+        .map(|c| (*c).clone())
+}
+
+/// The cameras this machine has (Windows' listing; empty elsewhere, where
+/// the camera is named differently and `webcam_device` stands).
+pub fn probe_cameras(ffmpeg_cmd: &str) -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    let (_, args) = listing_command(true);
+    match crate::tools::command(ffmpeg_cmd)
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+    {
+        Ok(o) => parse_cameras(&String::from_utf8_lossy(&o.stderr)),
+        Err(_) => Vec::new(),
+    }
+}

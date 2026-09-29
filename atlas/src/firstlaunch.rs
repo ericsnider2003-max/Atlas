@@ -144,9 +144,19 @@ pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::t
         && crate::upgrade::sha256_of(exe).is_some_and(|a| Some(a) == crate::upgrade::sha256_of(&target));
     if !same_place(exe, &target) && !same_bytes {
         if target.is_file() {
-            if stop_first {
-                // Best effort: it finishes what it's saving on the way out.
-                let _ = ask_atlas_to_stop(home, stop_wait);
+            if stop_first && !ask_atlas_to_stop(home, stop_wait) {
+                // It finishes what it's saving on the way out when asked. One
+                // that doesn't is ended; one that can't be is said, rather
+                // than left running the old version from the file it would be
+                // moved aside to (29 Sep 2026).
+                let data = home.join("data");
+                if !crate::onlyone::end_holder(&data, std::time::Duration::from_secs(5)) && atlas_running(home) {
+                    return Err(format!(
+                        "the Atlas already running from {} didn't stop when asked, so I haven't replaced it. \
+                         Quit it from its icon by the clock (or end atlas.exe in Task Manager), then open this one again.",
+                        home.display()
+                    ));
+                }
             }
         }
         copy_over(exe, &target).map_err(|e| format!("I couldn't copy myself into {}: {e}", home.display()))?;

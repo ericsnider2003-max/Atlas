@@ -524,8 +524,18 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
             if let Some(d) = dest.parent() {
                 std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
             }
+            // Where it can't simply be moved, copied beside it and then moved
+            // over it, so the file there is never half written.
             std::fs::rename(&part, &dest)
-                .or_else(|_| std::fs::copy(&part, &dest).map(|_| ()).and_then(|_| std::fs::remove_file(&part)))
+                .or_else(|_| {
+                    let beside = dest.with_extension("incoming");
+                    std::fs::copy(&part, &beside)
+                        .and_then(|_| std::fs::rename(&beside, &dest))
+                        .and_then(|_| std::fs::remove_file(&part))
+                        .inspect_err(|_| {
+                            let _ = std::fs::remove_file(&beside);
+                        })
+                })
                 .map_err(|e| format!("I couldn't put {} in place: {e}", p.name))?;
         }
         Lands::Zip { inside, dir, .. } => {
@@ -541,11 +551,11 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
                 let _ = std::fs::remove_dir_all(&unpack);
                 return Err(format!("{} didn't unpack the way it should have", p.name));
             }
-            // The mark goes before the copy starts and comes back only after
-            // all of it has landed: a copy that stops partway is never "here".
+            // Swapped in whole, not copied over the one there (29 Sep 2026:
+            // a copy that stopped partway -- a program in use, a full disk --
+            // left the tool half old, half new, and broken).
             let mark = root.join(dir).join(MARKER);
-            let _ = std::fs::remove_file(&mark);
-            if let Err(e) = copy_tree(&from, &root.join(dir)) {
+            if let Err(e) = swap_folder(&from, &root.join(dir)) {
                 let _ = std::fs::remove_dir_all(&unpack);
                 return Err(format!("I couldn't put {} in place: {e}", p.name));
             }
@@ -727,6 +737,47 @@ fn unzip(zip: &Path, into: &Path, tools: &Tools) -> Result<(), String> {
     } else {
         Err(format!("I couldn't unpack it: {}", String::from_utf8_lossy(&out.stderr).trim()))
     }
+}
+
+/// Put the folder `new` where `live` is, whole: the old one is moved aside,
+/// the new one moved in, and the old one put back if that fails -- so `live`
+/// is always either all old or all new. A program in the old folder that is
+/// running stops the move aside, before anything is touched, and that is
+/// said plainly. Anything the old folder had that the new one doesn't is
+/// carried over. Where a move can't be made (another drive), it is copied.
+pub fn swap_folder(new: &Path, live: &Path) -> std::result::Result<(), String> {
+    if let Some(parent) = live.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let name = live.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let aside = live.with_file_name(format!("{name}.old-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&aside);
+    let had = live.exists();
+    if had {
+        std::fs::rename(live, &aside).map_err(|e| {
+            format!("something in {} is in use ({e}) -- close Atlas and anything using it, then try again", live.display())
+        })?;
+    }
+    let moved = std::fs::rename(new, live).or_else(|_| copy_tree(new, live));
+    if let Err(e) = moved {
+        let _ = std::fs::remove_dir_all(live);
+        if had {
+            let _ = std::fs::rename(&aside, live);
+        }
+        return Err(e.to_string());
+    }
+    if had {
+        if let Ok(entries) = std::fs::read_dir(&aside) {
+            for e in entries.flatten() {
+                let dest = live.join(e.file_name());
+                if e.file_name() != std::ffi::OsStr::new(MARKER) && !dest.exists() {
+                    let _ = std::fs::rename(e.path(), dest);
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&aside);
+    }
+    Ok(())
 }
 
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {

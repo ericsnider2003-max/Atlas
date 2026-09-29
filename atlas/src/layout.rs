@@ -104,3 +104,14 @@ fn max_index<F: Fn(&Monitor) -> i32>(v: &[Monitor], f: F) -> Option<usize> {
         .max_by_key(|(_, m)| f(m))
         .map(|(i, _)| i)
 }
+
+/// From the machine's display outputs, each (is it built in, is it active):
+/// the built-in screen's state, or `None` when there is no built-in screen.
+pub fn built_in_screen_from(outputs: &[(bool, bool)]) -> Option<bool> {
+    let built_in: Vec<bool> = outputs.iter().filter(|(internal, _)| *internal).map(|(_, active)| *active).collect();
+    if built_in.is_empty() {
+        None
+    } else {
+        Some(built_in.iter().any(|a| *a))
+    }
+}

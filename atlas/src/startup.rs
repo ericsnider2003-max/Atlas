@@ -374,9 +374,21 @@ pub fn turn_off() -> Result<String, String> {
         let _ = run(&run_entry_remove());
     }
     match task {
-        // "Not there" is the outcome asked for.
-        Ok(_) => Ok("Atlas won't start on its own when you sign in.".into()),
+        // "Not there" is the outcome asked for -- checked, not assumed (29 Sep
+        // 2026: a delete Windows refused was reported as done).
+        Ok(_) => turned_off_says(run(&whether_registered())),
         Err(e) => Err(e),
+    }
+}
+
+/// What `turn_off` says, from asking afterwards whether the task is still
+/// registered (`Ok(true)`: it is).
+pub fn turned_off_says(still: Result<bool, String>) -> Result<String, String> {
+    match still {
+        Ok(true) => Err("Windows didn't let me take Atlas out of what starts when you sign in -- \
+                         it's in Task Scheduler as \"Atlas\"; you can delete it there"
+            .into()),
+        _ => Ok("Atlas won't start on its own when you sign in.".into()),
     }
 }
 
@@ -519,11 +531,16 @@ pub fn unit_path() -> std::path::PathBuf {
 /// it at all.
 pub fn run(plan: &Plan) -> Result<bool, String> {
     use std::process::Stdio;
-    crate::tools::command(&plan.program)
-        .args(&plan.args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+    let mut cmd = crate::tools::command(&plan.program);
+    cmd.args(&plan.args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    // No console flashing up from the windowless Atlas (29 Sep 2026:
+    // schtasks and reg each opened one when the switch was flipped).
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd.status()
         .map(|s| s.success())
         .map_err(|e| format!("couldn't run {}: {e}", plan.program))
 }
