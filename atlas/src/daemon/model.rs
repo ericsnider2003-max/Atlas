@@ -95,7 +95,7 @@ impl<'a> Daemon<'a> {
     /// now, and come back to listening if they do (29 Sep 2026). The check
     /// was made once at start: a download still finishing, or a tool briefly
     /// held by antivirus, left Atlas deaf and silent for the whole session.
-    fn look_again_at_audio(&mut self, ears: &dyn Ears, t: u64) {
+    pub(super) fn look_again_at_audio(&mut self, ears: &dyn Ears, t: u64) {
         if !self.audio_tools_missing || self.tiers.tier != Tier::Typed || t < self.audio_look_at {
             return;
         }
@@ -115,7 +115,7 @@ impl<'a> Daemon<'a> {
     /// at start-up the first check hadn't answered in time, and nothing
     /// asked again until you said something -- so with the microphone not
     /// working, the model never started at all.
-    fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration, a_turn: bool) {
+    pub(super) fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration, a_turn: bool) {
         // No model when Atlas started (none downloaded yet, or none judged to
         // fit): look again once a minute rather than for the rest of the
         // session. Setup fetches the model while Atlas is already running.
@@ -225,7 +225,7 @@ impl<'a> Daemon<'a> {
     /// loading -- too many layers for the graphics, the port taken, a bad
     /// file -- was started again on the very next pass, reading the whole
     /// model off the disk every time, and nobody was told).
-    fn model_server_died(&mut self) {
+    pub(super) fn model_server_died(&mut self) {
         let Some(started) = self.model_started.take() else { return };
         if started.elapsed() >= MODEL_SERVER_YOUNG {
             return;

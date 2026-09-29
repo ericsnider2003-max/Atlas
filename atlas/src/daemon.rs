@@ -3746,3 +3746,44 @@ fn opens_with_deciding(said: &str) -> bool {
     .iter()
     .any(|p| w.starts_with(p))
 }
+
+
+/// A failed model call, in words: what went wrong and that the next message
+/// tries again (`brain` puts "Model unreachable: <why>" in `say`).
+pub fn model_failed_words(why: &str) -> String {
+    let why = why.trim().trim_start_matches("Model unreachable:").trim().trim_end_matches('.');
+    // Names the source the way the connections board does
+    // (`integrations::MODEL`) and says what it cost: the answer is missing.
+    let model = crate::integrations::MODEL;
+    if why.is_empty() {
+        format!("I couldn't get an answer from {model}, so the answer you asked for is missing. I'll try again with your next message.")
+    } else {
+        format!("I couldn't get an answer from {model} ({why}), so the answer you asked for is missing. I'll try again with your next message.")
+    }
+}
+
+/// The start-up "what I can't do here", checked against what is really
+/// installed (29 Sep 2026: Eric's Atlas said "I can't look at your screen
+/// and understand it" at every start, from a sizing rule that wanted 6 GB of
+/// graphics memory of its own, while the picture reader setup fetched --
+/// Qwen3-VL and its picture encoder -- was on the laptop and working). The
+/// sizing plan says what a machine like this could run; the files say what
+/// this one does. `pictures` is the picture reader's own readiness.
+pub fn what_this_machine_cant_do(limits: Vec<String>, pictures: Option<std::result::Result<(), String>>, have_model: bool) -> Vec<String> {
+    limits
+        .into_iter()
+        .filter_map(|l| {
+            if l.contains("look at your screen") {
+                return match &pictures {
+                    Some(Ok(())) => None,
+                    Some(Err(why)) => Some(format!("I can't look at your screen and understand it: {why}.")),
+                    None => Some(l),
+                };
+            }
+            if l.starts_with("No language model fits") && have_model {
+                return None;
+            }
+            Some(l)
+        })
+        .collect()
+}

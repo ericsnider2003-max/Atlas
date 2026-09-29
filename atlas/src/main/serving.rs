@@ -317,7 +317,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     }
 }
 
-pub(super) /// Which microphone Atlas listens with, picked from what this machine
+/// Which microphone Atlas listens with, picked from what this machine
 /// actually has rather than the guess in `tools.yaml` (`mic_device`).
 ///
 /// One place for both doors (29 Sep 2026). This lived inside `voice_loop`
@@ -326,7 +326,7 @@ pub(super) /// Which microphone Atlas listens with, picked from what this machin
 /// laptop whose microphone is Intel Smart Sound. Every wake-word clip
 /// failed, Atlas dropped to push-to-talk, and the held key recorded nothing
 /// and said nothing.
-fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
+pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
     // Pick the mic from what is actually there, rather than trusting the
     // guess sitting in tools.yaml -- that guess is what sent someone chasing
     // a Realtek device name on a laptop with Intel audio and a shut lid.
@@ -468,7 +468,7 @@ fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::Too
     tc_owned
 }
 
-fn voice_loop(
+pub(super) fn voice_loop(
     cfg: &Config,
     plat: &dyn Platform,
     parser: &Parser,

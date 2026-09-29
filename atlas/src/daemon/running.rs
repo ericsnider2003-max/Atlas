@@ -765,7 +765,7 @@ impl<'a> Daemon<'a> {
     }
 
     /// Start the microphone's thread, once, if these ears can have one.
-    fn ensure_mic(&mut self, ears: &dyn Ears) {
+    pub(super) fn ensure_mic(&mut self, ears: &dyn Ears) {
         if self.mic.is_none() && !self.mic_asked {
             self.mic_asked = true;
             self.mic = ears.mic_work().map(crate::micthread::MicThread::start);
@@ -780,7 +780,7 @@ impl<'a> Daemon<'a> {
 
     /// Tell the microphone's thread what's wanted of it now. Paused means
     /// not listening at all: no wake word, no watching while Atlas speaks.
-    fn steer_mic(&mut self) {
+    pub(super) fn steer_mic(&mut self) {
         let Some(m) = self.mic.as_ref() else { return };
         let cfg = self.tools_cfg();
         m.set_paused(self.attention.is_paused());
