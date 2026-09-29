@@ -909,7 +909,9 @@ const ORPHANS: &[(&str, &str)] = &[
 // `ladder.rs` left personal Atlas (tests/personal_atlas_is_its_own.rs), and
 // with it one function only its own tests reached. Nothing was wired; the
 // count fell because the module went.
-const TEST_ONLY_MAX: usize = 101;
+// 101 -> 100 (29 Sep 2026): overlay::window_style is applied now -- the
+// overlay is made see-through by Windows' colour key (`overlaywin::see_through`).
+const TEST_ONLY_MAX: usize = 100;
 // 287 -> 286 (22 Sep): `consolidate::size_note` gained a real caller. The new
 // `KnowledgeSize` intent ("how much do you know", "how big is your memory")
 // routes through `Daemon::knowledge_store_size`, which reads the store count

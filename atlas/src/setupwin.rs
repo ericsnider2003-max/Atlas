@@ -361,7 +361,14 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
         p.phone = phone;
     }
 
-    let _ = firstlaunch::mark_set_up(&place.root);
+    // Only a setup that went through is marked done (29 Sep 2026: a fetch
+    // that failed was marked done anyway, so Atlas never tried again and
+    // fell back to push-to-talk for good). A step that had a problem is
+    // tried again the next time Atlas is opened.
+    let problems = progress.lock().map(|p| p.problems()).unwrap_or(0);
+    if problems == 0 {
+        let _ = firstlaunch::mark_set_up(&place.root);
+    }
     let after = after_setup(place, settings_ok, first_time);
     if let Ok(mut p) = progress.lock() {
         p.after = after;
@@ -398,12 +405,9 @@ fn after_setup(place: &Place, settings_ok: bool, just_set_up: bool) -> Vec<Strin
         }
     }
     if next.start {
-        match firstlaunch::spawn_quietly(&place.exe, &["--daemon"]) {
-            Ok(child) => {
-                crate::unwaited::dont_wait(child);
-                said.push("Starting Atlas in the background.".into());
-            }
-            Err(e) => said.push(format!("I couldn't start Atlas in the background: {e}")),
+        match firstlaunch::start_background_watched(&place.exe, &place.root, std::time::Duration::from_secs(4)) {
+            Ok(()) => said.push("Starting Atlas in the background.".into()),
+            Err(why) => said.push(why),
         }
     }
     said
@@ -921,12 +925,9 @@ fn restart(place: &Place, note: &Arc<Mutex<Option<String>>>) {
             say("Atlas didn't stop when asked, so I left it running. Your changes take effect at its next start.");
             return;
         }
-        match firstlaunch::spawn_quietly(&place.exe, &["--daemon"]) {
-            Ok(child) => {
-                crate::unwaited::dont_wait(child);
-                say("Atlas restarted with your changes.");
-            }
-            Err(e) => say(&format!("Atlas stopped but I couldn't start it again: {e}")),
+        match firstlaunch::start_background_watched(&place.exe, &place.root, std::time::Duration::from_secs(4)) {
+            Ok(()) => say("Atlas restarted with your changes."),
+            Err(why) => say(&format!("Atlas stopped but didn't start again. {why}")),
         }
     });
 }

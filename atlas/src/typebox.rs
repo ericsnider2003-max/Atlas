@@ -160,10 +160,22 @@ impl eframe::App for Box_ {
             ctx.send_viewport_cmd(ViewportCommand::Focus);
             self.frames += 1;
             ctx.request_repaint();
-        } else if self.frames < 40 && !ctx.input(|i| i.focused) {
+        } else if ctx.input(|i| i.focused) {
+            // It has the keyboard: no more asking for it, so losing it later
+            // puts the box away rather than taking it back from you.
+            self.frames = self.frames.max(40);
+        } else if self.frames < 40 {
             ctx.send_viewport_cmd(ViewportCommand::Focus);
             self.frames += 1;
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        } else if self.standby && !ctx.input(|i| i.focused) {
+            // Gone from under you: you clicked elsewhere, or Windows never
+            // let it have the keyboard. Put away rather than left on top of
+            // everything with your typing going to the window underneath
+            // (29 Sep 2026). The key brings it back.
+            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            self.frames = u32::MAX;
+            return;
         }
         let events = ctx.input(|i| i.events.clone());
         let done = match apply_keys(&mut self.q, &events, crate::store::now()) {

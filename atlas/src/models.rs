@@ -576,6 +576,33 @@ fn model_server_log() -> std::process::Stdio {
     }
 }
 
+/// Why the model server stopped, in its own words: the last line of
+/// `data/logs/model-server.log` that says something went wrong, or its last
+/// line. `None` when the log is empty or can't be read.
+pub fn model_server_last_words() -> Option<String> {
+    let text = std::fs::read_to_string(crate::roots::data_dir().join("logs").join("model-server.log")).ok()?;
+    last_words_in(&text)
+}
+
+/// The telling line of a model server's log (see `model_server_last_words`).
+pub fn last_words_in(text: &str) -> Option<String> {
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let bad = |l: &&&str| {
+        let l = l.to_ascii_lowercase();
+        l.contains("error") || l.contains("failed") || l.contains("out of memory") || l.contains("unable")
+    };
+    let line = lines.iter().rev().find(bad).or(lines.last())?;
+    let mut line = line.to_string();
+    if line.len() > 200 {
+        let mut cut = 200;
+        while !line.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        line.truncate(cut);
+    }
+    Some(line)
+}
+
 /// llama.cpp's switch for clearing idle slots, by its environment name.
 pub const CACHE_IDLE_SLOTS_ENV: &str = "LLAMA_ARG_CACHE_IDLE_SLOTS";
 
@@ -980,6 +1007,25 @@ pub fn llm_config_for(model: &Model, cfg: &ModelsConfig, http: &ExternalTool) ->
 /// folder that fits, through the server on `models.port` -- waited for while
 /// it loads, with `tools.llm_secondary` as the fallback. What the laptop's
 /// daemon and the phone core both use.
+/// Why there is no model to talk with, in words for a reply (29 Sep 2026:
+/// "it isn't loaded yet" was said whatever the reason, for the whole
+/// session). The folder's own trouble first, then an empty folder, then
+/// none that fits the memory free.
+pub fn why_no_model(cfg: &ModelsConfig) -> String {
+    let (registry, trouble) = Registry::scan_reporting(&Registry::dir_for(cfg));
+    if let Some(t) = trouble {
+        return t.trim().trim_end_matches('.').to_string();
+    }
+    if registry.models.is_empty() {
+        return "there's no language model in my models folder yet; opening Atlas runs setup, which fetches one".into();
+    }
+    let m = crate::fit::measure();
+    format!(
+        "none of the models in my models folder fits the memory free right now: {}",
+        registry.explain_for(cfg, &m, budget_bytes(cfg, &m)).trim().trim_end_matches('.')
+    )
+}
+
 pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
     let derived: Option<crate::brain::LlmConfig> = if tc.llm.is_some() {
         None

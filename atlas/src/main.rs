@@ -190,7 +190,13 @@ fn main() {
     // A new Atlas dropped into updates/ goes in now, before anything else
     // runs, and the new one is started in this one's place. Not while it is
     // itself being asked for its version, which is how the check works.
-    if std::env::var_os("ATLAS_UPDATE_PROBE").is_none() && !flag("--version") && !flag("-V") {
+    // The overlay and the typing box are helpers the background Atlas starts;
+    // they never swap in an update or count a trial start (29 Sep 2026: each
+    // helper start counted as a start of the build on trial, so a build that
+    // could not get through was never rolled back, and a helper could swap
+    // the program file out from under the Atlas that started it).
+    let helper = matches!(words.first().map(|s| s.as_str()), Some("overlay") | Some("typebox"));
+    if !helper && std::env::var_os("ATLAS_UPDATE_PROBE").is_none() && !flag("--version") && !flag("-V") {
         let root = atlas::roots::install_root();
         if let Ok(running) = std::env::current_exe() {
             // The new build checks itself before it is started, and the
@@ -1257,6 +1263,7 @@ fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
         Err(why) => {
             eprintln!("{why}");
+            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
             leave(1);
         }
         Ok(found) => {
@@ -2061,6 +2068,7 @@ fn voice_loop(
     match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
         Err(why) => {
             eprintln!("{why}");
+            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
             leave(1);
         }
         Ok(found) => {
@@ -10889,9 +10897,14 @@ fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
     // taken port: `server::open_hub`); the setting when it isn't answering.
     let port = atlas::firstlaunch::hub_port_at(&atlas::roots::install_root(), configured);
     if opening.start_background {
-        match atlas::firstlaunch::spawn_quietly(&exe, &["--daemon"]) {
-            Ok(child) => atlas::unwaited::dont_wait(child),
-            Err(e) => atlas::firstlaunch::show_problem(&format!("I couldn't start Atlas in the background: {e}")),
+        // Watched for a few seconds: one that stops at once says why instead
+        // of leaving a hub nothing answers (29 Sep 2026).
+        if let Err(why) = atlas::firstlaunch::start_background_watched(
+            &exe,
+            &atlas::roots::install_root(),
+            std::time::Duration::from_secs(4),
+        ) {
+            atlas::firstlaunch::show_problem(&why);
         }
     }
     let first = opening.first;

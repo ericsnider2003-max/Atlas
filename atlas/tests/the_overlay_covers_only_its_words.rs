@@ -9,7 +9,7 @@ use atlas::overlay::{Element, Overlay, OverlayConfig};
 fn everything_the_overlay_draws_fits_in_its_band() {
     let cfg = OverlayConfig::default();
     for (w, h) in [(2560, 1392), (1920, 1080), (1366, 768)] {
-        let (bx, by, bw, bh) = atlas::overlaywin::band(w, h, &cfg);
+        let (bx, by, bw, bh) = atlas::overlaywin::overlay_band(w, h, &cfg);
         assert!(bw < w && bh < h / 2, "the band is most of the screen: {bw}x{bh} on {w}x{h}");
         let mut o = Overlay::begin("A reply long enough to wrap onto more than one line of the caption.", 0);
         // Far enough in for the words to be typing.

@@ -862,3 +862,6 @@ mod the_phone_build_reaches_no_desktop_module;
 mod the_background_atlas_hears_you;
 #[path = "the_overlay_covers_only_its_words.rs"]
 mod the_overlay_covers_only_its_words;
+
+#[path = "the_system_recovers_by_itself.rs"]
+mod the_system_recovers_by_itself;

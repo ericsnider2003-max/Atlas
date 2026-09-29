@@ -706,6 +706,8 @@ pub struct Daemon<'a> {
     pub outbox: crate::notify::Outbox,
     /// Audio devices as last enumerated. `None` means never looked.
     pub audio_devices: Option<Vec<crate::audio::Device>>,
+    /// When to list the sound devices again after a listing failed.
+    audio_devices_retry_at: u64,
     /// Where a message from another Atlas would arrive, if one is open.
     /// `None` for the overwhelming majority of installs, which will never
     /// have another Atlas to hear from -- see `with_signal_listener`.
@@ -928,6 +930,12 @@ pub struct Daemon<'a> {
     model_warmed: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     /// When this Atlas last tried to start one.
     model_start_tried: Option<std::time::Instant>,
+    /// When Atlas last started its model server, while that start is still
+    /// being watched for dying young.
+    model_started: Option<std::time::Instant>,
+    /// Model servers that ended soon after being started, in a row: each
+    /// doubles the pause before the next try (29 Sep 2026).
+    model_deaths: u32,
     /// Turns may hand their model call to a worker (`pending_turn`): set by
     /// the Talk page's queue and the voice loop around a turn.
     defer_turns: bool,
@@ -1509,6 +1517,7 @@ impl<'a> Daemon<'a> {
             pending_edit: None,
             outbox: crate::notify::Outbox::load(&store_for_load2),
             audio_devices: None,
+            audio_devices_retry_at: 0,
             signal_listener: None,
             sync_server: None,
             tier_mix: crate::tier::Mix::default(),
@@ -1612,6 +1621,8 @@ impl<'a> Daemon<'a> {
             model_probe_busy: Default::default(),
             model_warmed: Default::default(),
             model_start_tried: None,
+            model_started: None,
+            model_deaths: 0,
             defer_turns: false,
             may_defer: false,
             decided_already: None,
@@ -3087,6 +3098,18 @@ impl<'a> Daemon<'a> {
                         self.this_turn_cap = None;
                         return String::new();
                     }
+                    // A model call is already out (a Talk page turn still
+                    // thinking): this one waits its turn in the Talk page's
+                    // queue rather than being asked here, on the loop (29 Sep
+                    // 2026: asked here it waited behind the first for the one
+                    // model slot, and the hub, the typing box and Pause all
+                    // went unanswered for minutes).
+                    if needs_model && self.pending_turn.is_some() {
+                        self.talk_queue.push((said.to_string(), false));
+                        self.this_turn_register = None;
+                        self.this_turn_cap = None;
+                        return STILL_ON_THE_LAST_ONE.to_string();
+                    }
                     // The words so far are the Talk page's to show -- unless a
                     // Talk turn is still thinking, whose words they are
                     // (28 Sep 2026: a voice turn answered meanwhile cleared
@@ -3598,8 +3621,21 @@ impl<'a> Daemon<'a> {
         // sentence count, so a caveat added earlier is exactly the sentence
         // most likely to be cut — the warning would be silently dropped from
         // the answers that most needed it.
+        // A model call that failed with nothing to say is answered with why,
+        // not with an empty reply and a caveat about what it is missing (29
+        // Sep 2026: the whole reply Eric got was "I should say: the language
+        // model is failing -- so this is missing whatever it would have
+        // added", and the reason was thrown away).
+        let failed_silent = decision.model == brain::Reached::No && reply.trim().is_empty();
+        let reply = if failed_silent {
+            let why = self.model_server_trouble.clone().unwrap_or_else(|| decision.say.clone());
+            self.log.warn(&format!("the model call failed: {}", decision.say));
+            model_failed_words(&why)
+        } else {
+            reply
+        };
         let used = crate::integrations::sources_for(need_of(&intent), decision.model);
-        let reply = crate::integrations::mark(&reply, &used, &self.connections, _t);
+        let reply = if failed_silent { reply } else { crate::integrations::mark(&reply, &used, &self.connections, _t) };
         // The model didn't know, or it's the kind of thing that changes by
         // the day: offer to look it up, and a yes does.
         let reply = match self.offer_to_look_it_up(said, &intent, decision.model, &reply) {
@@ -17751,19 +17787,26 @@ impl<'a> Daemon<'a> {
     /// devices launches ffmpeg, and putting a process launch in front of every
     /// alert would make alerting the slowest thing Atlas does.
     ///
-    /// A failure is recorded as an empty list rather than left as `None`, so
-    /// it is not retried on every tick forever — but the two stay
-    /// distinguishable to `how_to_say`, which treats "never looked" as "assume
-    /// the system default works" and "looked and found nothing" as a real
-    /// finding.
+    /// A listing that failed is left as "never looked" -- which `how_to_say`
+    /// reads as "assume the system default works" -- and tried again in five
+    /// minutes (29 Sep 2026: it was recorded as an empty list, "looked and
+    /// found nothing", so one failed listing at sign-in, ffmpeg not fetched
+    /// yet, silenced spoken notifications for the rest of the session).
     fn refresh_audio_once(&mut self) {
-        if self.audio_devices.is_some() {
+        let now = crate::store::now();
+        if self.audio_devices.is_some() || now < self.audio_devices_retry_at {
             return;
         }
         let ffmpeg = self.tools_ref()
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
-        self.audio_devices = Some(crate::audio::probe_devices(&ffmpeg).unwrap_or_default());
+        match crate::audio::probe_devices(&ffmpeg) {
+            Ok(list) => self.audio_devices = Some(list),
+            Err(e) => {
+                self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
+                self.audio_devices_retry_at = now + 300;
+            }
+        }
     }
 
     /// Put one of Atlas's own panels on screen.
@@ -19310,7 +19353,7 @@ impl<'a> Daemon<'a> {
     /// (Ollama, your own server) is yours to run. A server someone started
     /// by hand is left alone. Nothing is waited for here.
     fn keep_model_server(&mut self, t: u64) {
-        self.keep_model_server_waiting(t, MODEL_PROBE_WAIT);
+        self.keep_model_server_waiting(t, MODEL_PROBE_WAIT, true);
     }
 
     /// At typing-only, look once a minute at whether the voice tools work
@@ -19337,7 +19380,7 @@ impl<'a> Daemon<'a> {
     /// at start-up the first check hadn't answered in time, and nothing
     /// asked again until you said something -- so with the microphone not
     /// working, the model never started at all.
-    fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration) {
+    fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration, a_turn: bool) {
         // No model when Atlas started (none downloaded yet, or none judged to
         // fit): look again once a minute rather than for the rest of the
         // session. Setup fetches the model while Atlas is already running.
@@ -19346,6 +19389,16 @@ impl<'a> Daemon<'a> {
             if let Some(tc) = self.tools_ref().cloned() {
                 if tc.llm.is_none() {
                     self.llm = crate::models::connection(&tc);
+                    // Why not, said once and kept for the replies.
+                    if self.llm.is_none() {
+                        let why = crate::models::why_no_model(&tc.models);
+                        if self.model_server_trouble.as_deref() != Some(why.as_str()) {
+                            self.log.warn(&format!("no language model: {why}"));
+                            self.model_server_trouble = Some(why);
+                        }
+                    } else if self.model_server_trouble.is_some() {
+                        self.model_server_trouble = None;
+                    }
                 }
             }
         }
@@ -19359,9 +19412,18 @@ impl<'a> Daemon<'a> {
         let cfg = tc.models.clone();
         let vars = tc.vars.clone();
         if self.helpers.is_running("model-server") {
-            // Ours and running: this turn counts as using it.
-            let _ = self.helpers.want("model-server", 0, t, || Ok(None));
-            self.helpers.done("model-server", t);
+            // Lived through its load and some use: not dying young.
+            if self.model_started.is_some_and(|s| s.elapsed() > MODEL_SERVER_YOUNG) {
+                self.model_started = None;
+                self.model_deaths = 0;
+            }
+            // Ours and running: a turn counts as using it. A pass of the loop
+            // doesn't (29 Sep 2026: every pass counted, so the half-hour
+            // keep-warm never ran out and the model held its memory all day).
+            if a_turn {
+                let _ = self.helpers.want("model-server", 0, t, || Ok(None));
+                self.helpers.done("model-server", t);
+            }
             // Ours is the one answering: once it is let go, the next turn
             // asks afresh rather than trusting a minute-old "it's up".
             if let Ok(mut seen) = self.model_server_seen.lock() {
@@ -19385,8 +19447,24 @@ impl<'a> Daemon<'a> {
         if up {
             return;
         }
-        // Tried a moment ago and it didn't start: not again on every turn.
-        if self.model_start_tried.is_some_and(|at| at.elapsed() < MODEL_SERVER_RECHECK) {
+        // Ours ended soon after it was started (29 Sep 2026: one that died
+        // while loading -- too many layers for the graphics, the port taken,
+        // a bad file -- was started again on the very next pass, reading the
+        // whole model off the disk every time, and nobody was told).
+        if let Some(started) = self.model_started.take() {
+            if started.elapsed() < MODEL_SERVER_YOUNG {
+                self.model_deaths = self.model_deaths.saturating_add(1);
+                let why = match crate::models::model_server_last_words() {
+                    Some(w) => format!("my language model stopped soon after starting ({w})"),
+                    None => "my language model stopped soon after starting".to_string(),
+                };
+                self.log.warn(&format!("the model server ended soon after starting: {why}"));
+                self.model_server_trouble = Some(why);
+            }
+        }
+        // Tried a moment ago and it didn't start: not again on every turn,
+        // and longer each time one dies young.
+        if self.model_start_tried.is_some_and(|at| at.elapsed() < model_server_pause(self.model_deaths)) {
             return;
         }
         self.model_start_tried = Some(std::time::Instant::now());
@@ -19406,9 +19484,10 @@ impl<'a> Daemon<'a> {
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
             Ok(_) => {
                 self.log.info(&format!("started the model server: {} ({layers} layers on the graphics)", model.id));
-                // The pause between tries is for a start that failed, not one
-                // that worked and was later let go (merge 28 Sep 2026).
-                self.model_start_tried = None;
+                // Watched for dying young; one let go later, after use, is
+                // not a failure (merge 28 Sep 2026), and `model_started` is
+                // cleared once it has lived past MODEL_SERVER_YOUNG.
+                self.model_started = Some(std::time::Instant::now());
                 None
             }
             Err(why) => Some(why),
@@ -20709,10 +20788,17 @@ impl<'a> Daemon<'a> {
         // The typing box, started hidden now so its key shows it at once.
         if self.hotkeys.is_some() && self.typebox.is_none() {
             let tx = keyboard.sender();
-            self.typebox = crate::typebox::Standby::start(move |text| {
+            self.typebox = match crate::typebox::Standby::start(move |text| {
                 let _ = tx.send(crate::input::Utterance { text, source: crate::input::Source::Typed });
-            })
-            .ok();
+            }) {
+                Ok(b) => Some(b),
+                // Said in the log, not dropped: the key then starts one
+                // itself, and says so if that fails too.
+                Err(e) => {
+                    self.log.warn(&format!("couldn't keep the typing box ready: {e}"));
+                    None
+                }
+            };
         }
         // Words typed while the loop was napping, taken at the top of the
         // next pass.
@@ -20837,9 +20923,22 @@ impl<'a> Daemon<'a> {
                                 let _ = tx.send(crate::input::Utterance { text, source: crate::input::Source::Typed });
                             }) {
                                 Ok(mut b) => {
-                                    // Its window needs a moment to exist before it can be shown.
-                                    std::thread::sleep(std::time::Duration::from_millis(300));
-                                    b.show();
+                                    // Its window needs a moment to exist before
+                                    // it can be shown: asked again for up to two
+                                    // seconds, and said if it never appears (29
+                                    // Sep 2026: one try at 300 ms, and the key
+                                    // did nothing on a slow start).
+                                    let mut shown = false;
+                                    for _ in 0..10 {
+                                        std::thread::sleep(std::time::Duration::from_millis(200));
+                                        if b.show() {
+                                            shown = true;
+                                            break;
+                                        }
+                                    }
+                                    if !shown {
+                                        self.log.warn("the typing box started but its window didn't appear");
+                                    }
                                     self.typebox = Some(b);
                                 }
                                 Err(e) => self.say(mouth, &e),
@@ -20960,7 +21059,7 @@ impl<'a> Daemon<'a> {
             // The model server, looked after on every pass without waiting:
             // started once the first check answers, not at the first thing
             // you say (29 Sep 2026).
-            self.keep_model_server_waiting(clock(), std::time::Duration::ZERO);
+            self.keep_model_server_waiting(clock(), std::time::Duration::ZERO, false);
             self.look_again_at_audio(ears, clock());
             let signals = self.observe(clock());
             let nap = throttle.next_interval(&signals, self.power);
@@ -26460,6 +26559,20 @@ fn one_at_a_time(also: &[String]) -> String {
 
 /// How long a finding that another model server is (or isn't) up holds.
 const MODEL_SERVER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Said when a question arrives while the model is still answering another.
+pub const STILL_ON_THE_LAST_ONE: &str =
+    "I'm still working on your last question. This one's next -- its answer will be on the Talk page.";
+
+/// A model server that ends within this long of being started died young.
+const MODEL_SERVER_YOUNG: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The pause before starting the model server again, after `deaths` young
+/// deaths in a row: a minute, doubling, at most half an hour.
+pub fn model_server_pause(deaths: u32) -> std::time::Duration {
+    let secs = MODEL_SERVER_RECHECK.as_secs().saturating_mul(1u64 << deaths.min(5));
+    std::time::Duration::from_secs(secs.min(30 * 60))
+}
 /// The longest a turn waits to learn whether one is up.
 const MODEL_PROBE_WAIT: std::time::Duration = std::time::Duration::from_millis(800);
 
@@ -26702,5 +26815,16 @@ impl<'a> Daemon<'a> {
         } else {
             format!("{server} is off. Its tools won't be offered.")
         }
+    }
+}
+
+/// A failed model call, in words: what went wrong and that the next message
+/// tries again (`brain` puts "Model unreachable: <why>" in `say`).
+pub fn model_failed_words(why: &str) -> String {
+    let why = why.trim().trim_start_matches("Model unreachable:").trim().trim_end_matches('.');
+    if why.is_empty() {
+        "I couldn't get an answer from my language model. I'll try again with your next message.".into()
+    } else {
+        format!("I couldn't get an answer from my language model: {why}. I'll try again with your next message.")
     }
 }

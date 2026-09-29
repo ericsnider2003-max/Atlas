@@ -85,7 +85,7 @@ pub fn atlas_is_up(watching: &mut crate::onlyone::Watching, data_dir: &std::path
 /// no taskbar button and every click passing through it, so only Task
 /// Manager got rid of it. Now a window that fails to be transparent is a
 /// dark caption band for the length of a reply, then gone.
-pub fn band(screen_w: i32, screen_h: i32, cfg: &crate::overlay::OverlayConfig) -> (i32, i32, i32, i32) {
+pub fn overlay_band(screen_w: i32, screen_h: i32, cfg: &crate::overlay::OverlayConfig) -> (i32, i32, i32, i32) {
     let cy = screen_h / 2;
     let x = (screen_w as f32 * 0.18) as i32;
     let w = (screen_w as f32 * 0.64) as i32;
@@ -265,7 +265,7 @@ impl eframe::App for App {
         };
         let (sw, sh) = (monitor.x as i32, monitor.y as i32);
         if !self.shown {
-            let (x, y, w, h) = band(sw, sh, &self.cfg);
+            let (x, y, w, h) = overlay_band(sw, sh, &self.cfg);
             self.origin = (x as f32, y as f32);
             self.band_w = w as f32;
             ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(x as f32, y as f32)));

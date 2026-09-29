@@ -136,7 +136,7 @@ fn nothing_is_never_a_microphone() {
 fn the_loop_looks_after_the_model_server_without_waiting() {
     let daemon = source("src/daemon.rs");
     let run = method_body(&daemon, "    pub fn run(");
-    let keep = run.find("keep_model_server_waiting(clock(), std::time::Duration::ZERO)").expect("the loop no longer looks after the model");
+    let keep = run.find("keep_model_server_waiting(clock(), std::time::Duration::ZERO, false)").expect("the loop no longer looks after the model");
     let observe = run.rfind("self.observe(clock())").expect("the loop's pass");
     assert!(keep < observe, "looked after only outside the loop's pass");
 }

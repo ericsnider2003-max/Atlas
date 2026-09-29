@@ -1069,9 +1069,16 @@ pub fn offline_page(v: &OfflineView) -> String {
 
 /// (you said, Atlas said) — most recent last.
 /// The Talk page's wait for a reply: see `talk_page`.
-pub const TALK_WAIT_SCRIPT: &str = "<script>(function(){var seen=null;var t=setInterval(function(){if(document.hidden)return;\
-fetch('/hub/changed.json?p=talk',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(j){\
-if(!j)return;if(!j.busy||(seen!==null&&j.v!==seen)){clearInterval(t);location.reload();return;}seen=j.v;}).catch(function(){});},1500);})();</script>";
+///
+/// One question out at a time, and an answer that isn't the page's own (a
+/// "busy" reply) is waited through, not read as "done" (29 Sep 2026: while
+/// Atlas was stuck on a turn, a new fetch every 1.5 s piled up to the
+/// hub's limit of open connections, every page was then refused, and the
+/// "busy" reply -- with no `busy` in it -- reloaded into a page that never
+/// came back).
+pub const TALK_WAIT_SCRIPT: &str = "<script>(function(){var seen=null,out=false;var t=setInterval(function(){if(document.hidden||out)return;out=true;\
+fetch('/hub/changed.json?p=talk',{credentials:'same-origin'}).then(function(r){out=false;return r.ok?r.json():null;}).then(function(j){\
+if(!j||j.busy===undefined)return;if(!j.busy||(seen!==null&&j.v!==seen)){clearInterval(t);location.reload();return;}seen=j.v;}).catch(function(){out=false;});},1500);})();</script>";
 
 pub fn talk_page(exchanges: &[(String, String)], pending: &[String], listening_here: bool) -> String {
     let mut body = String::from("<ol class=said aria-live=polite aria-label='What we said'>");

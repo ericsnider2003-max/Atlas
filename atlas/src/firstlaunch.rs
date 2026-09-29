@@ -703,3 +703,54 @@ impl First {
         }
     }
 }
+
+/// Where a background Atlas that could not start says why (29 Sep 2026):
+/// it has no window and no terminal, so without this a start that failed
+/// was silent, and opening Atlas showed a hub nothing answered.
+pub fn start_problem_file(root: &Path) -> std::path::PathBuf {
+    root.join("data").join("logs").join("start-problem.txt")
+}
+
+/// Record why the background Atlas could not start.
+pub fn note_start_problem(root: &Path, why: &str) {
+    let f = start_problem_file(root);
+    if let Some(d) = f.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(f, why);
+}
+
+/// What to tell someone whose background Atlas ended straight after being
+/// started: what it wrote down, or plainly that it stopped.
+pub fn start_failed_words(root: &Path, code: Option<i32>) -> String {
+    let written = std::fs::read_to_string(start_problem_file(root)).unwrap_or_default();
+    let written = written.trim();
+    let code = code.map(|c| format!(" (it ended with code {c})")).unwrap_or_default();
+    if written.is_empty() {
+        format!(
+            "Atlas started in the background but stopped straight away{code}. Its log is in {}.",
+            root.join("data").join("logs").display()
+        )
+    } else {
+        format!("Atlas couldn't start in the background{code}:\n\n{written}")
+    }
+}
+
+/// Start the background Atlas and watch it for `watch`: one that ends at
+/// once with a failure is reported rather than left silent. `Ok(())` is
+/// "still running when the watch ended" (or ended cleanly).
+pub fn start_background_watched(exe: &Path, root: &Path, watch: std::time::Duration) -> Result<(), String> {
+    let _ = std::fs::remove_file(start_problem_file(root));
+    let mut child = spawn_quietly(exe, &["--daemon"]).map_err(|e| format!("I couldn't start Atlas in the background: {e}"))?;
+    let until = std::time::Instant::now() + watch;
+    while std::time::Instant::now() < until {
+        match child.try_wait() {
+            Ok(Some(status)) if !status.success() => return Err(start_failed_words(root, status.code())),
+            Ok(Some(_)) => return Ok(()),
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(200)),
+            Err(_) => break,
+        }
+    }
+    crate::unwaited::dont_wait(child);
+    Ok(())
+}
