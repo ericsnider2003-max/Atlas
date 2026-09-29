@@ -420,7 +420,7 @@ fn one_address_cannot_take_every_place_at_the_door() {
 
 #[test]
 fn the_settings_only_hub_is_served_from_threads() {
-    let src = std::fs::read_to_string("src/main.rs").unwrap();
+    let src = crate::common::read_source_path("src/main.rs").unwrap();
     let start = src.find("fn run_hub(").expect("run_hub");
     let body = &src[start..start + src[start..].find("\n}\n").unwrap()];
     assert!(body.contains(".threaded()"), "settings-only mode no longer uses the threaded door");
@@ -997,7 +997,7 @@ fn live_pages_poll_a_few_bytes_and_reload_only_on_a_change() {
 /// isn't Atlas's, which the tests don't have.
 #[test]
 fn another_model_server_is_asked_about_off_the_turn_and_at_most_once_a_minute() {
-    let src = std::fs::read_to_string("src/daemon.rs").unwrap();
+    let src = crate::common::read_source_path("src/daemon.rs").unwrap();
     let start = src.find("fn keep_model_server(").expect("keep_model_server");
     let body = &src[start..start + src[start..].find("\n    }\n").unwrap()];
     let cached = body.find("model_server_seen").expect("the finding is kept");

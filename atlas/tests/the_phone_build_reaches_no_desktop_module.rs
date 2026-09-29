@@ -64,14 +64,24 @@ fn nothing_every_build_compiles_calls_a_desktop_only_module() {
     let gated = desktop_only();
     assert!(gated.contains(&"setupwin".to_string()), "lib.rs no longer gates setupwin: {gated:?}");
     let mut bad = Vec::new();
-    for entry in std::fs::read_dir("src").unwrap().flatten() {
-        let p = entry.path();
-        let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+    // Every file under src/, subfolders included (29 Sep 2026). This read the
+    // top level only, so the day `daemon.rs` was split into `src/daemon/*.rs`
+    // (and main.rs into `src/main/*.rs`) almost all of the daemon's code --
+    // including `about_now`, the call that broke both phone builds -- would
+    // have dropped out of what it checks, and it would have kept passing.
+    // A file inside a split module's folder counts as that module, so
+    // `src/main/*.rs` is still the desktop binary and a gated module's own
+    // children are still the gated module.
+    for (module, text) in crate::common::source_file_set() {
+        let p = format!("src/{module}.rs");
+        let name = match crate::common::split_parent(Path::new(&p)) {
+            Some(parent) => parent,
+            None => module.clone(),
+        };
         // The gated modules themselves, and the desktop binary, may.
-        if p.extension().and_then(|e| e.to_str()) != Some("rs") || gated.contains(&name) || name == "main" {
+        if gated.contains(&name) || name == "main" {
             continue;
         }
-        let text = std::fs::read_to_string(&p).unwrap();
         let lines: Vec<&str> = text.lines().collect();
         for (i, l) in lines.iter().enumerate() {
             for m in &gated {

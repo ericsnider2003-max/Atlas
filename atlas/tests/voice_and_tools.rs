@@ -330,7 +330,7 @@ fn with_the_wake_word_off_atlas_starts_at_push_to_talk_and_stays_there() {
 
 #[test]
 fn the_loop_sets_the_tier_from_the_wake_setting() {
-    let src = std::fs::read_to_string("src/daemon.rs").unwrap();
+    let src = crate::common::read_source_path("src/daemon.rs").unwrap();
     assert!(src.contains("self.tiers.set_wake(self.wake_on());"), "run no longer starts from the setting");
     assert!(src.contains("self.tiers.set_wake(on);"), "a changed setting no longer moves the tier");
 }

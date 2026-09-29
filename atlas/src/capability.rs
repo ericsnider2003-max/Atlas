@@ -1313,6 +1313,13 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `himalaya` (reading mail through the Himalaya program).
 // 411 -> 410 (28 Sep): `ladder` left personal Atlas; it was not general
 // trading knowledge (tests/personal_atlas_is_its_own.rs).
+// What is counted (29 Sep 2026, when daemon.rs and main.rs were split into
+// `src/daemon/*.rs` and `src/main/*.rs`): module names as a capability names
+// them -- every `.rs` under `src/` by its stem, a folder's `mod.rs` as the
+// folder, `lib` and `main` left out, and the files inside a split module's
+// folder (`src/<m>/` beside `src/<m>.rs`) counted as `<m>`, not as modules of
+// their own. So the split changed nothing here: `daemon` is still one module
+// (on PLUMBING), and `src/main/*.rs` are still the binary.
 pub const MODULES_IN_TREE: usize = 410;
 
 /// Every module no capability claims, and why it is not one.

@@ -39,7 +39,9 @@ const EVERY_PLATFORM: &[Platform] = &[
 /// Every module in the tree, by the name a capability would call it.
 ///
 /// `src/market/claims.rs` is `claims`; `src/platform/mod.rs` is `platform`.
-/// `lib` and `main` are entrypoints rather than modules.
+/// `lib` and `main` are entrypoints rather than modules. `src/daemon/*.rs`
+/// and `src/main/*.rs` are pieces of `daemon` and `main` (a split module keeps
+/// its `src/<m>.rs` beside `src/<m>/`), so they add nothing.
 fn modules_in_tree() -> BTreeSet<String> {
     fn walk(dir: &Path, out: &mut BTreeSet<String>) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -51,6 +53,14 @@ fn modules_in_tree() -> BTreeSet<String> {
             }
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
             if path.extension().and_then(|s| s.to_str()) != Some("rs") {
+                continue;
+            }
+            // A file inside a split module's folder is part of that module,
+            // not a module of its own (29 Sep 2026): `src/daemon/tick.rs` is
+            // `daemon`, and `src/main/*.rs` are the binary's entrypoint.
+            // Before the split of daemon.rs and main.rs this read every
+            // `src/daemon/<x>.rs` as a new module `<x>` that nothing claims.
+            if crate::common::split_parent(&path).is_some() {
                 continue;
             }
             match stem {

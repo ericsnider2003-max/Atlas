@@ -227,7 +227,7 @@ fn the_hub_writes_the_change_and_says_so_if_it_cannot() {
     let settings = fs::read_to_string("src/settings.rs").expect("src/settings.rs");
     let at = settings.find("pub fn set_and_keep(").expect("the shared writer is gone");
     let body = &settings[at..at + 1400];
-    let main = fs::read_to_string("src/main.rs").expect("src/main.rs");
+    let main = crate::common::read_source_path("src/main.rs").expect("src/main.rs");
     let arm = main.find("Action::HubSet { key, value } =>").expect("settings-only mode no longer answers a setting");
     assert!(main[arm..arm + 600].contains(".set_and_keep("), "settings-only mode validates and writes nothing again");
     assert!(

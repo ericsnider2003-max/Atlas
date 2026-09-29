@@ -93,9 +93,24 @@ fn a_split_modules_children_fold_into_it_and_nothing_else_does() {
             ("zeta".to_string(), "z".to_string()),
         ]
     );
-    // And against the tree as it is today: nothing folds.
+    // And against the tree as it is. This said "nothing folds" until 29 Sep
+    // 2026, when daemon.rs and main.rs were split into `src/daemon/*.rs` and
+    // `src/main/*.rs`: now exactly the files inside a split module's folder
+    // fold away, and no folded entry names one of them.
     let tree = source_file_set();
-    assert_eq!(fold_split_modules(tree.clone()).len(), tree.len());
+    let children = tree
+        .iter()
+        .filter(|(m, _)| crate::common::split_parent(std::path::Path::new(&format!("src/{m}.rs"))).is_some())
+        .count();
+    assert!(children > 0, "daemon.rs and main.rs are split; their children should be in the tree");
+    let folded = fold_split_modules(tree.clone());
+    assert_eq!(folded.len(), tree.len() - children);
+    for (m, _) in &folded {
+        assert!(
+            crate::common::split_parent(std::path::Path::new(&format!("src/{m}.rs"))).is_none(),
+            "{m} is a split module's child and did not fold into it"
+        );
+    }
 }
 
 #[test]
