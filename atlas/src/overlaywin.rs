@@ -137,6 +137,7 @@ pub fn run(folders: Folders) -> Result<(), String> {
         only,
         last_check: std::time::Instant::now(),
         shown: false,
+        keyed: false,
         origin: (0.0, 0.0),
         band_w: 0.0,
         atlas: crate::onlyone::Watching::default(),
@@ -198,6 +199,8 @@ struct App {
     last_check: std::time::Instant,
     /// Whether the window is on screen, and where its band starts.
     shown: bool,
+    /// Whether Windows has been told the overlay is see-through.
+    keyed: bool,
     origin: (f32, f32),
     band_w: f32,
     /// The background Atlas's lock, watched over time rather than trusted on
@@ -216,6 +219,13 @@ impl eframe::App for App {
         // The locked hub design's colourway, not egui's default grey.
         crate::look_paint::dress(ctx);
         use eframe::egui::{self, ViewportCommand};
+
+        // Invisible by Windows itself, not only by the graphics card: the
+        // window flags `overlay::window_style` describes were written and
+        // never applied (29 Sep 2026). Applied here, once the window exists.
+        if !self.keyed {
+            self.keyed = see_through();
+        }
 
         // Every few seconds: still wanted, still switched on, still the one.
         if self.last_check.elapsed().as_secs() >= 3 {
@@ -283,6 +293,42 @@ impl eframe::App for App {
 }
 
 #[cfg(feature = "desktop-ui")]
+/// Make the overlay see-through the way Windows does it for any program: a
+/// layered window whose black pixels aren't drawn (`LWA_COLORKEY` with
+/// `overlay::SEE_THROUGH_KEY`), that clicks pass through, off the taskbar and
+/// never focused (`overlay::window_style`).
+///
+/// Why this and not transparency alone: an OpenGL window is see-through only
+/// when the graphics driver hands Windows a picture with an alpha channel,
+/// and on Eric's laptop it didn't -- the "transparent" window came out black
+/// (29 Sep 2026). A colour key doesn't depend on the driver: Windows itself
+/// leaves out every pixel of that colour. The overlay clears to black, so
+/// everything it doesn't paint is left out.
+///
+/// True once applied; false while the window isn't there yet.
+fn see_through() -> bool {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Foundation::COLORREF;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            FindWindowW, GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_COLORKEY,
+        };
+        let title: Vec<u16> = "Atlas overlay".encode_utf16().chain(std::iter::once(0)).collect();
+        let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) else {
+            return false;
+        };
+        if h.0.is_null() {
+            return false;
+        }
+        let style = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32 | crate::overlay::window_style();
+        SetWindowLongPtrW(h, GWL_EXSTYLE, style as isize);
+        return SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok();
+    }
+    #[cfg(not(windows))]
+    true
+}
+
+#[cfg(feature = "desktop-ui")]
 /// Put the overlay on screen without taking the keyboard, found by its
 /// title (the window's own loop may be asleep while it's hidden).
 fn show_without_focus() {
@@ -316,6 +362,11 @@ fn draw(painter: &eframe::egui::Painter, e: &Element, origin: eframe::egui::Vec2
             let t = now_ms.saturating_sub(started_ms) as f32 / 1000.0;
             crate::window::paint_mark(painter, rect, paint, t, level);
         }
+        // On Windows the overlay is see-through by colour key, which leaves
+        // out exactly-black pixels only: a shade fading to black would stop
+        // short of it and show as a dark smudge. The letters' own halo keeps
+        // them readable there.
+        Element::Shade { .. } if cfg!(windows) => {}
         Element::Shade { x, y, width, height, strength } => {
             // A darker region, not a box: full strength in the middle, nothing
             // at the edge.
