@@ -228,7 +228,13 @@ fn main() {
     // A new Atlas dropped into updates/ goes in now, before anything else
     // runs, and the new one is started in this one's place. Not while it is
     // itself being asked for its version, which is how the check works.
-    if std::env::var_os("ATLAS_UPDATE_PROBE").is_none() && !flag("--version") && !flag("-V") {
+    // The overlay and the typing box are helpers the background Atlas starts;
+    // they never swap in an update or count a trial start (29 Sep 2026: each
+    // helper start counted as a start of the build on trial, so a build that
+    // could not get through was never rolled back, and a helper could swap
+    // the program file out from under the Atlas that started it).
+    let helper = matches!(words.first().map(|s| s.as_str()), Some("overlay") | Some("typebox"));
+    if !helper && std::env::var_os("ATLAS_UPDATE_PROBE").is_none() && !flag("--version") && !flag("-V") {
         let root = atlas::roots::install_root();
         if let Ok(running) = std::env::current_exe() {
             // The new build checks itself before it is started, and the
@@ -990,7 +996,7 @@ fn main() {
     if words.first().map(|s| s.as_str()) == Some("enrol-voice")
         || words.first().map(|s| s.as_str()) == Some("enroll-voice")
     {
-        run_enrol_voice(&cfg);
+        run_enrol_voice(&cfg, plat.as_ref());
         return;
     }
 
@@ -1222,8 +1228,12 @@ fn main() {
             print!("> ");
             let _ = io::stdout().flush();
             let mut line = String::new();
-            if io::stdin().read_line(&mut line).is_err() {
-                return;
+            // Nothing more to read (no keyboard: started by another program,
+            // or its input closed) is the end, not an empty line: read as an
+            // empty line it spun here for ever with no window (29 Sep 2026).
+            match io::stdin().read_line(&mut line) {
+                Ok(0) | Err(_) => return,
+                Ok(_) => {}
             }
             let line = line.trim().to_string();
             match line.as_str() {

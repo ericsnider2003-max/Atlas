@@ -465,7 +465,7 @@ pub(super) fn run_audition(cfg: &Config) {
 ///
 /// Deliberately several: one recording captures one mood, one distance and one
 /// microphone. `min_samples` in `tools.yaml` is what `voiceid` will trust.
-pub(super) fn run_enrol_voice(cfg: &Config) {
+pub(super) fn run_enrol_voice(cfg: &Config, plat: &dyn Platform) {
     let Some(tc) = cfg.tools.as_ref() else {
         eprintln!("no config/tools.yaml, so there's nothing to record with.");
         return;
@@ -477,6 +477,10 @@ pub(super) fn run_enrol_voice(cfg: &Config) {
         eprintln!("{}", atlas::speaker::still_learning(&atlas::speaker::background(&atlas::roots::store())));
         return;
     }
+    // The microphone this machine has, as the other doors pick it (29 Sep
+    // 2026: this recorded from tools.yaml's guess).
+    let tc_owned = pick_the_microphone(cfg, plat, tc);
+    let tc = &tc_owned;
     let voice = Voice::new(tc);
     let store = atlas::roots::store();
     let mut id = atlas::voiceid::VoiceId::load(&store);
@@ -488,7 +492,7 @@ pub(super) fn run_enrol_voice(cfg: &Config) {
         print!("[enter when ready] ");
         let _ = io::stdout().flush();
         let mut l = String::new();
-        if io::stdin().read_line(&mut l).is_err() {
+        if matches!(io::stdin().read_line(&mut l), Ok(0) | Err(_)) {
             return;
         }
         if voice.listen().is_err() {
@@ -1406,9 +1410,14 @@ pub(super) fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
     // taken port: `server::open_hub`); the setting when it isn't answering.
     let port = atlas::firstlaunch::hub_port_at(&atlas::roots::install_root(), configured);
     if opening.start_background {
-        match atlas::firstlaunch::spawn_quietly(&exe, &["--daemon"]) {
-            Ok(child) => atlas::unwaited::dont_wait(child),
-            Err(e) => atlas::firstlaunch::show_problem(&format!("I couldn't start Atlas in the background: {e}")),
+        // Watched for a few seconds: one that stops at once says why instead
+        // of leaving a hub nothing answers (29 Sep 2026).
+        if let Err(why) = atlas::firstlaunch::start_background_watched(
+            &exe,
+            &atlas::roots::install_root(),
+            std::time::Duration::from_secs(4),
+        ) {
+            atlas::firstlaunch::show_problem(&why);
         }
     }
     let first = opening.first;

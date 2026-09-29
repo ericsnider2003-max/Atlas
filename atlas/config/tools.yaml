@@ -124,7 +124,7 @@ tts:
 
 play:
   command: ffplay
-  args: ["-nodisp", "-autoexit", "-loglevel", "quiet", "{out_wav}"]
+  args: ["-nodisp", "-autoexit", "-loglevel", "error", "{out_wav}"]
 
 capture_screen:
   command: ffmpeg

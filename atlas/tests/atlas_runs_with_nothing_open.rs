@@ -324,11 +324,17 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = main.split_once("fn run_home(").expect("run_home").1.split("\n}\n").next().unwrap().to_string();
     assert!(body.contains("what_opening_does("));
-    assert!(body.contains(r#"spawn_quietly(&exe, &["--daemon"])"#), "{body}");
+    // 29 Sep 2026: both starts go through `start_background_watched`, which
+    // is the same no-window `spawn_quietly(.., ["--daemon"])` watched for a
+    // few seconds, so a start that fails at once says why.
+    assert!(body.contains("start_background_watched("), "{body}");
+    let fl = std::fs::read_to_string("src/firstlaunch.rs").unwrap();
+    let watched = fl.split_once("fn start_background_watched(").expect("start_background_watched").1.split("\n}").next().unwrap().to_string();
+    assert!(watched.contains(r#"spawn_quietly(exe, &["--daemon"])"#), "{watched}");
     let setup = std::fs::read_to_string("src/setupwin.rs").unwrap();
     let after = setup.split_once("fn after_setup(").expect("after_setup").1.split("\nfn ").next().unwrap().to_string();
     assert!(after.contains("startup::turn_on("));
-    assert!(after.contains(r#"spawn_quietly(&place.exe, &["--daemon"])"#));
+    assert!(after.contains("start_background_watched(&place.exe"));
     assert!(after.contains("startup::remember(&state, true)"));
 }
 

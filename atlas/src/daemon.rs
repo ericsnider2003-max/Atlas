@@ -726,6 +726,8 @@ pub struct Daemon<'a> {
     pub outbox: crate::notify::Outbox,
     /// Audio devices as last enumerated. `None` means never looked.
     pub audio_devices: Option<Vec<crate::audio::Device>>,
+    /// When to list the sound devices again after a listing failed.
+    audio_devices_retry_at: u64,
     /// Where a message from another Atlas would arrive, if one is open.
     /// `None` for the overwhelming majority of installs, which will never
     /// have another Atlas to hear from -- see `with_signal_listener`.
@@ -911,6 +913,10 @@ pub struct Daemon<'a> {
     starts_model_server: bool,
     /// When to look again for a model, while there's none (`keep_model_server`).
     model_look_at: u64,
+    /// When typing-only last looked again at whether the voice tools work.
+    audio_look_at: u64,
+    /// The voice tools weren't there at start (not a failing microphone).
+    audio_tools_missing: bool,
     /// What was typed or said on the hub's Talk page, waiting for its turn:
     /// (words, said aloud). Answered on the next tick rather than inside the
     /// request, so sending never hangs the page while the model thinks.
@@ -944,6 +950,12 @@ pub struct Daemon<'a> {
     model_warmed: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     /// When this Atlas last tried to start one.
     model_start_tried: Option<std::time::Instant>,
+    /// When Atlas last started its model server, while that start is still
+    /// being watched for dying young.
+    model_started: Option<std::time::Instant>,
+    /// Model servers that ended soon after being started, in a row: each
+    /// doubles the pause before the next try (29 Sep 2026).
+    model_deaths: u32,
     /// Turns may hand their model call to a worker (`pending_turn`): set by
     /// the Talk page's queue and the voice loop around a turn.
     defer_turns: bool,
@@ -1525,6 +1537,7 @@ impl<'a> Daemon<'a> {
             pending_edit: None,
             outbox: crate::notify::Outbox::load(&store_for_load2),
             audio_devices: None,
+            audio_devices_retry_at: 0,
             signal_listener: None,
             sync_server: None,
             tier_mix: crate::tier::Mix::default(),
@@ -1615,6 +1628,8 @@ impl<'a> Daemon<'a> {
             // running Supervisor.
             starts_model_server: false,
             model_look_at: 0,
+            audio_look_at: 0,
+            audio_tools_missing: false,
             talk_queue: Vec::new(),
             pending_turn: None,
             pending_seq: 0,
@@ -1626,6 +1641,8 @@ impl<'a> Daemon<'a> {
             model_probe_busy: Default::default(),
             model_warmed: Default::default(),
             model_start_tried: None,
+            model_started: None,
+            model_deaths: 0,
             defer_turns: false,
             may_defer: false,
             decided_already: None,
@@ -1889,6 +1906,9 @@ impl crate::speakthread::Host for Daemon<'_> {
         // is answered while a sentence plays): quiet at once, the rest kept
         // for "carry on".
         self.attention.is_paused().then(|| "pause".to_string())
+    }
+    fn trouble(&mut self, why: &str) {
+        self.log.warn(&format!("couldn't say it out loud: {why}"));
     }
 }
 
@@ -3674,6 +3694,16 @@ fn one_at_a_time(also: &[String]) -> String {
 
 /// How long a finding that another model server is (or isn't) up holds.
 const MODEL_SERVER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A model server that ends within this long of being started died young.
+const MODEL_SERVER_YOUNG: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The pause before starting the model server again, after `deaths` young
+/// deaths in a row: a minute, doubling, at most half an hour.
+pub fn model_server_pause(deaths: u32) -> std::time::Duration {
+    let secs = MODEL_SERVER_RECHECK.as_secs().saturating_mul(1u64 << deaths.min(5));
+    std::time::Duration::from_secs(secs.min(30 * 60))
+}
 /// The longest a turn waits to learn whether one is up.
 const MODEL_PROBE_WAIT: std::time::Duration = std::time::Duration::from_millis(800);
 

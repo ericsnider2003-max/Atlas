@@ -1632,19 +1632,26 @@ impl<'a> Daemon<'a> {
     /// devices launches ffmpeg, and putting a process launch in front of every
     /// alert would make alerting the slowest thing Atlas does.
     ///
-    /// A failure is recorded as an empty list rather than left as `None`, so
-    /// it is not retried on every tick forever — but the two stay
-    /// distinguishable to `how_to_say`, which treats "never looked" as "assume
-    /// the system default works" and "looked and found nothing" as a real
-    /// finding.
+    /// A listing that failed is left as "never looked" -- which `how_to_say`
+    /// reads as "assume the system default works" -- and tried again in five
+    /// minutes (29 Sep 2026: it was recorded as an empty list, "looked and
+    /// found nothing", so one failed listing at sign-in, ffmpeg not fetched
+    /// yet, silenced spoken notifications for the rest of the session).
     pub(super) fn refresh_audio_once(&mut self) {
-        if self.audio_devices.is_some() {
+        let now = crate::store::now();
+        if self.audio_devices.is_some() || now < self.audio_devices_retry_at {
             return;
         }
         let ffmpeg = self.tools_ref()
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
-        self.audio_devices = Some(crate::audio::probe_devices(&ffmpeg).unwrap_or_default());
+        match crate::audio::probe_devices(&ffmpeg) {
+            Ok(list) => self.audio_devices = Some(list),
+            Err(e) => {
+                self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
+                self.audio_devices_retry_at = now + 300;
+            }
+        }
     }
 
     /// Put one of Atlas's own panels on screen.

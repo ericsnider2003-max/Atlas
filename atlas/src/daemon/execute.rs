@@ -2505,10 +2505,18 @@ impl<'a> Daemon<'a> {
                     // A question Atlas has no way to answer here is said to
                     // be one, rather than "I didn't catch that" -- which tells
                     // a person who spoke clearly that they didn't.
+                    // The reason as far as it's known (29 Sep 2026): this
+                    // said "there isn't one on this machine yet" whenever no
+                    // model was loaded -- also when one was there and hadn't
+                    // started, or didn't fit the memory free at that moment.
                     None if self.llm.is_none() && crate::wanted::is_a_question(raw) => {
-                        "I can't answer that one here — general questions need my language model, and there \
-                         isn't one on this machine yet. Start Atlas again and its setup fetches it (about 3 GB); the hub's Health page says where it stands."
-                            .into()
+                        let why = self.model_server_trouble.clone().unwrap_or_else(|| {
+                            "it isn't loaded yet".to_string()
+                        });
+                        format!(
+                            "I can't answer that one yet: general questions need my language model, and {why}. \
+                             The hub's Health page says where it stands."
+                        )
                     }
                     None => "I didn't catch that.".into(),
                 },

@@ -537,6 +537,11 @@ pub fn how_to_say(
     }
     match outputs.iter().find(|d| d.kind == crate::audio::Kind::Output) {
         Some(d) => Say::Aloud(d.name.clone()),
+        // Microphones listed and not one speaker: the lister can't see
+        // speakers, not a machine without any. Windows' dshow listing names
+        // inputs only, so on every Windows machine this read "no speakers"
+        // and Atlas never said a notification aloud (29 Sep 2026).
+        None if !outputs.is_empty() => Say::Aloud("the system default".into()),
         None => Say::Silent(Quiet::NoOutput),
     }
 }

@@ -32,6 +32,10 @@ pub struct Device {
     pub bluetooth: bool,
     /// Built into the machine, rather than plugged in or paired.
     pub builtin: bool,
+    /// Windows' own id for the device (dshow's "Alternative name"), when the
+    /// listing gave one: plain ASCII, so it survives what the friendly name
+    /// doesn't. `ffmpeg_name` prefers it.
+    pub id: Option<String>,
 }
 
 impl Device {
@@ -42,8 +46,30 @@ impl Device {
             builtin: looks_builtin(&n),
             name: name.to_string(),
             kind,
+            id: None,
         }
     }
+
+    /// What to hand ffmpeg to open this device.
+    ///
+    /// The id when there is one (29 Sep 2026). On Eric's laptop the listing
+    /// came through as "Microphone Array (Intelr Smart Sound ...)": the "\u{ae}"
+    /// in "Intel\u{ae}" had been turned into an "r" on its way out of ffmpeg,
+    /// and ffmpeg couldn't open the device by the name it had just printed.
+    /// The id has no such letters to lose.
+    pub fn ffmpeg_name(&self) -> String {
+        self.id.clone().unwrap_or_else(|| self.name.clone())
+    }
+}
+
+/// What to hand ffmpeg for the device called `name` in `devices`: its id
+/// when the listing gave one, otherwise the name as given.
+pub fn ffmpeg_name_for(devices: &[Device], name: &str) -> String {
+    devices
+        .iter()
+        .find(|d| d.name == name)
+        .map(Device::ffmpeg_name)
+        .unwrap_or_else(|| name.to_string())
 }
 
 fn looks_bluetooth(n: &str) -> bool {
@@ -74,13 +100,29 @@ fn looks_builtin(n: &str) -> bool {
 /// touched — ffmpeg matches them literally, so one wrong character means
 /// silence rather than an error.
 pub fn parse_devices(text: &str) -> Vec<Device> {
-    let mut out = Vec::new();
+    let mut out: Vec<Device> = Vec::new();
+    // Whether the last named line was a microphone, so its "Alternative
+    // name" is kept with it and a camera's isn't.
+    let mut last_was_audio = false;
     for line in text.lines() {
         let l = line.trim();
-        // Alternative names are internal ids, not what you pass back in.
+        // An alternative name is Windows' id for the device just listed:
+        // never a device of its own, but the surest way to open it
+        // (`Device::ffmpeg_name`).
         if l.contains("Alternative name") {
+            if last_was_audio {
+                if let (Some(a), Some(b)) = (l.find('"'), l.rfind('"')) {
+                    if b > a + 1 {
+                        if let Some(d) = out.last_mut() {
+                            d.id = Some(l[a + 1..b].to_string());
+                        }
+                    }
+                }
+            }
+            last_was_audio = false;
             continue;
         }
+        last_was_audio = false;
         let Some(start) = l.find('"') else { continue };
         let Some(end) = l.rfind('"') else { continue };
         if end <= start + 1 {
@@ -96,6 +138,7 @@ pub fn parse_devices(text: &str) -> Vec<Device> {
             continue;
         };
         out.push(Device::new(name, kind));
+        last_was_audio = true;
     }
     out
 }

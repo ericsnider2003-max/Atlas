@@ -818,7 +818,9 @@ impl<'a> Daemon<'a> {
     /// F10: the plain "what I can't do on this machine", for start-up.
     /// Nothing when there's nothing missing.
     pub fn cant_do_here(&self) -> Option<String> {
-        let limits = crate::fit::limits(&self.fit);
+        let root = crate::roots::install_root();
+        let pictures = self.tools_ref().map(|t| crate::picture_talk::ready(&t.picture_talk, &root));
+        let limits = what_this_machine_cant_do(crate::fit::limits(&self.fit), pictures, self.llm.is_some());
         (!limits.is_empty()).then(|| format!("Before we start — on this machine: {}", limits.join(" ")))
     }
 }
@@ -1695,7 +1697,13 @@ impl<'a> Daemon<'a> {
         if let Some(line) = self.note_how_well_i_heard(understood) {
             self.heard_note = Some(line);
         }
-        let mic = self.tools_ref().and_then(|t| t.vars.get("mic_device").cloned()).unwrap_or_default();
+        // By the microphone's own name: `mic_device` holds what ffmpeg opens,
+        // which on Windows is now the device's id (29 Sep 2026), and the
+        // record of which microphone understands you is kept by name.
+        let mic = self
+            .tools_ref()
+            .and_then(|t| t.vars.get("mic_name").or_else(|| t.vars.get("mic_device")).cloned())
+            .unwrap_or_default();
         if mic.is_empty() {
             return;
         }

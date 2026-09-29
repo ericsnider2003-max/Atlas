@@ -602,3 +602,19 @@ fn ordinary_work_is_not_mistaken_for_a_call() {
     assert!(!on_a_call(Some(&w)), "editing a file was read as being on a call");
     assert!(!on_a_call(None), "no foreground window was read as being on a call");
 }
+
+#[test]
+fn a_listing_of_microphones_only_is_not_a_machine_without_speakers() {
+    // 29 Sep 2026, Eric's laptop: Windows' device listing (dshow) names
+    // microphones and never speakers, so every Windows machine read as
+    // "nothing here can play sound" and no notification was ever said.
+    use atlas::audio::{Device, Kind};
+    let devs = vec![
+        Device::new("Microphone Array (Intel\u{ae} Smart Sound Technology for Digital Microphones)", Kind::Input),
+        Device::new("Microphone (HD Pro Webcam C920)", Kind::Input),
+    ];
+    match how_to_say(Some(&devs), false, false) {
+        Say::Aloud(_) => {}
+        other => panic!("a microphones-only listing silenced Atlas: {other:?}"),
+    }
+}

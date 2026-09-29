@@ -124,6 +124,20 @@ impl Tiers {
         Some(format!("Back to {}.", next.describe()))
     }
 
+    /// The microphone just gave words. At typing-only that settles it: audio
+    /// isn't unavailable, so Atlas is back to push-to-talk at once rather
+    /// than after five more tries -- which it could never get, because
+    /// typing-only doesn't listen (29 Sep 2026).
+    pub fn heard_you(&mut self) -> Option<String> {
+        if self.tier != Tier::Typed {
+            return self.succeeded();
+        }
+        self.tier = Tier::PushToTalk;
+        self.failures = 0;
+        self.successes = 0;
+        Some(format!("Back to {}.", Tier::PushToTalk.describe()))
+    }
+
     /// Audio is unusable outright — skip straight to typing.
     pub fn audio_unavailable(&mut self) -> Option<String> {
         if self.tier == Tier::Typed {
@@ -250,6 +264,14 @@ impl Keyboard {
             Err(RecvTimeoutError::Disconnected) => None,
         }
     }
+}
+
+/// Can Atlas speak here, whatever the microphone is doing? Voice switched on
+/// and the speech tool present (29 Sep 2026: typing-only, which a broken
+/// microphone causes, also silenced every reply -- one broken part turning
+/// off another that worked).
+pub fn can_speak(tools: Option<&crate::voice::ToolsConfig>) -> bool {
+    tools.is_some_and(|t| t.enabled && t.tts.available(&t.vars))
 }
 
 /// Check the voice stack is usable before relying on it, so Atlas can drop to

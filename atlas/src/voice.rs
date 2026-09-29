@@ -580,6 +580,17 @@ impl ToolsConfig {
         }
         self.models.dir =
             crate::roots::under_install(&self.models.dir).to_string_lossy().into_owned();
+        // The tools and model files named in `vars` too (29 Sep 2026):
+        // "tools/whisper/whisper-cli.exe", "models/ggml-base.en.bin" and the
+        // rest were relative to whatever folder Atlas was started from. The
+        // sign-in Run entry has no working folder, so from there Atlas found
+        // no speech tools, dropped to typing only and stopped speaking.
+        for v in self.vars.values_mut() {
+            let rel = v.replace('\\', "/");
+            if rel.starts_with("tools/") || rel.starts_with("models/") {
+                *v = crate::roots::under_install(&*v).to_string_lossy().into_owned();
+            }
+        }
         self
     }
 }
@@ -795,17 +806,27 @@ impl<'a> Voice<'a> {
         let rate = RECORD_RATE_HZ;
         let want = crate::audio::window_samples(rate, 50);
         // A minute is longer than anyone holds a key to speak.
+        // The recorder's own complaint is kept (it was thrown away): a
+        // microphone that can't be opened ends the recording at once with
+        // nothing read, which looked exactly like silence (29 Sep 2026).
         let mut child = crate::tools::command(&self.cfg.record.command)
             .args(crate::audio::stream_args(&device, rate, 60))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| AtlasError::Platform(format!("could not start '{}' to listen: {e}", self.cfg.record.command)))?;
         let mut out = child
             .stdout
             .take()
             .ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
+        let complaint = child.stderr.take().map(|mut e| {
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let _ = e.read_to_string(&mut s);
+                s
+            })
+        });
         let started = std::time::Instant::now();
         let mut bytes: Vec<u8> = Vec::new();
         let mut buf = vec![0u8; want * 2];
@@ -817,6 +838,12 @@ impl<'a> Voice<'a> {
         }
         let _ = child.kill();
         let _ = child.wait();
+        let said = complaint.and_then(|h| h.join().ok()).unwrap_or_default();
+        if bytes.is_empty() {
+            if let Some(why) = recorder_could_not_open(&said) {
+                return Err(AtlasError::Platform(format!("the microphone \"{device}\" couldn't be opened: {why}")));
+            }
+        }
         let kept = crate::audio::samples_from_le(&bytes[..bytes.len() / 2 * 2]);
         // Under a third of a second is a tap, not speech.
         if kept.len() < (rate as usize) / 3 {
@@ -843,8 +870,12 @@ impl<'a> Voice<'a> {
         // through to the fixed-length path below, because a slower turn is a
         // far better outcome than a failed one.
         let device = self.cfg.vars.get("mic_device").cloned().unwrap_or_default();
+        let streamed = self.cfg.endpoint.enabled && !device.trim().is_empty();
         match self.listen_until_you_stop(&self.cfg.endpoint, &device) {
             Ok(Some(text)) => return Ok(text),
+            // It listened, and you said nothing: that is the answer, not a
+            // reason to record for another eight seconds (29 Sep 2026).
+            Ok(None) if streamed => return Err(AtlasError::Platform(HEARD_NOTHING.into())),
             Ok(None) => {}
             Err(_) => {}
         }
@@ -861,9 +892,7 @@ impl<'a> Voice<'a> {
         );
         let text = clean_transcript(&raw);
         if text.is_empty() {
-            return Err(AtlasError::Platform(
-                "heard nothing — check the microphone on the Connections page".into(),
-            ));
+            return Err(AtlasError::Platform(HEARD_NOTHING.into()));
         }
         Ok(text)
     }
@@ -1276,6 +1305,12 @@ impl<'a> Voice<'a> {
     }
 }
 
+/// A listen that worked and heard no words. Not a broken microphone: the
+/// daemon answers it and doesn't count it towards dropping to push-to-talk
+/// (29 Sep 2026: three hesitations after the wake word switched the wake word
+/// off as "not working").
+pub const HEARD_NOTHING: &str = "heard nothing";
+
 /// Lowercase, strip everything that isn't a letter or digit. "Hey, Atlas!"
 /// and "hey atlas" and "HEY ATLAS." all collapse to the same string.
 pub fn loose(s: &str) -> String {
@@ -1469,4 +1504,22 @@ impl crate::daemon::Mouth for Voice<'_> {
 #[serde(default)]
 pub struct TradingConfig {
     pub levels: crate::levels::Rules,
+}
+
+/// The recorder's reason for giving no sound at all, when it has one: the
+/// first line of what ffmpeg wrote when it could not open the device.
+/// `None` for an empty complaint -- a key let go before any sound arrived is
+/// not a broken microphone.
+pub fn recorder_could_not_open(stderr: &str) -> Option<String> {
+    stderr
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| {
+            // "[dshow @ 000001...] Could not find ..." -> "Could not find ..."
+            match (l.starts_with('['), l.find("] ")) {
+                (true, Some(i)) => l[i + 2..].to_string(),
+                _ => l.to_string(),
+            }
+        })
 }

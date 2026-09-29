@@ -2496,10 +2496,10 @@ impl Reply {
         if page {
             Reply {
                 status: 503,
-                body: "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+                body: "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta http-equiv=refresh content=5>\
                        <title>Atlas</title><style>body{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}</style></head>\
                        <body><h1>Atlas is busy for a moment</h1><p>It's in the middle of something and didn't get to this page. \
-                       Try again in a few seconds.</p><p><a href='/hub'>Back to Atlas</a></p></body></html>"
+                       This page tries again by itself in a few seconds.</p><p><a href='/hub'>Back to Atlas</a></p></body></html>"
                     .into(),
                 kind: Body::Html,
                 ..Reply::default()

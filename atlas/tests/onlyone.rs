@@ -26,9 +26,10 @@ impl Dir {
     /// about a later `now` — no need to touch the filesystem clock, which is
     /// the thing that made the first version of this test lie.
     fn age_it(&self, secs: u64) -> u64 {
-        let started = fs::read_to_string(self.lock().path())
+        // The lock holds `moment pid` since 29 Sep 2026: read as Atlas reads it.
+    let started = fs::read_to_string(self.lock().path())
             .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok())
+            .and_then(|s| atlas::onlyone::moment_in(&s))
             .unwrap_or(0);
         started + secs
     }

@@ -154,10 +154,22 @@ fn losing_the_current_microphone_switches_immediately() {
 
 #[test]
 fn a_closed_laptop_with_no_headset_and_no_webcam_says_so() {
+    // Changed 29 Sep 2026. A muffled microphone that still gives sound is
+    // used, and said to be faint; "can't hear you" is kept for one that
+    // gives digital silence. On Eric's laptop a quiet room on the only
+    // working microphone read -51.6 dB, the old rule answered "no microphone
+    // can hear you", and Atlas recorded from a device called "nothing".
     let mut h = Hearing::default();
     h.observe_devices(&[Device::new("Microphone Array (Realtek(R) Audio)", Kind::Input)]);
     h.record_level("Microphone Array (Realtek(R) Audio)", -58.0, 0);
     let c = h.decide(&at_desk(), &cfg(), 10);
+    assert_eq!(c.ear, Ear::Desk("Microphone Array (Realtek(R) Audio)".into()));
+    assert!(c.why.contains("faintly"), "got: {}", c.why);
+
+    let mut silent = Hearing::default();
+    silent.observe_devices(&[Device::new("Microphone Array (Realtek(R) Audio)", Kind::Input)]);
+    silent.record_level("Microphone Array (Realtek(R) Audio)", -91.0, 0);
+    let c = silent.decide(&at_desk(), &cfg(), 10);
     assert_eq!(c.ear, Ear::Deaf);
     assert!(c.why.contains("no microphone"), "got: {}", c.why);
 }

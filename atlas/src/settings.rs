@@ -28,10 +28,13 @@ pub enum Weight {
 impl Weight {
     pub fn label(&self) -> &'static str {
         match self {
-            Weight::Preference => "preference",
-            Weight::Resource => "uses resources",
-            Weight::Sensitive => "sensor or network",
-            Weight::Permission => "changes permissions",
+            // Plain descriptions of what turning the setting on means (29
+            // Sep 2026): "changes permissions" read as an instruction, and
+            // Eric went looking for a permissions screen that doesn't exist.
+            Weight::Preference => "your preference",
+            Weight::Resource => "uses memory or battery",
+            Weight::Sensitive => "uses the mic, camera or internet",
+            Weight::Permission => "lets Atlas act without asking",
         }
     }
     /// Should the hub make you confirm?

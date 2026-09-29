@@ -1087,7 +1087,15 @@ fn watch(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: 
         kept.extend_from_slice(&w);
     }
     drop(stream);
-    let words = work.transcribe(&kept).map(|t| t.trim().to_string()).unwrap_or_default();
+    // A failure is written down (29 Sep 2026): it used to become "no words",
+    // the reply stopped, and nothing said why.
+    let words = match work.transcribe(&kept) {
+        Ok(t) => t.trim().to_string(),
+        Err(e) => {
+            s.note(format!("couldn't make out what you said over me: {e}"));
+            String::new()
+        }
+    };
     s.recording.store(false, Ordering::SeqCst);
     if let Ok(mut slot) = s.cut_words.lock() {
         *slot = Some(words);

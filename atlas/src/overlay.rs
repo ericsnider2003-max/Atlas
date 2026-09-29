@@ -310,3 +310,9 @@ pub const WS_EX_NOACTIVATE: u32 = 0x0800_0000;
 pub fn window_style() -> u32 {
     WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE
 }
+
+/// The colour Windows makes invisible in the overlay: pure black, which is
+/// what the overlay clears to. Every pixel left this colour is not drawn at
+/// all and passes clicks through, whatever the graphics card makes of
+/// transparency (`overlaywin::see_through`). As a Windows COLORREF.
+pub const SEE_THROUGH_KEY: u32 = 0x0000_0000;

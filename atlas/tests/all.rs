@@ -866,3 +866,9 @@ mod photo_editing;
 mod opportunity_hunting;
 #[path = "wit_setting.rs"]
 mod wit_setting;
+#[path = "the_background_atlas_hears_you.rs"]
+mod the_background_atlas_hears_you;
+#[path = "the_overlay_covers_only_its_words.rs"]
+mod the_overlay_covers_only_its_words;
+#[path = "the_system_recovers_by_itself.rs"]
+mod the_system_recovers_by_itself;

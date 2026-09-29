@@ -592,3 +592,31 @@ fn a_run_of_failures_is_worth_telling_you_about_and_a_couple_is_not() {
     }
     assert!(f.worth_mentioning().unwrap().contains("not you mistyping"));
 }
+
+#[test]
+fn a_permission_that_is_off_can_be_turned_on_from_the_permissions_page() {
+    // 29 Sep 2026: rows that were off showed "off" and no button, so the
+    // page listed what Atlas couldn't do and gave no way to allow it.
+    let s = s();
+    let page = permissions_page(&s, &[]);
+    let off = s
+        .consequential()
+        .into_iter()
+        .find(|i| matches!(i.value, atlas::settings::Value::Toggle(false)))
+        .expect("the shipped settings have something consequential switched off");
+    let row = page.split("<div class=row>").find(|r| r.contains(&esc(&off.name))).expect("its row");
+    assert!(row.contains("action=/hub/set"), "no way to change {}: {row}", off.name);
+    assert!(row.contains("Turn on"), "{row}");
+    // Turning it on still asks first.
+    assert!(row.contains("onsubmit=\"return confirm("), "{row}");
+}
+
+#[test]
+fn the_setting_badges_describe_rather_than_instruct() {
+    // "changes permissions" read as "you need to change permissions".
+    for w in [Weight::Preference, Weight::Resource, Weight::Sensitive, Weight::Permission] {
+        let l = w.label();
+        assert!(!l.contains("permission"), "{l}");
+    }
+    assert_eq!(Weight::Permission.label(), "lets Atlas act without asking");
+}

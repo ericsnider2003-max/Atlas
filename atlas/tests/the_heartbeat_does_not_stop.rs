@@ -72,10 +72,11 @@ fn lock_for(dir: &Path) -> OnlyOne {
     OnlyOne::at(&Store::new(dir).data_dir())
 }
 
+/// The lock holds `moment pid` since 29 Sep 2026: read as Atlas reads it.
 fn beat_at(dir: &Path) -> Option<u64> {
     std::fs::read_to_string(lock_for(dir).path())
         .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
+        .and_then(|s| atlas::onlyone::moment_in(&s))
 }
 
 #[test]

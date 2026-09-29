@@ -53,7 +53,7 @@ pub struct ConnectivityConfig {
 impl Default for ConnectivityConfig {
     fn default() -> Self {
         ConnectivityConfig {
-            probe: "1.1.1.1:53".into(),
+            probe: SHIPPED_PROBE.into(),
             timeout_ms: 800,
             cache_secs: 30,
             assume_offline: false,
@@ -196,7 +196,59 @@ impl Connectivity {
 
 /// Raw TCP connect. No DNS lookup when given a literal address, no HTTP, no
 /// dependency on any service staying up.
+///
+/// Every address in `target` (a comma-separated list) and then
+/// [`ALSO_TRIED`], all at once: online if any answers (29 Sep 2026: the one
+/// address was 1.1.1.1 on port 53, which plenty of home routers, providers
+/// and security suites block for TCP. Eric's laptop, online, read "the
+/// internet -- failing: no route out" all day, and everything that needs the
+/// web held back).
 fn probe(target: &str, timeout_ms: u64) -> bool {
+    let mut targets: Vec<String> = probe_targets(target);
+    // Only with the shipped setting: an address you chose is asked alone.
+    let extras: &[&str] = if target.trim() == SHIPPED_PROBE { &ALSO_TRIED } else { &[] };
+    for extra in extras {
+        if !targets.iter().any(|t| t == extra) {
+            targets.push(extra.to_string());
+        }
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut asked = 0;
+    for t in targets {
+        let tx = tx.clone();
+        let spawned = std::thread::Builder::new().name("atlas-online-try".into()).spawn(move || {
+            let _ = tx.send(connects(&t, timeout_ms));
+        });
+        if spawned.is_ok() {
+            asked += 1;
+        }
+    }
+    drop(tx);
+    let until = std::time::Instant::now() + Duration::from_millis(timeout_ms + 200);
+    for _ in 0..asked {
+        let left = until.saturating_duration_since(std::time::Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+/// The probe setting Atlas ships with.
+pub const SHIPPED_PROBE: &str = "1.1.1.1:53";
+
+/// Addresses tried as well as the shipped one: ordinary HTTPS, which a
+/// network that lets anything out lets out.
+pub const ALSO_TRIED: [&str; 3] = ["1.1.1.1:443", "8.8.8.8:443", "9.9.9.9:443"];
+
+/// The addresses in a `probe` setting: comma- or space-separated.
+pub fn probe_targets(target: &str) -> Vec<String> {
+    target.split(|c: char| c == ',' || c.is_whitespace()).map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect()
+}
+
+fn connects(target: &str, timeout_ms: u64) -> bool {
     let addrs: Vec<SocketAddr> = match target.to_socket_addrs() {
         Ok(a) => a.collect(),
         Err(_) => return false,

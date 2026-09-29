@@ -187,8 +187,11 @@ impl<'a> Daemon<'a> {
         self.keep_model_server(clock());
         let _ = self.warm_the_model(clock());
         if !audio_ok {
+            self.audio_tools_missing = true;
             if let Some(m) = self.tiers.audio_unavailable() {
                 println!("{m}");
+                // Written down too: this program has no console window.
+                self.log.warn(&m);
             }
         }
 
@@ -246,10 +249,17 @@ impl<'a> Daemon<'a> {
         // The typing box, started hidden now so its key shows it at once.
         if self.hotkeys.is_some() && self.typebox.is_none() {
             let tx = keyboard.sender();
-            self.typebox = crate::typebox::Standby::start(move |text| {
+            self.typebox = match crate::typebox::Standby::start(move |text| {
                 let _ = tx.send(crate::input::Utterance { text, source: crate::input::Source::Typed });
-            })
-            .ok();
+            }) {
+                Ok(b) => Some(b),
+                // Said in the log, not dropped: the key then starts one
+                // itself, and says so if that fails too.
+                Err(e) => {
+                    self.log.warn(&format!("couldn't keep the typing box ready: {e}"));
+                    None
+                }
+            };
         }
         // Words typed while the loop was napping, taken at the top of the
         // next pass.
@@ -329,15 +339,11 @@ impl<'a> Daemon<'a> {
             if let Some(ev) = self.hotkeys.as_ref().and_then(|h| h.poll()) {
                 self.log.info(&format!("key: {}", ev.plain()));
                 match ev {
-                    crate::hotkeys::Pressed::TalkStart if self.tiers.tier == Tier::Typed => {
-                        // The key works; there's nothing to hear with. Said,
-                        // rather than a held key that silently does nothing.
-                        self.say(mouth, "I can't hear on this machine yet — the speech tools aren't set up. Start Atlas again and its setup fetches them. The typing box works meanwhile.");
-                    }
                     crate::hotkeys::Pressed::TalkStart => {
                         // The wake word's recorder lets go of the microphone
                         // while the key is held.
                         self.mic_busy(true);
+                        let held_from = std::time::Instant::now();
                         let heard = match self.hotkeys.as_ref() {
                             Some(h) => ears.listen_while(&|| h.held()),
                             None => Ok(None),
@@ -345,11 +351,25 @@ impl<'a> Daemon<'a> {
                         self.mic_busy(false);
                         match heard {
                             Ok(Some(said)) => {
+                                if let Some(m) = self.tiers.heard_you() {
+                                    self.log.info(&m);
+                                }
                                 self.heard_through_this_ear(&said);
                                 self.converse(&said, ears, mouth, clock)
                             }
+                            // A tap is not a question. A key held for a
+                            // second or more that came back with no words is
+                            // said, not swallowed (29 Sep 2026: Eric held the
+                            // key four times and Atlas never answered).
+                            Ok(None) if held_from.elapsed() >= std::time::Duration::from_secs(1) => {
+                                self.log.info(&format!(
+                                    "push-to-talk: no words in {:.1}s of recording",
+                                    held_from.elapsed().as_secs_f32()
+                                ));
+                                self.say(mouth, "I didn't catch anything that time. Hold the key while you talk, and I'll listen until you let go.");
+                            }
                             Ok(None) => {}
-                            Err(_) => self.degrade(mouth),
+                            Err(e) => self.degrade_because(mouth, &e),
                         }
                     }
                     crate::hotkeys::Pressed::TalkStop => {}
@@ -364,9 +384,22 @@ impl<'a> Daemon<'a> {
                                 let _ = tx.send(crate::input::Utterance { text, source: crate::input::Source::Typed });
                             }) {
                                 Ok(mut b) => {
-                                    // Its window needs a moment to exist before it can be shown.
-                                    std::thread::sleep(std::time::Duration::from_millis(300));
-                                    b.show();
+                                    // Its window needs a moment to exist before
+                                    // it can be shown: asked again for up to two
+                                    // seconds, and said if it never appears (29
+                                    // Sep 2026: one try at 300 ms, and the key
+                                    // did nothing on a slow start).
+                                    let mut shown = false;
+                                    for _ in 0..10 {
+                                        std::thread::sleep(std::time::Duration::from_millis(200));
+                                        if b.show() {
+                                            shown = true;
+                                            break;
+                                        }
+                                    }
+                                    if !shown {
+                                        self.log.warn("the typing box started but its window didn't appear");
+                                    }
                                     self.typebox = Some(b);
                                 }
                                 Err(e) => self.say(mouth, &e),
@@ -395,7 +428,7 @@ impl<'a> Daemon<'a> {
                     self.mic_busy(false);
                     match heard {
                         Ok(said) => self.converse(&said, ears, mouth, clock),
-                        Err(_) => self.degrade(mouth),
+                        Err(e) => self.degrade_because(mouth, &e),
                     }
                     continue;
                 }
@@ -423,10 +456,10 @@ impl<'a> Daemon<'a> {
                             self.heard_through_this_ear(&said);
                             self.converse(&said, ears, mouth, clock);
                         }
-                        Err(_) => self.degrade(mouth),
+                        Err(e) => self.degrade_because(mouth, &e),
                     },
                     Ok(false) => {}
-                    Err(_) => self.degrade(mouth),
+                    Err(e) => self.degrade_because(mouth, &e),
                 },
                 Tier::PushToTalk => {
                     // Off Windows, the held key (`hotkey`) when it could be
@@ -471,7 +504,7 @@ impl<'a> Daemon<'a> {
                                 }
                                 self.converse(&said, ears, mouth, clock);
                             }
-                            Err(_) => self.degrade(mouth),
+                            Err(e) => self.degrade_because(mouth, &e),
                         }
                     }
                 }
@@ -484,6 +517,11 @@ impl<'a> Daemon<'a> {
                 }
             }
 
+            // The model server, looked after on every pass without waiting:
+            // started once the first check answers, not at the first thing
+            // you say (29 Sep 2026).
+            self.keep_model_server_waiting(clock(), std::time::Duration::ZERO, false);
+            self.look_again_at_audio(ears, clock());
             let signals = self.observe(clock());
             let nap = throttle.next_interval(&signals, self.power);
             if self.tiers.tier == Tier::Typed {
@@ -786,6 +824,11 @@ impl<'a> Daemon<'a> {
                 }
                 self.heard_through_this_ear(&said);
                 self.converse(&said, ears, mouth, clock);
+            }
+            // Your name, then nothing: answered, and not a failure.
+            crate::micthread::Heard::Wake(Err(why)) if why.contains(crate::voice::HEARD_NOTHING) => {
+                self.log.info("heard my name, then nothing");
+                self.say(mouth, "I heard my name but nothing after it.");
             }
             crate::micthread::Heard::Wake(Err(why)) | crate::micthread::Heard::Trouble(why) => {
                 self.log.info(&format!("listening for the wake word: {why}"));
@@ -1168,14 +1211,26 @@ impl<'a> Daemon<'a> {
     /// as before.
     pub(super) fn follow_up(&mut self, ears: &dyn Ears, secs: u32) -> Option<String> {
         let Some(id) = self.mic.as_ref().filter(|m| !m.is_stopped()).map(|m| m.follow_up(secs)) else {
-            return ears.listen_briefly(secs).ok().flatten().filter(|n| !n.trim().is_empty());
+            return match ears.listen_briefly(secs) {
+                Ok(got) => got.filter(|n| !n.trim().is_empty()),
+                Err(e) => {
+                    self.log.warn(&format!("listening after a reply failed: {e}"));
+                    None
+                }
+            };
         };
         // The window, then time for the words to be made out.
         let until = std::time::Instant::now() + std::time::Duration::from_secs(u64::from(secs) + FOLLOW_UP_HEARING_SECS);
         loop {
             match self.mic.as_ref().and_then(|m| m.poll()) {
                 Some(crate::micthread::Heard::FollowUp(n, got)) if n == id => {
-                    return got.ok().flatten().filter(|n| !n.trim().is_empty());
+                    return match got {
+                        Ok(got) => got.filter(|n| !n.trim().is_empty()),
+                        Err(e) => {
+                            self.log.warn(&format!("listening after a reply failed: {e}"));
+                            None
+                        }
+                    };
                 }
                 // An earlier one nobody waited for.
                 Some(crate::micthread::Heard::FollowUp(..)) => {}
@@ -1203,6 +1258,21 @@ impl<'a> Daemon<'a> {
         None
     }
 
+    /// `degrade`, with the reason written down first. Every failure here
+    /// used to be `Err(_)`: the tier dropped and nothing anywhere said why,
+    /// so a microphone that didn't exist looked exactly like a quiet room
+    /// (29 Sep 2026).
+    fn degrade_because(&mut self, mouth: &dyn Mouth, why: &dyn std::fmt::Display) {
+        let why = why.to_string();
+        // Silence isn't a broken microphone (`voice::HEARD_NOTHING`).
+        if why.contains(crate::voice::HEARD_NOTHING) {
+            self.log.info("listened and heard nothing");
+            return;
+        }
+        self.log.warn(&format!("listening failed: {why}"));
+        self.degrade(mouth);
+    }
+
     fn degrade(&mut self, mouth: &dyn Mouth) {
         if let Some(m) = self.tiers.failed() {
             self.say(mouth, &m);
@@ -1226,11 +1296,16 @@ impl<'a> Daemon<'a> {
         // logged, but the speaker stays silent. `may_speak` existed to
         // answer exactly this and `say` never asked, so a scheduled job
         // finishing mid-pause talked over the quiet you asked for.
-        if self.tiers.tier != Tier::Typed && self.attention.may_speak() && self.sound_allows_speaking() {
+        let speakable = self.tiers.tier != Tier::Typed || crate::input::can_speak(self.tools_ref());
+        if speakable && self.attention.may_speak() && self.sound_allows_speaking() {
             // The screen got the line as written; the speaker gets it as
             // said. "$2.35" reads as words, "mph" is spoken not spelled,
             // a stray markdown marker is dropped rather than pronounced.
-            let _ = mouth.speak(&crate::spoken_form::for_speech(line));
+            if let Err(e) = mouth.speak(&crate::spoken_form::for_speech(line)) {
+                // Written down: a reply that failed to play was silence with
+                // no reason anywhere (29 Sep 2026).
+                self.log.warn(&format!("couldn't say it out loud: {e}"));
+            }
         }
     }
 
@@ -1259,7 +1334,7 @@ impl<'a> Daemon<'a> {
     /// sound says not now; the microphone watched for your voice when
     /// cutting in by voice is on and Atlas isn't paused (`micthread`).
     pub(super) fn start_saying<'m>(&self, mouth: &'m dyn Mouth) -> crate::speakthread::Saying<'m> {
-        let typed = self.tiers.tier == Tier::Typed || !self.sound_allows_speaking();
+        let typed = (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
         let watching = if typed || self.attention.is_paused() {
             None
         } else {

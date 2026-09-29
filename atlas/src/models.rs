@@ -555,11 +555,52 @@ pub fn launch(
         // unknown variable, where an unknown flag stops the server.
         .env(CACHE_IDLE_SLOTS_ENV, "0")
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        // What it says goes to data/logs/model-server.log (29 Sep 2026): a
+        // server that died loading its model (a bad file, not enough
+        // graphics memory) left no reason anywhere.
+        .stderr(model_server_log())
         .spawn()
         .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))?;
     LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
+}
+
+/// Where the model server's own messages go: `data/logs/model-server.log`,
+/// started afresh each launch. Nowhere, when that can't be opened.
+fn model_server_log() -> std::process::Stdio {
+    let dir = crate::roots::data_dir().join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    match std::fs::File::create(dir.join("model-server.log")) {
+        Ok(f) => std::process::Stdio::from(f),
+        Err(_) => std::process::Stdio::null(),
+    }
+}
+
+/// Why the model server stopped, in its own words: the last line of
+/// `data/logs/model-server.log` that says something went wrong, or its last
+/// line. `None` when the log is empty or can't be read.
+pub fn model_server_last_words() -> Option<String> {
+    let text = std::fs::read_to_string(crate::roots::data_dir().join("logs").join("model-server.log")).ok()?;
+    last_words_in(&text)
+}
+
+/// The telling line of a model server's log (see `model_server_last_words`).
+pub fn last_words_in(text: &str) -> Option<String> {
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let bad = |l: &&&str| {
+        let l = l.to_ascii_lowercase();
+        l.contains("error") || l.contains("failed") || l.contains("out of memory") || l.contains("unable")
+    };
+    let line = lines.iter().rev().find(bad).or(lines.last())?;
+    let mut line = line.to_string();
+    if line.len() > 200 {
+        let mut cut = 200;
+        while !line.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        line.truncate(cut);
+    }
+    Some(line)
 }
 
 /// llama.cpp's switch for clearing idle slots, by its environment name.
@@ -899,6 +940,14 @@ pub fn server_get() -> ExternalTool {
     }
 }
 
+/// Does a health reply say llama-server is up and ready?
+pub fn health_says_ok(body: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(body.trim())
+        .ok()
+        .and_then(|v| v.get("status").and_then(|s| s.as_str()).map(|s| s == "ok"))
+        .unwrap_or(false)
+}
+
 /// Is the server already up?
 ///
 /// A URL rather than a request, because the caller owns the HTTP tool — this
@@ -908,7 +957,11 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
     let mut v = vars.clone();
     v.insert("url".into(), at_listen_host(health_url(cfg.port), cfg));
     match http.run(&v, None) {
-        Ok(body) => body.contains("\"status\"") || body.contains("ok"),
+        // llama-server's own answer, `{"status":"ok"}`, and nothing else
+        // (29 Sep 2026): any reply containing the letters "ok" -- "token",
+        // "book" -- from some other program on the port counted as the model
+        // being up, and Atlas never started its own.
+        Ok(body) => health_says_ok(&body),
         Err(_) => false,
     }
 }
@@ -954,6 +1007,25 @@ pub fn llm_config_for(model: &Model, cfg: &ModelsConfig, http: &ExternalTool) ->
 /// folder that fits, through the server on `models.port` -- waited for while
 /// it loads, with `tools.llm_secondary` as the fallback. What the laptop's
 /// daemon and the phone core both use.
+/// Why there is no model to talk with, in words for a reply (29 Sep 2026:
+/// "it isn't loaded yet" was said whatever the reason, for the whole
+/// session). The folder's own trouble first, then an empty folder, then
+/// none that fits the memory free.
+pub fn why_no_model(cfg: &ModelsConfig) -> String {
+    let (registry, trouble) = Registry::scan_reporting(&Registry::dir_for(cfg));
+    if let Some(t) = trouble {
+        return t.trim().trim_end_matches('.').to_string();
+    }
+    if registry.models.is_empty() {
+        return "there's no language model in my models folder yet; opening Atlas runs setup, which fetches one".into();
+    }
+    let m = crate::fit::measure();
+    format!(
+        "none of the models in my models folder fits the memory free right now: {}",
+        registry.explain_for(cfg, &m, budget_bytes(cfg, &m)).trim().trim_end_matches('.')
+    )
+}
+
 pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
     let derived: Option<crate::brain::LlmConfig> = if tc.llm.is_some() {
         None

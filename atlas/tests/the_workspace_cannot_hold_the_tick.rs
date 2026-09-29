@@ -218,7 +218,8 @@ fn the_heartbeat_keeps_beating_while_the_bringup_waits() {
          workspace comes up"
     );
     assert!(
-        after.trim().parse::<u64>().is_ok(),
+        // `moment pid` since 29 Sep 2026: the moment is read as Atlas reads it.
+        atlas::onlyone::moment_in(&after).is_some(),
         "the heartbeat wrote something that is not a timestamp: {after:?}"
     );
 }

@@ -30,6 +30,8 @@ pub const RULE_NAME: &str = "Atlas - your own devices";
 /// Where a "no" is remembered, inside the install's state folder, so the
 /// setup doesn't ask again every time it's opened.
 const DECLINED: &str = "firewall_rule_declined";
+/// The program this install added the rule for.
+const ADDED: &str = "firewall_rule_added";
 
 /// Tailscale's address ranges: IPv4 CGNAT and its IPv6 ULA prefix.
 pub const OWN_NETWORKS: &str = "LocalSubnet,100.64.0.0/10,fd7a:115c:a1e0::/48";
@@ -61,8 +63,45 @@ fn show_args() -> Vec<String> {
 /// Does `netsh`'s answer to `show_args` describe our rule, for this exe?
 /// A rule left from an install in another folder doesn't count.
 pub fn describes_rule_for(shown: &str, exe: &Path) -> bool {
-    let want = exe.display().to_string().to_lowercase();
-    shown.to_lowercase().lines().any(|l| l.contains("program") && l.trim_end().ends_with(&want))
+    let want = plain_path(&exe.display().to_string());
+    shown.lines().any(|l| {
+        let low = l.to_lowercase();
+        if !low.contains("program") {
+            return false;
+        }
+        // The value after the label, with any %VARIABLE% Windows stored in
+        // it spelled out (29 Sep 2026: a rule Windows showed as
+        // %LOCALAPPDATA%\... never matched, so setup asked for Windows'
+        // permission again every time it ran).
+        let value = l.split_once(':').map(|(_, v)| v).unwrap_or(l);
+        let got = plain_path(&expand_vars(value.trim()));
+        !got.is_empty() && (got == want || low.trim_end().ends_with(&want))
+    })
+}
+
+/// A path as compared: lower case, `\\?\` dropped, one kind of slash.
+fn plain_path(p: &str) -> String {
+    p.trim().trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
+}
+
+/// `%NAME%` in `s` replaced by the environment's value, where there is one.
+pub fn expand_vars(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(a) = rest.find('%') {
+        let Some(b) = rest[a + 1..].find('%').map(|b| b + a + 1) else { break };
+        let name = &rest[a + 1..b];
+        match std::env::var(name) {
+            Ok(v) if !name.is_empty() => {
+                out.push_str(&rest[..a]);
+                out.push_str(&v);
+            }
+            _ => out.push_str(&rest[..=b]),
+        }
+        rest = &rest[b + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A PowerShell line that runs `netsh` with `args` as administrator: Windows
@@ -122,6 +161,12 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     if describes_rule_for(&shown, exe) {
         return Standing::Here;
     }
+    // Added by this install before, and a rule of that name is still there:
+    // not asked for again because netsh words it in a way not read above.
+    let added_for = std::fs::read_to_string(state.join(ADDED)).unwrap_or_default();
+    if plain_path(&added_for) == plain_path(&exe.display().to_string()) && shown.contains(RULE_NAME) {
+        return Standing::Here;
+    }
     if state.join(DECLINED).is_file() {
         return Standing::Declined(declined_words());
     }
@@ -129,7 +174,9 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     let (ok, said) = run("powershell", &["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), ps]);
     if ok {
         let (_, shown) = run("netsh", &show_args());
-        if describes_rule_for(&shown, exe) {
+        if describes_rule_for(&shown, exe) || shown.contains(RULE_NAME) {
+            let _ = std::fs::create_dir_all(state);
+            let _ = std::fs::write(state.join(ADDED), exe.display().to_string());
             return Standing::Added;
         }
         return Standing::Problem("Windows said yes but the rule isn't there; Windows will ask the first time your phone connects.".into());

@@ -134,7 +134,16 @@ impl Browser {
             .launch
             .as_ref()
             .ok_or_else(|| AtlasError::Config("no browser launch command configured".into()))?;
-        let (cmd, args) = tool.resolved(vars);
+        // The browser this machine has, when the configured path isn't one
+        // (29 Sep 2026): tools.yaml names Chrome under Program Files, and on
+        // a machine with only Edge, or Chrome installed per-user, every web
+        // job failed with "could not start".
+        let mut vars = vars.clone();
+        let configured = vars.get("browser").cloned();
+        if let Some(found) = crate::filmstrip::find_browser(configured.as_deref()) {
+            vars.insert("browser".into(), found.display().to_string());
+        }
+        let (cmd, args) = tool.resolved(&vars);
         crate::tools::command(&cmd)
             .args(&args)
             // Chrome writes a stream of its own diagnostics to stderr;

@@ -49,6 +49,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
         Err(why) => {
             eprintln!("{why}");
+            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
             leave(1);
         }
         Ok(found) => {
@@ -70,6 +71,13 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         }
     }
 
+    // The microphone this machine really has, for the daemon too (29 Sep
+    // 2026): everything below reads this one configuration.
+    let tc_owned = pick_the_microphone(cfg, plat, tc);
+    let mut cfg_owned = cfg.clone();
+    cfg_owned.tools = Some(tc_owned);
+    let cfg = &cfg_owned;
+    let tc = cfg.tools.as_ref().expect("just set");
     let voice = Voice::new(tc);
     let store = atlas::roots::store();
 
@@ -240,6 +248,9 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     );
     if !audio_ok {
         println!("audio unavailable — run `atlas doctor`. You can still type commands here.");
+        // Written down as well (29 Sep 2026): started from the icon or at
+        // sign-in there's no console, so printed alone it reached nobody.
+        d.log.warn("the voice tools aren't all there (listening, speech-to-text or speaking): the hub's Health page says which");
     }
     // Push-to-talk and the typing box, from anywhere in Windows (H1).
     let keys = atlas::hotkeys::Keys::from_settings(&tc.push_to_talk, &tc.quick_input);
@@ -250,10 +261,14 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
             }
             for p in &h.problems {
                 println!("({p})");
+                d.log.warn(p);
             }
             d.hotkeys = Some(h);
         }
-        Err(why) => println!("(no push-to-talk or typing-box key: {why})"),
+        Err(why) => {
+            println!("(no push-to-talk or typing-box key: {why})");
+            d.log.warn(&format!("no push-to-talk or typing-box key: {why}"));
+        }
     }
     println!("type at any time; Ctrl-C to stop — I'll save first and let go of the lock.");
     // Atlas's icon by the clock (Windows): with no window open, how you know
@@ -265,6 +280,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
                 Ok(icon) => Some(icon),
                 Err(e) => {
                     println!("(no icon by the clock: {e})");
+                    d.log.warn(&format!("no icon by the clock: {e}"));
                     None
                 }
             },
@@ -301,21 +317,16 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     }
 }
 
-pub(super) fn voice_loop(
-    cfg: &Config,
-    plat: &dyn Platform,
-    parser: &Parser,
-    approver: &dyn Approver,
-    hands_free: bool,
-) {
-    let Some(tc) = cfg.tools.as_ref() else {
-        eprintln!("config/tools.yaml is missing — nothing to talk to.");
-        leave(2);
-    };
-    if !tc.enabled {
-        eprintln!("tools.yaml has enabled: false");
-        leave(2);
-    }
+pub(super) /// Which microphone Atlas listens with, picked from what this machine
+/// actually has rather than the guess in `tools.yaml` (`mic_device`).
+///
+/// One place for both doors (29 Sep 2026). This lived inside `voice_loop`
+/// only, so the background Atlas -- what setup starts and what Eric runs --
+/// recorded from the shipped "Microphone Array (Realtek(R) Audio)" on a
+/// laptop whose microphone is Intel Smart Sound. Every wake-word clip
+/// failed, Atlas dropped to push-to-talk, and the held key recorded nothing
+/// and said nothing.
+fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
     // Pick the mic from what is actually there, rather than trusting the
     // guess sitting in tools.yaml -- that guess is what sent someone chasing
     // a Realtek device name on a laptop with Intel audio and a shut lid.
@@ -359,7 +370,7 @@ pub(super) fn voice_loop(
                     .clone()
                     .into_iter()
                     .map(|cand| {
-                        let args = atlas::hearing::calibration_args(&cand.name, 1);
+                        let args = atlas::hearing::calibration_args(&atlas::audio::ffmpeg_name_for(&devices, &cand.name), 1);
                         let h = std::thread::spawn(move || {
                             atlas::tools::command("ffmpeg")
                                 .args(&args)
@@ -387,8 +398,15 @@ pub(super) fn voice_loop(
             // here is a real signal or an admitted absence -- nothing is
             // invented to make the decision look better informed.
             let presence_readable = plat.monitors().is_ok();
+            // At the desk means a screen is on here: the laptop's own, or
+            // the monitors it's plugged into (29 Sep 2026). "The laptop's
+            // screen is on" alone read Eric -- lid closed behind two
+            // monitors, AirPods connected -- as away from the desk, and away
+            // with a headset means listening through the AirPods, which
+            // drops them to call-quality sound for everything.
+            let screens_on = plat.monitors().map(|m| !m.is_empty()).unwrap_or(false);
             let whereabouts = atlas::hearing::Where {
-                at_desk: laptop_active,
+                at_desk: laptop_active || screens_on,
                 presence_unknown: !presence_readable,
                 headset_connected: hearing.candidates.iter().any(|c| c.bluetooth),
                 // No signal for either of these yet: nothing reports whether
@@ -402,18 +420,37 @@ pub(super) fn voice_loop(
             };
 
             let choice = hearing.decide(&whereabouts, &tc.hearing, atlas::store::now());
-            let picked = choice.ear.name();
+            // Only a real microphone is a pick. "Nothing" (no microphone
+            // heard you) and "your phone" are not devices to record from:
+            // the name-based choice below stands in (29 Sep 2026 -- ffmpeg
+            // was being asked to open a device called "nothing").
+            let picked = match &choice.ear {
+                atlas::hearing::Ear::Desk(n) | atlas::hearing::Ear::Headset(n) => n.clone(),
+                _ => String::new(),
+            };
             if picked.is_empty() {
                 let sel = atlas::audio::choose(&devices, &tc.audio, laptop_active);
                 match &sel.input {
                     Some(mic) => {
-                        tc_owned.vars.insert("mic_device".into(), mic.clone());
+                        tc_owned.vars.insert("mic_name".into(), mic.clone());
+                        tc_owned.vars.insert("mic_device".into(), atlas::audio::ffmpeg_name_for(&devices, mic));
                         println!("Using \"{mic}\" -- {}.", sel.why);
                     }
-                    None => eprintln!("(no usable microphone found -- {})", sel.why),
+                    // Nothing chosen: any microphone this machine really
+                    // has beats tools.yaml's guess, which names a device
+                    // most machines don't have (29 Sep 2026).
+                    None => match devices.iter().find(|d| d.kind == atlas::audio::Kind::Input) {
+                        Some(d) => {
+                            tc_owned.vars.insert("mic_name".into(), d.name.clone());
+                            tc_owned.vars.insert("mic_device".into(), d.ffmpeg_name());
+                            eprintln!("(no microphone stood out -- {}; using {})", sel.why, d.name);
+                        }
+                        None => eprintln!("(no usable microphone found -- {})", sel.why),
+                    },
                 }
             } else {
-                tc_owned.vars.insert("mic_device".into(), picked.clone());
+                tc_owned.vars.insert("mic_name".into(), picked.clone());
+                tc_owned.vars.insert("mic_device".into(), atlas::audio::ffmpeg_name_for(&devices, &picked));
                 println!("Using \"{}\" -- {}.", atlas::hearing::short(&picked), choice.why);
                 if choice.costs_quality {
                     println!("  (that one costs audio quality while it listens.)");
@@ -428,6 +465,25 @@ pub(super) fn voice_loop(
             eprintln!("(couldn't list audio devices, using what's in tools.yaml: {e})");
         }
     }
+    tc_owned
+}
+
+fn voice_loop(
+    cfg: &Config,
+    plat: &dyn Platform,
+    parser: &Parser,
+    approver: &dyn Approver,
+    hands_free: bool,
+) {
+    let Some(tc) = cfg.tools.as_ref() else {
+        eprintln!("config/tools.yaml is missing — nothing to talk to.");
+        leave(2);
+    };
+    if !tc.enabled {
+        eprintln!("tools.yaml has enabled: false");
+        leave(2);
+    }
+    let tc_owned = pick_the_microphone(cfg, plat, tc);
     // The mic Atlas just picked has to reach the daemon, not only the
     // recorder. `Voice` borrows `tc_owned`; `Daemon::new` borrows a whole
     // `Config`. Handing the daemon the original `cfg` would give it a
@@ -451,6 +507,7 @@ pub(super) fn voice_loop(
     match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
         Err(why) => {
             eprintln!("{why}");
+            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
             leave(1);
         }
         Ok(found) => {
@@ -508,7 +565,10 @@ pub(super) fn voice_loop(
             print!("[enter to listen] ");
             let _ = io::stdout().flush();
             let mut l = String::new();
-            if io::stdin().read_line(&mut l).is_err() {
+            // No keyboard at all is the end, not a press of Enter: read as
+            // Enter, the loop recorded and acted on clip after clip with
+            // nobody there (29 Sep 2026).
+            if matches!(io::stdin().read_line(&mut l), Ok(0) | Err(_)) {
                 return;
             }
         }

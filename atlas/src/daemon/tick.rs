@@ -148,6 +148,9 @@ impl<'a> Daemon<'a> {
         // time it is needed it is started again rather than trusted.
         for (name, how) in self.helpers.died() {
             self.log.warn(&format!("{name} stopped on its own ({how}); it will be started again when next needed"));
+            if name == "model-server" {
+                self.model_server_died();
+            }
         }
         for said in self.helpers.reap(t) {
             self.log.info(&said);

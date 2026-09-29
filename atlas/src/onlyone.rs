@@ -142,11 +142,17 @@ impl OnlyOne {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Found::Free,
             Err(_) => return Found::Running { last_beat_secs_ago: 0 },
         };
-        let Some(age) = text
-            .trim()
-            .parse::<u64>()
-            .ok()
-            .map(|written| now.saturating_sub(written))
+        // 29 Sep 2026: a holder whose process has ended is nobody. Eric ended
+        // a stuck Atlas in Task Manager and opened it again; the lock still
+        // read "running" for up to GONE_AFTER_SECS, the new background Atlas
+        // refused to start, and nothing said so. The lock now names its
+        // holder, and one that is certainly gone frees it at once.
+        if let Some(pid) = holder_in(&text) {
+            if pid != std::process::id() && process_gone(pid) {
+                return Found::Free;
+            }
+        }
+        let Some(age) = moment_in(&text).map(|written| now.saturating_sub(written))
         else {
             // A lock whose contents cannot be read tells you nothing, and
             // "tells you nothing" must not read as "nobody is there". Treated
@@ -257,7 +263,7 @@ impl OnlyOne {
                 found.plain()
             ));
         }
-        let wrote = std::fs::write(&self.path, format!("{now}"))
+        let wrote = std::fs::write(&self.path, lock_line(now))
             .map_err(|e| format!("couldn't take the lock at {}: {e}", self.path.display()));
         let _ = std::fs::remove_file(&claim);
         wrote?;
@@ -277,7 +283,7 @@ impl OnlyOne {
     /// folder. The holder never learned it had lost the lock. Now the caller
     /// can say so.
     pub fn beat(&self, now: u64) -> bool {
-        std::fs::write(&self.path, format!("{now}")).is_ok()
+        std::fs::write(&self.path, lock_line(now)).is_ok()
     }
 
     /// Should it beat yet?
@@ -292,7 +298,7 @@ impl OnlyOne {
     /// The moment written in the lock, as written; `None` when there is no
     /// lock or it can't be read.
     fn written(&self) -> Option<u64> {
-        std::fs::read_to_string(&self.path).ok().and_then(|t| t.trim().parse::<u64>().ok())
+        std::fs::read_to_string(&self.path).ok().and_then(|t| moment_in(&t))
     }
 
     /// A lock that reads `Abandoned`, looked at again after `wait` in case
@@ -367,5 +373,54 @@ impl Watching {
                 now.saturating_sub(since) < WOKE_GRACE_SECS
             }
         }
+    }
+}
+
+/// What a lock holds: the moment, then this process's id.
+fn lock_line(now: u64) -> String {
+    format!("{now} {}", std::process::id())
+}
+
+/// The moment in a lock, written either as `moment` (before 29 Sep 2026) or
+/// `moment pid`.
+pub fn moment_in(text: &str) -> Option<u64> {
+    text.split_whitespace().next()?.parse().ok()
+}
+
+/// The process id in a lock, if it names one.
+pub fn holder_in(text: &str) -> Option<u32> {
+    text.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// Is the process `pid` certainly gone? Only a sure answer says yes: a
+/// process that can't be asked (another user's, or a platform with no way
+/// to ask) is treated as still there, and the moment decides as before.
+fn process_gone(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER};
+        use windows::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        unsafe {
+            match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+                Ok(h) => {
+                    let mut code = 0u32;
+                    let got = GetExitCodeProcess(h, &mut code).is_ok();
+                    let _ = CloseHandle(h);
+                    // 259 is STILL_ACTIVE.
+                    got && code != 259
+                }
+                // No such process: Windows says the id is not a valid one.
+                Err(e) => e.code() == ERROR_INVALID_PARAMETER.to_hresult(),
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        !std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        let _ = pid;
+        false
     }
 }

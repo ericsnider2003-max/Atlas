@@ -21,6 +21,10 @@
 use crate::audio::{Device, Kind};
 use serde::{Deserialize, Serialize};
 
+/// Quieter than this is digital silence: a muted, covered-off or dead
+/// microphone, not a quiet room (which reads about -50 to -70 dB).
+pub const SILENCE_DB: f32 = -80.0;
+
 /// Where Atlas is listening.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Ear {
@@ -213,6 +217,15 @@ impl Hearing {
             })
     }
 
+    /// The loudest desk microphone that gives any real sound at all, when
+    /// none clears the floor. Below `SILENCE_DB` is a muted or dead device.
+    fn faint_desk(&self) -> Option<&Candidate> {
+        self.candidates
+            .iter()
+            .filter(|c| !c.bluetooth && c.measured_db.is_some_and(|db| db > SILENCE_DB))
+            .max_by(|a, b| a.measured_db.partial_cmp(&b.measured_db).unwrap_or(std::cmp::Ordering::Equal))
+    }
+
     fn headset(&self) -> Option<&Candidate> {
         self.candidates.iter().find(|c| c.bluetooth)
     }
@@ -265,6 +278,21 @@ impl Hearing {
                 why: "you're away and I've no way to hear you — talk to me from your phone".into(),
                 costs_quality: false,
             },
+            // Nothing clears the floor, but something gives real sound: that
+            // one, said honestly, rather than nothing (29 Sep 2026). The
+            // start-up test hears a second of the room, not your voice, and on
+            // Eric's laptop a quiet room on the working Intel microphone read
+            // -51.6 dB against a -45 floor: every microphone was ruled out
+            // and Atlas listened to nothing at all. Only digital silence (a
+            // muted or dead device, about -90) means it truly can't hear.
+            (true, None, None, _) if self.faint_desk().is_some() => {
+                let d = self.faint_desk().expect("just checked");
+                Choice {
+                    ear: Ear::Desk(d.name.clone()),
+                    why: format!("{} is the only microphone picking anything up, and only faintly", short(&d.name)),
+                    costs_quality: false,
+                }
+            }
             (_, None, None, _) => Choice {
                 ear: Ear::Deaf,
                 why: "no microphone can hear you".into(),

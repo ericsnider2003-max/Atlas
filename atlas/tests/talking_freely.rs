@@ -688,6 +688,7 @@ fn live_llama_server_smoke() {
     ] {
         let turn = atlas::brain::Turn {
             said: said.into(),
+            aside: false,
             system: format!("{}\n\nApps you can open, close or switch to by name: chrome, discord, notepad.", persona.character()),
             history,
             now: persona.for_this_turn_on(atlas::register::Register::Chatting, 3, said, false),

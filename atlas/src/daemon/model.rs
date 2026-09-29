@@ -88,6 +88,34 @@ impl<'a> Daemon<'a> {
     /// (Ollama, your own server) is yours to run. A server someone started
     /// by hand is left alone. Nothing is waited for here.
     pub(super) fn keep_model_server(&mut self, t: u64) {
+        self.keep_model_server_waiting(t, MODEL_PROBE_WAIT, true);
+    }
+
+    /// At typing-only, look once a minute at whether the voice tools work
+    /// now, and come back to listening if they do (29 Sep 2026). The check
+    /// was made once at start: a download still finishing, or a tool briefly
+    /// held by antivirus, left Atlas deaf and silent for the whole session.
+    fn look_again_at_audio(&mut self, ears: &dyn Ears, t: u64) {
+        if !self.audio_tools_missing || self.tiers.tier != Tier::Typed || t < self.audio_look_at {
+            return;
+        }
+        self.audio_look_at = t + 60;
+        if crate::input::audio_available(self.tools_ref()).unwrap_or(false) {
+            self.audio_tools_missing = false;
+            if let Some(m) = self.tiers.heard_you() {
+                self.log.info(&format!("the voice tools are there now. {m}"));
+            }
+            self.ensure_mic(ears);
+            self.steer_mic();
+        }
+    }
+
+    /// `keep_model_server`, waiting at most `wait` for the "is it up?"
+    /// answer. The loop calls it with no wait on every pass (29 Sep 2026):
+    /// at start-up the first check hadn't answered in time, and nothing
+    /// asked again until you said something -- so with the microphone not
+    /// working, the model never started at all.
+    fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration, a_turn: bool) {
         // No model when Atlas started (none downloaded yet, or none judged to
         // fit): look again once a minute rather than for the rest of the
         // session. Setup fetches the model while Atlas is already running.
@@ -96,6 +124,16 @@ impl<'a> Daemon<'a> {
             if let Some(tc) = self.tools_ref().cloned() {
                 if tc.llm.is_none() {
                     self.llm = crate::models::connection(&tc);
+                    // Why not, said once and kept for the replies.
+                    if self.llm.is_none() {
+                        let why = crate::models::why_no_model(&tc.models);
+                        if self.model_server_trouble.as_deref() != Some(why.as_str()) {
+                            self.log.warn(&format!("no language model: {why}"));
+                            self.model_server_trouble = Some(why);
+                        }
+                    } else if self.model_server_trouble.is_some() {
+                        self.model_server_trouble = None;
+                    }
                 }
             }
         }
@@ -109,9 +147,18 @@ impl<'a> Daemon<'a> {
         let cfg = tc.models.clone();
         let vars = tc.vars.clone();
         if self.helpers.is_running("model-server") {
-            // Ours and running: this turn counts as using it.
-            let _ = self.helpers.want("model-server", 0, t, || Ok(None));
-            self.helpers.done("model-server", t);
+            // Lived through its load and some use: not dying young.
+            if self.model_started.is_some_and(|s| s.elapsed() > MODEL_SERVER_YOUNG) {
+                self.model_started = None;
+                self.model_deaths = 0;
+            }
+            // Ours and running: a turn counts as using it. A pass of the loop
+            // doesn't (29 Sep 2026: every pass counted, so the half-hour
+            // keep-warm never ran out and the model held its memory all day).
+            if a_turn {
+                let _ = self.helpers.want("model-server", 0, t, || Ok(None));
+                self.helpers.done("model-server", t);
+            }
             // Ours is the one answering: once it is let go, the next turn
             // asks afresh rather than trusting a minute-old "it's up".
             if let Ok(mut seen) = self.model_server_seen.lock() {
@@ -126,7 +173,7 @@ impl<'a> Daemon<'a> {
         // HTTP check of up to ten seconds, on the loop).
         let up = match self.model_server_seen.lock().ok().and_then(|g| *g) {
             Some((at, up)) if at.elapsed() < MODEL_SERVER_RECHECK => up,
-            _ => match self.probe_model_server(&cfg, &vars) {
+            _ => match self.probe_model_server(&cfg, &vars, wait) {
                 Some(up) => up,
                 // Still asking: decided on a later turn.
                 None => return,
@@ -135,14 +182,21 @@ impl<'a> Daemon<'a> {
         if up {
             return;
         }
-        // Tried a moment ago and it didn't start: not again on every turn.
-        if self.model_start_tried.is_some_and(|at| at.elapsed() < MODEL_SERVER_RECHECK) {
+        // Tried a moment ago and it didn't start: not again on every turn,
+        // and longer each time one dies young.
+        if self.model_start_tried.is_some_and(|at| at.elapsed() < model_server_pause(self.model_deaths)) {
             return;
         }
         self.model_start_tried = Some(std::time::Instant::now());
         let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&cfg));
         let machine = crate::fit::measure();
         let Some(model) = crate::models::pick(&registry, &cfg, &machine).cloned() else {
+            // Said once, not silently skipped: this is why nothing answers.
+            let why = "no language model in the models folder fits this machine".to_string();
+            if self.model_server_trouble.as_deref() != Some(why.as_str()) {
+                self.log.warn(&format!("couldn't start the model server: {why}"));
+                self.model_server_trouble = Some(why);
+            }
             return;
         };
         let layers = crate::models::layers_here(&model, &cfg, &machine);
@@ -151,8 +205,10 @@ impl<'a> Daemon<'a> {
             Ok(_) => {
                 self.log.info(&format!("started the model server: {} ({layers} layers on the graphics)", model.id));
                 // The pause between tries is for a start that failed, not one
-                // that worked and was later let go (merge 28 Sep 2026).
+                // that worked and was later let go (merge 28 Sep 2026). A
+                // start that dies young is caught by `model_server_died`.
                 self.model_start_tried = None;
+                self.model_started = Some(std::time::Instant::now());
                 None
             }
             Err(why) => Some(why),
@@ -163,10 +219,34 @@ impl<'a> Daemon<'a> {
         self.model_server_trouble = trouble;
     }
 
+    /// Our model server stopped on its own (not let go for being idle). One
+    /// that died soon after being started is counted, and the next start
+    /// waits a doubling pause from now (29 Sep 2026: one that died while
+    /// loading -- too many layers for the graphics, the port taken, a bad
+    /// file -- was started again on the very next pass, reading the whole
+    /// model off the disk every time, and nobody was told).
+    fn model_server_died(&mut self) {
+        let Some(started) = self.model_started.take() else { return };
+        if started.elapsed() >= MODEL_SERVER_YOUNG {
+            return;
+        }
+        self.model_deaths = self.model_deaths.saturating_add(1);
+        self.model_start_tried = Some(std::time::Instant::now());
+        let why = match crate::models::model_server_last_words() {
+            Some(w) => format!("my language model stopped soon after starting ({w})"),
+            None => "my language model stopped soon after starting".to_string(),
+        };
+        self.log.warn(&format!(
+            "the model server ended soon after starting; trying again in {} min: {why}",
+            model_server_pause(self.model_deaths).as_secs() / 60
+        ));
+        self.model_server_trouble = Some(why);
+    }
+
     /// Ask, on a thread of its own, whether a model server is answering;
     /// wait for the answer up to `MODEL_PROBE_WAIT`. `None` while it is
     /// still being asked -- the answer lands in `model_server_seen`.
-    fn probe_model_server(&mut self, cfg: &crate::models::ModelsConfig, vars: &crate::tools::Vars) -> Option<bool> {
+    fn probe_model_server(&mut self, cfg: &crate::models::ModelsConfig, vars: &crate::tools::Vars, wait: std::time::Duration) -> Option<bool> {
         use std::sync::atomic::Ordering;
         if !self.model_probe_busy.swap(true, Ordering::SeqCst) {
             let (seen, busy, cfg, vars) =
@@ -183,7 +263,7 @@ impl<'a> Daemon<'a> {
                 return None;
             }
         }
-        let until = std::time::Instant::now() + MODEL_PROBE_WAIT;
+        let until = std::time::Instant::now() + wait;
         while std::time::Instant::now() < until {
             if let Some((at, up)) = self.model_server_seen.lock().ok().and_then(|g| *g) {
                 if at.elapsed() < MODEL_SERVER_RECHECK {

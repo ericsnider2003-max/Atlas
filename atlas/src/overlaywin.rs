@@ -75,6 +75,26 @@ pub fn atlas_is_up(watching: &mut crate::onlyone::Watching, data_dir: &std::path
     watching.still_there(&crate::onlyone::OnlyOne::at(data_dir).look(now), now)
 }
 
+/// The part of the screen the overlay draws in, as `(x, y, width, height)`:
+/// the mark above the middle, the words and their shade across it.
+///
+/// Only this band, and only while Atlas speaks (29 Sep 2026). The window
+/// used to cover the whole screen, above everything, all the time, relying
+/// on transparency to be invisible. On Eric's laptop the transparency didn't
+/// take: a black screen over everything from the moment Atlas started, with
+/// no taskbar button and every click passing through it, so only Task
+/// Manager got rid of it. Now a window that fails to be transparent is a
+/// dark caption band for the length of a reply, then gone.
+pub fn overlay_band(screen_w: i32, screen_h: i32, cfg: &crate::overlay::OverlayConfig) -> (i32, i32, i32, i32) {
+    let cy = screen_h / 2;
+    let x = (screen_w as f32 * 0.18) as i32;
+    let w = (screen_w as f32 * 0.64) as i32;
+    // The mark is 132 high and sits 40 above the middle; a little air above.
+    let top = (cy - 132 - 40 - 24).max(0);
+    let bottom = (cy + cfg.headline_size * 4).min(screen_h);
+    (x, top, w, bottom - top)
+}
+
 /// Where the overlay finds what's being said and its own switch.
 pub struct Folders {
     /// Atlas's data folder: `speaking.json` and the background Atlas's lock.
@@ -103,8 +123,9 @@ pub fn run(folders: Folders) -> Result<(), String> {
             .with_taskbar(false)
             .with_active(false)
             .with_resizable(false)
+            .with_visible(false)
             .with_position([0.0, 0.0])
-            .with_inner_size([1280.0, 720.0]),
+            .with_inner_size([64.0, 64.0]),
         ..Default::default()
     };
     let app = App {
@@ -115,10 +136,47 @@ pub fn run(folders: Folders) -> Result<(), String> {
         data_dir,
         only,
         last_check: std::time::Instant::now(),
-        sized: false,
+        shown: false,
+        keyed: false,
+        origin: (0.0, 0.0),
+        band_w: 0.0,
         atlas: crate::onlyone::Watching::default(),
     };
-    eframe::run_native("atlas-overlay", opts, Box::new(|_cc| Ok(Box::new(app)))).map_err(|e| e.to_string())
+    let watch_dir = app.data_dir.clone();
+    let watch_cfg = app.config_dir.clone();
+    eframe::run_native(
+        "atlas-overlay",
+        opts,
+        Box::new(move |cc| {
+            // A hidden window's own loop may not wake (Windows sends no
+            // paint to a window that isn't shown), so a small thread watches
+            // for Atlas starting to speak and wakes it.
+            let ctx = cc.egui_ctx.clone();
+            std::thread::spawn(move || {
+                let mut voice = crate::speaking::Watch::new(watch_dir);
+                let mut last: Option<u64> = None;
+                let mut enabled = overlay_cfg(&watch_cfg).enabled;
+                let mut looked = std::time::Instant::now();
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // Its switch, as the window itself reads it: switched
+                    // off, nothing is ever put on screen.
+                    if looked.elapsed().as_secs() >= 3 {
+                        enabled = overlay_cfg(&watch_cfg).enabled;
+                        looked = std::time::Instant::now();
+                    }
+                    let started = voice.now().filter(|s| s.still_going(crate::speaking::now_ms())).map(|s| s.started_ms);
+                    if enabled && started.is_some() && started != last {
+                        show_without_focus();
+                        ctx.request_repaint();
+                    }
+                    last = started.or(last);
+                }
+            });
+            Ok(Box::new(app))
+        }),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "desktop-ui")]
@@ -139,7 +197,12 @@ struct App {
     data_dir: std::path::PathBuf,
     only: crate::onlyone::OnlyOne,
     last_check: std::time::Instant,
-    sized: bool,
+    /// Whether the window is on screen, and where its band starts.
+    shown: bool,
+    /// Whether Windows has been told the overlay is see-through.
+    keyed: bool,
+    origin: (f32, f32),
+    band_w: f32,
     /// The background Atlas's lock, watched over time rather than trusted on
     /// one look: straight after a sleep it reads abandoned for the moment
     /// before Atlas beats again (`onlyone::Watching`).
@@ -157,13 +220,11 @@ impl eframe::App for App {
         crate::look_paint::dress(ctx);
         use eframe::egui::{self, ViewportCommand};
 
-        // Cover the whole screen once its size is known.
-        if !self.sized {
-            if let Some(size) = ctx.input(|i| i.viewport().monitor_size) {
-                ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(0.0, 0.0)));
-                ctx.send_viewport_cmd(ViewportCommand::InnerSize(size));
-                self.sized = true;
-            }
+        // Invisible by Windows itself, not only by the graphics card: the
+        // window flags `overlay::window_style` describes were written and
+        // never applied (29 Sep 2026). Applied here, once the window exists.
+        if !self.keyed {
+            self.keyed = see_through();
         }
 
         // Every few seconds: still wanted, still switched on, still the one.
@@ -186,12 +247,39 @@ impl eframe::App for App {
         let speaking = self.voice.now().cloned();
         let alive = self.stage.step(speaking.as_ref(), now, &self.cfg);
 
-        let screen = ctx.screen_rect();
-        let (elements, opacity) = self.stage.frame(screen.width() as i32, screen.height() as i32, &self.cfg);
+        // Nothing to say: off the screen entirely, told so every frame (a
+        // window Windows shows after its first frame anyway is exactly how
+        // the typing box became a black bar, 27 Sep 2026).
+        if !alive {
+            if self.shown {
+                self.shown = false;
+            }
+            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |_| {});
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            return;
+        }
+        let Some(monitor) = ctx.input(|i| i.viewport().monitor_size) else {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+            return;
+        };
+        let (sw, sh) = (monitor.x as i32, monitor.y as i32);
+        if !self.shown {
+            let (x, y, w, h) = overlay_band(sw, sh, &self.cfg);
+            self.origin = (x as f32, y as f32);
+            self.band_w = w as f32;
+            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(x as f32, y as f32)));
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(w as f32, h as f32)));
+            ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+            self.shown = true;
+        }
+        let (elements, opacity) = self.stage.frame(sw, sh, &self.cfg);
+        let origin = egui::vec2(self.origin.0, self.origin.1);
+        let wrap = self.band_w * 0.94;
         egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {
             let painter = ui.painter();
             for e in &elements {
-                draw(painter, e, opacity, level, self.stage.showing.as_ref().map(|o| o.started_ms).unwrap_or(0), now);
+                draw(painter, e, origin, wrap, opacity, level, self.stage.showing.as_ref().map(|o| o.started_ms).unwrap_or(0), now);
             }
         });
 
@@ -205,14 +293,67 @@ impl eframe::App for App {
 }
 
 #[cfg(feature = "desktop-ui")]
+/// Make the overlay see-through the way Windows does it for any program: a
+/// layered window whose black pixels aren't drawn (`LWA_COLORKEY` with
+/// `overlay::SEE_THROUGH_KEY`), that clicks pass through, off the taskbar and
+/// never focused (`overlay::window_style`).
+///
+/// Why this and not transparency alone: an OpenGL window is see-through only
+/// when the graphics driver hands Windows a picture with an alpha channel,
+/// and on Eric's laptop it didn't -- the "transparent" window came out black
+/// (29 Sep 2026). A colour key doesn't depend on the driver: Windows itself
+/// leaves out every pixel of that colour. The overlay clears to black, so
+/// everything it doesn't paint is left out.
+///
+/// True once applied; false while the window isn't there yet.
+fn see_through() -> bool {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Foundation::COLORREF;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            FindWindowW, GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_COLORKEY,
+        };
+        let title: Vec<u16> = "Atlas overlay".encode_utf16().chain(std::iter::once(0)).collect();
+        let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) else {
+            return false;
+        };
+        if h.0.is_null() {
+            return false;
+        }
+        let style = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32 | crate::overlay::window_style();
+        SetWindowLongPtrW(h, GWL_EXSTYLE, style as isize);
+        return SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok();
+    }
+    #[cfg(not(windows))]
+    true
+}
+
+#[cfg(feature = "desktop-ui")]
+/// Put the overlay on screen without taking the keyboard, found by its
+/// title (the window's own loop may be asleep while it's hidden).
+fn show_without_focus() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_SHOWNOACTIVATE};
+        let title: Vec<u16> = "Atlas overlay".encode_utf16().chain(std::iter::once(0)).collect();
+        if let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) {
+            if !h.0.is_null() {
+                let _ = ShowWindow(h, SW_SHOWNOACTIVATE);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "desktop-ui")]
 /// Paint one element of `overlay`'s design.
-fn draw(painter: &eframe::egui::Painter, e: &Element, opacity: f32, level: Option<f32>, started_ms: u64, now_ms: u64) {
+#[allow(clippy::too_many_arguments)]
+fn draw(painter: &eframe::egui::Painter, e: &Element, origin: eframe::egui::Vec2, wrap: f32, opacity: f32, level: Option<f32>, started_ms: u64, now_ms: u64) {
     use crate::look_paint::MarkState as Paint;
     use eframe::egui::{self, pos2, vec2, Color32, FontId, Rect};
     let fade = |c: Color32, a: f32| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * opacity * 255.0) as u8);
     match e {
         Element::Mark { x, y, size, state } => {
-            let rect = Rect::from_min_size(pos2(*x as f32, *y as f32), vec2(*size as f32, *size as f32));
+            let rect = Rect::from_min_size(pos2(*x as f32, *y as f32) - origin, vec2(*size as f32, *size as f32));
             let paint = match state {
                 crate::overlay::MarkState::Waking => Paint::Waking,
                 crate::overlay::MarkState::Thinking => Paint::Thinking,
@@ -221,10 +362,15 @@ fn draw(painter: &eframe::egui::Painter, e: &Element, opacity: f32, level: Optio
             let t = now_ms.saturating_sub(started_ms) as f32 / 1000.0;
             crate::window::paint_mark(painter, rect, paint, t, level);
         }
+        // On Windows the overlay is see-through by colour key, which leaves
+        // out exactly-black pixels only: a shade fading to black would stop
+        // short of it and show as a dark smudge. The letters' own halo keeps
+        // them readable there.
+        Element::Shade { .. } if cfg!(windows) => {}
         Element::Shade { x, y, width, height, strength } => {
             // A darker region, not a box: full strength in the middle, nothing
             // at the edge.
-            let outer = Rect::from_min_size(pos2(*x as f32, *y as f32), vec2(*width as f32, *height as f32));
+            let outer = Rect::from_min_size(pos2(*x as f32, *y as f32) - origin, vec2(*width as f32, *height as f32));
             let inner = outer.shrink2(vec2(outer.width() * 0.3, outer.height() * 0.3));
             let dark = fade(crate::look_paint::colourway().ink, *strength);
             let clear = Color32::TRANSPARENT;
@@ -241,11 +387,10 @@ fn draw(painter: &eframe::egui::Painter, e: &Element, opacity: f32, level: Optio
             painter.add(egui::Shape::mesh(m));
         }
         Element::Typed { x, y, text, size, .. } => {
-            let wrap = painter.clip_rect().width() * 0.6;
             let font = FontId::proportional(*size as f32);
             let body = painter.layout(text.clone(), font.clone(), fade(crate::look_paint::colourway().text, 1.0), wrap);
             let halo = painter.layout(text.clone(), font, fade(crate::look_paint::colourway().ink, 0.75), wrap);
-            let at = pos2(*x as f32 - body.size().x / 2.0, *y as f32);
+            let at = pos2(*x as f32 - body.size().x / 2.0, *y as f32) - origin;
             // A soft dark halo round every letter, so they read over anything.
             for (dx, dy) in [(-2.0, 0.0), (2.0, 0.0), (0.0, -2.0), (0.0, 2.0), (-1.5, -1.5), (1.5, 1.5), (-1.5, 1.5), (1.5, -1.5)] {
                 painter.galley(at + vec2(dx, dy), halo.clone(), Color32::TRANSPARENT);

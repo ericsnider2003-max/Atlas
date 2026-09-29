@@ -1269,6 +1269,15 @@ impl<'a> Daemon<'a> {
                         self.this_turn_cap = None;
                         return String::new();
                     }
+                    // A model call is already out (a Talk page turn still
+                    // thinking) and holds the conversation's slot: this one
+                    // uses the other slot rather than waiting behind it on the
+                    // loop (29 Sep 2026: both named slot 0, so this waited for
+                    // the first to finish, and the hub, the typing box and
+                    // Pause all went unanswered for minutes).
+                    if self.pending_turn.is_some() {
+                        turn.aside = true;
+                    }
                     // The words so far are the Talk page's to show -- unless a
                     // Talk turn is still thinking, whose words they are
                     // (28 Sep 2026: a voice turn answered meanwhile cleared
@@ -1780,8 +1789,21 @@ impl<'a> Daemon<'a> {
         // sentence count, so a caveat added earlier is exactly the sentence
         // most likely to be cut — the warning would be silently dropped from
         // the answers that most needed it.
+        // A model call that failed with nothing to say is answered with why,
+        // not with an empty reply and a caveat about what it is missing (29
+        // Sep 2026: the whole reply Eric got was "I should say: the language
+        // model is failing -- so this is missing whatever it would have
+        // added", and the reason was thrown away).
+        let failed_silent = decision.model == brain::Reached::No && reply.trim().is_empty();
+        let reply = if failed_silent {
+            let why = self.model_server_trouble.clone().unwrap_or_else(|| decision.say.clone());
+            self.log.warn(&format!("the model call failed: {}", decision.say));
+            model_failed_words(&why)
+        } else {
+            reply
+        };
         let used = crate::integrations::sources_for(need_of(&intent), decision.model);
-        let reply = crate::integrations::mark(&reply, &used, &self.connections, _t);
+        let reply = if failed_silent { reply } else { crate::integrations::mark(&reply, &used, &self.connections, _t) };
         // The model didn't know, or it's the kind of thing that changes by
         // the day: offer to look it up, and a yes does.
         let reply = match self.offer_to_look_it_up(said, &intent, decision.model, &reply) {

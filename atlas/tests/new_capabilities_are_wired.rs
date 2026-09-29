@@ -282,7 +282,6 @@ const KNOWN: &[&str] = &[
     // can never email it. Its dead_capabilities ceiling was lowered (322 ->
     // 321) but this list was left behind -- same two-file drift as
     // `craft::of_path` above. Removed here to keep the ledgers level.
-    "overlay::window_style",
     "overnight::delegation_for",
     "overnight::spend_turns",
     "panel::place_on_second",
