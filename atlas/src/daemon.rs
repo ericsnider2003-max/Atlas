@@ -20750,6 +20750,7 @@ impl<'a> Daemon<'a> {
                         // The wake word's recorder lets go of the microphone
                         // while the key is held.
                         self.mic_busy(true);
+                        let held_from = std::time::Instant::now();
                         let heard = match self.hotkeys.as_ref() {
                             Some(h) => ears.listen_while(&|| h.held()),
                             None => Ok(None),
@@ -20760,8 +20761,19 @@ impl<'a> Daemon<'a> {
                                 self.heard_through_this_ear(&said);
                                 self.converse(&said, ears, mouth, clock)
                             }
+                            // A tap is not a question. A key held for a
+                            // second or more that came back with no words is
+                            // said, not swallowed (29 Sep 2026: Eric held the
+                            // key four times and Atlas never answered).
+                            Ok(None) if held_from.elapsed() >= std::time::Duration::from_secs(1) => {
+                                self.log.info(&format!(
+                                    "push-to-talk: no words in {:.1}s of recording",
+                                    held_from.elapsed().as_secs_f32()
+                                ));
+                                self.say(mouth, "I didn't catch anything that time. Hold the key while you talk, and I'll listen until you let go.");
+                            }
                             Ok(None) => {}
-                            Err(_) => self.degrade(mouth),
+                            Err(e) => self.degrade_because(mouth, &e),
                         }
                     }
                     crate::hotkeys::Pressed::TalkStop => {}
@@ -20807,7 +20819,7 @@ impl<'a> Daemon<'a> {
                     self.mic_busy(false);
                     match heard {
                         Ok(said) => self.converse(&said, ears, mouth, clock),
-                        Err(_) => self.degrade(mouth),
+                        Err(e) => self.degrade_because(mouth, &e),
                     }
                     continue;
                 }
@@ -20835,10 +20847,10 @@ impl<'a> Daemon<'a> {
                             self.heard_through_this_ear(&said);
                             self.converse(&said, ears, mouth, clock);
                         }
-                        Err(_) => self.degrade(mouth),
+                        Err(e) => self.degrade_because(mouth, &e),
                     },
                     Ok(false) => {}
-                    Err(_) => self.degrade(mouth),
+                    Err(e) => self.degrade_because(mouth, &e),
                 },
                 Tier::PushToTalk => {
                     // Off Windows, the held key (`hotkey`) when it could be
@@ -20883,7 +20895,7 @@ impl<'a> Daemon<'a> {
                                 }
                                 self.converse(&said, ears, mouth, clock);
                             }
-                            Err(_) => self.degrade(mouth),
+                            Err(e) => self.degrade_because(mouth, &e),
                         }
                     }
                 }
@@ -21613,6 +21625,15 @@ impl<'a> Daemon<'a> {
 
     fn keyboard_followup(&self) -> Option<String> {
         None
+    }
+
+    /// `degrade`, with the reason written down first. Every failure here
+    /// used to be `Err(_)`: the tier dropped and nothing anywhere said why,
+    /// so a microphone that didn't exist looked exactly like a quiet room
+    /// (29 Sep 2026).
+    fn degrade_because(&mut self, mouth: &dyn Mouth, why: &dyn std::fmt::Display) {
+        self.log.warn(&format!("listening failed: {why}"));
+        self.degrade(mouth);
     }
 
     fn degrade(&mut self, mouth: &dyn Mouth) {

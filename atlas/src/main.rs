@@ -1274,6 +1274,13 @@ fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         }
     }
 
+    // The microphone this machine really has, for the daemon too (29 Sep
+    // 2026): everything below reads this one configuration.
+    let tc_owned = pick_the_microphone(cfg, plat, tc);
+    let mut cfg_owned = cfg.clone();
+    cfg_owned.tools = Some(tc_owned);
+    let cfg = &cfg_owned;
+    let tc = cfg.tools.as_ref().expect("just set");
     let voice = Voice::new(tc);
     let store = atlas::roots::store();
 
@@ -1852,21 +1859,16 @@ fn run_doctor(cfg: &Config, plat: &dyn Platform) {
     }
 }
 
-fn voice_loop(
-    cfg: &Config,
-    plat: &dyn Platform,
-    parser: &Parser,
-    approver: &dyn Approver,
-    hands_free: bool,
-) {
-    let Some(tc) = cfg.tools.as_ref() else {
-        eprintln!("config/tools.yaml is missing — nothing to talk to.");
-        leave(2);
-    };
-    if !tc.enabled {
-        eprintln!("tools.yaml has enabled: false");
-        leave(2);
-    }
+/// Which microphone Atlas listens with, picked from what this machine
+/// actually has rather than the guess in `tools.yaml` (`mic_device`).
+///
+/// One place for both doors (29 Sep 2026). This lived inside `voice_loop`
+/// only, so the background Atlas -- what setup starts and what Eric runs --
+/// recorded from the shipped "Microphone Array (Realtek(R) Audio)" on a
+/// laptop whose microphone is Intel Smart Sound. Every wake-word clip
+/// failed, Atlas dropped to push-to-talk, and the held key recorded nothing
+/// and said nothing.
+fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
     // Pick the mic from what is actually there, rather than trusting the
     // guess sitting in tools.yaml -- that guess is what sent someone chasing
     // a Realtek device name on a laptop with Intel audio and a shut lid.
@@ -1938,8 +1940,15 @@ fn voice_loop(
             // here is a real signal or an admitted absence -- nothing is
             // invented to make the decision look better informed.
             let presence_readable = plat.monitors().is_ok();
+            // At the desk means a screen is on here: the laptop's own, or
+            // the monitors it's plugged into (29 Sep 2026). "The laptop's
+            // screen is on" alone read Eric -- lid closed behind two
+            // monitors, AirPods connected -- as away from the desk, and away
+            // with a headset means listening through the AirPods, which
+            // drops them to call-quality sound for everything.
+            let screens_on = plat.monitors().map(|m| !m.is_empty()).unwrap_or(false);
             let whereabouts = atlas::hearing::Where {
-                at_desk: laptop_active,
+                at_desk: laptop_active || screens_on,
                 presence_unknown: !presence_readable,
                 headset_connected: hearing.candidates.iter().any(|c| c.bluetooth),
                 // No signal for either of these yet: nothing reports whether
@@ -1979,6 +1988,25 @@ fn voice_loop(
             eprintln!("(couldn't list audio devices, using what's in tools.yaml: {e})");
         }
     }
+    tc_owned
+}
+
+fn voice_loop(
+    cfg: &Config,
+    plat: &dyn Platform,
+    parser: &Parser,
+    approver: &dyn Approver,
+    hands_free: bool,
+) {
+    let Some(tc) = cfg.tools.as_ref() else {
+        eprintln!("config/tools.yaml is missing — nothing to talk to.");
+        leave(2);
+    };
+    if !tc.enabled {
+        eprintln!("tools.yaml has enabled: false");
+        leave(2);
+    }
+    let tc_owned = pick_the_microphone(cfg, plat, tc);
     // The mic Atlas just picked has to reach the daemon, not only the
     // recorder. `Voice` borrows `tc_owned`; `Daemon::new` borrows a whole
     // `Config`. Handing the daemon the original `cfg` would give it a

@@ -2573,8 +2573,12 @@ pub fn permissions_page(s: &Settings, granted_apps: &[String]) -> String {
     if items.is_empty() {
         body.push_str("<p>Nothing is enabled.</p>");
     }
+    // Every row can be changed here, on or off (29 Sep 2026). A row that was
+    // off showed the word "off" and no button, so this page listed what
+    // Atlas wasn't allowed to do and gave no way to allow it: Eric looked for
+    // where to change a permission and there was nowhere. Turning one on
+    // still asks first (`control`, `Weight::needs_confirming`).
     for item in items {
-        let on = matches!(item.value, Value::Toggle(true));
         body.push_str(&format!(
             "<div class=row><div class=name>{}{}</div><div class=what>{}</div>\
              <div class=cost>{}</div><div style=\"margin-top:8px\">{}</div></div>",
@@ -2582,7 +2586,7 @@ pub fn permissions_page(s: &Settings, granted_apps: &[String]) -> String {
             tag(item.weight),
             esc(&item.what),
             esc(&item.cost),
-            if on { control(item) } else { "<span class=off>off</span>".to_string() }
+            control(item)
         ));
     }
     shell_at(Some(Page::Permissions), "Permissions", &body)
