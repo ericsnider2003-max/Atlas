@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Appearance & access</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97; --accent:#d9730d; --accent-soft:#fdecc8; --accent-tx:#b26206;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .lab{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .sub{font-size:12.5px;color:var(--faint);margin-top:2px;line-height:1.45;}
+  .seg{display:inline-flex;background:var(--side);border:1px solid var(--edge);border-radius:9px;padding:3px;}
+  .seg button{border:0;background:transparent;color:var(--dim);padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .sw{width:30px;height:30px;border-radius:99px;cursor:pointer;border:2px solid transparent;}
+  .sw.on{border-color:var(--ink);box-shadow:0 0 0 2px #fff inset;}
+  .stat{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px 3px 8px;border-radius:99px;}
+  .stat svg{width:13px;height:13px;}
+  .rowc{display:flex;align-items:flex-start;gap:20px;padding:18px 0;border-bottom:1px solid var(--edge2);}
+  .rowc .l{flex:1;}
+</style>
+</helmet>
+
+<div style="width:880px;height:720px;box-sizing:border-box;background:var(--bg);color:var(--ink);padding:30px 34px;overflow:hidden;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path></svg>
+    <h1 style="margin:0;font-size:22px;font-weight:680;letter-spacing:-.02em;">Appearance &amp; access</h1>
+  </div>
+  <div style="font-size:13px;color:var(--faint);margin-bottom:14px;">Make Atlas fit how you see and work. Every choice is stored on your machine and applies everywhere.</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 40px;">
+    <!-- left column -->
+    <div>
+      <div class="rowc"><div class="l"><div class="lab">Theme</div><div class="sub">Follows your system unless you choose.</div></div>
+        <div class="seg"><button>Light</button><button class="on">Dark</button><button>Auto</button></div></div>
+
+      <div class="rowc"><div class="l"><div class="lab">Accent colour</div><div class="sub">Pick the one that feels like yours.</div></div>
+        <div style="display:flex;gap:9px;align-items:center;">
+          <span class="sw on" style="background:#d9730d;"></span>
+          <span class="sw" style="background:#0072B2;"></span>
+          <span class="sw" style="background:#2d9d8f;"></span>
+          <span class="sw" style="background:#7b61c9;"></span>
+          <span class="sw" style="background:#4f8a5b;"></span>
+        </div></div>
+
+      <div class="rowc"><div class="l"><div class="lab">Text size</div><div class="sub">Scales the whole interface.</div></div>
+        <div class="seg"><button style="font-size:11px;">A</button><button class="on">A</button><button style="font-size:16px;">A</button></div></div>
+
+      <div class="rowc"><div class="l"><div class="lab">Density</div><div class="sub">Roomy, or more on screen.</div></div>
+        <div class="seg"><button class="on">Comfortable</button><button>Compact</button></div></div>
+
+      <div class="rowc" style="border-bottom:0;flex-direction:column;align-items:stretch;gap:11px;">
+        <div class="l"><div class="lab">When Atlas may pop up</div><div class="sub">Otherwise it waits in the hub and your brief — no interrupting for routine things.</div></div>
+        <div class="seg" style="align-self:flex-start;">
+          <button>Only when I ask</button>
+          <button class="on">When it's urgent</button>
+          <button>Anything ready</button>
+        </div>
+        <div style="font-size:12px;color:var(--faint);line-height:1.45;">Urgent = time-sensitive, or something you told Atlas is worth interrupting for. You can always mark a project or a person as one that may reach you.</div>
+      </div>
+    </div>
+
+    <!-- right column: accessibility -->
+    <div>
+      <div class="rowc"><div class="l"><div class="lab">Colour&#8209;blind mode</div><div class="sub">Swaps to a palette safe for your kind of colour vision. Status always shows an <b>icon and a word</b>, never colour alone — so it reads even in greyscale.</div></div></div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin:-6px 0 14px;">
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border:1px solid var(--edge);border-radius:8px;font-size:13px;">None <span style="margin-left:auto;color:var(--faint);font-size:12px;">full colour</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border:2px solid var(--accent);background:var(--accent-soft);border-radius:8px;font-size:13px;font-weight:600;">Deuteranopia / Protanopia <span style="margin-left:auto;color:var(--accent-tx);font-size:12px;">red–green safe</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border:1px solid var(--edge);border-radius:8px;font-size:13px;">Tritanopia <span style="margin-left:auto;color:var(--faint);font-size:12px;">blue–yellow safe</span></div>
+      </div>
+
+      <div class="lab" style="margin-bottom:8px;">How status looks in this mode</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding:14px;background:var(--side);border:1px solid var(--edge);border-radius:10px;">
+        <span class="stat" style="background:#dcebf5;color:#005a8e;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 6"></path></svg>Done</span>
+        <span class="stat" style="background:#dcebf5;color:#005a8e;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l2.5 1.5"></path></svg>In progress</span>
+        <span class="stat" style="background:#f7e6c6;color:#b5730a;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>Waiting</span>
+        <span class="stat" style="background:#e4e7ec;color:#454b54;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle></svg>To do</span>
+      </div>
+      <div class="sub" style="margin-top:8px;">Blue and amber stay distinct for every kind of colour vision; the icon and word carry the meaning if the colour doesn't.</div>
+
+      <div class="rowc" style="border-bottom:0;margin-top:8px;"><div class="l"><div class="lab">Rearrange your home</div><div class="sub">Drag the cards into the order you want, or hide the ones you don't.</div></div>
+        <button style="background:#fff;border:1px solid var(--edge);border-radius:8px;padding:8px 13px;font-size:13px;cursor:pointer;color:var(--ink);">Edit layout</button></div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":720}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

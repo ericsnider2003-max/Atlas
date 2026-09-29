@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Project (Faster date-parser)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --bezel:#0d0f12;--page:#ffffff;--side:#f6f3ec;--side-active:#ece7dc;
+  --ink:#2b2926;--body:#413d37;--muted:#8b867c;--faint:#a9a49a;
+  --line:#ece7de;--line2:#e4dfd5;--accent:#c46a24;--link:#4f74a0;
+  --done-ink:#3f7d52;--amber-ink:#a9741f;--amber-bg:#f6ecd6;
+  --sans:-apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.navitem{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:8px;font-size:13.5px;color:var(--body)}
+.navitem .chev{color:var(--faint);width:12px;display:flex;justify-content:center;font-size:12px}
+.badge{margin-left:auto;font-size:11px;font-weight:600;color:var(--accent);background:#f2e5d6;border-radius:999px;padding:1px 7px}
+.sec{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;padding:0 10px}
+.wl{display:flex;gap:11px;margin-bottom:15px}
+.wl svg{flex-shrink:0;margin-top:1px}
+</style>
+</helmet>
+
+<div style="width:1280px;height:840px;box-sizing:border-box;background:var(--bezel);padding:6px 0;display:flex;flex-direction:column;font-family:var(--sans)">
+  <div style="flex-grow:1;display:flex;background:var(--page);margin:0 6px;border-radius:8px;overflow:hidden">
+
+    <aside style="width:240px;flex-shrink:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px 12px">
+      <div style="display:flex;align-items:center;gap:9px;padding:4px 8px 12px">
+        <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.5" fill="none" stroke="var(--accent)" stroke-width="1.6"/><circle cx="12" cy="12" r="3.2" fill="var(--accent)"/></svg>
+        <span style="font-size:14px;font-weight:700;color:var(--ink)">Eric's Atlas</span>
+        <svg viewBox="0 0 24 24" width="15" height="15" style="margin-left:auto;color:var(--faint)" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>Search</span></div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg><span>Now</span></div>
+      <div class="sec" style="margin:16px 0 7px">Personal</div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg><span>Home</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg><span>Calendar</span></div>
+      <div class="navitem" style="background:var(--side-active)"><span class="chev"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ink)" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span style="color:var(--ink);font-weight:600">Projects</span><span class="badge">1</span></div>
+      <div style="padding:3px 0 3px 34px"><div style="font-size:13px;color:var(--ink);font-weight:600;padding:5px 8px;background:#e6e0d4;border-radius:7px">Faster date-parser</div><div style="font-size:13px;color:var(--muted);padding:6px 8px">Mini-rack build</div></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 5h16v11H9l-4 3z"/></svg><span>Messages</span><span class="badge">4</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg><span>Documents</span></div>
+      <div class="sec" style="margin:16px 0 7px">Northwind LLC · <span style="color:#b8b2a7;font-weight:600;text-transform:none;letter-spacing:0">business</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M5 20V9l7-5 7 5v11"/></svg><span>Overview</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M9 11l3 3L20 6"/><path d="M20 12v7H4V5h11"/></svg><span>Shared tasks</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg><span>Clients</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.5 2.6 14.5 0 17M12 3.5c-2.6 2.5-2.6 14.5 0 17"/></svg><span>Partners</span></div>
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg><span>Settings</span></div>
+      </div>
+    </aside>
+
+    <main style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+      <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--muted)">Projects<span style="margin:0 7px;color:var(--faint)">/</span><span style="color:var(--ink);font-weight:600">Faster date-parser</span></div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg><span style="color:var(--ink);font-weight:600">On your machine</span><span>· offline</span></div>
+      </div>
+
+      <div style="flex-grow:1;overflow:hidden;padding:26px 30px;display:flex;gap:34px">
+        <div style="flex-grow:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:11px"><span style="font-size:26px">⚡</span><span style="font-size:26px;font-weight:700;color:var(--ink);letter-spacing:-.02em">Faster date-parser</span></div>
+          <div style="display:flex;align-items:center;gap:26px;margin:16px 0 18px;font-size:13px">
+            <span style="display:flex;align-items:center;gap:8px"><span style="color:var(--muted)">Status</span><span class="chip" style="color:var(--amber-ink);background:var(--amber-bg);font-weight:600;padding:3px 9px;border-radius:999px">Ready to approve</span></span>
+            <span style="display:flex;align-items:center;gap:7px"><span style="color:var(--muted)">Owner</span><span style="width:18px;height:18px;border-radius:5px;background:#f1e2d0;color:var(--accent);font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">A</span><span style="color:var(--ink)">Atlas</span></span>
+            <span style="display:flex;align-items:center;gap:7px"><span style="color:var(--muted)">Area</span><span style="color:var(--ink)">Homelab</span></span>
+          </div>
+          <div style="font-size:14.5px;line-height:1.6;color:var(--body);max-width:640px">Replace the hand-rolled timestamp parser with a table-driven one. Cuts a repeated allocation on the hot path — the report loop calls it on every tick. Atlas built it in a copy of the tree, proved it against the guard suite, and it's waiting on your yes.</div>
+
+          <div style="font-size:16px;font-weight:700;color:var(--ink);margin:26px 0 12px">Tasks</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line)"><span style="width:18px;height:18px;border-radius:5px;background:var(--done-ink);display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12.5l4 4 10-10"/></svg></span><span style="flex:1;font-size:14px;color:var(--muted);text-decoration:line-through">Profile the current parser on the report loop</span><span style="font-family:var(--mono);font-size:11px;color:var(--faint)">Atlas</span></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line)"><span style="width:18px;height:18px;border-radius:5px;background:var(--done-ink);display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12.5l4 4 10-10"/></svg></span><span style="flex:1;font-size:14px;color:var(--muted);text-decoration:line-through">Write the table-driven version + inline tests</span><span style="font-family:var(--mono);font-size:11px;color:var(--faint)">Atlas</span></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line)"><span style="width:18px;height:18px;border-radius:5px;background:var(--done-ink);display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12.5l4 4 10-10"/></svg></span><span style="flex:1;font-size:14px;color:var(--muted);text-decoration:line-through">Prove it in a copy — full guard suite green</span><span style="font-family:var(--mono);font-size:11px;color:var(--faint)">Atlas</span></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:9px 4px"><span style="width:18px;height:18px;border-radius:5px;border:1.6px solid #cdc7bb"></span><span style="flex:1;font-size:14px;color:var(--ink)">Approve &amp; merge into the main tree</span><span style="font-size:10.5px;font-weight:700;color:var(--accent);background:#f2e5d6;border-radius:999px;padding:2px 8px">You</span></div>
+          </div>
+
+          <div style="margin-top:20px;background:#eef4ec;border:1px solid #dbe8d8;border-radius:11px;padding:15px 17px;max-width:640px">
+            <div style="display:flex;gap:9px"><svg viewBox="0 0 24 24" width="16" height="16" style="flex-shrink:0;margin-top:1px" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg><div style="font-size:13.5px;line-height:1.55;color:var(--body)"><strong style="color:var(--ink)">Proven in a copy.</strong> 5,188 guard tests pass, no dead or hollow code introduced. Hot-path allocation gone — ~11% faster on the sample report. Nothing has touched your main tree yet.</div></div>
+            <div style="display:flex;gap:10px;margin-top:13px;padding-left:25px">
+              <button style="border:none;background:var(--done-ink);color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 15px;border-radius:8px;cursor:pointer">Approve &amp; merge</button>
+              <button style="border:1px solid var(--line2);background:#fff;color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 15px;border-radius:8px;cursor:pointer">See the diff</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- right rail: how Atlas built this -->
+        <div style="width:280px;flex-shrink:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:3px"><svg viewBox="0 0 24 24" width="17" height="17"><circle cx="12" cy="12" r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="var(--accent)"/></svg><span style="font-size:14px;font-weight:700;color:var(--ink)">How Atlas built this</span></div>
+          <div style="font-size:12px;color:var(--muted);margin:0 0 16px 25px">Its work log — the same stream as Now</div>
+          <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--done-ink)" stroke-width="2"><path d="M5 12.5l4 4 10-10"/></svg><div><div style="font-size:13.5px;font-weight:600;color:var(--ink)">Planned the change</div><div style="font-size:12.5px;color:var(--muted)">Table-driven parse, no new deps</div></div></div>
+          <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--done-ink)" stroke-width="2"><path d="M5 12.5l4 4 10-10"/></svg><div><div style="font-size:13.5px;font-weight:600;color:var(--ink)">Wrote it + tests</div><div style="font-size:12.5px;color:var(--muted)">2 files · 214 lines</div></div></div>
+          <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--amber-ink)" stroke-width="2"><path d="M4 12h9M13 8l4 4-4 4"/></svg><div><div style="font-size:13.5px;font-weight:600;color:var(--ink)">Hit a wall, rerouted</div><div style="font-size:12.5px;color:var(--muted)">Locale edge case — added a fallback rather than skip it</div></div></div>
+          <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--done-ink)" stroke-width="2"><path d="M5 12.5l4 4 10-10"/></svg><div><div style="font-size:13.5px;font-weight:600;color:var(--ink)">Verified in a copy</div><div style="font-size:12.5px;color:var(--muted)">5,188 guards green</div></div></div>
+          <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg><div><div style="font-size:13.5px;font-weight:600;color:var(--accent)">Waiting on you</div><div style="font-size:12.5px;color:var(--muted)">Approve to merge</div></div></div>
+
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;margin:22px 0 10px">Files in this copy</div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--muted)" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg><span style="flex:1;font-family:var(--mono);font-size:12.5px;color:var(--body)">date_parse.rs</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--done-ink)">+180</span></div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 0"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--muted)" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg><span style="flex:1;font-family:var(--mono);font-size:12.5px;color:var(--body)">date_parse_test.rs</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--done-ink)">+34</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":840}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

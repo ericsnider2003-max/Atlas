@@ -1,0 +1,28 @@
+# Allowlist. Atlas never looks outside these.
+# `atlas doctor` prints the right paths for this machine.
+# Forward slashes on purpose. Windows accepts them, and a backslash inside a
+# double-quoted YAML string is an escape character — "C:\Users" is read as a
+# unicode escape and fails to parse.
+roots:
+  - "%USERPROFILE%/Desktop"
+  - "%USERPROFILE%/Documents"
+  - "%USERPROFILE%/Downloads"
+
+# Skipped wholesale — noisy, huge, or none of Atlas's business.
+exclude_dirs:
+  - AppData
+  - node_modules
+  - target
+  - .git
+  - __pycache__
+  - venv
+  - .venv
+  - Temp
+  - Cache
+  - "System Volume Information"
+  - $RECYCLE.BIN
+
+exclude_exts: [tmp, log, lock, pyc, obj, pdb, dll, sys, cache]
+
+max_depth: 8
+max_enrich_mb: 20

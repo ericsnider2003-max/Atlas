@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas Home — Ember Dark</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  /* ===== PALETTE: Ember Dark (warm, command-center) ===== */
+  :root{
+    --bg:#0c0f14; --side:#0e1218; --panel:#13181f; --edge:#232c37; --edge2:#1b222c; --hover:#171d26;
+    --ink:#eceff3; --dim:#97a2ae; --faint:#616c78;
+    --accent:#eb9d4a; --accent-soft:#2a2013; --accent-ink:#1a1206; --accent-tx:#eb9d4a;
+    --ok:#5cc79a; --oks:#14251f; --wait:#e0a44e; --waits:#2a2013; --info:#6aa8f0; --infos:#152232;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  a{color:var(--info);text-decoration:none}a:hover{text-decoration:underline}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}
+  .nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;display:flex;align-items:center;gap:6px;}
+  .stat{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:2px 9px 2px 7px;border-radius:99px;}
+  .stat svg{width:13px;height:13px;}
+  th{font-weight:500;color:var(--faint);font-size:12px;text-align:left;padding:8px 12px;border-bottom:1px solid var(--edge);}
+  td{padding:9px 12px;border-bottom:1px solid var(--edge2);font-size:13.5px;color:var(--ink);}
+  .av{width:19px;height:19px;border-radius:99px;display:inline-grid;place-items:center;font-size:10px;font-weight:700;}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- ===== SIDEBAR (Notion-style) ===== -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;color:var(--ink);">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+
+    <div class="grp">PERSONAL</div>
+    <div class="nav on"><span class="tw">&#9662;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects<span class="mono" style="margin-left:auto;background:var(--accent-soft);color:var(--accent-tx);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">1</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages<span class="mono" style="margin-left:auto;background:var(--infos);color:var(--info);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">4</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Documents</div>
+
+    <div class="grp">NORTHWIND LLC <span style="font-weight:400;color:#c3c2bd;">· business</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg>Overview</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path></svg>Shared tasks</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"></circle><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path></svg>Clients</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>Partners</div>
+
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>New page</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H2.5a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V2.5a2 2 0 1 1 4 0 1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1h.1a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.4 1z"></path></svg>Settings</div>
+  </div>
+
+  <!-- ===== HOME PAGE (living) ===== -->
+  <div style="flex:1;box-sizing:border-box;min-width:0;overflow:hidden;">
+    <div style="height:42px;border-bottom:1px solid var(--edge2);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:13px;color:var(--faint);">
+      <span>Personal</span><span>/</span><span style="color:var(--ink);">Home</span>
+      <div style="flex:1"></div>
+      <span class="stat" style="color:var(--ok);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M8 12l3 3 5-6"></path></svg>On your machine · offline</span>
+    </div>
+
+    <div style="padding:30px 44px 0;height:calc(100% - 42px);overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:11px;margin-bottom:4px;">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-soft);display:grid;place-items:center;">
+          <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="42" fill="none" stroke="var(--accent)" stroke-width="8" opacity=".9"></circle><circle cx="60" cy="60" r="13" fill="var(--accent)"></circle></svg>
+        </div>
+        <div>
+          <h1 style="margin:0;font-size:26px;font-weight:680;letter-spacing:-.02em;color:var(--ink);">Home</h1>
+        </div>
+        <span style="margin-left:auto;font-size:13.5px;color:var(--faint);">Good evening, Eric · Sun 20 Sep</span>
+      </div>
+
+      <!-- Brief callout -->
+      <div style="display:flex;gap:14px;background:var(--side);border:1px solid var(--edge);border-radius:9px;padding:16px 18px;margin:16px 0 24px;">
+        <svg viewBox="0 0 120 120" width="20" height="20" style="flex:none;margin-top:2px;"><circle cx="60" cy="60" r="42" fill="none" stroke="var(--accent)" stroke-width="8" opacity=".9"></circle><circle cx="60" cy="60" r="13" fill="var(--accent)"></circle></svg>
+        <div style="flex:1;">
+          <div style="font-size:15px;line-height:1.6;color:var(--ink);">It's quiet. <b>Three things want you:</b> the <a href="#">faster date&#8209;parser</a> change is checked and ready to approve, the broker sent <a href="#">two times</a> to reply to, and you still need to <a href="#">pick a mailbox</a> to connect. Nothing's on fire — Homelab deploys at 6:30, and Northwind's invoice draft is waiting for a look.</div>
+          <div style="display:flex;gap:8px;margin-top:14px;">
+            <button style="background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:640;cursor:pointer;">Approve the change</button>
+            <button style="background:transparent;color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;">Reply to broker</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- living row: right now + business glance -->
+      <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:26px;">
+        <div>
+          <div style="font-size:16px;font-weight:640;margin-bottom:2px;color:var(--ink);">Today</div>
+          <div style="border-top:1px solid var(--edge2);margin-top:9px;">
+            <div style="display:flex;align-items:center;gap:13px;padding:10px 2px;border-bottom:1px solid var(--edge2);"><span class="mono" style="width:46px;color:var(--faint);font-size:13px;">09:00</span><span class="stat" style="background:var(--oks);color:var(--ok);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 6"></path></svg>Done</span><span style="flex:1;font-size:14px;color:var(--dim);">Dentist</span></div>
+            <div style="display:flex;align-items:center;gap:13px;padding:10px 2px;border-bottom:1px solid var(--edge2);background:var(--waits);border-radius:6px;"><span class="mono" style="width:46px;color:var(--wait);font-size:13px;font-weight:600;">now</span><span class="stat" style="background:#fff;color:var(--wait);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l2.5 1.5"></path></svg>Working</span><span style="flex:1;font-size:14px;font-weight:560;color:var(--ink);">Drafting the Q3 summary</span></div>
+            <div style="display:flex;align-items:center;gap:13px;padding:10px 2px;border-bottom:1px solid var(--edge2);"><span class="mono" style="width:46px;color:var(--faint);font-size:13px;">16:00</span><span class="stat" style="background:var(--infos);color:var(--info);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4zM4 9h16"></path></svg>Meeting</span><span style="flex:1;font-size:14px;">Broker call · 30 min</span></div>
+            <div style="display:flex;align-items:center;gap:13px;padding:10px 2px;border-bottom:1px solid var(--edge2);"><span class="mono" style="width:46px;color:var(--faint);font-size:13px;">18:30</span><span class="stat" style="background:var(--edge);color:var(--dim);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"></path></svg>Deploy</span><span style="flex:1;font-size:14px;">Homelab window opens</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--dim)" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg><span style="font-size:16px;font-weight:640;color:var(--ink);">Northwind</span></div>
+          <div style="display:flex;gap:8px;margin:12px 0 14px;">
+            <div style="flex:1;background:var(--side);border:1px solid var(--edge);border-radius:9px;padding:11px 13px;"><div class="mono" style="font-size:20px;font-weight:680;color:var(--ink);">6</div><div style="font-size:11px;color:var(--faint);margin-top:2px;">tasks</div></div>
+            <div style="flex:1;background:var(--side);border:1px solid var(--edge);border-radius:9px;padding:11px 13px;"><div class="mono" style="font-size:20px;font-weight:680;color:var(--ink);">3</div><div style="font-size:11px;color:var(--faint);margin-top:2px;">clients</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;"><span class="av" style="background:var(--accent-soft);color:var(--accent-tx);">J</span><span style="font-size:13.5px;color:var(--ink);">Dev&#8209;2</span><span class="stat" style="margin-left:auto;background:var(--oks);color:var(--ok);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 6"></path></svg>Online</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--edge2);"><span class="av" style="background:var(--edge);color:var(--dim);">EM</span><span style="font-size:13.5px;color:var(--ink);">Homelab&#8209;Server</span><span class="stat" style="margin-left:auto;background:var(--edge);color:var(--faint);">server · idle</span></div>
+        </div>
+      </div>
+
+      <!-- shared tasks table (Notion database view) -->
+      <div style="display:flex;align-items:center;gap:10px;margin:26px 0 8px;">
+        <span style="font-size:16px;font-weight:640;color:var(--ink);">Shared tasks</span>
+        <span style="font-size:12.5px;color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:3px;">Table</span>
+        <span style="font-size:12.5px;color:var(--faint);">Board</span>
+        <span style="font-size:12.5px;color:var(--faint);">Calendar</span>
+      </div>
+      <div style="border:1px solid var(--edge);border-radius:8px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;background:var(--panel);">
+          <tr><th style="width:48%;">&#9776;&nbsp; Task</th><th>Owner</th><th>Status</th><th>Due</th></tr>
+          <tr><td>Send Q3 invoice to Meridian</td><td><span class="av" style="background:var(--accent-soft);color:var(--accent-tx);">E</span>&nbsp; Eric</td><td><span class="stat" style="background:var(--infos);color:var(--info);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l2.5 1.5"></path></svg>In progress</span></td><td class="mono" style="color:var(--dim);">Sep 22</td></tr>
+          <tr><td>Report export for review</td><td><span class="av" style="background:var(--infos);color:var(--info);">J</span>&nbsp; Dev&#8209;2</td><td><span class="stat" style="background:var(--edge);color:var(--dim);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle></svg>To do</span></td><td class="mono" style="color:var(--dim);">Sep 24</td></tr>
+          <tr><td>Confirm broker meeting time</td><td><span class="av" style="background:var(--accent-soft);color:var(--accent-tx);">E</span>&nbsp; Eric</td><td><span class="stat" style="background:var(--waits);color:var(--wait);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>Waiting</span></td><td class="mono" style="color:var(--wait);">Today</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

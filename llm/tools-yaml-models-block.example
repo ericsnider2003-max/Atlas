@@ -1,0 +1,20 @@
+# Paste into config/tools.yaml (replacing the existing `models:` block).
+# Atlas scans `dir` for GGUF files, picks the largest that fits the RAM
+# budget, reads its chat template, and builds the llama.cpp /completion
+# connection itself. Leave `tools.llm` UNSET so this self-building path runs.
+models:
+  dir: "models"              # where your .gguf files live (README step 2)
+  prefer: ""                 # a model id to force; empty = best that fits
+  context: 8192              # 0 = the model's own maximum
+  memory_budget_mb: 0        # 0 = whatever this machine can spare (measured)
+  port: 8080
+  # How Atlas starts the server. IMPORTANT: give ONLY the launcher here —
+  # models::launch() appends the flags itself (-m <model> -c <ctx> --port
+  # <port> --host 127.0.0.1 -ngl <computed> --no-webui via models::server_args),
+  # so listing them here would duplicate them. `args` is for extra flags only
+  # (e.g. --threads); leave it empty for the default.
+  server:
+    command: "tools/llama/llama-server.exe"
+    args: []
+    stdin_text: false
+    timeout_secs: 120

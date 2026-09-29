@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Calendar (dark)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#0c0f14; --side:#0e1218; --panel:#13181f; --edge:#232c37; --edge2:#1b222c; --hover:#171d26;
+    --ink:#eceff3; --dim:#97a2ae; --faint:#616c78;
+    --accent:#eb9d4a; --accent-soft:#2a2013; --accent-ink:#1a1206; --accent-tx:#eb9d4a;
+    --ok:#5cc79a; --oks:#14251f; --wait:#e0a44e; --waits:#2a2013; --info:#6aa8f0; --infos:#152232;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}
+  .nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;display:flex;align-items:center;gap:6px;}
+  .day{flex:1;position:relative;border-right:1px solid var(--edge2);height:648px;box-sizing:border-box;}
+  .evb{position:absolute;left:5px;right:5px;border-radius:7px;padding:5px 8px;font-size:11.5px;line-height:1.3;overflow:hidden;box-sizing:border-box;}
+  .evb .t{font-weight:640;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .evb .m{font-size:10.5px;opacity:.85;}
+  .p{background:var(--accent-soft);color:var(--accent-tx);border-left:3px solid var(--accent);}
+  .b{background:var(--infos);color:var(--info);border-left:3px solid var(--info);}
+  .g{background:var(--edge);color:var(--dim);border-left:3px solid #7a828c;}
+  .block{background:repeating-linear-gradient(135deg,var(--accent-soft),var(--accent-soft) 7px,#3a2c17 7px,#3a2c17 14px);color:var(--accent-tx);border-left:3px solid var(--accent);}
+  .hl{position:absolute;left:0;right:0;border-top:1px solid var(--edge2);}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- SIDEBAR -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+    <div class="grp">PERSONAL</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav on"><span class="tw">&#9662;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects<span class="mono" style="margin-left:auto;background:var(--accent-soft);color:var(--accent-tx);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">1</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages<span class="mono" style="margin-left:auto;background:var(--infos);color:var(--info);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">4</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Documents</div>
+    <div class="grp">NORTHWIND LLC <span style="font-weight:400;color:#5a6470;">· business</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg>Overview</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path></svg>Shared tasks</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"></circle><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path></svg>Clients</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>Partners</div>
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.2-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.2-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.2 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.2 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.2 2.7z"></path></svg>Settings</div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex:1;box-sizing:border-box;min-width:0;display:flex;flex-direction:column;">
+    <div style="height:42px;flex:none;border-bottom:1px solid var(--edge2);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:13px;color:var(--faint);">
+      <span>Personal</span><span>/</span><span style="color:var(--ink);">Calendar</span>
+      <div style="flex:1"></div>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"></path></svg>Synced with iPhone Calendar</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ok);margin-left:14px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M8 12l3 3 5-6"></path></svg>On your machine · offline</span>
+    </div>
+
+    <div style="flex:1;min-height:0;padding:20px 26px 18px;display:flex;flex-direction:column;">
+      <!-- header row -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+        <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;">Sep 20 – 26</h1>
+        <div style="display:flex;gap:4px;">
+          <span style="width:28px;height:28px;border:1px solid var(--edge);border-radius:7px;display:grid;place-items:center;color:var(--dim);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"></path></svg></span>
+          <span style="width:28px;height:28px;border:1px solid var(--edge);border-radius:7px;display:grid;place-items:center;color:var(--dim);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"></path></svg></span>
+        </div>
+        <!-- ALL CALENDARS combined -->
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);background:var(--side);border:1px solid var(--edge);border-radius:8px;padding:5px 12px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--dim)" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>All calendars
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--faint)" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+        </span>
+        <!-- legend, merged into one grid -->
+        <div style="display:flex;gap:13px;font-size:12px;color:var(--dim);">
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--accent);"></span>Personal</span>
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--info);"></span>Northwind</span>
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:#7a828c;"></span>System</span>
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:repeating-linear-gradient(135deg,var(--accent-soft),var(--accent-soft) 3px,#3a2c17 3px,#3a2c17 6px);"></span>Time-blocked</span>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:inline-flex;background:var(--side);border:1px solid var(--edge);border-radius:8px;padding:3px;gap:2px;font-size:12.5px;font-weight:600;">
+          <span style="padding:5px 11px;border-radius:6px;color:var(--dim);">Day</span>
+          <span style="padding:5px 11px;border-radius:6px;background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.5);">Week</span>
+          <span style="padding:5px 11px;border-radius:6px;color:var(--dim);">Month</span>
+        </div>
+      </div>
+
+      <!-- weekday header -->
+      <div style="display:flex;padding-left:56px;border-bottom:1px solid var(--edge);">
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">SUN</div><div style="font-size:18px;font-weight:700;color:#fff;background:var(--accent);width:30px;height:30px;border-radius:99px;display:grid;place-items:center;margin:2px auto 0;">20</div></div>
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">MON</div><div style="font-size:18px;font-weight:600;margin-top:4px;">21</div></div>
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">TUE</div><div style="font-size:18px;font-weight:600;margin-top:4px;">22</div></div>
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">WED</div><div style="font-size:18px;font-weight:600;margin-top:4px;">23</div></div>
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">THU</div><div style="font-size:18px;font-weight:600;margin-top:4px;">24</div></div>
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">FRI</div><div style="font-size:18px;font-weight:600;margin-top:4px;">25</div></div>
+        <div style="flex:1;text-align:center;padding:4px 0 8px;"><div style="font-size:11px;color:var(--faint);font-weight:600;">SAT</div><div style="font-size:18px;font-weight:600;margin-top:4px;">26</div></div>
+      </div>
+
+      <!-- time grid -->
+      <div style="flex:1;overflow:hidden;display:flex;">
+        <!-- time axis -->
+        <div style="width:56px;flex:none;position:relative;">
+          <div class="mono" style="position:absolute;top:-7px;right:8px;font-size:10.5px;color:var(--faint);">7 AM</div>
+          <div class="mono" style="position:absolute;top:47px;right:8px;font-size:10.5px;color:var(--faint);">8 AM</div>
+          <div class="mono" style="position:absolute;top:101px;right:8px;font-size:10.5px;color:var(--faint);">9 AM</div>
+          <div class="mono" style="position:absolute;top:155px;right:8px;font-size:10.5px;color:var(--faint);">10 AM</div>
+          <div class="mono" style="position:absolute;top:209px;right:8px;font-size:10.5px;color:var(--faint);">11 AM</div>
+          <div class="mono" style="position:absolute;top:263px;right:8px;font-size:10.5px;color:var(--faint);">12 PM</div>
+          <div class="mono" style="position:absolute;top:317px;right:8px;font-size:10.5px;color:var(--faint);">1 PM</div>
+          <div class="mono" style="position:absolute;top:371px;right:8px;font-size:10.5px;color:var(--faint);">2 PM</div>
+          <div class="mono" style="position:absolute;top:425px;right:8px;font-size:10.5px;color:var(--faint);">3 PM</div>
+          <div class="mono" style="position:absolute;top:479px;right:8px;font-size:10.5px;color:var(--faint);">4 PM</div>
+          <div class="mono" style="position:absolute;top:533px;right:8px;font-size:10.5px;color:var(--faint);">5 PM</div>
+          <div class="mono" style="position:absolute;top:587px;right:8px;font-size:10.5px;color:var(--faint);">6 PM</div>
+          <div class="mono" style="position:absolute;top:641px;right:8px;font-size:10.5px;color:var(--faint);">7 PM</div>
+        </div>
+
+        <!-- days with gridlines -->
+        <div style="flex:1;position:relative;border-left:1px solid var(--edge);">
+          <!-- hour lines -->
+          <div class="hl" style="top:0px;"></div><div class="hl" style="top:54px;"></div><div class="hl" style="top:108px;"></div><div class="hl" style="top:162px;"></div><div class="hl" style="top:216px;"></div><div class="hl" style="top:270px;"></div><div class="hl" style="top:324px;"></div><div class="hl" style="top:378px;"></div><div class="hl" style="top:432px;"></div><div class="hl" style="top:486px;"></div><div class="hl" style="top:540px;"></div><div class="hl" style="top:594px;"></div><div class="hl" style="top:648px;"></div>
+
+          <div style="display:flex;position:relative;">
+            <!-- SUN 20 (today) -->
+            <div class="day" style="background:rgba(235,157,74,.10);">
+              <!-- time-blocked deep work 9:00-11:30 => top 108, height 135 -->
+              <div class="evb block" style="top:108px;height:131px;"><div class="t">Deep work — Q3 summary</div><div class="m">9:00–11:30 · time-blocked</div></div>
+              <!-- broker call 4:00-4:30 => top 486 height 24 -->
+              <div class="evb b" style="top:486px;height:25px;"><div class="t">Broker call</div><div class="m">4:00</div></div>
+              <!-- homelab deploy 6:30-7:00 => top 621 height 24 -->
+              <div class="evb g" style="top:621px;height:25px;"><div class="t">Homelab deploy</div><div class="m">6:30</div></div>
+            </div>
+            <!-- MON 21 -->
+            <div class="day">
+              <div class="evb p" style="top:54px;height:50px;"><div class="t">Gym</div><div class="m">8:00</div></div>
+              <div class="evb b" style="top:486px;height:25px;"><div class="t">Client call · Maya</div><div class="m">4:00</div></div>
+            </div>
+            <!-- TUE 22 -->
+            <div class="day">
+              <div class="evb b" style="top:162px;height:50px;"><div class="t">Sprint sync</div><div class="m">10:00 · Jordan</div></div>
+            </div>
+            <!-- WED 23 -->
+            <div class="day">
+              <div class="evb block" style="top:216px;height:104px;"><div class="t">Deep work — rack build</div><div class="m">11:00–1:00 · time-blocked</div></div>
+              <div class="evb p" style="top:324px;height:50px;"><div class="t">Rack parts arrive</div><div class="m">1:00</div></div>
+            </div>
+            <!-- THU 24 -->
+            <div class="day">
+              <div class="evb b" style="top:378px;height:50px;"><div class="t">Review prep</div><div class="m">2:00 · Northwind</div></div>
+            </div>
+            <!-- FRI 25 -->
+            <div class="day">
+              <div class="evb b" style="top:216px;height:50px;"><div class="t">Invoice due</div><div class="m">11:00</div></div>
+              <div class="evb p" style="top:540px;height:52px;"><div class="t">Dinner · Sam</div><div class="m">5:00</div></div>
+            </div>
+            <!-- SAT 26 -->
+            <div class="day" style="border-right:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

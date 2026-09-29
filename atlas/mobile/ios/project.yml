@@ -1,0 +1,116 @@
+# The Xcode project for Atlas on iPhone and iPad, written as text.
+#
+# There is no Mac in this project, so there is no hand-made .xcodeproj either.
+# The cloud Mac that builds the app (.github/workflows/ios.yml) turns this file
+# into the project with XcodeGen at build time, then builds and signs it. The
+# project is never kept in the tree, so it can't drift from this file.
+#
+# Three targets:
+#   Atlas       the app: the hub full screen, over the Rust core running on
+#               the phone (../atlas.h, libatlas.a built by the workflow)
+#   AtlasShare  "Share → Atlas" from any app
+#   AtlasLive   the Live Activity and Dynamic Island, and the home and
+#               lock screen widgets
+#
+# Identity (Eric, 26 Sep 2026): com.ericsnider.atlas. It can never change
+# without every phone reinstalling, because iOS treats a new identifier as a
+# different app. The Apple team ID comes in from the build (ATLAS_TEAM_ID).
+
+name: Atlas
+options:
+  bundleIdPrefix: com.ericsnider
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${ATLAS_TEAM_ID}
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_BITCODE: NO
+
+targets:
+  Atlas:
+    type: application
+    platform: iOS
+    # A shared scheme, so the cloud Mac's xcodebuild can archive it.
+    scheme: {}
+    sources:
+      - path: Atlas
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Shared
+      # The shipped config, copied into the app folder on first run
+      # (AtlasCore.start).
+      - path: ../../config
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ericsnider.atlas
+        PRODUCT_NAME: Atlas
+        INFOPLIST_FILE: Atlas/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Atlas/Atlas.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: Atlas/Atlas-Bridging-Header.h
+        # libatlas.a, the Rust core for aarch64-apple-ios, put here by the
+        # workflow before XcodeGen runs.
+        LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/rustlib
+        # -lc++: the phone's own language model is llama.cpp, C++, inside
+        # libatlas.a (`phonemodel`, OPEN_GAPS P.7).
+        OTHER_LDFLAGS: ["-latlas", "-lresolv", "-lc++"]
+        # The Folded A (Assets.xcassets/AppIcon, from design/mark/make_marks.py):
+        # light, dark and tinted.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: AtlasShare
+      - target: AtlasLive
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - sdk: Speech.framework
+      - sdk: ActivityKit.framework
+      # The phone's calendar, kept with Atlas's (CalendarSync.swift, H7).
+      - sdk: EventKit.framework
+      # llama.cpp on the phone's GPU (Metal) and its maths (Accelerate).
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: Foundation.framework
+      - sdk: Accelerate.framework
+
+  AtlasShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AtlasShare
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Shared/SharedInbox.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ericsnider.atlas.share
+        PRODUCT_NAME: AtlasShare
+        INFOPLIST_FILE: AtlasShare/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AtlasShare/AtlasShare.entitlements
+
+  AtlasLive:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AtlasLive
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Shared/AtlasActivity.swift
+      # The home and lock screen widgets read the glance the app leaves in
+      # the app group (27 Sep 2026).
+      - path: Shared/Glance.swift
+      - path: Shared/SharedInbox.swift
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: ActivityKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ericsnider.atlas.live
+        PRODUCT_NAME: AtlasLive
+        INFOPLIST_FILE: AtlasLive/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AtlasLive/AtlasLive.entitlements

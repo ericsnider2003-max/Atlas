@@ -1,0 +1,174 @@
+# Atlas for Windows, built on a cloud Windows machine, and signed when the
+# signing account exists.
+#
+# Why this exists: the laptop can't compile Atlas itself (its Rust toolchain
+# is windows-gnu with no MinGW dlltool; OPEN_GAPS 1.1), so every atlas.exe so
+# far was cross-built on Linux and copied over. This builds the real thing
+# with Microsoft's own compiler toolchain (x86_64-pc-windows-msvc).
+#
+# Signing: Microsoft's Azure Artifact Signing, through Microsoft's own action.
+# Signing a Windows program is what stops "Windows protected your PC" on first
+# run. No private key exists anywhere here: Microsoft holds it in its HSMs and
+# signs on request; this build only authenticates as an Azure app allowed to
+# ask. Until the six secrets below are set, the build still runs and the exe
+# comes out unsigned, said plainly.
+#
+# Secrets (repository Settings -> Secrets and variables -> Actions):
+#   AZURE_TENANT_ID              your Azure directory (tenant) ID
+#   AZURE_CLIENT_ID              the app registration that may sign
+#   AZURE_CLIENT_SECRET          that app's client secret
+#   ARTIFACT_SIGNING_ENDPOINT    the account's region endpoint, e.g. https://eus.codesigning.azure.net/
+#   ARTIFACT_SIGNING_ACCOUNT     the Artifact Signing account's name
+#   ARTIFACT_SIGNING_PROFILE     the certificate profile's name
+#
+# Windows minutes count double against GitHub's free allowance; the Rust
+# build is cached so a rebuild after a small change is quick.
+
+name: Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      # Every build its own version, 0.1.<run> (atlas/build.rs). Until 28 Sep
+      # 2026 every build said 0.1.0, and the courier threw real updates away
+      # as "the version already running".
+      ATLAS_BUILD_NUMBER: ${{ github.run_number }}
+      ATLAS_VERSION: 0.1.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Is signing set up?
+        shell: bash
+        env:
+          A: ${{ secrets.AZURE_TENANT_ID }}
+          B: ${{ secrets.AZURE_CLIENT_ID }}
+          C: ${{ secrets.AZURE_CLIENT_SECRET }}
+          D: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          E: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          F: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          if [ -n "$A" ] && [ -n "$B" ] && [ -n "$C" ] && [ -n "$D" ] && [ -n "$E" ] && [ -n "$F" ]; then
+            echo "SIGN=1" >> "$GITHUB_ENV"
+            echo "Signing is set up: this build will be signed."
+          else
+            echo "::warning::Signing isn't set up yet (see the top of .github/workflows/windows.yml), so atlas.exe will be UNSIGNED and Windows will warn on first run."
+          fi
+
+      # The Rust build cached by Cargo.lock and the toolchain -- not by the
+      # source (28 Sep 2026: a key with every source file's hash in it missed
+      # on every change, so the cache never helped a rebuild).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: atlas -> target
+          key: windows-msvc
+          cache-on-failure: true
+
+      - name: Build atlas.exe
+        working-directory: atlas
+        shell: bash
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo build --release --locked --target x86_64-pc-windows-msvc
+          mkdir -p ../dist
+          cp target/x86_64-pc-windows-msvc/release/atlas.exe ../dist/
+
+      # Tor ships beside Atlas (OPEN_GAPS 8.3): it's how friends reach this
+      # Atlas from anywhere. The Tor Project's own expert bundle, pinned to the
+      # same file and SHA-256 as `atlas/src/getpieces.rs` (`tor()`), which a
+      # test checks. Unpacked as dist/tor/, where `onion::find_tor` looks.
+      - name: Put Tor beside it
+        shell: bash
+        run: |
+          url="https://archive.torproject.org/tor-package-archive/torbrowser/15.0.23/tor-expert-bundle-windows-x86_64-15.0.23.tar.gz"
+          sha="231dad6b9cb401a54c260db7046965ef04e4f72ff071b140d423fb5da281ab1e"
+          curl -sSfL --retry 3 -o tor.tar.gz "$url"
+          echo "$sha  tor.tar.gz" | sha256sum -c -
+          mkdir -p torx && tar -xzf tor.tar.gz -C torx
+          cp -r torx/tor dist/tor
+          ls dist/tor dist/tor/pluggable_transports
+
+      - name: Sign it
+        if: env.SIGN == '1'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: What Windows will say about it
+        shell: pwsh
+        run: |
+          $s = Get-AuthenticodeSignature dist\atlas.exe
+          "Signature: $($s.Status)"
+          if ($s.SignerCertificate) { "Signed by: $($s.SignerCertificate.Subject)" }
+          "SHA-256:   $((Get-FileHash dist\atlas.exe -Algorithm SHA256).Hash)"
+          if ($env:SIGN -eq '1' -and $s.Status -ne 'Valid') { Write-Error "Signing ran but the signature isn't valid."; exit 1 }
+          # The exe starts and answers, on real Windows, as this build's version.
+          $v = (.\dist\atlas.exe --version | Select-Object -First 1)
+          "Says: $v"
+          if ($v -ne "atlas $env:ATLAS_VERSION") { Write-Error "atlas.exe says '$v', not 'atlas $env:ATLAS_VERSION'"; exit 1 }
+          # And Windows reads the same version from its version block.
+          $pv = (Get-Item dist\atlas.exe).VersionInfo.ProductVersion
+          "Windows says: $pv"
+          if ($pv -ne $env:ATLAS_VERSION) { Write-Error "the version block says '$pv', not '$env:ATLAS_VERSION'"; exit 1 }
+          # Tor starts on real Windows too.
+          .\dist\tor\tor.exe --version
+
+      # Kokoro, the better voice (atlas/src/kokoro.rs), on real Windows.
+      # Nothing about the build changes for it: sherpa-onnx's library is
+      # downloaded with the voice and opened when Atlas first speaks in it,
+      # never linked (its Windows archives are built with Microsoft's compiler
+      # and can't be linked into the MinGW build; linked here they'd add ~20 MB
+      # to atlas.exe). This only proves the downloaded DLL opens and speaks on
+      # Windows -- and that Windows' own tar.exe unpacks its .tar.bz2 -- and
+      # times it on the runner's processor. Never fails the build: the voice
+      # is optional and piper is the floor.
+      - name: Kokoro speaks on Windows
+        continue-on-error: true
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          ATLAS_HOME: ${{ runner.temp }}\atlas-kokoro
+        run: |
+          New-Item -ItemType Directory -Force $env:ATLAS_HOME | Out-Null
+          .\dist\atlas.exe get kokoro
+          .\dist\atlas.exe kokoro-check
+          if ($LASTEXITCODE -ne 0) { Write-Warning "Kokoro didn't speak on Windows (see above)"; exit 1 }
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Atlas-Windows-${{ env.ATLAS_VERSION }}-${{ github.run_number }}${{ env.SIGN != '1' && '-unsigned' || '' }}
+          path: dist/
+          retention-days: 30
+
+      # What a friend is handed: the one program, as "Atlas Setup.exe"
+      # (27 Sep 2026). It installs itself as atlas.exe whatever it's called,
+      # and its setup fetches Tor, so nothing else goes with it. The zip GitHub
+      # wraps it in is still one the hub's "Send an update" finds: its name
+      # starts with "Atlas" and the program inside does too (release::find_build).
+      - name: The file a friend gets
+        shell: bash
+        run: |
+          mkdir -p friend
+          cp dist/atlas.exe "friend/Atlas Setup.exe"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Atlas-Windows-Setup-${{ env.ATLAS_VERSION }}-${{ github.run_number }}${{ env.SIGN != '1' && '-unsigned' || '' }}
+          path: friend/Atlas Setup.exe
+          retention-days: 30

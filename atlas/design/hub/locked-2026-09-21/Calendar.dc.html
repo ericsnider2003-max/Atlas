@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Calendar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --panel:#ffffff; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-ink:#ffffff; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}
+  .nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;display:flex;align-items:center;gap:6px;}
+  .ev{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:5px;padding:2px 6px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ev.p{background:var(--accent-soft);color:var(--accent-tx);}
+  .ev.b{background:var(--infos);color:var(--info);}
+  .ev.g{background:var(--edge);color:var(--dim);}
+  .cell{border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);padding:6px 7px;overflow:hidden;}
+  .dn{font-size:12px;color:var(--faint);font-weight:600;margin-bottom:5px;}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- SIDEBAR -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+    <div class="grp">PERSONAL</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav on"><span class="tw">&#9662;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects<span class="mono" style="margin-left:auto;background:var(--accent-soft);color:var(--accent-tx);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">1</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages<span class="mono" style="margin-left:auto;background:var(--infos);color:var(--info);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">4</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Documents</div>
+    <div class="grp">NORTHWIND LLC <span style="font-weight:400;color:#c3c2bd;">· business</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg>Overview</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path></svg>Shared tasks</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"></circle><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path></svg>Clients</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>Partners</div>
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.2-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.2-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.2 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.2 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.2 2.7z"></path></svg>Settings</div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex:1;box-sizing:border-box;min-width:0;display:flex;flex-direction:column;">
+    <div style="height:42px;flex:none;border-bottom:1px solid var(--edge2);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:13px;color:var(--faint);">
+      <span>Personal</span><span>/</span><span style="color:var(--ink);">Calendar</span>
+      <div style="flex:1"></div>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"></path></svg>Synced with iPhone Calendar</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ok);margin-left:14px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M8 12l3 3 5-6"></path></svg>On your machine · offline</span>
+    </div>
+
+    <div style="flex:1;display:flex;min-height:0;">
+      <!-- calendar column -->
+      <div style="flex:1;min-width:0;padding:22px 26px;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-.02em;">September 2026</h1>
+          <div style="display:flex;gap:4px;">
+            <span style="width:28px;height:28px;border:1px solid var(--edge);border-radius:7px;display:grid;place-items:center;color:var(--dim);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"></path></svg></span>
+            <span style="width:28px;height:28px;border:1px solid var(--edge);border-radius:7px;display:grid;place-items:center;color:var(--dim);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"></path></svg></span>
+          </div>
+          <span style="font-size:13px;color:var(--accent-tx);font-weight:600;border:1px solid var(--accent-soft);background:var(--accent-soft);border-radius:7px;padding:4px 11px;">Today</span>
+          <div style="flex:1"></div>
+          <div style="display:inline-flex;background:var(--side);border:1px solid var(--edge);border-radius:8px;padding:3px;gap:2px;font-size:12.5px;font-weight:600;">
+            <span style="padding:5px 11px;border-radius:6px;color:var(--dim);">Day</span>
+            <span style="padding:5px 11px;border-radius:6px;color:var(--dim);">Week</span>
+            <span style="padding:5px 11px;border-radius:6px;background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(30,25,15,.1);">Month</span>
+          </div>
+          <span style="width:34px;height:34px;border-radius:8px;background:var(--accent);display:grid;place-items:center;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg></span>
+        </div>
+
+        <!-- weekday header -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--edge2);border-left:1px solid var(--edge2);">
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">SUN</div>
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">MON</div>
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">TUE</div>
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">WED</div>
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">THU</div>
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">FRI</div>
+          <div style="padding:7px;border-right:1px solid var(--edge2);border-bottom:1px solid var(--edge2);font-size:11px;font-weight:600;color:var(--faint);text-align:right;">SAT</div>
+        </div>
+        <!-- grid: 5 weeks -->
+        <div style="flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;border-left:1px solid var(--edge2);">
+          <!-- week 1 (Aug tail) -->
+          <div class="cell"><div class="dn" style="color:#c9c8c4;">31</div></div>
+          <div class="cell"><div class="dn">1</div><div class="ev b">Northwind kickoff</div></div>
+          <div class="cell"><div class="dn">2</div></div>
+          <div class="cell"><div class="dn">3</div><div class="ev p">Dentist</div></div>
+          <div class="cell"><div class="dn">4</div></div>
+          <div class="cell"><div class="dn">5</div><div class="ev g">Deploy window</div></div>
+          <div class="cell"><div class="dn">6</div></div>
+          <!-- week 2 -->
+          <div class="cell"><div class="dn">7</div></div>
+          <div class="cell"><div class="dn">8</div><div class="ev b">Client call · Maya</div></div>
+          <div class="cell"><div class="dn">9</div></div>
+          <div class="cell"><div class="dn">10</div><div class="ev p">Gym</div></div>
+          <div class="cell"><div class="dn">11</div><div class="ev b">Invoice due</div></div>
+          <div class="cell"><div class="dn">12</div></div>
+          <div class="cell"><div class="dn">13</div></div>
+          <!-- week 3 -->
+          <div class="cell"><div class="dn">14</div></div>
+          <div class="cell"><div class="dn">15</div><div class="ev b">Sprint review</div></div>
+          <div class="cell"><div class="dn">16</div></div>
+          <div class="cell"><div class="dn">17</div><div class="ev p">Sam · dinner</div></div>
+          <div class="cell"><div class="dn">18</div></div>
+          <div class="cell"><div class="dn">19</div><div class="ev g">Deploy window</div></div>
+          <div class="cell"><div class="dn">20</div></div>
+          <!-- week 4 (today = 20 is above? adjust) -->
+          <div class="cell" style="background:var(--waits);"><div class="dn" style="color:var(--accent-tx);background:var(--accent);color:#fff;width:22px;height:22px;border-radius:99px;display:grid;place-items:center;margin-left:auto;">20</div><div class="ev p">Draft Q3 summary</div><div class="ev b">Broker call · 4pm</div><div class="ev g">Homelab 6:30</div></div>
+          <div class="cell"><div class="dn">21</div><div class="ev b">Client call · Maya</div></div>
+          <div class="cell"><div class="dn">22</div></div>
+          <div class="cell"><div class="dn">23</div><div class="ev p">Rack parts arrive</div></div>
+          <div class="cell"><div class="dn">24</div></div>
+          <div class="cell"><div class="dn">25</div><div class="ev b">Invoice due</div></div>
+          <div class="cell"><div class="dn">26</div></div>
+          <!-- week 5 -->
+          <div class="cell"><div class="dn">27</div></div>
+          <div class="cell"><div class="dn">28</div></div>
+          <div class="cell"><div class="dn">29</div><div class="ev b">Month-end close</div></div>
+          <div class="cell"><div class="dn">30</div></div>
+          <div class="cell"><div class="dn" style="color:#c9c8c4;">1</div></div>
+          <div class="cell"><div class="dn" style="color:#c9c8c4;">2</div></div>
+          <div class="cell"><div class="dn" style="color:#c9c8c4;">3</div></div>
+        </div>
+      </div>
+
+      <!-- right rail: day + calendars -->
+      <div style="width:300px;flex:none;border-left:1px solid var(--edge);box-sizing:border-box;padding:22px 20px;background:var(--side);overflow:hidden;">
+        <div style="font-size:13px;color:var(--faint);font-weight:600;">SUNDAY</div>
+        <div style="font-size:32px;font-weight:700;letter-spacing:-.02em;margin-bottom:14px;">20</div>
+
+        <div style="display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--edge);"><span class="mono" style="width:52px;font-size:12.5px;color:var(--faint);">now</span><div style="flex:1;"><div style="font-size:13.5px;font-weight:600;">Draft the Q3 summary</div><span style="font-size:11px;font-weight:600;color:var(--accent-tx);">Personal</span></div></div>
+        <div style="display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--edge);"><span class="mono" style="width:52px;font-size:12.5px;color:var(--faint);">4:00</span><div style="flex:1;"><div style="font-size:13.5px;font-weight:600;">Broker call · 30 min</div><span style="font-size:11px;font-weight:600;color:var(--info);">Northwind · business</span></div></div>
+        <div style="display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--edge);"><span class="mono" style="width:52px;font-size:12.5px;color:var(--faint);">6:30</span><div style="flex:1;"><div style="font-size:13.5px;font-weight:600;">Homelab deploy window</div><span style="font-size:11px;font-weight:600;color:var(--dim);">System</span></div></div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.03em;margin:22px 0 10px;">CALENDARS</div>
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px;font-weight:600;border-bottom:1px solid var(--edge);margin-bottom:4px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--ink)" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>All events (one view)<span style="margin-left:auto;color:var(--accent-tx);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg></span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px;"><span style="width:11px;height:11px;border-radius:3px;background:var(--accent);"></span>Personal<span style="margin-left:auto;color:var(--faint);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg></span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px;"><span style="width:11px;height:11px;border-radius:3px;background:var(--info);"></span>Northwind (business)<span style="margin-left:auto;color:var(--faint);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg></span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px;"><span style="width:11px;height:11px;border-radius:3px;background:#b8b6b0;"></span>System / deploys<span style="margin-left:auto;color:var(--faint);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg></span></div>
+
+        <div style="margin-top:20px;padding:12px 13px;background:#fff;border:1px solid var(--edge);border-radius:10px;font-size:12px;line-height:1.55;color:var(--dim);">
+          <div style="display:flex;align-items:center;gap:7px;font-weight:640;color:var(--ink);margin-bottom:5px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ok)" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"></path></svg>Built-in, syncs both ways</div>
+          Atlas keeps its own calendar on this machine and mirrors your iPhone/Android calendar — no TimeTree, no account required. Turn a calendar off and it just hides here.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

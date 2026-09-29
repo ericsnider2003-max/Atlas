@@ -1,0 +1,20 @@
+# Logical monitor roles. Resolved at runtime by geometry, in this order.
+# Earlier roles claim monitors first; each monitor is claimed once.
+# This is why unplugging a display degrades instead of breaking.
+roles:
+  - name: main
+    match: rightmost
+    fallback_to: laptop
+  - name: side
+    match: leftmost
+    fallback_to: laptop
+  - name: laptop
+    match: primary
+
+# Fractional rects inside a monitor's work area (taskbar excluded).
+layouts:
+  full:        { x: 0.00, y: 0.00, w: 1.00, h: 1.00 }
+  left_half:   { x: 0.00, y: 0.00, w: 0.50, h: 1.00 }
+  right_half:  { x: 0.50, y: 0.00, w: 0.50, h: 1.00 }
+  right_third: { x: 0.67, y: 0.00, w: 0.33, h: 1.00 }
+  corner:      { x: 0.70, y: 0.05, w: 0.28, h: 0.90 }

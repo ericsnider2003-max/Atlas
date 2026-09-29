@@ -1,0 +1,2626 @@
+# External binaries Atlas drives. All free, all local, all single downloads.
+# Nothing here is compiled in — swap any engine by editing this file.
+#
+#   ffmpeg      https://www.gyan.dev/ffmpeg/builds/   (record, play, screenshot)
+#   whisper.cpp https://github.com/ggml-org/whisper.cpp  (speech -> text)
+#   piper       https://github.com/rhasspy/piper         (text -> speech)
+#
+# Run `atlas doctor` after installing. It checks every path in this file.
+
+enabled: false
+work_dir: "data/tmp"
+record_seconds: 8
+
+vars:
+  # `atlas doctor` prints the exact string to use here.
+  # Only a fallback -- atlas --voice now detects what is actually plugged
+  # in and picks automatically every time it starts. This line is used only
+  # if that detection fails outright (ffmpeg missing, etc).
+  mic_device: "Microphone Array (Realtek(R) Audio)"
+  webcam_device: "Integrated Camera"
+  browser: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  llm_model: "llama3.1:8b"
+  stt_model: "models/ggml-base.en.bin"
+  # tts_model was what the speech command used before the voice settings were
+  # wired to it. The voice now comes from `voice_settings.voice` via
+  # {voice_file}, so this named a file nothing read -- and `atlas doctor` was
+  # telling you to download amy while ryan was the voice you had chosen.
+  # Removed rather than left as a decoration.
+  # Installed by ATLAS.bat (menu item 6, "Download anything missing"), beside
+  # Atlas rather than on PATH —
+  # a binary that lives here cannot go missing when PATH changes.
+  whisper: "tools/whisper/whisper-cli.exe"
+  piper: "tools/piper/piper.exe"
+  chatterbox: "tools/chatterbox/speak.cmd"
+  kokoro: "tools/kokoro/speak.cmd"
+
+record:
+  command: ffmpeg
+  args: ["-hide_banner", "-loglevel", "error", "-f", "dshow",
+         "-i", "audio={mic_device}", "-t", "{seconds}",
+         "-ar", "16000", "-ac", "1", "-y", "{in_wav}"]
+
+stt:
+  command: "{whisper}"
+  # {hint_opt} {hint_val}: your own words (names, projects) as whisper's
+  # --prompt, so it stops guessing at them (Eric, H11). Empty until Atlas has
+  # heard a word of yours twice.
+  args: ["-m", "{stt_model}", "-f", "{in_wav}", "-otxt", "-of", "{stem}", "-nt", "{task_opt}", "{lang_opt}", "{lang_val}", "{hint_opt}", "{hint_val}"]
+  # whisper writes {stem}.txt rather than printing to stdout
+  result_file: "{transcript}"
+
+# Whisper again, writing timestamps instead of plain text. Used only when
+# Atlas watches a video: lining a transcript up against what was on screen
+# needs times, and the everyday transcriber above doesn't write any.
+stt_timed:
+  command: "{whisper}"
+  args: ["-m", "{stt_model}", "-f", "{in_wav}", "-osrt", "-of", "{stem}", "{task_opt}", "{lang_opt}", "{lang_val}"]
+  result_file: "{srt}"
+
+# Text to speech.
+#
+# The arguments now use the voice settings further down this file rather than
+# ignoring them. Until they did, `speed`, `variation` and `sentence_gap` stored
+# numbers that changed nothing you could hear, and `{tts_model}` named a
+# different voice than `voice_settings.voice` -- so the voice you picked lost
+# to a variable you never edited.
+#
+# {voice_file}   the chosen voice, with the extension this engine expects
+# {speed}        already converted for this engine (see tts_engine below)
+# {variation}    how much the delivery wanders
+# {sentence_gap} pause between sentences, seconds
+# Ships as piper, because piper is what ATLAS.bat downloads.
+#
+# This file named kokoro and the installer fetched piper, so on a fresh
+# install Atlas could hear you and had no program to answer with -- and
+# nothing said so, because `atlas doctor` only checked for the voice file and
+# not for the engine's own executable. An assistant that silently cannot
+# speak is the worst shape of this whole class of bug.
+#
+# Kokoro and Chatterbox are both better and both free. Chatterbox needs a
+# wrapper script you write yourself (the contract is documented above);
+# Kokoro, since 28 Sep 2026, is spoken inside Atlas once it's downloaded
+# (below). They are an upgrade you choose, not a default you are given: the
+# commented blocks below are the entire change, and `atlas doctor` will tell
+# you exactly what is missing if you switch and stop short.
+tts:
+  command: "{piper}"
+  args: ["--model", "{voice_file}",
+         "--output_file", "{out_wav}",
+         "--length_scale", "{speed}",
+         "--noise_scale", "{variation}",
+         "--sentence_silence", "{sentence_gap}"]
+  stdin_text: true
+
+# --- Chatterbox instead, once you know what you want Atlas to sound like ---
+# It copies the voice in a recording you give it. Better ceiling, but you have
+# to supply the clip -- which is the decision you don't want to make yet.
+# tts_engine:
+#   engine: chatterbox
+#   exe: "tools/chatterbox/speak.cmd"
+#   voices_dir: "models/voices"
+# tts:
+#   command: "{chatterbox}"
+#   args: ["--reference", "{voice_file}", "--out", "{out_wav}",
+#          "--speed", "{speed}", "--exaggeration", "{variation}",
+#          "--sentence-gap", "{sentence_gap}"]
+#   stdin_text: true
+
+# --- moving up to Kokoro -----------------------------------------------------
+#
+# Since 28 Sep 2026 Kokoro is spoken inside Atlas (atlas/src/kokoro.rs): no
+# wrapper to write, and `tts` above stays as it is -- it's what Atlas falls
+# back to, saying so once, while Kokoro isn't downloaded. Choose it on the
+# Sound & voice page (which also downloads it, about 141 MB) or in Settings
+# ("Voice engine"), or here:
+#
+# tts_engine:
+#   engine: kokoro
+# voice_settings:
+#   voice: "af_heart"      # or af_bella, am_puck, bm_fable ... (Kokoro's names)
+#
+# It's used from Atlas's next start. `atlas get kokoro` downloads it from the
+# terminal and `atlas kokoro-check` says a sentence in it and times it.
+
+play:
+  command: ffplay
+  args: ["-nodisp", "-autoexit", "-loglevel", "quiet", "{out_wav}"]
+
+capture_screen:
+  command: ffmpeg
+  args: ["-hide_banner", "-loglevel", "error", "-f", "gdigrab",
+         "-framerate", "1", "-i", "desktop", "-frames:v", "1", "-y", "{out_png}"]
+
+capture_webcam:
+  command: ffmpeg
+  args: ["-hide_banner", "-loglevel", "error", "-f", "dshow",
+         "-i", "video={webcam_device}", "-frames:v", "1", "-y", "{out_png}"]
+
+# Hands-free. Leave disabled until the press-Enter loop is reliable.
+# With no `detector`, Atlas polls speech-to-text on short clips: nothing extra
+# to install, but it keeps a core busy. Add a detector binary later.
+wake:
+  enabled: false
+  phrase: "atlas"
+  clip_seconds: 3
+  # detector:
+  #   command: openwakeword-cli
+  #   args: ["--model", "models/hey_atlas.onnx", "--block"]
+
+# Cutting in by voice: talk over Atlas while it speaks a reply and it stops
+# to listen. Off by default -- through speakers the microphone hears Atlas
+# too, and Atlas can only out-shout its own voice, not cancel it; a headset
+# works best. Speech is told from noise by Silero VAD when its model file
+# (silero_vad_16k_op15.onnx, MIT) is in the models folder, and by Atlas's
+# own detector otherwise.
+barge_in:
+  enabled: false
+  threshold: 0.5      # how sure the detector must be that it's a voice
+  min_ms: 300         # how long you speak over Atlas before it stops
+  margin_db: 5        # how far above the room and Atlas's echo your voice must be
+  echo_db: 3          # extra asked for while the reply is at its loudest
+  model: silero_vad_16k_op15.onnx
+
+# The reasoning layer. Atlas runs its own: the model `atlas get` downloads
+# into models/, served by llama-server on this machine, with the connection
+# worked out from the model file itself (see `models:` below). Nothing leaves
+# the laptop.
+#
+# This used to ship set to a local Ollama. A hand-written `llm:` always wins,
+# so on every install the model Atlas downloaded for itself was never used,
+# and without Ollama running every question failed (found 26 Sep 2026).
+# To use Ollama instead, uncomment this block.
+#
+# llm:
+#   command: curl
+#   args: ["-s", "-X", "POST", "http://localhost:11434/api/generate",
+#          "-H", "Content-Type: application/json", "-d", "@-"]
+#   stdin_text: true
+#   request: '{"model":"{llm_model}","system":"{system}","prompt":"{user}","stream":false,"format":"json"}'
+#   response_path: "response"
+#   # vision_request: '{"model":"llava","prompt":"{user}","images":["{image_b64}"],"stream":false}'
+
+# Your time zone — "America/Los_Angeles", or the Windows name ("Pacific
+# Standard Time"). Empty means UTC, which is what every time was before this
+# setting existed. It decides what "at 7" means, the wall clock a repeating
+# event keeps through daylight saving, and how an invite's times are shown.
+# Easiest from the hub: Settings -> How it talks back -> Time zone.
+time_zone: ""
+
+# How to say words the speech engine gets wrong. Built in already:
+# currency pairs (EURUSD -> "euro dollar"), acronyms spelled
+# out (VPS -> "V P S"), and symbols (-> "to", % "percent"). Add your own:
+#   Jo-2: "jo two"
+pronounce: {}
+
+# Speaking first. Off until the reactive loop is solid — an assistant that
+# interrupts wrongly gets muted permanently, so this earns its way on.
+proactive:
+  enabled: false
+  cooldown_secs: 900      # never twice within 15 min
+  max_interruptions_per_hour: 4   # 0 = no limit
+  min_confidence: 0.7
+  learning_step: 0.08         # each decline raises the bar; each yes lowers it
+  confidence_ceiling: 0.95    # nothing is ever silenced permanently
+  min_idle_secs: 30       # let a thought finish before speaking
+  # Bounded deferral: while you're typing mid-task, an offer waits for a
+  # natural break (you switch app, pause, or come back to the keyboard) --
+  # but never longer than defer_max_secs. Over a presentation or a
+  # full-screen app it waits as long as that lasts.
+  defer_while_working: true
+  defer_max_secs: 1200
+
+# Staying out of the way. Atlas backs off geometrically when nothing is
+# happening and snaps back the instant something is.
+perf:
+  active_tick_secs: 2       # while you're working
+  idle_tick_secs: 60        # ceiling once things go quiet
+  backoff: 1.6
+  battery_multiplier: 3.0   # everything slows down on battery
+  battery_floor_pct: 20     # below this, no index scans at all
+  max_index_entries: 200000
+
+# Push-to-talk. Tab is the configured key — see the note in VOICE_SETUP.md:
+# Atlas only claims Tab when you HOLD it, so ordinary tabbing still works.
+push_to_talk:
+  # Hold this key anywhere in Windows and speak; let go and Atlas hears it.
+  # Alongside the wake word, not instead of it (Eric, 25 Sep 2026: H1). Any
+  # key by name: tab, capslock, rightctrl, scrolllock, f13 ... A quick tap
+  # still reaches the app you're in.
+  enabled: true
+  key: tab
+  hold_ms: 350        # shorter and normal tabbing starts triggering it
+
+# Two lanes of work, so Atlas being busy never means you have to stop.
+lanes:
+  gap_secs: 20            # quiet time before Atlas may take the screen
+  background_slots: 2     # research jobs that can run at once
+  foreground_ttl_secs: 3600
+
+# Background work is admitted by what it costs. Nothing that thinks starts
+# with less than keep_free_mb of memory free (below it the machine swaps and
+# typing stops responding); on battery under battery_floor_percent, heavy work
+# Atlas decided on itself waits for the charger. Something you asked for and
+# are waiting on is never held by the battery floor.
+crew:
+  keep_free_mb: 1024
+  battery_floor_percent: 30
+
+# Research runs entirely in the BACKGROUND lane — a separate headless browser
+# process, never the Chrome window you are using. Start it and keep working.
+research:
+  # On by default (Eric, 27 Sep 2026): when Atlas doesn't know, it looks it
+  # up. That sends the question to a search engine; Settings turns it off.
+  enabled: true
+  max_sources: 4
+  max_chars_per_source: 6000
+  notes_dir: "data/notes"
+  # Your own SearXNG (a metasearch engine you run yourself), e.g.
+  # "http://127.0.0.1:8888". Empty: the search below. Its settings.yml needs
+  # `json` under search.formats. Settings -> "Own search engine".
+  searxng_url: ""
+  search:
+    command: curl
+    args: ["-s", "-A", "Mozilla/5.0", "https://html.duckduckgo.com/html/?q={query}"]
+  fetch:
+    # --headless is a second, invisible Chrome. It does not touch your windows.
+    command: "{browser}"
+    args: ["--headless=new", "--disable-gpu", "--dump-dom",
+           "--virtual-time-budget=4000", "{url}"]
+
+# Other programs' tools, over the Model Context Protocol (MCP). Atlas is the
+# client: each server below is a separate program that offers tools, started
+# the first time a conversation needs tools (never before), on its own, with
+# no window. The model is offered at most three of their tools a turn --
+# the ones the sentence reads like.
+#
+# Atlas ASKS before every use. `ask_first: false` together with a tool named
+# in `allow` lets that one tool run without asking; either alone does not.
+# Nothing here is used while Atlas is handed over, and what a tool sends
+# back is treated as quoted text, never as instructions.
+#
+# None ships turned on: each needs Node.js (npx) or Python's uv (uvx)
+# installed first. To use one, remove the # in front of its lines. The
+# Connections page in the hub lists what's set up and turns each on or off.
+# `{home}` is your own user folder.
+mcp:
+  servers: []
+  # servers:
+  #   # Reading and writing files, limited to the folders named at the end
+  #   # (modelcontextprotocol/servers, "Filesystem"). Needs Node.js.
+  #   - name: files
+  #     about: "Reads and edits files in your Documents and Desktop folders only."
+  #     command: npx
+  #     args: ["-y", "@modelcontextprotocol/server-filesystem", "{home}/Documents", "{home}/Desktop"]
+  #   # The time anywhere, and converting between time zones
+  #   # (modelcontextprotocol/servers, "Time"). Needs uv (Python).
+  #   - name: time
+  #     about: "The time in other places, and time-zone conversions."
+  #     command: uvx
+  #     args: ["mcp-server-time"]
+  #     ask_first: false
+  #     allow: [get_current_time, convert_time]
+  #   # Fetching a web page as readable text (modelcontextprotocol/servers,
+  #   # "Fetch"). Needs uv (Python). Sends the address to that site.
+  #   - name: fetch
+  #     about: "Opens a web page and reads it as text."
+  #     command: uvx
+  #     args: ["mcp-server-fetch"]
+  #   # Working a web browser -- clicking, typing, reading pages -- in its own
+  #   # browser, not yours (microsoft/playwright-mcp). Needs Node.js.
+  #   - name: browser
+  #     about: "Works a separate web browser for you: opens pages, clicks, fills in forms."
+  #     command: npx
+  #     args: ["-y", "@playwright/mcp@latest", "--isolated"]
+  #   # Working Windows apps through their accessibility tree
+  #   # (mediar-ai/terminator). Needs Node.js. It presses buttons as you.
+  #   - name: windows
+  #     about: "Works Windows apps for you: clicks buttons and types into them."
+  #     command: npx
+  #     args: ["-y", "terminator-mcp-agent@latest"]
+  start_timeout_secs: 30      # starting and listing its tools
+  call_timeout_secs: 60       # one use of one tool
+
+# Online delegation to Cloudflare sub-agents. OFF by default and empty: this
+# is offline-first software, so the crew always works on this machine on this
+# machine's model. This is the *booster* — when there is a connection and you
+# have set this up, the heavy read-and-write-up step of a background job is
+# handed to a Cloudflare Workers AI worker instead of grinding on the local
+# 3B, the result is pulled back, and the LOCAL model checks it for accuracy
+# before it reaches you. Nothing here changes what Atlas can do offline.
+#
+# To turn it on: set enabled: true, put your account id below, choose a free
+# Workers AI model, and store your API token in the vault under the name in
+# `token_vault` (Atlas never keeps the token in this file). The `inference`
+# block is the same shape as `llm:` above — a curl call, with {account_id},
+# {token}, {model}, {system} and {user} filled in for you.
+cloudflare:
+  enabled: false
+  account_id: ""                 # your Cloudflare account id
+  model: "@cf/meta/llama-3.1-8b-instruct"   # a free-tier Workers AI model
+  token_vault: "cloudflare token"           # vault entry holding the API token
+  verify: true                   # local model checks each delegated result
+  inference:
+    command: curl
+    args: ["-s", "-X", "POST",
+           "-H", "Authorization: Bearer {token}",
+           "-H", "Content-Type: application/json",
+           "--data", "@-",
+           "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"]
+    stdin_text: true
+    # Workers AI returns {"result":{"response":"..."},"success":true,...}
+    request: '{"messages":[{"role":"system","content":"{system}"},{"role":"user","content":"{user}"}]}'
+    response_path: "result.response"
+  # Cloudflare Browser Rendering, used to fetch and strip a page on their side
+  # instead of this machine's headless Chrome when delegating. Optional; the
+  # local fetch above stands when this is absent.
+  fetch:
+    command: curl
+    args: ["-s", "-X", "POST",
+           "-H", "Authorization: Bearer {token}",
+           "-H", "Content-Type: application/json",
+           "--data", '{"url":"{url}"}',
+           "https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering/content"]
+
+# The morning run: one pass that says what needs you and what Atlas already
+# handled. It reads what is already on this machine -- handoffs waiting at the
+# door, requests it could not finish, scheduled work that failed or is due,
+# proposed times nobody has answered, posts waiting on your yes. Mail is one
+# source among those and the only one that needs a network; there is no mail
+# reader in this build, so that part is simply empty rather than disabled.
+#
+# Nothing here sends and nothing here interrupts: when Atlas may speak first
+# is `proactive`'s decision, not this one.
+brief:
+  enabled: true
+  # The earliest hour an unasked brief will interrupt, local.
+  #
+  # Whether you get one is decided by arrival, not by the clock: the first
+  # time you come in on a day you have not started yet. Working through the
+  # night past the rollover is not starting a day, and `daily.back_after_
+  # minutes` is what tells the two apart. This only stops the brief landing
+  # before you would want it. Asking works at any hour.
+  not_before_hour: 7     # the earliest an unasked brief will interrupt;
+                         # arrival decides whether, this decides not-before
+  # Below this, items are counted rather than listed. Ignore | Info | Urgent.
+  floor: Info
+  # Write replies as well as listing what needs one. Off: there is no mail
+  # reader to reply to, and `draft_replies` with nothing to draft would put a
+  # promise in the brief that nothing can keep.
+  draft_replies: false
+
+# Heavyweight helpers are started on demand and shut down when idle.
+# Memory is only reclaimed when a process EXITS — a running headless Chrome
+# holds its ~180MB until killed, and Windows paging it out is worse than
+# killing it. So nothing stays warm without a reason.
+lifecycle:
+  budget_mb: 600            # total Atlas helpers may hold at once
+  idle_timeout_secs: 90
+  keep_warm_secs:
+    cdp: 300                # research comes in bursts; ~1s cold start
+    hidden_desktop: 120
+    # The language model: seconds to minutes to load, so it stays up through
+    # a conversation and is let go after half an hour of quiet.
+    model-server: 1800
+
+# What Atlas generates, and how long it keeps it.
+# Your documents are never copied — the index stores paths, and content is
+# re-read on demand. Only Atlas's own output is bounded here.
+retention:
+  total_budget_mb: 500
+  scratch_minutes: 10       # turn wav files
+  captures_hours: 24        # screenshots and webcam frames
+  logs_mb: 4
+  notes_days: 365           # research notes are small and worth keeping
+  approvals_detailed: 200   # older ones collapse to counts, stats preserved
+  session_turns: 40
+
+# Internet is an enhancement, never a dependency.
+# The probe is a raw TCP connect — no DNS, no HTTP, no reliance on any
+# particular service. It is only ever consulted before something that
+# genuinely cannot work offline; local capabilities never touch it.
+connectivity:
+  probe: "1.1.1.1:53"
+  timeout_ms: 800
+  cache_secs: 30
+  assume_offline: false     # true on an air-gapped machine: never probes
+
+# Chrome DevTools Protocol. Atlas drives a headless Chrome over a local
+# websocket — clicks by CSS selector, reads the DOM, fills forms. Your own
+# Chrome window is never touched.
+# NOT WIRED (23 Sep 2026): duplicated by the live `browser:` block, which is the one Atlas reads. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# cdp:
+#   port: 9222
+#   launch_args: ["--headless=new", "--disable-gpu", "--remote-debugging-port=9222",
+#                 "--user-data-dir=data/chrome-profile", "--no-first-run"]
+#   timeout_ms: 5000
+
+# Nothing Atlas couldn't do gets forgotten. Blocked requests are kept with the
+# reason, and offered back when the blocker clears — asked, never silently run.
+backlog:
+  first_retry_secs: 60
+  backoff: 3.0            # reminders get further apart, never repeat forever
+  max_retry_secs: 86400
+  give_up_after: 4        # four unanswered reminders is enough
+  expire_days: 30
+  max_items: 200
+
+# UI Automation: read your open windows without a screenshot or a vision model.
+# min_nodes / min_named_ratio decide when a window's accessibility tree is too
+# poor to trust — Electron apps often publish one unlabelled blob, and Atlas
+# falls back to a screenshot rather than reporting an empty document.
+uia:
+  min_nodes: 4
+  min_named_ratio: 0.4
+
+# Atlas's own model layer — no Ollama in the path.
+# Atlas reads GGUF files itself, works out what fits in memory, formats the
+# prompt for each model's trained chat format, and drives llama.cpp's own
+# server binary directly.
+models:
+  # Speculative decoding (llama.cpp b10456), both off. `draft`: a small model
+  # of the same family in the models folder -- for the shipped Qwen3-VL 4B,
+  # Qwen3-0.6B-Q8_0.gguf (same vocabulary; about 640 MB; the Connections page
+  # can fetch it). `speculate`: off, or ngram-mod / ngram-simple /
+  # ngram-map-k / ngram-map-k4v / ngram-cache (no second model).
+  draft: ""
+  speculate: "off"
+  dir: "models"
+  prefer: ""              # empty = the largest that fits, up to talk_ceiling_b
+  # The biggest model (billions of parameters) picked for talking when none
+  # is named above. A quick answer beats the biggest model the memory allows;
+  # 0 = no ceiling, the largest that fits.
+  talk_ceiling_b: 5
+  # Layers on the graphics: auto, off, or a number. auto puts them all on the
+  # graphics when the downloaded llama.cpp is a graphics (Vulkan) build.
+  gpu_layers: auto
+  context: 8192
+  # 0 = whatever this machine can actually spare, measured by `fit.rs` on the
+  # machine Atlas is running on rather than assumed here.
+  #
+  # This used to read 3500, with a comment reasoning about 15.7GB of RAM and
+  # Windows using ~12.8GB of it. That reasoning was sound and the number was
+  # still wrong to write down: it is a *measurement*, and putting a
+  # measurement in a config file means it stops being true the moment you
+  # close a browser, add a stick of RAM, or run Atlas on the other machine.
+  #
+  # A non-zero value here is a **cap**, never a target: "never use more than
+  # this even if there is room" is a real thing to want. It can only lower
+  # what was measured, because a budget larger than the machine produces a
+  # model that will not load.
+  memory_budget_mb: 0
+  port: 8080
+  # Where the model server listens. Empty = this machine only. On your own
+  # server, put its WireGuard address (10.77.0.1) so the laptop and phone can
+  # use its models — private addresses only, never 0.0.0.0.
+  listen_on: ""
+  server:
+    command: llama-server   # from llama.cpp releases; a single binary
+
+# The browser Atlas drives. Headless, started on demand, never your window.
+# --user-data-dir keeps its cookies separate from your own Chrome profile, so
+# Atlas signs in to sites as itself and cannot touch your live sessions.
+browser:
+  port: 9222
+  timeout_ms: 5000
+  startup_ms: 8000
+  launch:
+    command: "{browser}"
+    args: ["--headless=new", "--disable-gpu", "--remote-debugging-port=9222",
+           "--user-data-dir=data/chrome-profile", "--no-first-run",
+           "--no-default-browser-check", "--disable-extensions"]
+
+# Video editing. ffmpeg is CPU work with hardware decode, so this runs fine on
+# the Arc 140V where generation would not. Originals are never touched — every
+# render writes a new file, and a plan whose output collides with an input is
+# rejected before ffmpeg is called.
+video:
+  work_dir: "data/video"
+  ffmpeg:
+    command: ffmpeg
+  ffprobe:
+    command: ffprobe
+
+# Knowing your voice. A filter, not a lock — it decides whether Atlas listens,
+# never whether it is allowed. Anything consequential still needs a spoken yes.
+# Enrollment: say a few sentences when asked. Nothing leaves the machine.
+# Telling your voice from anyone else's.
+#
+# Two halves. `speaker` is the program that turns a recording into an
+# embedding; `voice_id` is the policy about what to do with the answer.
+# Without the first, every verdict is "not enrolled" and Atlas listens to
+# whoever speaks -- which is how it has always behaved, and `atlas doctor`
+# says so rather than letting an unavailable voice-lock look like an active one.
+#
+# The encoder is an external program, the same as whisper and piper. It is
+# given `{in_wav}` -- the recording the turn was already transcribed from, so
+# nothing extra is recorded -- and should print the embedding as numbers,
+# either a JSON array or plain separated values.
+#
+# Once one is installed: `atlas enrol-voice`, then set enabled: false below.
+speaker:
+  # tool:
+  #   command: "tools/speaker/encode.exe"
+  #   args: ["{in_wav}"]
+  #   timeout_secs: 20
+
+voice_id:
+  enabled: false
+  accept: 0.72          # at or above, it's you
+  reject: 0.45          # at or below, it isn't. Wide grey band on purpose:
+                        # being wrongly ignored is the more annoying failure.
+  min_samples: 3
+  adapt: true           # keeps up with a cold or a new headset
+
+# Knowing you're at the desk. Off by default. Low sample rate — a background
+# signal, not a video feed. Frames never leave the machine.
+presence:
+  enabled: false
+  sample_every: 20
+  leave_after: 3        # one missed frame is you reaching for a coffee
+  return_after: 1
+  discreet_with_strangers: true
+
+# Atlas's character. Not the TTS voice — the manner.
+# Brief, dry, no greeting, no flattery, states limits plainly, disagrees when
+# it has reason to. This is what makes it feel like something rather than a menu.
+persona:
+  name: "Atlas"
+  # What it calls you. Empty = it doesn't.
+  #
+  # Reaches the model on every turn (`Persona::system_prompt`), and is used
+  # for the acknowledgement of anything the phrase parser settles
+  # ("Opening Chrome now, Eric."). Saying "call me <something>" out loud
+  # overrides this and persists -- see `Daemon::returning_cfg`, which explains
+  # why the spoken one wins.
+  #
+  # Empty as shipped: Atlas goes to other people too, and it called every one
+  # of them Eric. Say "call me" and your name the first time.
+  address: ""
+  tone: warm              # dry | plain | warm
+  # A ceiling, not a target. The register decides the actual length within
+  # it: two sentences for a task, up to eight in conversation. Set to 3 this
+  # was the binding constraint on every conversational reply, which is most
+  # of why Atlas sounded clipped.
+  max_spoken_sentences: 8
+  greet: false            # Jarvis doesn't say hello
+  voice_model: "en_US-ryan-medium"
+  speaking_rate: 1.05
+  # Character, not voice.
+  wit: 0.35        # a dry remark, in conversation only — never during a task
+  argues: true     # says when it disagrees, once, with the reason
+  converses: true  # talks about things that are not work
+
+# One conversation, forever. No sessions. Old exchanges are compressed into a
+# running summary rather than dropped — dropping them is what makes an
+# assistant feel amnesiac.
+thread:
+  verbatim: 12            # exchanges kept word for word
+  fold_after: 24          # compress once this many pile up
+  context_chars: 4000
+  gap_secs: 3600          # a longer silence is worth acknowledging
+
+# Watching this machine. Says one thing at a time, at a moment worth
+# interrupting for, then stays quiet about it for a week.
+health:
+  disk_notice_gb: 20
+  disk_urgent_gb: 5
+  ram_notice: 0.90
+  ram_urgent: 0.96
+  battery_notice: 20
+  battery_urgent: 8
+  battery_health_notice: 70
+  backup_notice_days: 14
+  uptime_notice_days: 14
+  repeat_after_secs: 604800
+
+# Watching something on another machine. A TCP connect and nothing else — no
+# credentials, no control, no data. Safe for any machine precisely because it
+# gives Atlas no path in.
+watch:
+  targets: []
+  # targets:
+  #   - name: homelab
+  #     address: "CHANGE.ME:443"
+  #     check_every: 120
+  #     fails_before_down: 3    # one dropped packet is not an outage
+  #     enabled: true
+
+# The local API — how your phone reaches Atlas.
+# Loopback only. Reaching it from another device is a VPN's job; binding to
+# every interface would put a command endpoint for your workspace on whatever
+# network you're on. A token is generated on first run.
+# The local dashboard, and what a phone talks to.
+#
+# On, because it already was: this used to say `false` while the start-up path
+# forced it on, so the switch did nothing. It now means what it says -- turn
+# it off and nothing listens.
+#
+# Loopback only (127.0.0.1), never 0.0.0.0, and every request needs the token.
+# Reaching it from another device is a VPN's job, not the listener's.
+server:
+  enabled: true
+  port: 8787
+  max_body: 16384
+  reachable_from: ""        # empty = this machine only, which is the safe
+                            # default and what it has always done. To open the
+                            # hub from your phone, put the address this machine
+                            # has on your own network or VPN here -- e.g.
+                            # "100.101.102.103" on Tailscale or "192.168.1.20"
+                            # at home. A public address is refused, 0.0.0.0 is
+                            # refused, and the token is still required either
+                            # way.
+
+# Everything Atlas has learned, copied somewhere else.
+backup:
+  enabled: true
+  dir: "data/backups"
+  every_secs: 86400
+  keep: 7
+
+# Nothing Atlas removes or overwrites is gone immediately.
+trash:
+  dir: "data/trash"
+  keep_days: 30
+
+# Which microphone and which speakers.
+#
+# A Bluetooth headset cannot play good audio and record at the same time — the
+# moment anything opens its mic, the connection drops to a headset profile and
+# whatever you're listening to turns muddy. With a wake word running that would
+# be all day. So Atlas listens on the laptop mic and speaks through your
+# headphones by default.
+#
+# Set avoid_bluetooth_mic: false when you're away from the desk and want it to
+# hear you through the AirPods instead.
+audio:
+  preferred_input: []       # name a device to override, e.g. ["AirPods"]
+  preferred_output: []
+  avoid_bluetooth_mic: true
+  prefer_headphones_for_output: true
+
+# A door another Atlas can knock on -- notify only, never a command. Off by
+# default; turning `enabled: false` on with no peers listed leaves it shut
+# anyway, on purpose, so an empty list can never be mistaken for "open to
+# everyone."
+#
+# To add someone: agree a token with them out of band (not over this
+# channel, and not somewhere a third party could read it), give each side
+# the other's name and token, and reachability between your two machines is
+# Tailscale's job -- this only ever listens on 127.0.0.1.
+#
+# Setting this by hand is a stopgap. An `invite`/`accept` pair that generates
+# and exchanges the token for you, so nobody ever pastes one in by hand, is
+# still to be built.
+kin:
+  enabled: false
+  port: 8788
+  peers: []
+    # - name: "Homelab"
+    #   token: "a long random string, the same on both sides"
+
+# Which microphone Atlas listens with — decided by measurement, not by you.
+#
+# It records a short sample on each microphone and keeps the level. A laptop
+# closed on a stand behind a monitor reads around -58dB; a webcam pointed at
+# your face reads around -22dB. That difference is invisible in the device
+# name and obvious in the measurement.
+#
+# At the desk it uses the best desk microphone and leaves your headphones on
+# full-quality playback. Away from the desk it moves to the headset and says
+# what that costs. Out of the room it points you at your phone.
+hearing:
+  floor_db: -45.0         # quieter than this and a mic isn't hearing you
+  switch_margin: 0.15
+  settle_secs: 20         # a presence flicker must not switch mics mid-sentence
+  recalibrate_secs: 21600
+
+# Somewhere to type when speaking isn't working.
+# One key, anywhere in Windows: a single-line box appears, you type, Enter,
+# it's gone. Nothing to find, nothing to alt-tab to.
+quick_input:
+  enabled: true
+  # Set it in Settings by pressing the key you want. Ctrl, Shift or Win with a
+  # key, or on its own a key nobody types with (f9, insert, pause, scrolllock).
+  hotkey: "ctrl+shift+space"
+  surface: console          # console | overlay
+  idle_close_secs: 30
+
+# Proving it's you — rarely, and never in your way.
+# Off by default. Only the actions listed ever prompt, proof lasts four hours
+# like sudo, and a device you trust (which unlocked with its own biometric)
+# never asks at all. No Windows Hello means a spoken yes, never a lockout.
+identity:
+  enabled: false
+  verify_for: ["workspace_off"]
+  grace_secs: 14400
+  trusted_devices: []       # e.g. ["iPhone", "iPad"]
+  fall_back_to_spoken: true
+
+# Reading text off the screen and off paper.
+# Exact where a vision model is approximate, and fast on CPU.
+#   winget install UB-Mannheim.TesseractOCR
+# Watching a video, as opposed to listening to one.
+#
+# Frames are pulled only where the picture genuinely changed, read, and then
+# deleted -- what a frame is worth is the words on it, and those are a few
+# hundred bytes against a few hundred kilobytes. An hour of video costs about
+# as much disk as a long email.
+viewing:
+  enabled: true
+  # Measured against a real 24-second clip, not guessed: 0.35 found ZERO scene
+  # changes in it. Scene detection assumes the picture changes when the content
+  # does -- true of a screen recording, false of a phone pointed at something.
+  scene_change: 0.2       # only has to catch genuine cuts now
+  # ...because this is what stops a static video going unwatched.
+  at_least_every_secs: 4
+  most_frames: 40         # cap, so a handheld clip can't become an hour of OCR
+  # Frames that turned into words keep the words and lose the frame. Frames
+  # that didn't -- a chart, a photo, someone pointing at something -- keep a
+  # thumbnail instead, because deleting those is how "keep the reading" loses
+  # everything that isn't text. At 160px a frame is 4-8 KB against 300+ KB
+  # full size: the same picture, recognisable, three orders of magnitude apart.
+  thumbnail_width: 160
+  longest_minutes: 90
+
+ocr:
+  enabled: false
+  min_confidence: 0.55      # below this a word is a smudge, not a word
+  language: eng
+  engine:
+    command: "C:/Program Files/Tesseract-OCR/tesseract.exe"
+
+# The hub — a page for changing settings, served on loopback.
+# Atlas still runs with no window open; this is something you open on purpose,
+# like a router's admin page. Reachable from your phone over the same
+# connection as the API, behind the same token.
+hub:
+  enabled: true
+
+# Money — read-only, and read-only by construction rather than by promise.
+# On any domain listed here Atlas may navigate, read and download, but it
+# cannot submit a form, click anything whose label suggests moving money, or
+# type into a field that isn't a login or a date filter. An action it doesn't
+# recognise is refused, not allowed.
+finance:
+  enabled: false
+  inbox: "data/finance/inbox"
+  large_transaction: 500
+  category_jump: 0.5
+  financial_domains:
+    - chase.com
+    - bankofamerica.com
+    - wellsfargo.com
+    - citi.com
+    - capitalone.com
+    - amex.com
+    - paypal.com
+    - venmo.com
+    - coinbase.com
+    - schwab.com
+    - fidelity.com
+
+# Recording calls. Off, and strict when on.
+# Your own microphone captures only you and needs nobody's permission. To
+# record everyone, Atlas announces it first — and if the announcement can't be
+# delivered, nothing is recorded. One objection stops it and deletes what
+# there is.
+call_notes:
+  enabled: false
+  assume: all_parties       # the stricter rule, since Atlas can't know where anyone is
+  default_scope: you_only   # off | you_only | everyone
+  ask_every_call: true
+  keep_audio_days: 7
+  announce_in_chat: true    # posts in the chat rather than speaking over people
+  # Exactly what appears in the call chat. Pick one, or write your own.
+  #   brief:  "Note-taking assistant is on for this call. Shout if that's a problem."
+  #   formal: "For transparency: this call is being transcribed by an assistant..."
+  #   casual: "FYI I'm having an assistant take notes so I don't have to type while we talk."
+  announcement: "Heads up — I've got an assistant taking notes on this call. Say if you'd rather I didn't."
+  # Eric, 24 Sep 2026: ask the others and wait for their yes before recording
+  # them. No answer means only your side is noted.
+  ask_the_others: true
+  question: "Is it alright if my assistant takes notes on this call? I won't record anyone until you've said yes."
+
+# Working the window in front for you: "draft a reply to this", "carry this
+# conversation on until I'm back". Eric, 24 Sep 2026: "app: yes it should".
+# It's an errand like any other: "stop" pauses it, and it only types in a gap
+# in your own typing. Settings: Reaching outside this machine -> Working your apps.
+delegate:
+  enabled: true
+  max_turns: 12
+
+# The words of a model call, kept only when the call was graded (a reply
+# rewritten, a council seat, a turn you corrected), scrubbed of emails, phone
+# numbers and long numbers, so a new model can be tested against them. Eric,
+# 25 Sep 2026: "If the prompts add value yes." Stays on this laptop and in
+# your backups. The call log itself still keeps no words.
+trace:
+  keep_examples: true
+  examples_max: 2000
+
+# Answering a question — by voice, by gesture, or by typing.
+# Whichever arrives first wins. A thumbs-up can decline anything and approve
+# anything ordinary, but it cannot approve something irreversible: a nod from
+# a webcam is not a signature.
+answering:
+  accept_gestures: true
+  timeout_secs: 45          # silence is treated as no, never as yes
+  repeat_after_secs: 15
+  gestures_may_approve_anything: false
+
+# The clipboard as a way of telling Atlas what you mean.
+# Copy something, say "explain this". Atlas never watches the clipboard in the
+# background — that would see every password you copy. The one exception is
+# clipboard history (workday.clipboard_history, below), which is off until you
+# turn it on, keeps copies in memory only, and skips anything a password
+# manager marks private or that looks like a key.
+clipboard:
+  enabled: true
+  max_chars: 20000
+  reply_to_clipboard: true
+  only_on_request: true
+
+
+# Changing things on the machine — sorted by how hard each is to undo.
+# A wallpaper is nothing: the old one is remembered. A moved file goes through
+# the trash. Anything to do with security, accounts or networking is never
+# touched at all — Atlas opens the settings page for you instead.
+system:
+  enabled: false
+  may_prepare_itself: true
+  file_roots:
+    - "%USERPROFILE%/Desktop"
+    - "%USERPROFILE%/Documents"
+    - "%USERPROFILE%/Downloads"
+    - "%USERPROFILE%/Pictures"
+
+# Saying "I don't know".
+# A small local model answers anything confidently, including things it has no
+# idea about. Answers are checked for the shapes of a filled gap — stacked
+# hedging, invented figures, claims about your machine it never looked at.
+certainty:
+  enabled: true
+  qualify_below: 0.62
+  withhold_below: 0.38
+
+# Looking after the laptop.
+# Finds what's holding memory, what's slowing startup, and what's safe to
+# clear — with the actual numbers, so you can disagree. Never touches drivers,
+# services, the registry, or anything on the permanent no-list.
+tune:
+  enabled: false
+  min_mb: 200               # smaller than this isn't worth a sentence
+  min_boot_secs: 0.5
+  keep: [explorer, defender, security, audio, graphics, intel, nvidia, realtek, onedrive]
+
+# Paying for a hosted model, only for what the local one can't do.
+# Off by default. Everything else in Atlas runs on your machine for nothing.
+#
+# Four things keep this cheap, and they stack:
+#   - local first, so most work never reaches a hosted model
+#   - the cheapest model that can actually do the job
+#   - the codebase cached, so a repeat request costs a tenth
+#   - overnight work batched, at half price
+# The caps are a stop, not a warning.
+#
+# Rates are dollars per million tokens. Check them against
+# https://platform.claude.com/docs/en/about-claude/pricing — they change.
+budget:
+  enabled: false
+  daily_cap: 1.00
+  monthly_cap: 15.00
+  ceiling: sonnet           # local | haiku | sonnet | opus
+  prefer_batch: true
+  use_caching: true
+  haiku:  { input: 1.0, output: 5.0 }
+  sonnet: { input: 2.0, output: 10.0 }
+  opus:   { input: 5.0, output: 25.0 }
+  cache_read_fraction: 0.10
+  cache_write_multiplier: 1.25
+  batch_multiplier: 0.50
+
+# Asking for help when Atlas gets stuck.
+# It tries a few times first — reads its own error, forms a theory, changes
+# something in the sandbox, runs the tests. If that fails, it writes up a
+# proper brief: the symptom, what it already tried, what it ruled out, and the
+# code that matters. You paste it into a chat, paste the answer back, and Atlas
+# applies it to the sandbox and runs its own tests before anything is kept.
+handoff:
+  # Distinct approaches, not retries. Atlas works through a ladder of
+  # genuinely different angles — reread the error, test the assumption, find a
+  # working example, bisect, instrument, question the test, revert and rethink
+  # — and only stops when the ladder runs out or the same error keeps coming
+  # back. See docs/SELF_REPAIR.md.
+  attempts_before_asking: 12
+  max_chars: 6000
+  max_snippet_lines: 40
+
+# Working while you're asleep.
+# Atlas takes problems it couldn't finish, works them in the sandbox, runs its
+# own tests, and leaves a brief for the morning.
+#
+# brain: where answers come from when the local model isn't enough.
+#   ask_you_later — writes up a brief, you answer over coffee. Free.
+#   local         — the model on your machine. Free, limited.
+#   hosted        — a paid model. See docs/COST.md.
+#   delegate      — carries on an existing conversation in a window you name,
+#                   the same way it does when you step out of the room. It
+#                   continues a thread that is already there; it never opens a
+#                   new one. The turn budget is the bound, so keep it small.
+#
+# Nothing is ever applied while you're asleep. That isn't a setting.
+overnight:
+  # On. Under `ask_you_later` -- the default brain below -- a night costs
+  # nothing and reaches nothing outside this machine: Atlas works through what
+  # it could not finish, writes each one up, and leaves the brief for the
+  # morning. Nothing is ever applied while you are asleep; that is not a
+  # setting, it is wired shut.
+  #
+  # The other brains (local, hosted, delegate) drive a solver, spend money, or
+  # work another application on your behalf. They are not wired yet. Selecting
+  # one does not break the night -- the brief says plainly that it only wrote
+  # things up.
+  enabled: true
+  brain: ask_you_later
+  # `start_hour: 23` and `stop_hour: 6` were here and are gone.
+  #
+  # A clock cannot tell you asleep from you at a desk at two in the morning,
+  # and it has no idea you left for work at eight. So the night ran on a
+  # timetable: it ran while you were up working, and it did not run on the
+  # Saturday you were out all day.
+  #
+  # Atlas works out where you are instead, from when you were last here and
+  # the hours you are usually about -- both of which it already watches.
+  # `daily.away_a_while_minutes` is the one number left to set, and it is
+  # about you rather than about the clock. You are never asked to say you are
+  # stepping away.
+  attempts_each: 3
+  max_problems: 10
+  # Separate problems in a row that get nowhere, not attempts on one problem.
+  # Attempts on a single problem are the twelve-angle ladder under `strategy`.
+  give_up_after_failures: 3
+  delegate_window: ""         # e.g. "Claude — Atlas Project"
+  delegate_turns_each: 6      # per problem
+  delegate_turns_total: 40    # across the whole night
+
+# How Atlas attacks a problem it can't immediately solve.
+# Each attempt uses a different angle, and each angle is used once. Twelve real
+# attempts beats three lazy ones, and it still terminates.
+strategy:
+  max_angles: 12
+  stop_after_identical: 3   # same error three times means the angles aren't reaching it
+  skip: []
+
+# Talking a problem through in a window, once Atlas has exhausted its own ideas.
+#
+# The rule that matters: an attempt is spent on a *solution*, not on a message.
+# A question back, a request to see more, an explanation with no code — Atlas
+# reads those, works out what's wanted, answers, and carries on. None of them
+# touch the budget. Only something testable does.
+consult:
+  settle_ms: 2500           # text must stop changing before it counts as finished
+  reply_timeout_secs: 180
+  max_exchanges: 20         # a conversation going nowhere politely is still going nowhere
+  opening: >
+    Pause all other tasks. I ran into an issue while running diagnostics — the
+    details are in the write-up below. I've already tried a number of
+    approaches; they're listed with what each one showed. What I need is the
+    change itself so I can apply it and run the tests.
+
+# Free-standing panels. Not a hub — they appear when asked for, say their
+# piece, and leave.
+#
+# Anything you read while working goes on a second screen if you have one:
+# covering the thing you're working on to tell you about it is self-defeating.
+# With one screen Atlas asks first, and takes no for an answer by speaking
+# instead. Everything is spoken as well as shown.
+panels:
+  enabled: true
+  column_width: 400
+  waking_secs: 9            # the startup panel leaves by itself
+  presence: true            # the small breathing mark, second screen only
+  presence_size: 120
+  # The reading panels open as their own window, full height, down the right
+  # of the screen you're looking at. Turn this on to put them on a second
+  # screen instead.
+  prefer_second_screen: false
+  # Ask first when the column would cost a real slice of the screen. 400px is
+  # a sixth of a 2560 monitor and worth nothing; on a laptop screen it's a
+  # fifth of your working width and very much in the way.
+  ask_above_fraction: 0.18
+  ask_on_single_display: true
+  speak_as_well: true
+
+# Accents, other languages, and understanding a room.
+#
+# Whisper handles accents better than most people expect. Where it struggles is
+# heavy accents on the smallest models, so Atlas measures how well it's
+# actually doing and suggests a bigger one only when the evidence says so.
+#
+# The shipped model is English-only — it cannot hear other languages at all,
+# not badly. Swapping ggml-base.en.bin for ggml-base.bin costs nothing in size,
+# a little accuracy on English, and gains ninety-odd languages plus
+# translation in the same pass.
+language:
+  my_language: auto         # or "en"; auto is right in a multilingual room
+  multilingual: false       # needs the non-.en model
+  translate_others: true
+  min_confidence: 0.55
+  struggles_before_suggesting: 6
+
+# How Atlas sounds. Every voice is a free download — no account, no key.
+# Change it by saying so: "a bit slower", "use a British voice", "you sound
+# robotic", "try something deeper", "use a different voice".
+# Which speech engine drives `tts` above.
+#
+# Chatterbox, per the decision recorded in docs/OPEN_ITEMS.md section 20:
+# free, MIT, self-hosted, no account, and markedly better than piper. piper is
+# deliberately kept on disk and one edit away (see below) until Chatterbox is
+# proven on this machine -- that decision said "not before", and it was right.
+#
+# IMPORTANT -- Chatterbox is a Python library, not a command-line program.
+# Atlas drives it through a small wrapper you provide at the `exe` path below.
+# Atlas is specifying its own side of that contract, not guessing at flags
+# Chatterbox does not have. The wrapper must:
+#
+#   * read the text to speak from standard input
+#   * accept  --reference <wav>   a short clip of the voice to imitate
+#             --out <wav>         where to write the result
+#             --speed <n>         1.0 is normal, larger is faster
+#             --exaggeration <n>  how much the delivery varies
+#             --sentence-gap <n>  pause between sentences, seconds
+#   * write the spoken wav to --out and exit 0
+#
+# docs/VOICE_SETUP.md has a worked example. Until that wrapper exists,
+# `atlas doctor` will say so plainly and Atlas will not speak.
+#
+# piper is the floor -- it runs on anything,
+# needs no GPU, and is what makes Atlas speak on a machine that can run nothing
+# else. Kokoro and Chatterbox are both better and both free; Chatterbox can
+# copy a voice from a short clip.
+#
+# This exists so switching is a config edit rather than a code change, and so
+# the switch cannot go half-done: `speed` means opposite things to piper and
+# to the others (length scale versus multiplier), and Atlas converts it for
+# whichever is named here. `atlas doctor` refuses a config whose engine and
+# executable disagree, because that fault only ever shows up as silence.
+#
+# Changing engine also means changing `tts.args` above to that engine's flags,
+# and putting its voice files in `voices_dir` with the right extension --
+# .onnx for piper, .pt for kokoro, .wav for chatterbox.
+# Sound & voice (the hub page of that name). When Atlas speaks out loud, how
+# loud, quiet hours on your clock, and when it may pop up unasked -- the rule
+# locked with Eric on 20-21 Sep: only when asked, when urgent (the default), or
+# anything ready. Everything spoken is also shown.
+sound:
+  speak_replies: hands_free        # always | hands_free | never
+  volume: 100                      # 0-100, applied to Atlas's voice only
+  muted: false
+  quiet_hours: false
+  quiet_from: "22:00"
+  quiet_to: "07:00"
+  popups: urgent                   # ask | urgent | anything
+
+tts_engine:
+  engine: piper                    # piper | kokoro | chatterbox
+  exe: "tools/piper/piper.exe"
+  voices_dir: "models"
+
+voice_settings:
+  # A Kokoro preset id. `af_bella` is the warm American female voice -- second
+  # highest graded of the 54, chosen for warmth with some body to it.
+  # `am_puck` is the shortlisted male alternative, lighter and more playful.
+  # `atlas audition` speaks the same line in each of the shortlist so you can
+  # choose by ear rather than from a description.
+  #
+  # For Chatterbox this becomes the name of a reference clip in `voices_dir`
+  # instead -- it copies whatever voice is in the recording rather than
+  # loading a preset.
+  #
+  # If you switch back to piper this becomes a piper voice id again, e.g.
+  # "en_US-ryan-medium", and the extension changes to .onnx automatically.
+  voice: "en_US-amy-medium"
+  speed: 1.0            # below 1 is faster
+  variation: 0.667      # low is flat and robotic, high wanders
+  sentence_gap: 0.2
+
+# Knowing when you've stopped talking.
+# A fixed recording window cuts you off mid-word and makes you wait after
+# "yes". It also transcribes eight seconds whether you spoke for one or seven,
+# which on this machine is the single biggest avoidable cost.
+# How long a silence has to be depends on what you were saying: "yes" is
+# finished the moment you stop, "I want you to" plainly isn't.
+endpoint:
+  enabled: true
+  silence_below_db: -38
+  short_reply_ms: 380
+  sentence_ms: 700
+  mid_phrase_ms: 1100
+  no_speech_after_ms: 2500
+  hard_stop_ms: 20000
+  warmup_ms: 120
+  # The speech detector (tells a voice from a fan). Measured, not chosen —
+  # see vad.rs DEFAULT_MEASURED. Raise vad_energy_db if a noisy room keeps
+  # the turn open; lower it if a quiet voice gets cut off.
+  vad_energy_db: 1
+  vad_flatness_db: 4
+  vad_loud_db: 12
+
+# Typing what you say into the window you're looking at.
+# Off by default. Never types into chat apps — a misheard sentence there is
+# public; in a document it's a typo.
+dictate:
+  enabled: false
+  spoken_punctuation: true
+  auto_capitalise: true
+  idle_stop_secs: 45
+  never_into: [discord, slack, teams]
+
+# Telling you when something long finishes.
+# Something that took twenty seconds isn't news — you were still sitting there.
+# Ten minutes is. Failures always are.
+watching:
+  enabled: true
+  worth_saying_after_secs: 45
+  always_report_failures: true
+  give_up_after_secs: 21600
+
+# Finding something you wrote, without remembering where you put it.
+#
+# Words work with nothing installed — search that needs a download first is
+# search you won't have on day one. Meaning needs a small embedding model,
+# 50–100MB, which is nothing beside a language model and runs on your NPU.
+# Both together beat either alone, so results are merged rather than chosen
+# between.
+recall:
+  semantic: false           # flip on once tools.meaning below has an encoder
+  results: 5
+  floor: 0.04
+  meaning_weight: 0.55
+  context_weight: 0.25      # the conversation nudges the order too — it breaks
+                            # ties between near-equal answers and NEVER makes a
+                            # note surface that the question itself didn't find
+  recency_days: 120         # recency nudges the order, it never decides
+
+# The encoder behind meaning search — an external program, like whisper and
+# piper, so the model is swapped by editing this file, never by recompiling.
+# The note's text is piped to the encoder's stdin (and offered as {text}); the
+# encoder prints the vector as plain numbers or a JSON array, either works.
+#
+# The reference encoder ships in the handoff's `embed/` folder — a ~20MB
+# statically-linked exe plus all-MiniLM-L6-v2 (~86MB), the model `fit.rs`
+# already plans for. Copy `embed/dist/embed.exe` to `tools/embed/` and
+# `embed/models/*` to `models/`, then uncomment this and flip
+# `recall.semantic` above:
+#
+# meaning:
+#   encoder:
+#     command: "tools/embed/embed.exe"
+#     args: ["--model", "models/all-MiniLM-L6-v2.onnx",
+#            "--vocab", "models/vocab.txt"]
+#     stdin_text: true
+#     timeout_secs: 30
+#
+# With `recall.semantic: true` and no encoder here, Atlas searches by words
+# alone and `atlas doctor` names the gap — nothing breaks.
+meaning: {}
+
+# Atlas working on its own source.
+# Off by default. It works in the sandbox, runs the full test suite, and shows
+# you the diff — nothing reaches your files until you accept it.
+#
+# never_touch is the important half: those files decide what Atlas is allowed
+# to do and what it has to tell you. A system that can edit its own permissions
+# has none.
+self_work:
+  enabled: false
+  test_command: "cargo test"
+  min_tests: 1
+  large_change_lines: 150
+  may_touch: ["src/", "tests/", "config/", "docs/"]
+  never_touch:
+    - config/policy.yaml
+    - src/policy.rs
+    - src/system.rs
+    - src/finance.rs
+    - src/consent.rs
+    - Cargo.toml
+
+# Reading statements. Entirely local — files you already have, no credentials.
+# Atlas knows the general rules, including the ones that catch traders out:
+# wash sales, Section 1256, trader tax status, the mark-to-market deadline,
+# the capital loss limit, estimated payments. It says plainly that this is
+# knowledge and not advice.
+# NOT WIRED (23 Sep 2026): no code reads a ledger inbox folder yet. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# ledger:
+#   inbox: "data/finance/inbox"
+
+# Writing something, then being honest about it.
+# Atlas writes, reads what it wrote against the things that are actually wrong
+# with most first drafts, then rewrites. The critique is the valuable half.
+draft:
+  revise: true
+  max_passes: 2       # more than two sands the life out of it
+  ignore: []          # e.g. [hedging] if you disagree with one
+
+# Remembering what didn't work, so the same dead end isn't walked into monthly.
+# Lessons expire by cause: a wrong idea stays wrong, but a site that blocked
+# automation in March may not in July.
+# NOT WIRED (23 Sep 2026): lessons are always kept; nothing reads an on/off switch for them. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# learned:
+#   enabled: false
+
+# Stopping before you have to ask what's taking so long.
+# Every job gets a budget. Over it, Atlas asks rather than killing the work,
+# and running out still returns what it had.
+# NOT WIRED (23 Sep 2026): time blocks work without a switch; nothing reads this one. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# timebox:
+#   enabled: false
+
+# Finding another way in.
+# "We've tried that twice" is honest and useless on its own. When a route is
+# closed, Atlas picks a different one — weighing what it costs against how
+# often it works, so the thorough options exist but come last and most
+# problems never reach them.
+#
+# impatience: 0 always picks the most reliable route, 1 always the quickest.
+# 0.5 is the middle, and it's what makes quality not cost speed everywhere.
+route:
+  min_reliability: 0.35
+  max_routes: 4
+  impatience: 0.5
+
+# Writing that says something.
+# Not just "what's wrong with it" but "does it make a claim, is the claim held
+# up, is it built in an order that makes sense". A piece with no claim can't be
+# fixed by adding evidence, so the claim gets fixed first.
+# NOT WIRED (23 Sep 2026): the stance check runs inside drafting; nothing reads this switch. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# stance:
+#   enabled: false
+
+# Fitting whatever machine Atlas lands on.
+# Nothing is tuned to one laptop: it measures what's free, picks a plan, and
+# says what it can't do here rather than letting you find out. Re-checked when
+# the machine changes, because the plan made with forty tabs open isn't the
+# plan you want forever.
+fit:
+  replan_on_change: true
+  # Override anything below to pin a choice on a machine you know better than
+  # Atlas does.
+  force_tier: ""            # bare | voice | thinking | full
+
+# What Atlas knows how to do without asking anyone.
+# Procedures, not facts — facts go stale and are what the internet is for.
+# Six of the seven shipped work with no connection.
+# NOT WIRED (23 Sep 2026): nothing learns new snags on its own yet. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# knowhow:
+#   learn_new_snags: true
+
+# Getting better on the hardware you already have. These are switches for a
+# self-improvement loop that is NOT built yet — there is no `ImproveConfig`
+# type reading them, so nothing here does anything today. Kept as the shape
+# the loop will take, not described as working: the earlier comment here
+# claimed route reliability, procedure-learning and vocabulary were all
+# automatic and costing nothing, which was a promise the code could not keep.
+# NOT WIRED (23 Sep 2026): the self-improvement loop these switches describe is not built. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# improve:
+#   learn_route_reliability: true
+#   learn_vocabulary: true
+#   precompute_overnight: true
+#   distil_from_hosted: false    # keeps more; off unless you want it
+
+# Learning you.
+# Built from what actually happens — when you work, what you come back to, what
+# you always change about Atlas's output — rather than a profile you fill in.
+#
+# It notices patterns in what you do, never guesses at how you feel. "You've
+# been at this since six" is checkable; "you seem stressed" is a guess dressed
+# as insight, and a wrong one is worse than silence.
+#
+# Everything it learns can be read back and forgotten on request.
+person:
+  enabled: true
+  notice_patterns: true
+  late_nights_before_saying: 3
+  hours_before_saying: 6
+  quiet_days: 7             # never repeats an observation inside this
+
+# Working out what you want back.
+# Three useful things Atlas can do when you tell it a problem: solve it, hear
+# it, or hear it then offer. Doing the wrong one is most of what makes people
+# bad at this — so it reads which from how you said it, and asks when it can't
+# tell rather than guessing. Asking costs a sentence; guessing wrong costs the
+# conversation.
+#
+# Listening is not agreeing. Atlas will still say when it thinks you've got
+# something wrong — just not while you're still saying it.
+wanted:
+  ask_when_unclear: true    # Settings -> Clarifying questions. Off: it never asks.
+  # Not read yet: `enabled` (the reading always runs) and `learn_by_topic`
+  # (it always learns your answer per topic).
+
+# Sorting an inbox by what it asks of you.
+# Every mail client sorts by sender, date or folder — all facts about the
+# message rather than about you. The only question that matters is what does
+# this need from me, and by when.
+#
+# Atlas will draft a reply to a plain question. It will never draft a decision.
+# Nothing is sent from here; sending stays behind approval.
+# NOT WIRED (23 Sep 2026): inbox triage runs as part of `mail:`; nothing reads this block. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# triage:
+#   enabled: false
+#   draft_replies: true
+
+# Doing something that crosses several apps.
+# The whole chain is checked before any of it runs, nothing irreversible is
+# allowed after something that leaves the machine, and a failure undoes what
+# can be undone in reverse. A step Atlas isn't sure about stops the chain
+# rather than guessing.
+# NOT WIRED (23 Sep 2026): `confirm_before_sending: true` read as a guarantee and was not one — nothing reads it. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# chain:
+#   enabled: false
+#   confirm_before_sending: true    # not configurable off
+
+# Fixing what you type, as you type it.
+# Grammarly sends every keystroke to a server, which is the wrong shape for
+# this. Local instead — narrower, but it catches what people actually get
+# wrong at speed.
+#
+# The rule: fix silently only what has one possible correction. "dont" is
+# unambiguously "don't". "its" might be right. Fixing the first and merely
+# flagging the second is the difference between helpful and infuriating.
+#
+# Never corrects in code, terminals or password managers.
+#
+# Eric, 25 Sep 2026 (H4): fixes in place as you type, in your other apps. A
+# fix you change back is left alone in that text; one change-back is never a
+# lesson; repeated ones stop it (in that app first); everything it learns fades.
+prose:
+  enabled: true
+  fix_certain: true
+  flag_likely: true
+  never_in: [code, terminal, cmd, powershell, "vs code", "visual studio", sublime, vim,
+             password, 1password, bitwarden]
+  my_words: []          # learned from your vocabulary; add anything it flags wrongly
+
+# Clearing out a personal inbox.
+# The trap: clicking "unsubscribe" in spam confirms your address is real and
+# read, and reliably makes things worse. So Atlas only ever uses the proper
+# List-Unsubscribe header, and blocks anything without one rather than
+# clicking a link.
+unsub:
+  enabled: false
+  dead_below: 0.1         # engagement below which it's a candidate
+  min_messages: 4
+  bulk_without_asking: false
+  never: [bank, hmrc, irs, gov, insurance, landlord, school, doctor, pharmacy,
+          broker, invoice, receipt, security]
+
+# Deciding whether to say anything at all.
+# Everything Atlas might tell you goes through one gate. The test is not "is
+# this true" or "is this interesting" — it's whether you'd do anything
+# differently if you knew. Almost nothing passes, which is the point.
+#
+# Nothing is said while you're head down, in a call, or away. Held things come
+# back as one sentence rather than six, and anything that has gone stale while
+# held is dropped rather than said late.
+interrupt:
+  per_hour: 4               # already more than most days need
+  repeat_after_mins: 90
+  interrupt_above: today    # never | when_you_stop | today | now
+  respect_focus: true
+  muted: []                 # or just say "stop telling me about the backups"
+
+# Your email, whoever provides it.
+# Gmail, Outlook, Yahoo, Fastmail and anything else all speak IMAP, so one
+# implementation covers them. Categorising happens in your mailbox, not in
+# Atlas — a label applied here shows on your phone, and stays if you stop
+# using Atlas tomorrow.
+#
+# Nothing here deletes. The first run tells you what it would do.
+mail:
+  enabled: false
+  # How mail is read. `imap`: Atlas's own connection (below). `himalaya`: the
+  # Himalaya program (pimalaya/himalaya), installed and set up by you with
+  # `himalaya configure` -- it keeps its own passwords, decodes every part of
+  # a message, and also speaks Gmail's and Microsoft's own APIs and JMAP.
+  # Each account below then needs only `name` (or `himalaya_account`, its
+  # name in Himalaya). Sorting and labelling still need `imap`.
+  backend: imap
+  himalaya: himalaya         # the program, or its full path
+
+  # One entry per mailbox. Empty is the honest default -- there is nothing to
+  # connect to until you add one, and Atlas says so rather than pretending.
+  #
+  # `address`, `imap_host` and `password_from_vault` used to sit at this top
+  # level, one mailbox only. They moved onto an account when the second
+  # mailbox became possible, and a top-level copy of them is now an unknown
+  # key that serde drops **without a word** -- so a config still written the
+  # old way reads as "no mailboxes configured" and nothing explains why.
+  #
+  # The app password lives in the vault, never here: a config file gets copied
+  # into backups and pasted into support threads. `password_from_vault` is the
+  # *name* of the vault entry, and each account needs its own -- sharing one
+  # between two mailboxes means losing access to one silently breaks the other.
+  accounts: []
+  # - name: "personal"              # what you'd call it out loud
+  #   address: "you@gmail.com"
+  #   imap_host: ""                 # only when the provider isn't recognised
+  #   password_from_vault: "gmail app password"
+  #
+  # Outlook / Microsoft 365 needs the OAuth device flow instead, because
+  # Microsoft removed every password-based path -- there is no "still works
+  # for now" option to fall back to. `client_id` is an Azure app registration
+  # you create once; `atlas mail setup` prints the steps. With `oauth: true`,
+  # `password_from_vault` holds a refresh token rather than a password.
+  # - name: "business"
+  #   address: "you@yourcompany.com"
+  #   oauth: true
+  #   client_id: ""
+  #   password_from_vault: "outlook refresh token"
+
+  # Eric, 25 Sep 2026 (G1): sort the mailbox; delete only when told. Every run
+  # is rehearsed first and moves nothing until you say go.
+  actually_sort: true
+  label_only: false         # Gmail gets labels either way; other mail goes into folders
+  leave_alone: [Sent, Drafts, Trash, Spam, Junk, Archive]
+
+  # Sending. Both default off, and the second one is not sufficient on its
+  # own: cold outreach also needs the per-recipient approval list to say yes
+  # to that specific recipient. A master switch and an allowlist, both.
+  may_email_clients: false        # send drafted replies to known clients unasked
+  may_email_brands: false         # cold outreach at all
+  cold_outreach_daily_cap: 5      # client replies are never counted against this
+
+# Learning something you do the same way every time.
+# Atlas watches, notices repetition, and asks. A system that silently decides
+# your Monday morning is a routine and starts doing it is unnerving even when
+# it's right. Three repeats before it says anything — twice is a coincidence.
+# Eric, 25 Sep 2026 (E4): concrete, ordinary routines (the calendar, a report,
+# a backup) run on their own once you've said yes; anything more abstract asks
+# first ("Your usual morning setup?"). Nothing that sends ever runs on its own.
+routine:
+  enabled: true
+  times_before_asking: 3
+  max_steps: 6
+  gap_secs: 600                   # a longer gap means it's a different thing
+  never_automate_outgoing: true   # a routine that posts, eventually posts something wrong
+
+# Long jobs left to run on their own (Eric, E3: "don't make the limit
+# ridiculously small or it's pointless"). A job stops at whichever comes first,
+# and sooner if it's going in circles. "Keep at it" starts one.
+long_jobs:
+  max_attempts: 50
+  max_hours: 8
+
+# Coming back after being away.
+# Five minutes is not an absence and gets silence. Something wrong or waiting
+# is said straight away; anything else is offered rather than recited, because
+# you may have come back to do something specific.
+#
+# address: what Atlas calls you. Empty means nothing at all — a system that
+# calls you "sir" uninvited is doing a bit.
+# Where the time went: which app and window had the foreground, for how long,
+# and whether you were at the keyboard. Kept on this machine only, never
+# synced; secrets in window titles are blanked before anything is saved.
+worklog:
+  enabled: true
+  away_after: 180        # keyboard and mouse silence that counts as away
+  pulse_secs: 90
+  keep_titles: true      # false keeps apps and times, no window titles
+  keep_days: 35
+  resume_cue: true       # coming back from a break, say what you were in
+  categories: []         # your own, checked first, e.g.
+  #  - category: trading
+  #    matches: ["EURUSD", "metatrader"]
+
+returning:
+  enabled: true
+  address: ""             # "Eric", or "sir", or leave empty
+  address_as: name        # name | title
+  offer_first: true
+  name_at_most: 2
+
+# Arguing the other side, when you ask.
+# Never volunteered. Only the objections that actually apply — a second opinion
+# that finds six problems with everything is one you learn to ignore.
+# NOT WIRED (23 Sep 2026): "argue the other side" works when asked; nothing reads this switch. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# otherside:
+#   enabled: false
+
+# Catching a thought before it's gone.
+# Capture and filing are the same action in every notes app: to write something
+# down you first decide where it goes, and that decision — at the moment you
+# have the thought — is what stops you writing it down.
+#
+# So capture asks nothing. Filing happens afterwards, from what the thought is
+# about. What's stored isn't a folder but the handles you'd reach for it by:
+# a word from it, roughly when, and what you were doing at the time.
+capture:
+  enabled: true
+  never_ask_on_capture: true
+  tasks_become_work: true
+  projects: []            # names Atlas should recognise as handles
+
+# Running your content.
+# Not writing it — that produces the flat stuff everyone can spot. Knowing why
+# something worked, catching a mistake before it goes out, and taking the
+# tedious half: trimming dead openings, cutting silences, burning in captions.
+#
+# Atlas never posts without you saying so. That isn't configurable.
+content:
+  enabled: false
+  review_before_posting: true
+  min_posts_for_patterns: 8   # under this, any pattern is noise
+
+# Making it look and sound like someone made it on purpose.
+# Everything here is a number, not a taste. "Make it look better" isn't
+# actionable; "your dialogue is at -22 LUFS and the platforms normalise to -14,
+# so you'll be the quiet one in the feed" is.
+grade:
+  # `enabled: false` used to sit here and is gone rather than wired. Grading
+  # happens when you ask for it -- `atlas video grade <file>` -- so there was
+  # never a moment for a switch to be consulted, and a line that cannot be
+  # read is the same false promise as one that is read wrongly.
+  preset: clean           # clean | warm room | hard light | film
+  target_lufs: -14        # what the platforms normalise to
+  max_true_peak_db: -1    # stay under this or their re-encode clips
+
+# Telling a signal from a fluke.
+# One post doing well means nothing. Nothing here reports a single post as a
+# finding — it looks for a pattern that holds across several, compares each
+# group against everything outside it, and says how sure it is.
+reach:
+  # `enabled: false` came out with grade's, for the same reason: `atlas
+  # content reach` is something you ask for.
+  min_posts_for_direction: 6   # fewer than this and no direction is claimed
+
+# Editing software you may or may not own.
+# Everything works with ffmpeg alone — deliberately, so this can be handed to
+# someone without a subscription. If you have better tools, Atlas uses them for
+# the jobs where they're genuinely better, and says which it used.
+editors:
+  use_what_you_have: true
+  installed: []           # found at setup: resolve, premiere, after_effects, photoshop
+
+# Knowing where it's going.
+# The same cut wants different export settings, a different description and a
+# different length depending on where it lands. Atlas knows the length that
+# actually performs, not just the one that's allowed.
+# NOT WIRED (23 Sep 2026): posting is behind `publish`, which has its own approval; nothing reads this block. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# publishing:
+#   enabled: false
+#   platforms: [tiktok, reels, shorts]
+#   business_account: false   # changes which music library is safe
+
+# Where your accounts stand.
+# Atlas finds every account, says what protects each one, and ranks what's
+# worth fixing — SMS codes are the weakest kind, and email is the account that
+# owns all the others.
+#
+# It will not turn two-factor off. Not a legal matter — they're your accounts.
+# A system able to disable two-factor across your bank, email and socials is
+# one bad instruction from costing you all of them, and a confirmation doesn't
+# fix that. It opens the page; you make the change.
+accounts:
+  enabled: false
+
+# Getting your accounts ready before you can't reach them.
+# What breaks when you travel is SMS, not two-factor: a text needs your number,
+# your carrier and a signal. An authenticator code needs none of those — it's a
+# clock and a secret, and it works on a plane. Recovery codes on paper work
+# with no phone at all.
+#
+# Checked periodically rather than only before a trip, because dates move and
+# the preparation takes days: codes have to be printed, a key has to arrive.
+going_away:
+  enabled: false
+  remind_days_before: 14
+  check_every_days: 90
+
+# Reading your script over your footage.
+# The recording is the easy half. The timing is what makes it sound deliberate
+# rather than pasted on — lines landing on cuts, and the music dropping just
+# before the voice arrives rather than underneath it.
+voiceover:
+  enabled: false
+  pace: 1.0
+  gap_secs: 0.45
+  snap_within_secs: 0.5
+  duck_db: 12            # music still present, never competing
+  duck_release_secs: 0.4
+  tail_secs: 0.6
+
+# Holding the few secrets Atlas needs.
+# The key is derived from a passphrase you type and held only in memory, so a
+# stolen laptop contains a file nobody can open — including Atlas. The cost is
+# that you type it once per session and nothing unattended can touch it.
+#
+# This is not a password manager. Keep your passwords somewhere audited that
+# syncs to your phone; let Atlas hold the couple of things it actually uses.
+vault:
+  enabled: false
+  lock_after_mins: 15
+  lock_on_screen_lock: true
+  # Seal a copy of the vault's key to your Windows sign-in, so scheduled mail
+  # checks can open it while you're signed in. Logins and API keys only —
+  # never authenticator seeds or recovery codes. Windows only.
+  open_on_this_login: false
+  # kdf_rounds was here, with a comment promising what the number bought you.
+  # Both were wrong: the vault uses Argon2id, whose cost is memory and passes
+  # rather than a round count, and nothing had read the number since that
+  # change. Removed 19 Sep 2026. If your own file still sets it, `atlas
+  # doctor` names it -- it is ignored, not an error.
+
+# Walking you through a change on your own accounts.
+# Atlas opens the exact page — not the homepage — says where the switch is,
+# waits, and moves on. Fifteen accounts becomes fifteen clicks instead of an
+# afternoon of hunting through settings menus.
+#
+# Atlas never clicks the control itself. That isn't configurable.
+walkthrough:
+  enabled: true
+  open_pages: true
+  # Eric, 24 Sep 2026: after the read-back and your yes, Atlas may press the
+  # security switch itself. Eric, 25 Sep (B1): "I also want Atlas to be able to
+  # turn it on or off for me" — so on. Settings: Security switches.
+  atlas_clicks: true
+
+# Recovery codes — the thing built for signing in from a machine that isn't
+# yours, with no phone and no signal.
+#
+# Ten one-time strings on paper. They work on a locked-down computer where you
+# couldn't install an authenticator, and unlike disabling two-factor you don't
+# need to already be signed in to arrange them.
+#
+# Atlas tracks how many you have left. It never stores the codes themselves.
+codes:
+  enabled: false
+  warn_at: 3
+  check_days_before: 21
+
+# Signing you in.
+# A password manager with autofill. The credentials live in the vault, so the
+# passphrase has to be open — nothing signs in while the laptop is locked.
+#
+# Filling is matched to the registered domain, which is what makes this safer
+# than typing: it won't put your password into a lookalike page, and that's how
+# accounts are usually actually lost.
+#
+# Signing in never grants changing security settings. Two separate things.
+# Take access away per site, or all at once, at /hub/access — that page works
+# even when Atlas doesn't.
+signin:
+  # Eric, 25 Sep (B4): autofill, yes.
+  enabled: true
+  fill_without_asking: true
+  allow_while_away: false   # a stored credential's risk is in what can use it unwatched
+
+# Changing a security setting, with you there.
+# You say what you want, Atlas repeats it back in your terms, and nothing
+# happens until you say yes. One yes per change — a single yes covering six
+# security changes is how the wrong one gets made, and you'd have no way to
+# tell which.
+#
+# The read-back carries the consequence you might not have in mind: turning it
+# off on Instagram also turns it off on Facebook when they're linked.
+#
+# Only with you at the machine. Not configurable.
+# Making accounts for you (Eric, 25 Sep 2026, B6: yes). Atlas fills the form,
+# makes the password and keeps it in the vault, and agrees to the site's terms.
+# It stops for good at anything that wants payment or identity documents, and
+# hands a robot check or a code to you. never_on: sites it never signs up on.
+enrol:
+  enabled: true
+  stop_on_identity_documents: true
+  tell_you_the_username: true
+
+confirmed:
+  # Eric, 25 Sep (B1): turning two-factor on or off, with the read-back.
+  enabled: true
+  read_back_everything: true
+
+# Checking content before it goes out.
+# What's in the frame, not what you're saying — a patch, a gate sign, a tail
+# number, a date you're moving. Never your opinions.
+#
+# applies_until is the date it stops. After it Atlas says nothing about any of
+# this, because a system still applying rules you're out from under is one you
+# learn to ignore.
+opsec:
+  enabled: false
+  applies_until: ""         # your date, as 2027-06-14
+  in_uniform: false
+  always_strip_metadata: true
+  not_a_leak: []            # your own words that aren't leaks
+
+# A way into the vault that isn't you.
+# The passphrase being only in your head is what makes the vault worth having,
+# and a single point of failure attached to someone who goes places with no
+# signal. Both are true.
+#
+# Atlas is never one of the routes — if it could open the vault without you,
+# the passphrase would be decoration.
+recovery:
+  enabled: false
+  check_every_days: 180     # untested recovery is a plan, not recovery
+  want_at_least: 2
+
+# What did you do, and take it back.
+# One list across files, settings, mail, posts and security — because at the
+# moment you ask, you don't know which area it was, that's why you're asking.
+# Nearly any phrasing works.
+# NOT WIRED (23 Sep 2026): the undo history has a fixed size in code; nothing reads these. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# undo:
+#   enabled: false
+#   keep: 2000
+
+# If something happens to you.
+# Paper, in your safe, and one person told only where it is and when to open
+# it. Nothing changes hands now, nobody reaches it by coincidence, and you can
+# reach it any day.
+#
+# The out-of-contact count can't run here — your laptop is off while you're
+# away. Use Google's Inactive Account Manager or Apple's Legacy Contact for
+# that: free, on their servers, and it releases nothing but a note saying
+# where the envelope is.
+after_me:
+  enabled: false
+  location: ""              # in your words: "the safe, top shelf"
+  after_days: 180           # longer than a deployment
+  review_every_days: 365
+
+# Atlas on your phone.
+# A window and a notebook, not a second Atlas — two copies of your state
+# disagree within a week. You can see, capture and ask; the thinking stays on
+# the laptop.
+#
+# Captures queue while the laptop is off and land in order when it's back.
+# Nothing that opens something else ever travels: not the vault, not
+# credentials, not the file index.
+companion:
+  enabled: false
+  mirror: [outstanding, projects, notes, last_brief, thread]
+  queue_while_offline: true
+  hold_days: 200            # long enough for a deployment
+
+# Atlas on more than one device.
+# Every device keeps a log of what happened and they merge by replay, so two
+# that haven't seen each other since March come together cleanly — appending
+# can't conflict with appending.
+#
+# kind: full | standalone | mirror
+#   full        the laptop. Files, windows, the larger model, the vault.
+#   standalone  phone or tablet. A real Atlas: listens, talks, thinks smaller,
+#               remembers everything. It just has no hands on your desktop.
+#   mirror      shows things, changes nothing.
+#
+# The log is one file, so anything that moves a file syncs Atlas: the same
+# wifi, your cloud folder, a cable, or AirDrop. No server anywhere.
+sync:
+  enabled: true
+  name: ""                  # "Eric's laptop" -- names the bundle you leave
+  kind: full
+  automatic: true
+  apart_warning_days: 30
+  belongs_to: personal      # which Atlas this is. Two installs carry each
+                            # other only when this matches, so a work Atlas
+                            # sets its own and a shared folder still cannot
+                            # merge the two.
+  folder: ""                # e.g. "D:/Dropbox/atlas" or "//nas/atlas"
+  encrypt_bundles: false    # seal bundles before writing them to that folder.
+                            # OFF on purpose: on, a bundle cannot be read
+                            # without the household key phrase -- by anyone,
+                            # including you. `atlas sync key new` makes one and
+                            # prints it once; `atlas sync key set <phrase>`
+                            # puts the same key on your other devices; `atlas
+                            # sync read <file>` opens one by hand on any
+                            # machine. With this off, a bundle is plain text in
+                            # that folder and anyone who can read the folder
+                            # can read your captures.
+
+# Taking the work with you.
+# A task carries its files, so losing signal doesn't turn Atlas from
+# continuing the work into merely remembering it. Not your whole drive — what
+# this piece of work touches. Too big is shrunk before it's dropped.
+working_set:
+  enabled: true
+  budget_mb: 200
+  shrink_rather_than_drop: true
+  keep_days: 14
+  always_carry_current: true
+
+# Asking the laptop from your phone.
+# The phone asks, it doesn't command. If the laptop is off the request waits
+# rather than failing — a request that quietly disappears is worse than one
+# that's slow.
+#
+# tell_me: in_your_ear | quietly | dont_tell_me
+# Something that finished in twenty seconds isn't news; a failure always is.
+remote:
+  enabled: false
+  wait_days: 30
+  tell_me: in_your_ear
+  confirm_side_effects: true
+
+# Reading, converting and joining whatever you point at.
+# A zip that becomes a full disk gets listed rather than unpacked, and a PDF
+# that's really photographs of pages is recognised as a scan.
+files:
+  enabled: true
+  # `look_inside_archives` was here, shipped on. Nothing in this tree opens an
+  # archive -- the index classifies a .zip and stops -- so the switch read as
+  # a behaviour you had. Removed 19 Sep 2026; it comes back when something
+  # unpacks. The two limits below are the guard that unpacker will use.
+  max_archive_depth: 3
+  max_unpacked_mb: 2000
+  clean_up_scans: true      # straightening before reading is most of the accuracy
+
+# The folder your devices meet in.
+# The cloud path is the workhorse: it doesn't need both devices on the same
+# network, or even on at the same time. One writes a bundle, the other picks it
+# up whenever it next runs.
+#
+# OneDrive is the least work on Windows — already there, and already signed in
+# if you use a Microsoft account. The free 5GB is far more than this needs;
+# the bundles are text.
+#
+# You install and sign in. Atlas finds the folder, makes its own inside it,
+# tests that it really syncs, and marks it always-keep so it works offline —
+# that last one is the failure people actually hit.
+cloud:
+  enabled: false
+  provider: onedrive      # onedrive | icloud | dropbox | google_drive | whatever
+  folder: ""              # found automatically from %OneDrive%
+  check_every_hours: 12
+  carry_files: true
+
+# The phone and iPad.
+# It hears you, talks, thinks with a smaller model, remembers everything, reads
+# documents and cameras, and reaches the laptop. It can't watch your screen,
+# touch other apps, or run all the time — iOS doesn't allow any of those.
+#
+# The one that changes how it feels: no wake word while the app is closed.
+# Start it with the Action Button, a Shortcut, the lock screen, or a back tap.
+# The `ios:` block was here, and is gone as of 19 Sep 2026. There is no iOS
+# build: `atlas catalog --platform ios` says so, and says which of the things
+# Atlas does an iPhone would never allow and which are just unwritten. Every
+# line in the block was a switch for an app that does not exist, including
+# `enabled` and `model`.
+#
+# The decisions are not lost -- they are recorded in `src/ios.rs`, where the
+# tests that pin them live. When there is a build, the block comes back and
+# `atlas doctor` stops naming it.
+
+# Android.
+# Android allows most of what iOS won't: a wake word with the app closed, being
+# the assistant on the home button, reading the screen, and acting in other
+# apps. Everything powerful is off until you choose it — the accessibility
+# service is close to full control of the interface.
+# The `android:` block was here, and is gone for the same reason as `ios:`
+# above. `atlas catalog --platform android` says there is no build, and
+# `atlas mobile android` says what one would be allowed to do and what each
+# permission costs in battery. The decisions are recorded in
+# `src/android.rs`.
+
+# Reaching the laptop on cell service.
+# Tailscale is free for one person and turns the cloud folder from your main
+# path into a fallback. Headscale is the same without their coordination, and
+# needs a machine that's always on.
+mesh:
+  enabled: false
+  kind: none                  # tailscale | headscale | wireguard | none
+  fall_back: true             # without this, one flaky network looks like a break
+  # Your own server, reached over WireGuard rather than Tailscale. Your
+  # devices get ONE port on it — the model server — and nothing else.
+  # `atlas wireguard` explains the layout; `atlas wireguard configs` makes
+  # the keys and the three configs.
+  wireguard:
+    subnet: "10.77.0.0/24"      # server .1, laptop .2, phone .3
+    endpoint: ""                # your-name.example.net:51820 — the name your home address answers to
+    listen_port: 51820
+    model_port: 8080            # the only port your devices may reach on the server
+    server_atlas_door: false    # the server's own Atlas door (9713), if it runs one; nothing else
+    # The phone keeps Tailscale; it reaches the server's models through the laptop.
+    phone_reaches_laptop_through_server: false
+    laptop_atlas_port: 8787
+
+# Your Atlas and your friends' Atlases.
+# Two installs know nothing about each other unless the same person paired them
+# device to device with a code. Same wifi doesn't do it, same private network
+# doesn't, same cloud folder doesn't. There's no setting that changes that.
+# Where the pieces land.
+# Only two of these matter, and only on one kind of machine: the one where the
+# models live on another drive. Atlas looks for every piece under the install
+# folder unless you say otherwise, and an absolute path here wins outright.
+#
+# `include_optional` ships off. The optional pieces are most of the download
+# and Atlas works without them, so listing them as missing on a machine that
+# never asked for them makes a first run look like a failure.
+install:
+  include_optional: false
+  tools_dir: "tools"
+  models_dir: "models"
+
+# The dashboard.
+# Which view it opens on, whether it rolls items up into their project, and
+# how long something you finished stays visible before it drops off. Finished
+# items are never deleted -- "what did I get done last Tuesday" has no answer
+# if they vanish -- so keep_done_days only decides what the page shows.
+#
+# default_view is one of the shipped view names: Now, Everything live, Stuck,
+# Content. A name that matches none of them shows the usual one and says so on
+# the page rather than quietly ignoring you.
+workspace:
+  enabled: true
+  default_view: "Now"       # not "everything" -- open on what to do next
+  keep_done_days: 14
+  group_by_project: true
+
+# What won't work on this machine.
+# Some of what Atlas does needs the machine's cooperation -- moving windows,
+# reading the screen, acting inside another app, hearing you while closed --
+# and a phone or a browser refuses some of those outright, whatever gets
+# written. This says so up front rather than when you ask for one of them.
+#
+# On Windows, a Mac and Linux nothing is off the table, so this says nothing
+# at all. `atlas catalog --platform ios` is the same answer asked deliberately.
+portable:
+  warn_up_front: true
+
+household:
+  # What to call this machine when it joins another. The join form on the hub
+  # is pre-filled with it, which saves typing a name on a phone keyboard.
+  device_name: ""
+  #
+  # `household` and `discoverable` were here until 19 Sep 2026 and neither did
+  # anything. The household's id lives in the store, made once at first run --
+  # a copy of it in a text file is a thing people move between machines, which
+  # is how two devices claim the same household without either being invited.
+  # And nothing here announces itself on a local network, so a switch for it
+  # read as a behaviour you had turned off. `atlas doctor` names them if your
+  # own file still sets them.
+
+# Where people actually message you.
+# Telegram and GroupMe both have open, free interfaces and take minutes.
+# WhatsApp has nothing for a personal account — the Business one costs per
+# message and needs a separate number, and the tools that claim otherwise
+# drive the desktop app pretending to be you, which gets accounts banned.
+#
+# Group chatter never interrupts. That isn't configurable — it's the whole
+# reason connecting these is bearable.
+messaging:
+  enabled: false
+  platforms: [telegram]
+  your_names: []            # so a group message that's for you is recognised.
+                            # Read again since there is a reader: see the
+                            # `telegram:` block below.
+  draft_only: true
+
+# How the hub is arranged.
+# An order and a size, never pixel positions — you have three screens and a
+# layout pinned to coordinates breaks on the second one.
+# NOT WIRED (23 Sep 2026): the hub's arrangement lives in its dashboard, and
+# there is one layout, so nothing picks one by name. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# layout_prefs:
+#   current: Home
+
+# The day as a unit.
+# The list closes at midnight and a fresh one opens, which forces the useful
+# question every morning: is this still worth doing today?
+#
+# The working out does not reset. A task carried six times carries its whole
+# history — what was tried, what it's stuck on — because that history is the
+# reason it's still there and the thing that tells you to drop it.
+daily:
+  enabled: true
+  rolls_at_hour: 0        # only a fallback — Atlas works out your quiet hour
+                          # from when you're actually active, and its own
+                          # overnight work never counts as you working
+  carry_forward: true
+  ask_after_days: 5
+  keep_days: 90
+  away_a_while_minutes: 90 # a gap this long means you're properly gone, not
+                          # just not-typing -- long enough that Atlas may start
+                          # an hour of work without you interrupting it in
+                          # five minutes. This replaced overnight's clock
+                          # window.
+  back_after_minutes: 150 # a gap this long means you went away and came back,
+                          # rather than carried on. It is what tells working
+                          # through the night from starting a new day: the day
+                          # rolling over while you are still typing starts
+                          # nothing.
+
+# Times with other people.
+# Atlas reads what was proposed, checks it against what you already have, and
+# works out what else would fit. Then it stops. A time with someone else is a
+# small promise made in your name and only you can make it.
+booking:
+  enabled: false
+  hours: [9, 18]
+  notice_hours: 12
+
+# Staying up long enough to finish, and no longer.
+# Atlas holds the machine awake only while something is actually running, and
+# lets go the moment it's done. Screens still turn off. A closed lid is a
+# decision you made and is never overridden — that's how a laptop cooks in a
+# bag — and a low battery wins over finishing the job.
+#
+# The important half isn't preventing sleep, it's coming back correctly
+# afterwards: anything that had already changed something outside Atlas is
+# never resumed on its own.
+awake:
+  enabled: true
+  longest_hold_mins: 90       # longer than this and something is stuck
+  give_up_below_battery: 25
+
+# Editing, and what to say to a brand.
+# Two ideas worth more than the rest: grid lines steer the viewer's eye rather
+# than just marking safe zones, and a cut that moves the eye across the frame
+# is the one you can feel. And transitions made with the camera cost nothing
+# in post and don't date the way an effect does.
+#
+# Brand replies are drafted, never sent. The rule underneath all of them: move
+# the scope, not the rate — a rate you dropped once is your rate forever.
+editcraft:
+  # On by Eric's ruling of 25 Sep 2026 (I: he makes video content): advice on
+  # grading order, formats and export settings, brand deals and the profile.
+  enabled: true
+  eye_jump_limit: 0.2
+  effects_per_minute: 6
+
+# Colour, in a fixed order.
+# Five nodes, always the same five: transform in, exposure, balance, contrast,
+# saturation, transform out. The order is the point — the reason colour is hard
+# to learn is that every tool is available at once and nothing tells you which
+# to reach for.
+grading:
+  enabled: false
+  skin_tolerance_degrees: 6
+  crush_limit: 0.02
+
+# Everyday money, not just trading.
+# Not budgeting — budgets are a plan you fail at in month two. This is knowing
+# where it actually went, which is a much more answerable question.
+#
+# Transfers between your own accounts are never counted as spending, and Atlas
+# leads with the biggest thing you could change rather than the biggest thing.
+money:
+  enabled: false
+  work_words: []          # your own words that mean a transaction is for work
+
+# Thought, build, review, refine, implement.
+# The old self-work loop went straight from a goal to an attempt, which is how
+# a self-improving system rots. Two things go wrong when the thinking is
+# skipped, and both are invisible while the tests are green: you fix the
+# symptom, and you write a test that would have passed anyway.
+#
+# The rule that catches both: before writing any code, say what would prove it
+# fixed, and check the proof fails right now. A proving test that passes
+# already is testing something else.
+#
+# Nothing lands with a stage missing. That isn't configurable.
+# On (E2): Atlas works on its own findings; nothing lands without your OK.
+pipeline:
+  enabled: true
+  max_rounds: 3           # three rounds means the thought was wrong, not the code
+
+# Atlas looking at itself.
+# It can see which of its own routes keep failing, and what you keep
+# correcting, better than you can. It turns the strongest of those into a
+# diagnosis in the shape the pipeline demands — a symptom, a cause, where, and
+# something that would prove it fixed.
+#
+# It never acts on its own diagnosis without asking. A system that writes the
+# diagnosis and then acts on it has no outside check on either half.
+# Eric, 25 Sep 2026 (E2): Atlas starts improving its own code from its own
+# findings. The change still lands only on your OK (self_grant below).
+self_audit:
+  enabled: true
+  every_days: 7
+  most_at_once: 3           # thirty recommendations is a list nobody reads
+  act_without_asking: true
+
+# What Atlas may fix on its own.
+# Asking before every change sounds safe and isn't — a system that needs
+# permission to fix a typo in a phrase list never fixes one, and the
+# recommendations pile up unread.
+#
+# Permission is by what a change touches, not by how sure Atlas is. Being sure
+# is something it assesses about itself, and a mistake it's confident about is
+# exactly the one that gets through.
+#
+# may_change:
+#   nothing          the default
+#   what_it_says     wording and phrase lists. Wrong is embarrassing, nothing more
+#   how_it_decides   ranking and sorting. Wrong means quietly worse answers
+#
+# Anything touching your machine or your accounts always comes to you, and its
+# own limits can never be granted — writing a bigger value here doesn't work.
+self_grant:
+  may_change: nothing
+
+# Knowing things offline, without a bigger model.
+# A model that fits on your laptop doesn't reliably recall a contract's tick
+# size or the exact wash sale window — it recalls something shaped like them,
+# confidently, which is worse than not knowing. A text file recalls it exactly
+# and can say where it came from.
+#
+# The model reasons; the shelf remembers. Anything with a number, a date, a
+# threshold or a definition comes off the shelf — and that isn't configurable.
+#
+# All the specific reference together — trading, editing, the platforms, your
+# own work — is about 70MB. The encyclopaedia is 4GB and it's the least useful
+# part.
+#
+# Atlas also keeps what it finds, narrowly: anything with a figure in it,
+# anything that took four searches, and anything you said to keep. Most of what
+# a search returns is thrown away, because keeping everything is how a
+# knowledge store becomes a landfill.
+reference:
+  enabled: false
+  shelves: []
+  warn_when_stale: true
+
+# How long a thing stays true.
+# Age alone is the wrong measure. A note on how a protocol works doesn't get
+# worse with time; a note on a version number does. What kind of claim it is
+# decides how much its age counts against it.
+#
+# A half-life rather than an expiry, because facts don't stop being true at
+# midnight — a cliff edge would make a 29-day-old fact certain and a 31-day-old
+# one worthless.
+#
+# Anything about your own setup never expires on a clock. A preference from two
+# years ago is still your preference until you say otherwise.
+# NOT WIRED (23 Sep 2026): nothing reads this switch. Kept as a record of
+# what was intended; uncommenting it changes nothing until code reads it.
+# freshness:
+#   enabled: false
+
+# One thing learned once, however many times you ask about it.
+# Asking about the same thing in different words shouldn't cost you what you
+# knew — without this it's two notes, two decay curves, and confidence in a
+# settled fact drifting down because you happened to ask twice.
+#
+# The same claim arriving again merges and strengthens. Two independent sources
+# agreeing is worth more than one saying it twice, and agreement caps so a
+# popular wrong answer can't become unassailable.
+#
+# What gets dropped when space is short is chosen by what it's worth, not when
+# it arrived. Nothing settled and nothing about your own setup is ever dropped
+# — those are the two kinds that can't be looked up again. If they alone exceed
+# the budget, the budget is exceeded and Atlas says so.
+#
+# Ten thousand claims is about 3MB and searches instantly.
+consolidate:
+  enabled: true
+  keep_at_most: 10000
+
+
+# Finding something you wrote, without remembering where you put it.
+#
+# Words work with nothing installed — search that needs a download first is
+# search you won't have on day one. Meaning needs a small embedding model,
+# 50–100MB, which is nothing beside a language model and runs on your NPU.
+# Both together beat either alone, so results are merged rather than chosen
+# between.
+# How something reaches you when you are not at the desk.
+#
+# Atlas speaks when you are there and puts a notification on screen when you
+# are not. If neither works it holds the message and tells you when you come
+# back -- nothing is dropped.
+#
+# There is no PowerShell here on purpose. A toast raised through PowerShell
+# flashes a console window and means a shell you would rather not see is
+# involved in every alert. Atlas draws its own instead: a small always-on-top
+# window it owns, on every platform, with nothing to install.
+notify:
+  enabled: true
+  stale_after_secs: 21600   # 6h. Routine notes older than this aren't read out.
+  max_held: 20              # a wall of held messages is the same as losing them
+
+  # Atlas's own notifier. `tool` is left unset deliberately -- when it is
+  # absent, Atlas uses its built-in window rather than shelling out to
+  # anything. Set it only if you want a specific OS mechanism instead.
+  #
+  # tool:
+  #   command: notify-send        # Linux, if you prefer the system tray
+  #   args: ["{title}", "{body}"]
+  #   timeout_secs: 10
+
+# Reaching you when the laptop isn't with you.
+#
+# Atlas speaks when you're there, draws its own window when you're not, and
+# holds anything it can't deliver. If you've walked out of the house, holding
+# means you hear nothing until you're back -- fine for "your disk is full",
+# not fine for something time-sensitive.
+#
+# This sends a single HTTP POST to a push server your phone is subscribed to.
+# Nothing to build, no account, nothing running on the phone that Atlas has to
+# maintain. An ntfy server is the easy option and it self-hosts in one command.
+#
+# PLAINTEXT ONLY. Atlas has no TLS, so `host` must be a plain address --
+# intended to be a machine on your own Tailscale network, which encrypts the
+# hop itself. An https:// address is refused up front with an explanation
+# rather than failing at the moment something urgent needed sending.
+#
+# Titles only by default. A phone notification lands on a lock screen anyone
+# can read, and Atlas has no way to know who's looking.
+
+
+# Reaching you when the laptop isn't with you.
+#
+# Atlas speaks when you're there, draws its own window when you're not, and
+# holds anything it can't deliver. If you've walked out of the house, holding
+# means you hear nothing until you're back -- fine for "your disk is full",
+# not fine for something time-sensitive.
+#
+# This sends a single HTTP POST to a push server your phone is subscribed to.
+# Nothing to build, no account, nothing running on the phone that Atlas has to
+# maintain. An ntfy server is the easy option and it self-hosts in one command.
+#
+# PLAINTEXT ONLY. Atlas has no TLS, so `host` must be a plain address --
+# intended to be a machine on your own Tailscale network, which encrypts the
+# hop itself. An https:// address is refused up front with an explanation
+# rather than failing at the moment something urgent needed sending.
+#
+# Titles only by default. A phone notification lands on a lock screen anyone
+# can read, and Atlas has no way to know who's looking.
+phone:
+  enabled: false            # set true once `host` points somewhere
+  host: ""                  # e.g. "pushbox:80" -- a Tailscale name, not a public one
+  path: "/atlas"            # the topic your phone is subscribed to
+  token: null               # if your push server wants one
+  timeout_secs: 5           # short: this runs inside the tick
+  include_detail: false     # true puts the message body on your lock screen
+  widget_titles_on_lock_screen: false  # true shows what's next on a lock-screen widget, not just the time
+
+# Reading a face and a pair of hands off the camera.
+#
+# OFF by default. A camera that starts watching because you updated is not
+# something anyone should have to discover.
+#
+# `gaze_detector` is whatever you install -- a MediaPipe script, an ONNX
+# runner, anything. Atlas runs it on one frame and reads `key: value` lines
+# back, so the model stays a thing you choose and can replace. With no
+# detector set, Atlas is BLIND, which is a different state from an empty room
+# and it says so rather than reporting nobody there.
+#
+# Recognised lines:
+#   faces: <n> <confidence>
+#   you: yes|no <confidence>
+#   looking: yes|no <confidence>
+#   gesture: thumb_up|thumb_down|open_palm|nod|head_shake <confidence>
+#
+# While STEERING the displays by hand, a different set of shapes is read
+# instead -- and only then. A swipe can never answer a question and a thumb can
+# never move a window, because neither is ever read in the other mode:
+#   gesture: swipe_left|swipe_right|pinch_in|pinch_out|fist|open_palm
+#   could_not: <reason>
+#
+# The frame is deleted the moment it has been read. Atlas keeps what it worked
+# out, never the picture of you.
+# Asking about a picture -- "what does this chart show?", "look at my screen".
+# A local model that can talk about pictures (Qwen3-VL 4B, about 3 GB while it
+# runs, nothing when it doesn't), run once per question by llama.cpp. Nothing
+# leaves the laptop, and the screenshot is deleted once it's read. Fetched
+# with `atlas get pictures`. Settings: What it can see -> Reading pictures.
+picture_talk:
+  enabled: true
+
+# Atlas's words on the desktop while it speaks: the mark arrives, the words
+# type themselves in over whatever you're looking at, then fade. Clicks pass
+# straight through. Drawn by `atlas overlay`, which the background Atlas
+# starts on Windows. Settings: How it talks back -> Desktop captions.
+overlay:
+  enabled: true
+
+# Atlas on the Windows desktop with no window open (28 Sep 2026).
+desktop:
+  # Atlas's icon by the clock while it runs in the background: Open Atlas,
+  # open the hub in your browser, Pause/Resume, Quit.
+  tray_icon: true
+
+gaze:
+  enabled: false
+  min_confidence: 0.6          # below this a reading is absent, not negative
+  min_identity_confidence: 0.85 # a much higher bar for "that is Eric"
+  every_secs: 20
+  # May Atlas look while you're talking to it? Off even when the camera is on:
+  # "sometimes I want Atlas to see me when talking" is not "watch every
+  # conversation", and watching every one is a camera on most of the day.
+  watch_while_talking: false
+
+# ---------------------------------------------------------------------------
+# Reading a market
+# ---------------------------------------------------------------------------
+#
+# Grouped rather than scattered: these three are read together every time, and
+# a stop measured against one window with a regime bucketed against another is
+# the kind of mismatch that is never noticed and quietly wrong.
+trading:
+  # `market:` used to sit here and deliberately does not any more. The market
+  # reader owns its own constants, and `market::params` checks each against the
+  # module that uses it, hashes the set to a fingerprint, and counts how many
+  # configurations have been tried. A config file breaks all three: the value
+  # in the file stops being the value anyone reasoned about, the fingerprint
+  # stops describing what ran, and every edit is an untracked attempt at the
+  # best of N. Tuning it means changing a constant where the registry can see
+  # it, which is slower on purpose.
+
+  levels:
+    risk_fraction: 0.01     # how much of the balance one trade may risk
+    buffer_ranges: 0.25     # how far beyond the structure the stop sits
+    min_stop_ranges: 1.0    # the narrowest a stop may be, in average ranges
+    max_cost_share: 0.10    # the most of the reward the spread may eat
+    min_reward: 1.0         # the least a target may be worth, in risk
+
+    # The four below were read by `levels::propose` and written out again as
+    # bare literals in `atlas market` -- 120, 2 and 50.0 -- so the same command
+    # read structure one way and levels another, and neither was this file.
+    # They are listed here now because they are read from here now.
+    range_window: 14        # bars behind the average range. A bar count, and
+                            # the wrong unit: 14 bars is 14 minutes on M1 and
+                            # two and a half days on H4. Named as the next
+                            # thing to convert rather than left to be found.
+    pivot_reach: 2          # bars either side of a turn before it counts as one
+    level_span_pips: 50.0   # how far from price to look for levels
+    structure_bars: 120     # bars of structure the trend is measured over
+    mind_the_calendar: true # refuse to propose anything inside a scheduled
+                            # release's window. On, and it should stay on --
+                            # false is for reading history that predates the
+                            # calendar, and it is the one switch here that
+                            # turns a rule into a suggestion.
+
+
+# ---------------------------------------------------------------------------
+# Recognising what it sees
+# ---------------------------------------------------------------------------
+#
+# Until now Atlas could read the *words* in a picture and nothing else. This is
+# the other half: faces, things, and anything you have shown it and named.
+#
+# It runs inside atlas.exe -- no second program, no Python, no account, nothing
+# leaves the machine. What it does need is four model files in models/, which
+# ATLAS.bat downloads once. Together they are about 88 MB.
+#
+# Off by default, like everything that opens the camera.
+vision:
+  enabled: false
+  floor: 0.4                      # below this a finding is left out, not reported weakly
+  sure_enough_to_say_plainly: 0.7 # below this Atlas says "what looks like a..." instead
+  sure_enough_to_name_a_thing: 0.75 # the bar for "that's the mug you showed me"
+  sure_enough_to_name_a_face: 0.5 # the separate, higher bar for putting a name to a face
+  margin: 0.06                    # how far ahead of second place a match has to be
+  same_thing: 0.45                # boxes overlapping more than this are one thing found twice
+  most_things_said: 4             # how many things to name in one spoken answer
+  face_margin: 0.15               # how much wider than the box to cut a face
+  your_face: "me"                 # say "this is me" to the camera once and it knows you
+
+# Reading the words on your screen.
+#
+# Two model files inside atlas.exe. No tesseract, no second program, nothing to
+# install -- menu item 8 in ATLAS.bat fetches them once. `ocr` below is the old
+# route through tesseract.exe, which has never run because nothing ever
+# downloaded it; it is kept only because it reads capitals and this does not.
+words:
+  ink: 0.30          # a pixel counts as part of a letter above this
+  keep_above: 0.50   # a whole box has to average this -- the two do different jobs
+  grow_by: 2.0       # boxes come back shrunk and are grown by area x this / perimeter
+  most: 200          # boxes read in one go; more than this on screen is said, not hidden
+  smallest: 2        # boxes thinner or shorter than this are skipped
+  sure_enough: 0.50  # words the reader is less sure of than this are dropped and counted
+
+# Three trades that are one bet.
+#
+# Long EURUSD, GBPUSD and AUDUSD is not three positions -- it is short dollar,
+# three times. Each passes the one-per-cent rule and the account carries three.
+together:
+  say_above: 2.0     # one-way exposure to a currency, in R, worth mentioning
+  alarm_above: 3.0   # and above this it is said plainly
+
+# An outside detector, if you would rather use one.
+#
+# Left here for completeness. Atlas now reads its own frames through `vision`
+# above, so this is no longer what stands between it and seeing anything --
+# which it was, for as long as it sat commented out.
+# gaze_detector:
+#   command: "python"
+#   args: ["tools/look.py", "{image}"]
+
+# Accents, other languages, and understanding a room.
+#
+# Whisper handles accents better than most people expect. Where it struggles is
+# heavy accents on the smallest models, so Atlas measures how well it's
+# actually doing and suggests a bigger one only when the evidence says so.
+#
+# The shipped model is English-only — it cannot hear other languages at all,
+# not badly. Swapping ggml-base.en.bin for ggml-base.bin costs nothing in size,
+# a little accuracy on English, and gains ninety-odd languages plus
+# translation in the same pass.
+# Asking one of your other Atlases how it is getting on.
+#
+# `kin` is the door another Atlas knocks on to say something is urgent, and it
+# only ever rings a bell -- a signal there can never become a command. This is
+# the other direction: your Atlas asking, over the hub API, for things that
+# Atlas already serves (/status, /outstanding, /queued). Read-only, token on
+# every request, and you started it.
+#
+# What comes back is words you read. It never becomes an instruction, whatever
+# it says.
+#
+# Nothing is reachable just because it is on the network -- name each one here
+# the same way you add a person to `kin`. The port is the hub's (8787), not
+# kin's (8788): two doors, two trust levels.
+elsewhere:
+  enabled: true
+  timeout_secs: 5
+  known: []
+  # known:
+  #   - name: homelab
+  #     host: "10.0.0.9"
+  #     port: 8787
+  #     token: "<that Atlas's hub token — `atlas hub` prints it there>"
+
+# Acting on a guess.
+#
+# Atlas understands you two ways: a phrase in its own list, matched outright,
+# or a small local model's reading of a sentence that list didn't know. The
+# policy gate grades what an action *is*; until this it was never told how
+# sure Atlas was that you asked for it, so a command matched word-for-word and
+# one the model guessed out of a mumble were graded the same and both just
+# happened.
+#
+# With this on, a reading the model inferred -- for something that changes
+# anything -- is put to you first: Atlas says what it took you to mean and
+# waits. Answers and lookups are untouched, or it would ask before every
+# sentence. It can only ever add a question, never skip one.
+#
+# On by default, which is the opposite of most of this file. Off here doesn't
+# remove a behaviour, it removes the question -- and what's left is Atlas
+# acting on a guess without saying so.
+
+# Acting on a guess.
+#
+# Atlas understands you two ways: a phrase in its own list, matched outright,
+# or a small local model's reading of a sentence that list didn't know. The
+# policy gate grades what an action *is*; until this it was never told how
+# sure Atlas was that you asked for it, so a command matched word-for-word and
+# one the model guessed out of a mumble were graded the same and both just
+# happened.
+#
+# With this on, a reading the model inferred -- for something that changes
+# anything -- is put to you first: Atlas says what it took you to mean and
+# waits. Answers and lookups are untouched, or it would ask before every
+# sentence. It can only ever add a question, never skip one.
+#
+# On by default, which is the opposite of most of this file. Off here doesn't
+# remove a behaviour, it removes the question -- and what's left is Atlas
+# acting on a guess without saying so.
+understood:
+  enabled: true
+
+# Choosing between two readings of the same sentence.
+#
+# "How much did I spend on my trading statement last month" is a money
+# question that contains the words "statement" and "trading". The daemon used
+# to decide this in `match` arms tried in order, so it reached the tax arm --
+# nothing failed, and the answer was about the wrong thing.
+#
+# Now the competing readings are weighed together and a win too narrow to
+# trust becomes a question instead. One plain word of evidence is 1.0, a
+# two-word phrase 2.0.
+whichone:
+  act_above_margin: 1.0   # one clear word more than the runner-up
+  matched_at_all: 1.0     # below this it isn't one of these readings at all
+
+# Finding your other Atlas on the same network.
+#
+# `elsewhere.known` wants a host address, and a home network hands out a
+# different one after a reboot -- so the one transport Atlas has that reaches
+# another machine directly was gated behind a setting that goes stale on its
+# own. This is a shout on the local network and whatever answers.
+#
+# Finding a machine is not being allowed into it. An announcement carries a
+# name and a port and no secret at all; the token still comes from the other
+# Atlas and is still required on every request.
+nearby:
+  announce: false   # answer other Atlases asking who is here. Off by default:
+                    # the network you're on isn't always your own, and telling
+                    # a cafe your machine's name should be a choice. Turn it on
+                    # on the machines at home.
+  listen_ms: 700    # everything on a local network replies well inside this
+
+# Reading a Telegram bot's messages.
+#
+# Online and secondary: the messages are on somebody else's server, so this is
+# the one part of Atlas that stops working with the network unplugged, and
+# nothing else depends on it.
+#
+# The token goes in the vault, not here -- a token in a settings file is a
+# token in your backups, your sync folder, and any screenshot of your
+# settings. `atlas telegram token` puts it where it belongs.
+#
+# What a bot can see, before you set one up: messages sent straight to it, and
+# messages in a group it's been added to that name it. It cannot see your
+# existing conversations with other people, and nothing can without logging in
+# as you.
+telegram:
+  enabled: false
+  timeout_secs: 10
+  most_at_once: 20   # a bot left a week comes back to a queue; twenty and a
+                     # count beats reading out four hundred
+
+# How sure a graded judgment has to be before Atlas acts on it.
+#
+# `hollow` used to take the first three findings and call them "worst" -- they
+# were the first three questions that came back hollow, in the order the list
+# happens to be written. `judgment` grades things against bands that are
+# described rather than numbered, and says how near the edge each one landed.
+#
+# On an edge, Atlas says what it found and not how bad it is. A severity it
+# isn't sure of is worse than none, because it gets acted on.
+judgment:
+  past_the_edge: 0.5   # how far past a band's floor before the band is settled
+  measured_above: 0.001 # below this there is no judgment to make -- which is a
+                        # different answer from "low", and says so
+
+# Round 11: the everyday tools. Each is local and costs nothing until used.
+workday:
+  # What you copy, kept for a day in memory only -- never on disk, never a
+  # copy a password manager marks private, never anything that looks like a
+  # key. Off until you turn it on ("turn on clipboard history").
+  clipboard_history:
+    enabled: false
+    keep_hours: 24
+    max_items: 200
+    max_chars: 20000
+    never_from: [KeePass, KeePassXC, 1Password, Bitwarden, LastPass]
+  # Who owes you a reply and what you promised, read from mail you sent.
+  waiting_for:
+    enabled: true
+    owed_after_days: 3      # working days before an unanswered ask is said
+    look_back_days: 30
+  # A short check-in before the open and a journal after the close, about
+  # you and your process -- never a position. Ends with the line.
+  trade_day:
+    enabled: true
+    prompt: true            # ask on its own on trading days, once each
+    before_minutes: 30      # before the 9:30 New York open
+    after_minutes: 5        # after the close (1:00 on early-close days)
+  feeds:
+    enabled: true
+    every_minutes: 120      # a failing feed backs off, up to a day
+  cards:
+    enabled: true
+    retention: 0.9          # the chance of remembering on the day a card returns
+    per_session: 20
+  translate:
+    enabled: true
+    back_check_up_to: 600   # translate short texts back and compare
+  # Key chords, answered anywhere, that never see your typing. Off until you
+  # turn them on; one another program already owns is said, not swallowed.
+  chords:
+    enabled: false
+    capture: ctrl+alt+space   # what's selected becomes a note
+    expand: ctrl+alt+e        # the snippet word before the cursor, expanded
+    copy_text: ctrl+alt+t     # the text off the window in front
+  meeting_prep_minutes: 15    # 0 turns it off
+  mail_keep_days: 60
+  signature_png: ""           # a PNG of your signature, for "sign the pdf"
+  market_in_brief: false      # on by itself once you've done a trading check-in

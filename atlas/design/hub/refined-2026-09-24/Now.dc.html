@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Now (thought-stream)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --bezel:#0d0f12;--page:#ffffff;--side:#f6f3ec;--side-active:#ece7dc;
+  --ink:#2b2926;--body:#413d37;--muted:#8b867c;--faint:#a9a49a;
+  --line:#ece7de;--line2:#e4dfd5;--accent:#c46a24;--link:#4f74a0;
+  --done-ink:#3f7d52;--blue-ink:#456e9c;--amber-ink:#a9741f;
+  --sans:-apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.navitem{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:8px;font-size:13.5px;color:var(--body)}
+.navitem .chev{color:var(--faint);width:12px;display:flex;justify-content:center;font-size:12px}
+.badge{margin-left:auto;font-size:11px;font-weight:600;color:var(--accent);background:#f2e5d6;border-radius:999px;padding:1px 7px}
+.sec{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;padding:0 10px}
+.slabel{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;margin-top:4px}
+</style>
+</helmet>
+
+<div style="width:1280px;height:840px;box-sizing:border-box;background:var(--bezel);padding:6px 0;display:flex;flex-direction:column;font-family:var(--sans)">
+  <div style="flex-grow:1;display:flex;background:var(--page);margin:0 6px;border-radius:8px;overflow:hidden">
+
+    <!-- SIDEBAR -->
+    <aside style="width:240px;flex-shrink:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px 12px">
+      <div style="display:flex;align-items:center;gap:9px;padding:4px 8px 12px">
+        <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.5" fill="none" stroke="var(--accent)" stroke-width="1.6"/><circle cx="12" cy="12" r="3.2" fill="var(--accent)"/></svg>
+        <span style="font-size:14px;font-weight:700;color:var(--ink)">Eric's Atlas</span>
+        <svg viewBox="0 0 24 24" width="15" height="15" style="margin-left:auto;color:var(--faint)" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>Search</span></div>
+      <div class="navitem" style="background:var(--side-active)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ink)" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg><span style="color:var(--ink);font-weight:600">Now</span></div>
+      <div class="sec" style="margin:16px 0 7px">Personal</div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg><span>Home</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg><span>Calendar</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Projects</span><span class="badge">1</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M9 11l3 3L20 6"/><path d="M20 12v7H4V5h11"/></svg><span>Outstanding</span><span class="badge">5</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 5h16v11H9l-4 3z"/></svg><span>Messages</span><span class="badge">4</span></div>
+      <div class="sec" style="margin:16px 0 7px">Northwind LLC</div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M9 11l3 3L20 6"/><path d="M20 12v7H4V5h11"/></svg><span>Shared tasks</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg><span>Clients</span></div>
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg><span>Settings</span></div>
+      </div>
+    </aside>
+
+    <main style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+      <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--muted)">Personal<span style="margin:0 7px;color:var(--faint)">/</span><span style="color:var(--ink);font-weight:600">Now</span></div>
+        <div style="font-size:12.5px;color:var(--muted)">This is everything I'm doing, in order — nothing hidden.</div>
+      </div>
+
+      <div style="flex-grow:1;overflow:hidden;padding:24px 30px;display:flex;gap:30px">
+        <!-- stream -->
+        <div style="flex-grow:1;min-width:0">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px">
+            <div style="display:flex;gap:11px">
+              <svg viewBox="0 0 24 24" width="24" height="24" style="margin-top:2px"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--accent)" stroke-width="1.6"/><circle cx="12" cy="12" r="3.2" fill="var(--accent)"/></svg>
+              <div><div style="font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.02em">Drafting the Q3 summary for finance</div><div style="font-size:13px;color:var(--muted);margin-top:3px">Started 6:01 · working on it now</div></div>
+            </div>
+            <div style="display:flex;background:#f1eee7;border-radius:8px;padding:3px;font-size:12.5px;font-weight:600">
+              <span style="padding:5px 12px;border-radius:6px;background:#fff;color:var(--ink)">Plain</span>
+              <span style="padding:5px 12px;color:var(--muted)">Detailed</span>
+            </div>
+          </div>
+
+          <!-- steps -->
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div><div class="slabel" style="color:#a58c66">◇ PLAN</div><div style="font-size:14px;margin-top:4px;line-height:1.5">One page for finance. Numbers come from <strong style="color:var(--ink)">revenue.xlsx</strong> — I don't invent any.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div><div class="slabel" style="color:#a58c66">▷ DOING</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Read the Q3 figures from the spreadsheet — 4 sheets, 1,240 rows.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div style="flex-grow:1"><div class="slabel" style="color:#a58c66">⌞ DELEGATED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Handed the first draft to a worker.</div><div style="margin-top:9px;background:#f7f4ee;border-radius:9px;padding:11px 13px;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)"><span style="width:22px;height:22px;border-radius:6px;background:#e7e2d8;color:#8a857c;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">W</span>Worker · draft came back in 22s — I'm checking it against the real numbers before you see it.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:var(--accent)"></span><div><div class="slabel" style="color:var(--accent)">↝ REROUTED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">The worker's draft rounded revenue wrong — <strong style="color:var(--ink)">I didn't take it</strong>. Rewriting that section myself, straight from the sheet.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#67a37f"></span><div><div class="slabel" style="color:var(--done-ink)">✓ CHECKED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Ran the totals twice — they match the spreadsheet to the cent.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:var(--accent);box-shadow:0 0 0 4px #f4e2cd"></span><div><div class="slabel" style="color:var(--accent)">▷ NOW</div><div style="font-size:14.5px;margin-top:4px;font-weight:600;color:var(--ink)">Writing the summary paragraph.</div></div></div>
+          <div style="display:flex;gap:13px;opacity:.6"><span class="dot" style="background:none;border:2px dashed #c3bdb2;width:9px;height:9px"></span><div><div class="slabel" style="color:var(--muted)">◷ NEXT</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Show you the draft to approve — nothing sends until you say so.</div></div></div>
+        </div>
+
+        <!-- right rail -->
+        <div style="width:290px;flex-shrink:0;display:flex;flex-direction:column;gap:14px">
+          <div style="border:1px solid var(--line2);border-radius:11px;padding:15px 16px">
+            <div class="slabel" style="color:var(--muted)">Time on this</div>
+            <div style="font-family:var(--mono);font-size:26px;color:var(--ink);font-weight:600;margin:8px 0 10px">~1 min <span style="font-size:14px;color:var(--muted);font-weight:400">left</span></div>
+            <div style="height:5px;background:#eee9df;border-radius:3px;overflow:hidden"><div style="width:82%;height:100%;background:var(--accent)"></div></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5">I said this would take about 3 minutes. If it runs long, I'll stop and tell you where I got to.</div>
+          </div>
+          <div style="border:1px solid var(--line2);border-radius:11px;padding:15px 16px">
+            <div class="slabel" style="color:var(--muted)">If this doesn't hold up</div>
+            <div style="font-size:13px;color:var(--body);margin-top:8px;line-height:1.55">I'll drop the worker entirely and build the whole thing from the sheet by hand. Slower, but I won't hand you numbers I didn't check.</div>
+          </div>
+          <div style="background:#f6f3ec;border-radius:11px;padding:15px 16px">
+            <div style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--body);line-height:1.5"><svg viewBox="0 0 24 24" width="15" height="15" style="margin-top:2px;flex-shrink:0" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg>Running on your machine. Nothing left it.</div>
+            <button style="margin-top:12px;width:100%;border:1px solid var(--line2);background:#fff;color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;padding:9px;border-radius:8px;cursor:pointer">Pause Atlas</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":840}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

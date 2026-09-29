@@ -1,0 +1,109 @@
+================ PERSONAL ATLAS, round 6 ================
+
+---- an SVG animation played and saved as a GIF and an MP4 ----
+
+$ target/debug/atlas film <home>/ball.svg 12
+
+Played it and saved a GIF (24 frames, 24 different) to <home>/ball.gif. And an MP4 to <home>/ball.mp4.
+
+$ ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,width,height,nb_read_frames -of csv=p=0 <home>/ball.gif
+gif,240,120,24
+
+$ ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,width,height,nb_read_frames -of csv=p=0 <home>/ball.mp4
+h264,240,120,24
+
+---- a 3-D scene drawn in house: a still and a turntable ----
+
+$ target/debug/atlas scene <home>/desk.json
+
+Drew it: <home>/desk.png. Walked the camera round it: <home>/desk.turntable.gif. (no Blender render: Blender isn't installed, and the in-house one stands on its own.) That it drew and has something in view is checked; whether it looks right is yours to say.
+
+$ ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=width,height,nb_read_frames -of csv=p=0 <home>/desk.turntable.gif
+320,200,24
+
+---- who said what on a call: grouping alone, then with --merge-voices ----
+
+$ target/debug/atlas voices <home>/others.wav
+
+<home>/others.wav: learned from 34 stretches of speech. That's enough to tell voices apart.
+
+$ target/debug/atlas notes <home>/call.wav
+
+(Voices told apart by Atlas's own encoder — a classical one, weaker than a trained model.)
+(Speech-to-text isn't installed, so these are the times people spoke, without the words.)
+[00:00] Speaker 2: (not transcribed)
+[00:04] Speaker 3: (not transcribed)
+[00:08] Speaker 2: (not transcribed)
+[00:11] Speaker 4: (not transcribed)
+[00:14] Speaker 3: (not transcribed)
+[00:18] Speaker 5: (not transcribed)
+
+$ target/debug/atlas notes <home>/call.wav --merge-voices
+
+(Voices told apart by Atlas's own encoder — a classical one, weaker than a trained model.)
+(Speech-to-text isn't installed, so these are the times people spoke, without the words.)
+[00:00] Speaker 2: (not transcribed)
+[00:04] Speaker 3: (not transcribed)
+[00:08] Speaker 2: (not transcribed)
+[00:11] Speaker 4: (not transcribed)
+[00:14] Speaker 3: (not transcribed)
+[00:18] Speaker 5: (not transcribed)
+(truth: A, B, A, C, B, A)
+
+
+---- the round-6 end-to-end tests, with what each saw ----
+LIVE [scene3d] Drew it: /tmp/atlas-r6-scene-16001/desk.png. Walked the camera round it: /tmp/atlas-r6-scene-16001/desk.turntable.gif. (no Blender render: Blender isn't installed, and the in-house one stands on its own.) That it drew and has something in view is checked; whether it looks right is yours to say. (2767 ms)
+LIVE [scene3d] ball at (108,62), box at (118,92), post at x=157: ball above the box, post to its right
+LIVE [scene3d] turntable GIF plays 12 frames in ffmpeg
+.LIVE [gif] 10 frames of an orange square crossing a cream ground: 817 bytes as a GIF (216000 raw), ffmpeg plays back all 10 pixel-for-pixel. Only the changed rectangle is stored after frame 1.
+.LIVE [filmstrip, a fake animation] Played it and saved a GIF (8 frames, 1 different) to /tmp/atlas-r6-still-16001/still.gif.   • played in a browser, all 8 frames came out the same picture — nothing moved
+.LIVE [filmstrip] 20 frames at 10 fps; ball (SMIL) and square (CSS) are where the animation says at every frame, worst off by 0.5 px
+LIVE [filmstrip] Played it and saved a GIF (20 frames, 20 different) to /tmp/atlas-r6-film-16001/ball.gif. And an MP4 to /tmp/atlas-r6-film-16001/ball.mp4.
+LIVE [filmstrip] ffprobe on the MP4: 200,100,20 (width,height,frames)
+.LIVE [you: "draw a 3d scene of a ball on a box"]  Atlas: Drew it: /tmp/tmp.fOjekSGUn5/data/animations/scene.png. Walked the camera round it: /tmp/tmp.fOjekSGUn5/data/animations/scene.turntable.gif. (no Blender render: Blender isn't installed, and the in-house one stands on its own.
+.LIVE [you: "animate a ball rolling right, 200x100, for 2 seconds"]  Atlas: It's a real SVG animation and it matches what you asked for — that it renders and moves to spec, not whether the motion looks right. Open it and see. Saved to /tmp/tmp.fOjekSGUn5/data/animations/animation.svg. Played it and saved a GIF (24 frames, 24 different) to /tmp/tmp.fOjekSGUn5/data/animations/animation.gif.
+.LIVE [png] 97×41 written by Atlas, read by ffmpeg: identical. 160×90 test card written by ffmpeg (2236 bytes, compressed and filtered), read by Atlas: identical.
+.LIVE [blender script] 43 lines, compiles, 4 shapes + sun + camera; runs when Blender is installed (not in this container)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 5481 filtered out; finished in 16.07s
+
+---- the voice measurements, including the second look on 60 calls ----
+LIVE [who said what, 2-3 voices + fan — the 40 calls the penalty is chosen on]
+    setting         right  over-split   mixed   pure lines
+    grouping only      34           2       4     273/280
+    λ = 1              34           2       4     273/280
+    λ = 1.1            35           1       4     273/280
+    λ = 1.2            35           1       4     273/280
+    λ = 1.3            35           0       5     271/280
+    λ = 1.4            34           0       6     269/280
+    λ = 1.5            33           0       7     267/280
+    λ = 1.7            33           0       7     267/280
+    λ = 2              31           0       9     263/280
+LIVE [who said what, 2-3 voices + fan — the 20 held-out calls]
+    setting         right  over-split   mixed   pure lines
+    grouping only      19           1       0     138/138
+    λ = 1              18           1       1     136/138
+    λ = 1.1            19           0       1     136/138
+    λ = 1.2            19           0       1     136/138
+    λ = 1.3            19           0       1     136/138
+    λ = 1.4            19           0       1     136/138
+    λ = 1.5            18           0       2     134/138
+    λ = 1.7            18           0       2     134/138
+    λ = 2              17           0       3     132/138
+LIVE [who said what] chosen λ = 1.1: on the held-out calls, over-split 1 → 0, mixed 0 → 1
+.LIVE [notes, built-in encoder, 3 voices + fan]  6 lines, 4 speakers found, 6/6 on a consistent speaker
+    [00:00] Speaker 2: (not transcribed)
+    [00:04] Speaker 3: (not transcribed)
+    [00:08] Speaker 2: (not transcribed)
+    [00:11] Speaker 4: (not transcribed)
+    [00:14] Speaker 3: (not transcribed)
+    [00:18] Speaker 5: (not transcribed)
+.LIVE [voice-lock, built-in encoder]  6 voices, 5 enrolled each, 30 own and 300 other clips scored
+  own: mean 0.63, 2nd percentile 0.40;  others: mean -0.12, 98th percentile 0.28
+  with the shipped lines (0.3 / 0.15): own heard as you 30/30, own taken for someone else 0/30, others taken for you 5/300
+.LIVE [hearing calibration, a fan 6 dB under your voice]  Scored on your room: 70.4% right with the thresholds you had, 84.6% with energy 1 / flatness 1 / loud 4 dB — 69% of your speech heard, 100% of the room left alone. (From 8 s of room and 12 s of you.)
+.LIVE [wake word, DTW on three takes]  threshold 5.48
+  your phrase: 6/6 clean, 6/6 with a fan at 10 dB
+  false wakes: 0/12 near-misses ("hey alice", "hey at last", "at least"…), 0/30 sentences
+  another voice saying "hey atlas": 0/9 — matched to your voice, by design
+.
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 99.38s

@@ -1,0 +1,307 @@
+//! The typing box (Eric's ruling H1): press the key, a one-line box opens
+//! over whatever you're doing, type, press Enter, and it's gone.
+//!
+//! Its own small process (`atlas typebox`), like the overlay, so the box can
+//! never stall the background Atlas and the other way round. What you type is
+//! printed on one line to its output, which the background Atlas reads as a
+//! typed turn — the same door as the console.
+//!
+//! The box follows `quickinput::QuickInput`: Enter sends, Enter on nothing or
+//! Escape closes, Backspace takes a letter back, and a box you opened and
+//! wandered away from closes by itself after `quick_input.idle_close_secs`.
+//! Its look is plain on purpose: the panels' look waits on the hub's design
+//! (H2), and this is the working part.
+
+#[cfg(feature = "desktop-ui")]
+use crate::quickinput::{Action, QuickInput};
+use crate::quickinput::QuickInputConfig;
+
+/// The line a finished box prints, so the reader can tell a submission from
+/// anything else a process might write.
+pub const SENT: &str = "ATLAS-TYPED:";
+
+/// Keys, turned into what the box should do. Kept apart from drawing so it's
+/// tested without a screen.
+#[cfg(feature = "desktop-ui")]
+pub fn apply_keys(q: &mut QuickInput, events: &[eframe::egui::Event], t: u64) -> Action {
+    use eframe::egui::{Event, Key};
+    for e in events {
+        match e {
+            Event::Text(s) => {
+                for c in s.chars() {
+                    q.typed(c, t);
+                }
+            }
+            Event::Paste(s) => {
+                for c in s.chars().filter(|c| !c.is_control()) {
+                    q.typed(c, t);
+                }
+            }
+            Event::Key { key: Key::Backspace, pressed: true, .. } => q.backspace(t),
+            Event::Key { key: Key::Enter, pressed: true, .. } => return q.submit(),
+            Event::Key { key: Key::Escape, pressed: true, .. } => return q.escape(),
+            _ => {}
+        }
+    }
+    q.tick(t)
+}
+
+/// A line the box printed, as the typed words, or `None` for anything else.
+pub fn typed_line(line: &str) -> Option<String> {
+    line.strip_prefix(SENT).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// The box's window title: how the background Atlas's signal finds it.
+pub const TITLE: &str = "Atlas typing box";
+
+/// Open the box. Blocks until it's sent or closed.
+///
+/// `standby`: started with the background Atlas and kept hidden, shown on
+/// "show" arriving on its input, hidden again after each line. Measured on
+/// Eric's laptop (26 Sep 2026): a box started fresh on the key press took
+/// about four seconds to appear, which is no good for "press and type".
+#[cfg(feature = "desktop-ui")]
+pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
+    let mut q = QuickInput::new(cfg);
+    if !standby {
+        q.hotkey(None, crate::store::now());
+    }
+    let opts = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default().with_icon(crate::mark::window_icon())
+            .with_title(TITLE)
+            .with_decorations(false)
+            .with_always_on_top()
+            .with_taskbar(false)
+            .with_resizable(false)
+            .with_active(!standby)
+            .with_transparent(false)
+            .with_visible(false)
+            .with_inner_size([560.0, 48.0]),
+        centered: true,
+        ..Default::default()
+    };
+    eframe::run_native(
+        "atlas-typebox",
+        opts,
+        Box::new(move |cc| {
+            let (tx, rx) = std::sync::mpsc::channel::<Option<isize>>();
+            if standby {
+                let ctx = cc.egui_ctx.clone();
+                std::thread::spawn(move || {
+                    use std::io::BufRead;
+                    for line in std::io::stdin().lock().lines().map_while(|l| l.ok()) {
+                        if line.trim() == "show" {
+                            // Shown and given the keyboard straight away,
+                            // from this thread, rather than waiting for the
+                            // window's own loop to wake: on the laptop the
+                            // first words typed went to the app underneath.
+                            let was_in = front_window();
+                            show_now();
+                            if tx.send(was_in).is_err() {
+                                break;
+                            }
+                            ctx.request_repaint();
+                        }
+                    }
+                    // The background Atlas went away: so does the box.
+                    std::process::exit(0);
+                });
+            }
+            Ok(Box::new(Box_ { q, frames: if standby { u32::MAX } else { 0 }, standby, wake: rx, was_in: front_window() }))
+        }),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "desktop-ui")]
+struct Box_ {
+    q: QuickInput,
+    /// Frames since it was shown; `u32::MAX` while it waits hidden.
+    frames: u32,
+    standby: bool,
+    wake: std::sync::mpsc::Receiver<Option<isize>>,
+    /// The window you were in, given back when the box goes (Windows
+    /// otherwise hands the keyboard to whatever it likes).
+    was_in: Option<isize>,
+}
+
+#[cfg(feature = "desktop-ui")]
+impl eframe::App for Box_ {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+        // The locked hub design's colourway, not egui's default grey.
+        crate::look_paint::dress(ctx);
+        use eframe::egui::ViewportCommand;
+        if let Ok(was_in) = self.wake.try_recv() {
+            self.q.hotkey(None, crate::store::now());
+            self.frames = 0;
+            self.was_in = was_in;
+        }
+        if self.frames == u32::MAX {
+            // Waiting, hidden, for the next key press. Told to stay hidden
+            // every time, and painted clear: on Windows the window came up
+            // anyway after its first frame, and a frame that paints nothing
+            // is a black bar across the screen (Eric, 27 Sep 2026).
+            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            eframe::egui::CentralPanel::default()
+                .frame(eframe::egui::Frame::none().fill(crate::look_paint::colourway().raised))
+                .show(ctx, |_| {});
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+            return;
+        }
+        // Shown, sized and brought to the front on the first frames. Windows
+        // only lets a window take the keyboard from the app you're in when
+        // the process that saw your key press allows it, which the
+        // background Atlas does just before asking.
+        if self.frames < 3 {
+            if self.frames == 0 {
+                ctx.send_viewport_cmd(ViewportCommand::InnerSize(eframe::egui::vec2(560.0, 48.0)));
+            }
+            ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+            self.frames += 1;
+            ctx.request_repaint();
+        } else if self.frames < 40 && !ctx.input(|i| i.focused) {
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+            self.frames += 1;
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
+        let events = ctx.input(|i| i.events.clone());
+        let done = match apply_keys(&mut self.q, &events, crate::store::now()) {
+            Action::Submit(text) => {
+                println!("{SENT}{text}");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+                true
+            }
+            Action::Hide => true,
+            _ => false,
+        };
+        if done {
+            give_back(self.was_in.take());
+            if self.standby {
+                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                self.frames = u32::MAX;
+            } else {
+                ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
+            return;
+        }
+        let fill = eframe::egui::Frame::none()
+            .fill(crate::look_paint::colourway().raised)
+            .inner_margin(eframe::egui::Margin::symmetric(14.0, 8.0));
+        eframe::egui::CentralPanel::default().frame(fill).show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.label(eframe::egui::RichText::new(self.q.placeholder()).monospace().size(18.0).color(crate::look_paint::colourway().signal_text));
+                ui.label(eframe::egui::RichText::new(format!("{}|", self.q.buffer)).size(18.0).color(crate::look_paint::colourway().text));
+            });
+        });
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+    }
+}
+
+/// A build without the desktop window (`--no-default-features`, the lean
+/// server build) has no box to draw, and says so rather than failing to build.
+#[cfg(not(feature = "desktop-ui"))]
+pub fn run(_cfg: QuickInputConfig, _standby: bool) -> Result<(), String> {
+    Err("this build of Atlas has no windows, so there's no typing box -- type in the console instead".into())
+}
+
+/// The box kept ready by the background Atlas.
+pub struct Standby {
+    input: std::process::ChildStdin,
+    child: std::process::Child,
+}
+
+impl Standby {
+    /// Start the hidden box, and hand what's typed into it to `send`.
+    pub fn start(send: impl Fn(String) + Send + 'static) -> Result<Standby, String> {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mut child = crate::tools::command(exe)
+            .args(["typebox", "--standby"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("the typing box wouldn't start: {e}"))?;
+        let out = child.stdout.take().ok_or("the typing box gave nothing to read")?;
+        let input = child.stdin.take().ok_or("the typing box can't be reached")?;
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(out).lines().map_while(|l| l.ok()) {
+                if let Some(text) = typed_line(&line) {
+                    send(text);
+                }
+            }
+        });
+        Ok(Standby { input, child })
+    }
+
+    /// Show it. `false` when the box has gone and needs starting again.
+    pub fn show(&mut self) -> bool {
+        if matches!(self.child.try_wait(), Ok(Some(_))) {
+            return false;
+        }
+        allow_to_front();
+        use std::io::Write;
+        writeln!(self.input, "show").and_then(|_| self.input.flush()).is_ok()
+    }
+}
+
+impl Drop for Standby {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
+/// Let the box Atlas is about to show come to the front: the background
+/// Atlas just received your key press, so Windows lets it hand that on.
+fn allow_to_front() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
+        let _ = AllowSetForegroundWindow(ASFW_ANY);
+    }
+}
+
+/// The window in front right now, before the box takes it.
+#[cfg_attr(not(feature = "desktop-ui"), allow(dead_code))]
+fn front_window() -> Option<isize> {
+    #[cfg(windows)]
+    unsafe {
+        let h = windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
+        if !h.0.is_null() {
+            return Some(h.0 as isize);
+        }
+    }
+    None
+}
+
+/// Put you back in the window you were in. The box is in front at this
+/// moment, so Windows allows it.
+#[cfg_attr(not(feature = "desktop-ui"), allow(dead_code))]
+fn give_back(to: Option<isize>) {
+    #[cfg(windows)]
+    if let Some(h) = to {
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(windows::Win32::Foundation::HWND(h as *mut std::ffi::c_void));
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = to;
+}
+
+/// Show the box and give it the keyboard, found by its title.
+#[cfg_attr(not(feature = "desktop-ui"), allow(dead_code))]
+fn show_now() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_SHOW};
+        let title: Vec<u16> = TITLE.encode_utf16().chain(std::iter::once(0)).collect();
+        if let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) {
+            if !h.0.is_null() {
+                let _ = ShowWindow(h, SW_SHOW);
+                let _ = SetForegroundWindow(h);
+            }
+        }
+    }
+}

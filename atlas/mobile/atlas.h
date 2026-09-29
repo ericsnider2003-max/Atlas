@@ -1,0 +1,23 @@
+/* The one door the phone apps call through. Implemented in src/mobile.rs. */
+#ifndef ATLAS_H
+#define ATLAS_H
+#include <stddef.h>
+#include <stdint.h>
+/* Start Atlas with its data under `home` (the app's private folder), serving
+   the hub on 127.0.0.1 only. `port` 0 picks a free one. Never blocks for more
+   than a moment. Returns 0 once the hub answers, 1 if already running, 2 if
+   it is still starting (poll atlas_mobile_url or atlas_mobile_state), and a
+   negative number if it couldn't start. Only one Atlas is ever started. */
+int32_t atlas_mobile_start(const char *home, uint16_t port);
+/* 0 not started or stopped, 1 starting, 2 running, -1 couldn't start. */
+int32_t atlas_mobile_state(void);
+/* Write the hub's address (token included) into buf. Length, or -1 until
+   the hub is answering. */
+int32_t atlas_mobile_url(char *buf, size_t len);
+/* Whether the phone is on wifi or another unmetered network: 1 yes, 0 no.
+   Called at start and whenever it changes; the phone's own model downloads
+   by itself only while it is 1. */
+void atlas_mobile_network(int32_t unmetered);
+/* Ask Atlas to stop; it finishes the turn it is on. */
+void atlas_mobile_stop(void);
+#endif

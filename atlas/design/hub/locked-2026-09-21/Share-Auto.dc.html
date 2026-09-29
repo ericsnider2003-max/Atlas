@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Trusted send (quiet)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --edge:#eceae4; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97; --accent:#d9730d; --accent-soft:#fdecc8; --accent-tx:#b26206; --ok:#4f8a5b; --oks:#e8f0e9; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+</style>
+</helmet>
+
+<!-- the trusted path: no modal, a corner toast with an undo window -->
+<div style="width:560px;height:360px;box-sizing:border-box;background:#e7e3dc;position:relative;overflow:hidden;">
+
+  <!-- faint desktop hint -->
+  <div style="position:absolute;inset:0;background:linear-gradient(135deg,#efece5,#e2ddd3);"></div>
+  <div style="position:absolute;top:26px;left:28px;right:28px;height:150px;border-radius:12px;background:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.6);"></div>
+
+  <!-- toast, bottom-right -->
+  <div style="position:absolute;right:24px;bottom:24px;width:360px;background:#fff;border:1px solid var(--edge);border-radius:14px;box-shadow:0 16px 44px rgba(30,25,15,.22);padding:16px 17px;">
+    <div style="display:flex;align-items:center;gap:11px;">
+      <span style="width:36px;height:36px;border-radius:9px;background:var(--oks);color:var(--ok);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg></span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14.5px;font-weight:660;">Sent to Jordan</div>
+        <div style="font-size:12.5px;color:var(--dim);">Q3 report.pdf · they're on your trusted list</div>
+      </div>
+      <!-- undo with countdown ring -->
+      <button style="border:1px solid var(--edge);background:#fff;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:640;color:var(--accent-tx);cursor:pointer;display:flex;align-items:center;gap:7px;">
+        <svg viewBox="0 0 36 36" width="16" height="16" style="transform:rotate(-90deg);"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--edge)" stroke-width="4"></circle><circle cx="18" cy="18" r="15" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="94" stroke-dashoffset="34"></circle></svg>
+        Undo
+      </button>
+    </div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--edge);font-size:12px;color:var(--faint);">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--faint)" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"></path></svg>
+      Encrypted, straight to their Atlas · <b style="color:var(--dim);">personal files still ask first</b>
+    </div>
+  </div>
+
+  <!-- label -->
+  <div style="position:absolute;top:22px;left:28px;font-size:12.5px;font-weight:600;color:var(--dim);background:rgba(255,255,255,.7);border-radius:7px;padding:5px 10px;">Trusted recipient → no prompt, just a heads-up</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":560,"height":360}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

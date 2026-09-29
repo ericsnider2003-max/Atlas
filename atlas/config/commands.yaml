@@ -1,0 +1,1237 @@
+# Longest phrase wins, so "open workspace" is not swallowed by "open".
+commands:
+  - intent: workspace_on
+    describe: "Open and arrange the user's whole workspace (all their work apps, laid out on the screens)."
+    expose: core
+    phrases: ["boot workspace", "turn on workspace", "start workspace", "open workspace", "workspace on"]
+
+  - intent: workspace_off
+    describe: "Close all the workspace apps."
+    phrases: ["shutdown workspace", "turn off workspace", "close workspace", "workspace off"]
+
+  - intent: view_display
+    describe: "Take a screenshot and look at what is on the user's screen, e.g. to read a chart or explain what is showing."
+    expose: core
+    # Answered by the local picture reader (`picture_talk`): a screenshot,
+    # asked about in the words you used, then deleted.
+    phrases: ["view my display", "look at my screen", "view display",
+              "what's on my screen", "whats on my screen", "what is on my screen",
+              "what does this chart show", "what does this graph show",
+              "read this chart", "explain this chart", "read this graph"]
+
+  - intent: research
+    describe: "Look a topic up on the web and write a note about it. arg: the topic."
+    expose: core
+    phrases: ["research", "look into", "find information on", "look up", "search for", "search the web for",
+              "google", "find out about", "look it up"]
+    takes_argument: true
+
+  - intent: open_app
+    describe: "Open an app by name. arg: the app's name, only one from the known apps."
+    expose: core
+    phrases: ["open", "launch"]
+    takes_argument: true
+
+  # Names only (27 Sep 2026): "close" and "quit" take an app you have, so
+  # "quit smoking" and "close the deal" reach the model rather than looking
+  # for an app called "smoking". "open" stays open to any name -- an app you
+  # haven't set up is still asked about (`grants`).
+  - intent: close_app
+    describe: "Close an app by name. arg: the app's name."
+    expose: core
+    phrases: ["close", "quit"]
+    takes_argument: true
+    names_only: true
+
+  - intent: focus_app
+    describe: "Bring an open app to the front. arg: the app's name."
+    expose: core
+    phrases: ["focus", "switch to", "go to"]
+    takes_argument: true
+    # "go to chrome", not "go to sleep".
+    names_only: true
+
+  # Turning hand control on. Said once, or pressed in the hub, or -- if you
+  # have the wake shape switched on -- held up without saying anything.
+  - intent: gestures_on
+    describe: "Start watching the user's hands so they can control things with gestures."
+    phrases: ["watch my hands", "hand control", "let me use my hands",
+              "gesture mode", "read my hands", "i want to use gestures"]
+
+  - intent: gestures_off
+    describe: "Stop watching the user's hands."
+    phrases: ["stop watching my hands", "stop reading my hands",
+              "hands off", "no more gestures", "leave my hands alone"]
+
+  - intent: pause
+    describe: "Stop talking and suspend all work until told to resume."
+    expose: never
+    phrases: ["pause", "hold on", "hold up", "wait", "hang on", "one moment", "give me a minute", "stand by"]
+    # The whole sentence (27 Sep 2026): "wait" pauses; "wait, what do you
+    # mean" is a question and goes to the model.
+    anchored: true
+
+  - intent: resume
+    describe: "Carry on after a pause."
+    expose: never
+    # "I'm ready" is deliberately not here — it means you have arrived at the
+    # desk, which is the waking moment, not a resume. The daemon still treats
+    # it as a resume if something is actually paused.
+    phrases: ["resume", "carry on", "keep going", "im back", "i am back", "unpause", "continue"]
+    # "continue" resumes; "continue the story" is conversation.
+    anchored: true
+
+  - intent: outstanding
+    describe: "List what Atlas was asked to do and could not do yet."
+    phrases: ["what's outstanding", "whats outstanding", "what couldn't you do", "what is on your list", "your list"]
+
+  - intent: queued
+    describe: "List posts and messages waiting to be sent, and scheduled jobs."
+    phrases: ["what's queued", "whats queued", "what's going out", "whats going out", "what's scheduled", "whats scheduled"]
+
+  - intent: draft_post
+    describe: "Draft a social post or email for a channel (never sends it). arg: the channel: x, linkedin, instagram, discord or email."
+    phrases: ["draft a post for", "write a post for", "draft post", "post to"]
+    takes_argument: true
+
+  - intent: undo
+    describe: "Put back the last thing Atlas moved, closed or overwrote."
+    phrases: ["undo", "undo that", "put it back", "revert that"]
+
+  - intent: back_up
+    describe: "Back up everything Atlas has learned to a safe place."
+    phrases: ["back up", "back everything up", "make a backup"]
+
+  # The relief text `nudge::drifted` offers is "rebuilding the index". It has
+  # to parse to something that actually rebuilds, or saying yes to the nudge
+  # agrees to nothing happening.
+  # You told Atlas it got something wrong. One correction is a note; two on
+  # separate occasions is a rule -- `revise`'s third rule, and the one that
+  # stops Atlas rebuilding itself around one irritable evening.
+  - intent: got_it_wrong
+    describe: "Record that Atlas got something wrong, with the correction."
+    expose: never
+    phrases: ["that's wrong", "thats wrong", "that's not right", "thats not right",
+              "you got that wrong", "no that's wrong", "that was too long",
+              "too long", "too short", "that's not what i asked", "thats not what i asked",
+              "i didn't ask for that", "i didnt ask for that", "don't do that",
+              "dont do that", "wrong again"]
+
+  # The command the mending offer's own relief parses to. `Home::plain()`
+  # produces these exact phrases, so saying yes to "I want to change the
+  # instructions for that job" runs something rather than nothing -- the trap
+  # that `nudge::drifted` fell into and this is built to avoid.
+  - intent: apply_lesson
+    describe: "Turn a correction into a standing rule."
+    expose: never
+    phrases: ["updating the instructions for that job",
+              "updating what i know about how you like things",
+              "updating the record",
+              "write it down", "make it a rule", "apply the lesson"]
+
+  # What Atlas can actually run here. The budget is measured, not configured:
+  # `fit.rs` reads real memory, and a config number that disagrees with it
+  # produces a model that will not load.
+  - intent: which_model
+    describe: "Say which language model Atlas is running and what this machine can run."
+    phrases: ["which model", "what model are you using", "what model",
+              "which model are you running", "what models do i have",
+              "what can you run", "models"]
+
+  # The only metric this loop has: does it make the same mistake twice.
+  # Where the time went, from the work log (`worklog`): today, yesterday,
+  # this week. Local; nothing leaves the machine.
+  - intent: time_spent
+    describe: "Report where the user's time went today or on a given day, from the work log. arg: the day or app, optional."
+    phrases: ["where did my time go", "where did the time go", "what did i work on",
+              "how long was i on", "how did i spend my time", "time report",
+              "how much time did i spend", "what have i been doing today",
+              "how productive was i", "my focus today"]
+    # What's left over ("... on youtube", "... yesterday") is what to report on.
+    takes_argument: true
+    argument_optional: true
+
+  - intent: how_am_i_doing
+    describe: "Say how Atlas itself has been doing: corrections it was given and what it learned."
+    # "how are you doing" was here, so "how are you doing?" got a report on
+    # corrections instead of an answer (27 Sep 2026). It's conversation now.
+    phrases: ["how am i doing", "have you got any better",
+              "are you getting better", "what have i corrected you on",
+              "what have you learned"]
+    anchored: true
+
+  # A room of seats that do not agree with each other, put to a question.
+  # Scoped to hardware because that is the subject Atlas has measured numbers
+  # for -- `council::hardware_room` hands every seat the real machine, so the
+  # seats disagree about 15.7GB rather than about the word "upgrade". Anything
+  # else asked this way gets the general room.
+  #
+  # Costs one model call per seat. `atlas trace` shows what it spent.
+  - intent: ask_the_room
+    describe: "Put a question to several differing viewpoints and report where they disagree. arg: the question."
+    phrases: ["ask the room", "put it to the room", "what does the room think",
+              "convene the council", "council", "second opinions", "argue both sides",
+              "should i upgrade", "is it worth upgrading", "what do you think about upgrading"]
+
+  # The flight recorder, read back. `nudge::trace_line` is the one thing that
+  # turns it into a sentence, and it had no caller because nothing asked.
+  - intent: model_trace
+    describe: "Report what Atlas has been asking its language model lately and how long it took."
+    # "what have you been doing" is a question to Atlas, not about the model.
+    phrases: ["what have you been asking", "how's the model doing",
+              "hows the model doing", "what's the model been doing", "whats the model been doing",
+              "model trace", "how many times have you asked the model"]
+
+  - intent: rebuild_index
+    describe: "Rebuild the index of the user's notes and files."
+    phrases: ["rebuilding the index", "rebuild the index", "rebuild the index of my notes",
+              "reindex my notes", "rebuild my notes index", "update the index"]
+
+  # With a subject, the index says which notes are worth opening — the point
+  # of keeping one. Without a subject, it says how much Atlas knows it has
+  # without opening any of it.
+  - intent: what_i_have
+    describe: "Look in the user's notes for what Atlas has on a subject. Call it rather than saying you will look. arg: the subject, optional."
+    expose: core
+    phrases: ["what do you have on", "what do you know about", "what have you got on",
+              "what's in my notes", "whats in my notes", "what have you got written down",
+              "what do you have written down"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: machine_health
+    describe: "Check the computer's health: memory, disk, CPU and what is slowing it down."
+    phrases: ["how's the machine", "hows the machine", "system status", "machine health", "what's slowing this down", "whats slowing this down",
+              "check the laptop", "why is this slow"]
+
+  - intent: self_check
+    describe: "Run Atlas's self-check and say what setup is still missing."
+    phrases: ["check yourself", "self check", "run a self check", "run a checkup",
+              "are you working", "are you working right", "are you set up right",
+              "make sure you're working", "check that you're working",
+              "what's outstanding in your setup", "whats outstanding in your setup", "what's left to set up",
+              "whats left to set up", "what's missing in your setup", "whats missing in your setup",
+              "is your setup finished", "is setup finished", "are you fully set up"]
+
+  - intent: shakedown
+    describe: "Run the commissioning shakedown over every capability that has never run on this machine."
+    phrases: ["run a shakedown", "shakedown", "commission yourself", "run your commissioning",
+              "verify everything", "what do you need me to verify", "run the commissioning"]
+
+  # "switch to" is not here: `focus_app` claims it, and the longest-phrase
+  # rule cannot separate two identical phrases, so this one never fired. Left
+  # out rather than left in and dead.
+  - intent: set_mode
+    describe: "Switch to a named mode such as focus, call or research. arg: the mode's name."
+    phrases: ["mode", "go into"]
+    takes_argument: true
+    # A mode you have: "go into focus", not "go into detail".
+    names_only: true
+
+  - intent: use_clipboard
+    describe: "Do something with what the user copied: explain, summarise, reply to or clean it up. arg: what to do."
+    # "what is this" and "what does this mean" were here: in conversation
+    # they are about what was just said, not the clipboard (27 Sep 2026).
+    phrases: ["explain this", "summarise this", "summarize this", "reply to this", "what i copied", "clean this up",
+              "what does what i copied mean", "explain what i copied"]
+
+  - intent: rehearse
+    describe: "Show what Atlas would do for a command, without doing it. arg: the command."
+    phrases: ["rehearse", "what would you do if i said", "show me what you'd do", "show me what youd do", "dry run"]
+    takes_argument: true
+
+  - intent: ready
+    describe: "The user has arrived and is ready to start: give the morning brief."
+    expose: never
+    phrases: ["i'm ready", "im ready", "ready", "let's go", "lets go", "good morning atlas", "wake up"]
+    # "let's go through the numbers" is not the morning brief.
+    anchored: true
+
+  - intent: show_panel
+    describe: "Put a panel on screen, such as the task list or Atlas's thinking. arg: which panel."
+    phrases: ["show me", "pull up", "put up", "bring up", "let me see"]
+    takes_argument: true
+
+  - intent: dismiss_panel
+    describe: "Take the panel on screen down."
+    phrases: ["dismiss", "close that", "take it down", "hide that", "that's enough", "thats enough"]
+    anchored: true
+
+  - intent: capabilities
+    describe: "Say what Atlas can do, what is new, or whether it can do a particular thing. arg: the thing, optional."
+    # "can you" and "what can you" were here, so every "can you …" became a
+    # question about Atlas. "can you X" is read as a polite "X" (`polite_rest`).
+    phrases: ["what can you do", "what's new", "whats new",
+              "what are you waiting on", "what can't you do", "what cant you do",
+              "what's left", "whats left"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: history
+    describe: "Say what Atlas did recently, or change something it did back. arg: what, optional."
+    # "undo", "undo that" and "put it back" were listed here as well as under
+    # `undo`. Two commands cannot share a phrase — the longest-phrase rule has
+    # nothing left to separate them by, so one of the pair simply never fires.
+    # These three were the ones that never fired.
+    phrases: ["what did you do", "what have you done", "what changed", "what just happened",
+              "change it back", "go back", "revert",
+              "take it back", "that was wrong"]
+    takes_argument: true
+    argument_optional: true
+
+
+  # The conversation itself, read back — as opposed to `history`, which is the
+  # log of what Atlas *did*. `session::transcript` already assembles the recent
+  # turns for the model; this is the one thing that reads them to you.
+  - intent: recap
+    describe: "Read back a recap of this conversation."
+    phrases: ["recap our conversation", "recap the conversation", "recap this conversation",
+              "read back our conversation", "read our conversation back",
+              "what have we been talking about", "what were we talking about",
+              "our conversation so far", "recap our chat"]
+
+  # The autonomy ledger read back: what Atlas will do on its own and where it
+  # still asks first, per kind of work. Distinct from `how_am_i_doing` (which
+  # reports corrections and rules): this reads the `earned` confidence record
+  # that decides whether Atlas acts alone, through `earned::may_act_alone` and
+  # `earned::rope`. A local, offline read of state Atlas already holds.
+  - intent: act_alone
+    describe: "Say what Atlas does on its own without asking, and where it still asks first."
+    phrases: ["what can you do on your own", "what do you do on your own",
+              "what can you do without asking", "what do you do without asking me",
+              "where do you still ask me first", "what have you earned",
+              "what are you trusted to do", "how much do you trust yourself"]
+
+  # The size of the knowledge store, read back -- how much research has folded
+  # in and roughly what it costs. Distinct from `what_i_have` ("what do you
+  # know about X" opens a subject); this asks about the whole store's size and
+  # the promise that it does not grow without bound. Offline, reads a count
+  # Atlas already holds.
+  - intent: knowledge_size
+    describe: "Say how much Atlas knows and remembers."
+    phrases: ["how much do you know", "how big is your memory",
+              "how much have you learned", "how full is your memory",
+              "does your knowledge keep growing", "how much have you got stored",
+              "how much do you remember"]
+
+  # You told Atlas a captured note was filed wrong. The argument after the
+  # phrase decides the fix: a kind ("that's actually a task") changes what sort
+  # of thing the note is, a name ("file that under the roof job") adds a handle
+  # you can find it by later. The correction lands on the most recent note and
+  # marks it confirmed, so `capture::Notebook::correct` -- the one writer that
+  # records a filing correction -- finally has a phrase that reaches it.
+  # Offline; rewrites the local notebook and nothing else.
+  - intent: refile
+    describe: "File the last note under a different kind. arg: the kind."
+    phrases: ["file that under", "refile that under", "refile that as",
+              "that's actually a", "thats actually a", "no that's a",
+              "no thats a", "that note is actually a", "refile that",
+              "refile it as", "put that under"]
+    takes_argument: true
+
+  # A symptom you describe, matched against the snags in Atlas's shipped
+  # procedures. Distinct from `machine_health` ("why is this slow" reads the
+  # live vitals) and from asking how to do something: this starts from what
+  # went wrong and names the likely cause and fix, offline, from
+  # `knowhow::for_symptom`.
+  - intent: diagnose
+    describe: "Troubleshoot a problem the user describes and suggest fixes. arg: the problem."
+    phrases: ["troubleshoot", "help me fix", "what's going wrong with", "whats going wrong with",
+              "what should i do about", "diagnose", "why does it keep", "why won't"]
+    takes_argument: true
+    argument_optional: true
+
+  # The steps of a task Atlas has a shipped procedure for, read back in order.
+  # Distinct from `diagnose` (which starts from a symptom): this starts from a
+  # task and reads `knowhow::for_request` + `knowhow::as_plan`, offline. The
+  # Unknown fallback already reaches the same match but only ever says "I know
+  # this one, N steps" -- these phrases ask for the steps themselves.
+  - intent: walk_through
+    describe: "Walk the user step by step through how to do something on their computer. arg: the task."
+    phrases: ["walk me through", "talk me through", "show me how to", "show me the steps to",
+              "steps to", "steps for"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: why
+    describe: "Explain why Atlas did or said something. arg: what, optional."
+    phrases: ["why did you", "why is that", "why that one", "explain that"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: pair
+    describe: "Invite another device of the user's to pair with this Atlas. arg: the device's name."
+    phrases: ["pair with", "pair", "invite", "set up a pairing with"]
+    takes_argument: true
+    raw_argument: true
+
+  - intent: accept_pairing
+    describe: "Accept a pairing code from another device. arg: the code exactly as pasted."
+    phrases: ["accept pairing", "accept this pairing", "accept invite"]
+    takes_argument: true
+    raw_argument: true
+
+  - intent: forget_peer
+    describe: "Remove a paired device. arg: its name."
+    phrases: ["forget my pairing with", "forget pairing with", "unpair", "remove pairing with"]
+    takes_argument: true
+    raw_argument: true
+
+  # Coming back to what setup skipped. `firstrun.rs` says, in its own words,
+  # "say \"finish setting up\" when you want to" -- and until now nothing
+  # parsed that. Found by tests/it_can_do_what_it_says.rs.
+  - intent: finish_setup
+    describe: "Carry on with Atlas's setup where it was left."
+    phrases: ["finish setting up", "finish the setup", "carry on setting up",
+              "back to setting up", "lets finish setup"]
+
+  # Muting a topic by saying so. `config/tools.yaml` offers this as the
+  # alternative to hand-editing `interrupt.muted`, and nothing heard it.
+  # `raw_argument` because `interrupt::mute_from` reads the whole sentence.
+  - intent: mute_topic
+    describe: "Stop or start telling the user about a topic. arg: the topic."
+    phrases: ["stop telling me about", "dont tell me about", "stop mentioning",
+              "start telling me about", "start mentioning", "unmute",
+              "what are you not telling me"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # Face enrolment, which `config/tools.yaml` describes as "say this is me to
+  # the camera once and it knows you".
+  - intent: this_is_me
+    describe: "Learn the user's face from the camera."
+    expose: never
+    phrases: ["this is me", "thats me", "that is me", "this is my face",
+              "learn my face"]
+
+  # Puts Atlas into a handover: somebody else has the laptop. Free to say,
+  # by anyone, on purpose -- see src/handover.rs on the asymmetry. Entering
+  # only ever narrows what Atlas will do, so guarding it would buy nothing
+  # and would cost you the one moment you need it.
+  #
+  # `Hint::offer` has been telling people to say "hand over" since the day it
+  # was written, and until now nothing parsed it. Found by
+  # `tests/it_can_do_what_it_says.rs`, which exists because of it.
+  - intent: hand_over
+    describe: "Hand Atlas over to someone else for a while (guest mode)."
+    # "You're talking to someone else now" was not here, and two guest tests
+    # that say it passed only because the line wasn't understood: it became
+    # "I didn't catch that. Go ahead?" and swallowed the guest's next request.
+    # Once an unrecognised line stopped being an approval (26 Sep 2026) they
+    # failed, which is how this was found.
+    phrases: ["hand over", "hand it over", "guest mode", "this isnt mine right now",
+              "someone else is using this", "somebody else is using this",
+              "youre talking to someone else", "you're talking to someone else",
+              "talking to someone else now", "youre talking to someone else now",
+              "you're talking to someone else now", "someone else is here", "somebody else is here"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # Ends a handover. The phrase summons a typed passphrase prompt and does
+  # nothing else -- see src/handover.rs. It takes no argument on purpose: an
+  # argument is what a spoken passphrase would arrive as, and there is no
+  # branch anywhere that would read one.
+  - intent: take_it_back
+    describe: "End guest mode; the owner is back."
+    # "im back" is deliberately NOT here. It belongs to `resume`, and has
+    # since long before this command existed -- it is what you say to an
+    # Atlas you paused. Claiming it here would have made one of the two
+    # unreachable, which is exactly the failure
+    # `tests/commands_are_distinct.rs` exists to catch, and it caught this.
+    #
+    # It still works: while the machine is handed over and nothing is
+    # actually paused, `daemon`'s `Resume` arm treats it as this. That is the
+    # only sentence with two meanings here, and the situation tells them
+    # apart -- see the comment there.
+    #
+    # Apostrophes are stripped by `intent::normalize` on both sides, so
+    # "it's mine again" would be a second, identical entry for the one below.
+    # "take it back" is not here either: `history` has it, meaning undo the
+    # change you just made. Two commands cannot share a phrase -- the
+    # longest-phrase rule has nothing left to separate them by -- and the one
+    # that loses simply never fires. Both of these collisions were found by
+    # the suite rather than by reading, which is the whole reason that guard
+    # is a test and not a convention.
+    phrases:
+      ["its me again", "this is mine again", "its mine again",
+       "hand it back", "give it back", "end the handover", "handover back"]
+
+  # Talking to somebody you work with, inside Atlas. `raw_argument` for the
+  # same reason `dictate` has it: this is a sentence a person will read, and
+  # `normalize` strips the case and punctuation that make it read like one.
+  #
+  # "tell" is deliberately not a phrase here. It is the most natural thing to
+  # say and it is far too broad -- "tell me what's outstanding" would become a
+  # message to somebody called "me".
+  - intent: message
+    describe: "Send a message to a friend or group. arg: who and what to say."
+    phrases: ["message", "send a message to", "send a message", "say to"]
+    takes_argument: true
+    raw_argument: true
+
+  # Who is in a group, and which members you can actually reach. "who's in the
+  # Northwind group", "who is in Jordan, Maya", "members of the project group".
+  - intent: who_is_in
+    describe: "Say who is in a group. arg: the group."
+    phrases: ["whos in", "who is in", "who's in", "members of"]
+    takes_argument: true
+    argument_optional: false
+
+  # Give a group a name so you can reach it by that name later. "name the
+  # Jordan, Maya group as Northwind project", "call the roofing group Roofing".
+  - intent: name_group
+    describe: "Name or rename a group. arg: the group and the new name."
+    phrases: ["name the", "rename the", "call the"]
+    takes_argument: true
+    argument_optional: false
+
+  # Walk out of a group: drop your copy, tell the others, and don't get pulled
+  # back in by a message in flight. "leave the Northwind group", "leave the
+  # roofing group".
+  - intent: leave_group
+    describe: "Leave a group. arg: the group."
+    phrases: ["leave the", "leave group", "exit the", "remove me from"]
+    takes_argument: true
+    argument_optional: false
+
+  # Changing a group you own. Only a sentence that names a person and a group
+  # becomes one ("add Sam to the Friends group"); anything else starting with
+  # these words falls through as not understood.
+  # Friends. "add a friend" makes a one-time link to send; a pasted link adds
+  # them (read before any phrase, in `intent`); requests travel through a
+  # group you share. Longer than "add", so it wins over change_group.
+  - intent: friend
+    describe: "Add a friend, show friend requests, or accept, decline or send one. arg: who."
+    phrases: ["add a friend", "add a new friend", "add friend", "friend link", "my friend link",
+              "make a friend link", "make me a friend link", "give me a friend link", "new friend link",
+              "friend requests", "any friend requests", "show friend requests", "show my friend requests"]
+
+  # Atlas's own updates (OPEN_GAPS 8.2). "install the update" is the decision,
+  # as `atlas update install` is; going back asks first, with what it means.
+  - intent: update_status
+    describe: "Check whether an Atlas update is available and which version this is."
+    phrases: ["any updates", "are there any updates", "is there an update", "is there an atlas update",
+              "check for updates", "what version are you", "what version of atlas is this", "update status"]
+
+  - intent: update_install
+    describe: "Install the Atlas update."
+    expose: never
+    phrases: ["install the update", "install the atlas update", "update atlas", "update yourself",
+              "go ahead and update"]
+
+  - intent: update_undo
+    describe: "Go back to the previous Atlas version."
+    expose: never
+    phrases: ["go back to the last version", "go back to the previous version", "undo the update",
+              "roll back the update", "put the old version back"]
+
+  # Feedback to whoever sends you Atlas (8.14): the friend decides, hears
+  # exactly what will be sent, and it goes only on their yes. What's said
+  # after the phrase is sent as said.
+  - intent: feedback_send
+    describe: "Send feedback or a bug report about Atlas. arg: the feedback in the user's words."
+    expose: never
+    phrases: ["report a bug", "report a problem", "send feedback", "give feedback",
+              "feedback for atlas", "something's wrong with atlas", "somethings wrong with atlas"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # The same, without attaching what was written down about a failed update.
+  - intent: feedback_send_bare
+    describe: "Send feedback without the failure details attached. arg: the feedback."
+    expose: never
+    phrases: ["report a bug without the failure", "send feedback without the failure",
+              "report a problem without the failure"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: feedback_list
+    describe: "Read out feedback friends sent about Atlas."
+    phrases: ["any feedback", "read me the feedback", "what feedback", "feedback from my friends",
+              "show feedback", "what did my friends say about atlas", "did they answer my feedback"]
+
+  # The releaser's answer: "answer feedback 2 fixing", "answer feedback 1 fixed 1.3.0 thanks".
+  - intent: feedback_reply
+    describe: "Answer or mark a piece of feedback. arg: the answer."
+    expose: never
+    phrases: ["answer feedback", "reply to feedback", "mark feedback"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # The phone's own language model (OPEN_GAPS P.7): downloaded on the phone
+  # when asked -- it's up to 1.8 GB -- and loaded inside the app.
+  - intent: phone_model_get
+    describe: "Download a language model onto the phone."
+    phrases: ["get your own model", "download your own model", "download the phone model",
+              "get the phone model", "put a model on this phone"]
+
+  - intent: phone_model_status
+    describe: "Say how the phone's model download is going."
+    phrases: ["how's the model download", "hows the model download", "how is the model download going",
+              "phone model status", "is the phone model ready"]
+
+  # The same, naming who: an answer to a request, or a request to send.
+  - intent: friend
+    describe: "Add a friend, show friend requests, or accept, decline or send one. arg: who."
+    phrases: ["accept the friend request from", "accept friend request from", "accept a friend request from",
+              "decline the friend request from", "decline friend request from", "ignore the friend request from",
+              "send a friend request to", "send friend request to", "friend request", "be friends with"]
+    takes_argument: true
+    argument_optional: false
+    raw_argument: true
+
+  - intent: change_group
+    describe: "Add or remove someone in a group, or change what they may do. arg: the change."
+    phrases: ["add", "take", "remove", "make", "let"]
+    takes_argument: true
+    argument_optional: false
+
+  - intent: messages
+    describe: "Read the user's new messages from friends and groups."
+    phrases: ["any messages", "my messages", "read my messages", "any new messages",
+              "what have i missed", "whats been said"]
+
+  - intent: create_account
+    describe: "Create an account on a website for the user. arg: the site."
+    phrases: ["sign me up for", "sign me up", "make me an account on", "make me an account",
+              "create an account on", "register me on", "register me for"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: sign_in
+    describe: "Sign the user in to a website. arg: the site."
+    # "give me access to" is here because `signin.rs` says, out loud, 'Say
+    # "give me access to" and a site' -- and until now it parsed to nothing.
+    phrases: ["sign me into", "log me into", "sign in to", "log in to", "sign me in",
+              "give me access to"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: type_code
+    describe: "Type a sign-in code the user reads out or that is in their email or texts."
+    expose: never
+    # Two-factor codes (Eric, 25 Sep: B1). Read it out, or say where it is.
+    phrases: ["type my code", "type the code", "type in the code", "enter my code",
+              "enter the code", "put in the code", "fill in the code", "the code is",
+              "my code is", "its in my email", "its in my texts", "the codes in my",
+              "code is in my", "get the code from my", "find the code in my"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: read_document
+    describe: "Read a PDF, Word document, scan or file aloud or summarise it. arg: which file, optional."
+    # Reading a PDF, Word file or scan, virus-scanned first (Eric, H3).
+    phrases: ["read this pdf", "read the pdf", "read me the pdf", "what does this pdf say", "what does the pdf say", "read this document", "read the document", "read this file", "read me this file", "read this word document", "read this scan", "what does this document say"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: unzip
+    describe: "Open a zip file and say what is in it. arg: which file, optional."
+    # Unzipping, with a virus scan before and after (Eric, H3).
+    phrases: ["unzip", "unzip this", "unzip the file", "open this zip", "open the zip", "extract this zip", "extract the zip", "unpack this zip", "unpack the zip", "whats in this zip", "what's in this zip"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: drop_task
+    describe: "Take something off the user's list, or bring back something dropped. arg: the task."
+    # Dropping a task and bringing it back (Eric, H8).
+    phrases: ["drop the task", "im not doing", "i'm not doing", "take off my list", "take it off my list", "bring back what i dropped", "bring back the task", "what did i drop", "what have i dropped", "pick back up", "pick up what i dropped", "un drop"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: suggestions
+    describe: "Turn one of Atlas's own suggestions on or off, or list them. arg: which one."
+    # Suggestions on or off by name (Eric, H13b).
+    phrases: ["stop suggesting", "dont suggest", "don't suggest", "start suggesting", "suggest again", "turn on the suggestion", "turn off the suggestion", "what do you suggest on your own", "which suggestions", "my suggestions"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: dangling
+    describe: "List notes that link to things that do not exist yet."
+    # Notes that point at nothing yet (Eric, H13d).
+    phrases: ["notes that point nowhere", "which notes point nowhere", "dangling notes", "broken links in my notes", "what should i write next", "notes pointing to nothing"]
+
+  - intent: overnight
+    describe: "Give the account of what Atlas did overnight."
+    # The overnight account, on request (Eric, H13j).
+    phrases: ["what did you do overnight", "what did you do last night", "overnight report", "the overnight account", "what happened overnight", "overnight account"]
+
+  - intent: creator_advice
+    describe: "Advice for video creators: colour grading, formats, export settings, brand deals. arg: the question."
+    # Video and creator advice (Eric, I: kept, he makes video content).
+    phrases: ["how should i grade", "colour grading", "color grading", "grading steps", "grade my footage", "export settings for", "best length for a", "is this deal good", "is this a good deal", "affiliate deal", "brand deal", "sponsorship deal", "my creator profile", "my profile has", "rules for a talking head", "rules for a short", "rules for a tutorial", "rules for a product review", "rules for a screen recording", "rules for long form"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: money_advice
+    describe: "General money housekeeping advice: how long to keep receipts and statements. arg: the question."
+    # General money questions (Eric, J: kept, general only).
+    phrases: ["how long should i keep", "how long do i keep", "how long to keep", "keep my receipts", "keep receipts", "keep my statements", "would you need my bank login", "do you need my bank password", "how would you read my bank", "how would you get my statements"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: teach_gesture
+    describe: "Teach Atlas a new hand gesture. arg: its name and what it does."
+    # Teaching a new hand gesture (Eric, H6).
+    phrases: ["teach you a gesture", "teach you a new gesture", "learn a gesture", "learn a new gesture", "new gesture called", "add a gesture", "make a gesture"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: languages
+    describe: "Say which languages Atlas can hear and translate."
+    # Other languages, live (Eric, H5).
+    phrases: ["what languages can you hear", "what languages do you understand", "can you hear other languages", "do you speak spanish", "do you understand other languages", "can you translate what people say"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: set_key
+    describe: "Change the push-to-talk or typing key."
+    expose: never
+    # Changing the keys by saying them (Eric: customizable, he has no Alt key).
+    phrases: ["set my typing key to", "change my typing key to", "set the typing box key to", "change the typing box key to", "set my push to talk key to", "change my push to talk key to", "set the push to talk key to", "change the push to talk key to", "what are my keys", "which keys do i press"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: clock
+    describe: "Say the time and date from this machine's clock."
+    # The time and the date (found on the laptop: "what time is it" got "Which one?").
+    phrases: ["what time is it", "whats the time", "what's the time", "what is the time", "what day is it", "whats the date", "what's the date", "what is the date", "todays date", "what's today's date"]
+
+  - intent: edit_media
+    describe: "Edit a video on a copy: cut or trim it. arg: what to do."
+    # Editing a video you name, on a copy (Eric, G8).
+    phrases: ["edit this video", "edit the video", "edit my video", "cut this video", "trim this video"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: move_big_files
+    describe: "Move Atlas's big folders to another drive to free space. arg: where, optional."
+    # Making room by moving Atlas's big folders to another drive (Eric, G5).
+    phrases: ["move my big files", "move the big files", "move big files", "move the models to",
+              "make room on my drive", "free up space on my drive", "where did you move"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: press_button
+    describe: "Press a named button in the app in front. arg: the button's name."
+    # Pressing a button in an app by its name (Eric, G4).
+    phrases: ["click the", "press the", "hit the", "tap the", "click on"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: schedule_post
+    describe: "Set when a drafted post goes out, or cancel it. arg: when."
+    # When a post goes (Eric, G2). Each post is still approved on its own words.
+    phrases: ["post it at", "post it tomorrow", "post it now", "post that at", "post that now",
+              "schedule it for", "schedule the post for", "schedule the post", "cancel the post"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: sort_mail
+    describe: "Sort the user's inbox, or delete a category such as newsletters. arg: what, optional."
+    # Sorting your mailbox (Eric, G1). Deleting only when you say so.
+    phrases: ["sort my mailbox", "sort my inbox", "sort my email", "tidy my inbox", "clean up my inbox",
+              "organize my inbox", "organise my inbox", "delete the noise", "delete the newsletters",
+              "delete the receipts", "delete the read later", "bin the noise", "bin the newsletters"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: later
+    describe: "Add something to the later list, read the list, or take something off it. arg: what."
+    # The list for later (Eric, F8).
+    phrases: ["add that to the later list", "add that to my later list", "put that on the later list",
+              "save that for later", "later list", "whats on my later list", "what's on my later list",
+              "take off the later list", "remove from the later list", "clear the later list"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: goals
+    describe: "Set one of the user's goals, record progress on it, drop it, or list their goals. arg: the goal."
+    expose: core
+    # Goals you set, so Atlas can nudge toward them (Eric, F4).
+    phrases: ["my goal is", "set a goal", "new goal", "i worked on my goal", "made progress on",
+              "i worked on", "drop the goal", "forget the goal", "im done with the goal",
+              "what are my goals", "my goals"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: keep_at_it
+    describe: "Keep working on the last build that ran out of tries, as a long job."
+    # A build that ran out of tries, carried on as a long job (Eric, E3).
+    phrases: ["keep at it", "keep going on that", "keep working on that", "keep trying",
+              "work on it until it passes", "dont stop until it works", "keep going until it works"]
+
+  - intent: two_factor
+    describe: "Turn two-factor sign-in on or off for a site. arg: the site."
+    # Turning two-factor on or off, read back first, with you at the machine.
+    phrases: ["turn off two factor", "turn off 2fa", "turn off two step", "disable two factor",
+              "disable 2fa", "switch off two factor", "turn on two factor", "turn on 2fa",
+              "turn on two step", "enable two factor", "enable 2fa", "set up two factor",
+              "switch on two factor"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: unlock
+    describe: "Unlock the vault with the passphrase."
+    expose: never
+    phrases: ["unlock", "the passphrase is", "open the vault"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: capture
+    describe: "Write a note of something to remember. arg: what to note."
+    expose: core
+    phrases: ["note that", "remember this", "make a note", "jot this down", "note this"]
+    takes_argument: true
+    argument_optional: true
+
+  # Typing what you say, into whatever window you are looking at. Once this
+  # starts, nothing else here is consulted until you say "stop dictating" --
+  # the daemon routes speech to `dictate` before the parser sees it, because
+  # while dictating "open chrome" is three words you wanted typed.
+  - intent: dictate
+    describe: "Type what the user says into the window in front."
+    expose: never
+    phrases: ["start dictating", "take dictation", "type what i say",
+              "start dictation", "dictate this", "type this"]
+    takes_argument: true
+    argument_optional: true
+    # The remainder reaches `Intent::Dictate` exactly as spoken. Normalising
+    # it would strip the case and punctuation dictation is for.
+    raw_argument: true
+
+  - intent: mail
+    describe: "Check the user's email inbox, or unsubscribe from what they don't read. arg: what, optional."
+    phrases: ["what's in my inbox", "check my email", "clear out my email",
+              "unsubscribe from what i don't read"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: sync
+    describe: "Send something to the user's phone or catch their other devices up. arg: what, optional."
+    phrases: ["sync", "send this to my phone", "catch up my other devices"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: review_post
+    describe: "Check a post before it goes out. arg: the post's text."
+    phrases: ["check this before i post it", "review this post", "is this ok to post"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: travel_prep
+    describe: "Get ready to travel: what would lock the user out of their accounts abroad."
+    phrases: ["get me ready to travel", "i'm going away", "what would lock me out"]
+
+  - intent: files
+    describe: "Convert a file, say what a file is, or join files. arg: what."
+    phrases: ["convert this", "what is this file", "join these"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: work_on_yourself
+    describe: "Have Atlas change its own code to fix or improve itself. arg: what to fix."
+    phrases: ["work on yourself", "fix that yourself", "improve yourself",
+              "sort that out yourself", "have a go at fixing"]
+    takes_argument: true
+    argument_optional: true
+
+  # Code from a description. "Build me a script that renames files by date",
+  # "write a function that parses this format". Atlas writes it, checks it
+  # against the real toolchain (compiler, linter, tests), and hands over what
+  # passes — or says honestly where it's stuck. raw_argument keeps the
+  # description verbatim, since code details (names, symbols) matter.
+  - intent: build_it
+    describe: "Write a program or script from a description. arg: what to build."
+    phrases: ["build me", "write me a", "write a function", "write a script",
+              "code me", "make me a program", "build a tool that",
+              "write code", "code up"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # Work on one of your projects. "On the Atlas project, add X", "improve the
+  # date parsing in Homelab", "increase XYZ on X project". Atlas scopes it,
+  # builds and checks it, and files a proposed change in that project's queue.
+  - intent: improve
+    describe: "Change or refactor one of the user's code projects. arg: the change and the project."
+    phrases: ["improve", "on the", "increase", "add to", "change the",
+              "update the", "work on the", "refactor", "fix the"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # Apply a change you've reviewed, by the title Atlas gave it.
+  - intent: implement
+    describe: "Apply a planned change to code. arg: the change."
+    phrases: ["implement", "apply the change", "apply that", "ship it",
+              "go ahead and implement", "push the change"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # Review a page's design against the house style — the checkable part of
+  # taste: spacing scale, colour tokens, accessibility.
+  - intent: design_review
+    describe: "Review the design of a page or screen. arg: which one."
+    phrases: ["review the design", "design review", "check the design",
+              "critique the design", "review the design of", "check this page's design"]
+    takes_argument: true
+    argument_optional: false
+    raw_argument: true
+
+  # Draw an SVG animation, check it renders and matches the spec, save it.
+  - intent: animate
+    describe: "Make an animation of something. arg: what."
+    phrases: ["animate", "make an animation", "draw an animation",
+              "create an animation", "animate a", "animation of"]
+    takes_argument: true
+    argument_optional: false
+    raw_argument: true
+
+  # Draw a 3-D scene: a model drafts it, Atlas draws it (scene3d).
+  - intent: scene3d
+    describe: "Draw a 3D scene of something. arg: what."
+    phrases: ["draw in 3d", "draw a 3d", "render in 3d", "render a 3d",
+              "make a 3d", "3d scene of", "3d model of", "3d render of"]
+    takes_argument: true
+    argument_optional: false
+    raw_argument: true
+
+  # Explain code in plain English for a non-coder — a file, pasted code, the
+  # last thing built, or a change waiting to be implemented. Lead phrases keep
+  # the source words ("last build", "waiting to be implemented") in the argument
+  # so the handler can tell which is meant. Avoids "explain this" (the
+  # clipboard-summarise command) and bare "explain".
+  - intent: explain_code
+    describe: "Explain what a piece of code does. arg: which code."
+    phrases: ["explain the", "explain what", "explain code",
+              "what does this code do", "code explanation"]
+    takes_argument: true
+    argument_optional: false
+    raw_argument: true
+
+  # Explain the change Atlas has staged as behaviour, not code. "What will that
+  # change do", "what's different", "explain that change". Reads the tests the
+  # staged change adds and drops and says what will be different — no diff.
+  - intent: plain_change
+    describe: "Explain in plain words what the last code change will do."
+    phrases: ["what will that change do", "what will the change do",
+              "what will be different", "what's different", "whats different",
+              "what does that change do", "explain that change"]
+
+  # A time someone proposed, or your answer to one. Atlas checks it against your
+  # calendar and lays out what fits; you accept, decline, or offer another time,
+  # and only an accept writes it — nothing is ever sent on your behalf.
+  # Learn a whole body of knowledge at once — a paste or a file — broken into
+  # many facts and folded into the one knowledge book. This is how the base
+  # grows vast: not one note at a time, but a document in one go.
+  - intent: learn_knowledge
+    describe: "Take in some text as knowledge to remember. arg: the text or where it is."
+    phrases: ["learn this", "learn that", "learn from", "learn the following",
+              "study this", "add this to your knowledge", "take in this"]
+    takes_argument: true
+    raw_argument: true
+
+  - intent: booking
+    describe: "Handle a proposed meeting time: log, accept, decline or counter it. arg: the details."
+    phrases: ["someone proposed", "proposed a time", "log a proposal",
+              "respond to the proposal", "accept the time", "accept the meeting",
+              "decline the meeting", "decline the proposal", "offer another time",
+              "counter the proposal", "work through the proposal"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # Put something on your own calendar. "Schedule lunch tomorrow at 12",
+  # "add dentist on Monday", "book the call Friday at 3". Offline; the phone's
+  # native calendar is a sync target, not a requirement.
+  # Raw-argument so the time survives: normalising the argument would strip
+  # the colon out of "2:30pm". The phrases carry no apostrophes, so raw
+  # matching is fine here (unlike agenda below).
+  - intent: schedule
+    describe: "Put an event on the user's calendar. arg: what and when."
+    expose: core
+    phrases: ["schedule", "put on my calendar", "add to my calendar",
+              "book", "new event", "put on the calendar",
+              "block off", "block out", "time block", "block"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  # The round-trip carrier for reminders. A reminder is a scheduler JOB whose
+  # stored command is "reminder Reminder: <text>"; when the tick fires it, the
+  # job's command is re-parsed through this same phrase list, and this arm turns
+  # it into `Intent::Say` so Atlas simply speaks it. Not a phrase a person
+  # reaches for — "remind me in 20 minutes to ..." is caught earlier, in the
+  # daemon's `remind_help`, which is what CREATES the job.
+  - intent: reminder
+    describe: "Internal: a reminder firing."
+    expose: never
+    phrases: ["reminder"]
+    takes_argument: true
+    raw_argument: true
+
+  # Read your calendar back. "What's on today", "my calendar this week",
+  # "agenda", "what's coming up". Not a raw-argument command, so the fully
+  # normalised input is matched and an apostrophe in "what's on" is handled.
+  - intent: agenda
+    describe: "Read the user's calendar: what is on today, tomorrow or a given day, or whether they are free. Call it rather than saying you will check. arg: the day, optional."
+    expose: core
+    phrases: ["agenda", "whats on", "my calendar", "my schedule",
+              "whats coming up", "what do i have on", "what have i got on"]
+    takes_argument: true
+    argument_optional: true
+
+  # Seeing, rather than reading. "Read this" is still OCR — these are the
+  # questions Atlas could never answer before: what is that, who is that,
+  # what am I holding.
+  - intent: whats_there
+    describe: "Look through the camera and say what or who is in the room."
+    phrases: ["what do you see", "what can you see", "look at the room",
+              "what's in front of you", "whats in front of you", "who is here",
+              "who's here", "whos here", "look around"]
+
+  # "what is this" belongs to the clipboard and has for a long time — it means
+  # the thing you copied. These are the phrasings that can only mean the thing
+  # in front of the camera.
+  # "what is that" / "what's that" were here and turned the camera on in the
+  # middle of a conversation about something said (27 Sep 2026).
+  - intent: whats_this
+    describe: "Look through the camera at what the user is holding up or pointing at."
+    phrases: ["what is this thing",
+              "what's this thing", "whats this thing", "what am i pointing at",
+              "what am i pointing to", "what am i holding",
+              "what am i showing you", "look at this"]
+
+  # Deliberately not "remember this" — that is already how you capture a note,
+  # and two commands that sound the same is how one of them stops working.
+  - intent: name_this
+    describe: "Learn the name of what the camera sees. arg: the name."
+    phrases: ["this is my", "this is a", "that is my", "learn this as",
+              "call this", "the name for this is"]
+    takes_argument: true
+
+  - intent: recommend
+    describe: "Suggest what would make Atlas faster or more useful here."
+    phrases: ["what could make you faster", "what am i missing",
+              "how could you be better", "what would help you"]
+
+  - intent: address_as
+    describe: "Change what Atlas calls the user. arg: the name."
+    expose: never
+    phrases: ["call me", "address me as", "you can call me", "refer to me as",
+              "stop calling me", "don't call me", "dont call me",
+              "just talk", "no name", "drop the"]
+    takes_argument: true
+    argument_optional: true
+
+  # Asking one of your other Atlases how it is getting on. Read-only, and
+  # only the ones you have named under `elsewhere` in tools.yaml.
+  - intent: brief_on
+    describe: "Ask one of the user's other Atlases (another device or person's Atlas) how it is going. arg: that Atlas's name."
+    # "how is" and "how's" were here: "how's it going" asked for an Atlas
+    # called "it going" (27 Sep 2026). The other Atlases are asked about by
+    # name; only "brief me on" takes any name.
+    phrases: ["brief me on"]
+    takes_argument: true
+    argument_optional: true
+
+  - intent: brief_on
+    describe: "Ask one of the user's other Atlases (another device or person's Atlas) how it is going. arg: that Atlas's name."
+    phrases: ["how is", "how's", "check on", "look in on", "what's happening with", "whats happening with"]
+    takes_argument: true
+    names_only: true
+
+  # ---- Round 11: the everyday tools (`workday`). Each takes the whole
+  # sentence; the tool reads what it needs from it. Sentences with an
+  # unmistakable shape ("keep in touch with Priya every month", "open 2"
+  # after a list) are read before this table, by `workday::read_first`.
+  - intent: clip_history
+    describe: "Search or read back the clipboard history. arg: what, optional."
+    phrases: ["clipboard history", "what did i copy", "what have i copied", "search my clipboard",
+              "turn on clipboard history", "turn off clipboard history", "clear clipboard history",
+              "paste the one"]
+    takes_argument: true
+    argument_optional: true
+  - intent: screen_text
+    describe: "Copy the text off the window on screen. arg: which window, optional."
+    phrases: ["copy the text off", "copy text off the screen", "copy the text from", "grab the text",
+              "copy the text in this window", "copy the text on screen"]
+    takes_argument: true
+    argument_optional: true
+  - intent: market_day
+    describe: "Say whether the stock market is open and when the next holiday is. arg: the day, optional."
+    phrases: ["is the market open", "is the stock market open", "market holidays", "market calendar",
+              "next market holiday", "when is the market closed", "market today", "is it a trading day"]
+    takes_argument: true
+    argument_optional: true
+  - intent: waiting_for
+    describe: "List what the user is waiting on from others and what they promised. arg: who, optional."
+    phrases: ["what am i waiting on", "what am i waiting for", "who owes me", "what did i promise",
+              "my promises", "waiting for list"]
+    takes_argument: true
+    argument_optional: true
+  - intent: note_review
+    describe: "Go through the user's notes in a weekly review."
+    phrases: ["review my notes", "weekly review", "go through my notes"]
+    takes_argument: true
+    argument_optional: true
+  - intent: launch
+    describe: "Start a program that is not one of the known apps. arg: its name."
+    phrases: ["start up", "fire up", "run the app"]
+    takes_argument: true
+  - intent: trade_day
+    describe: "The trading check-in or journal: before or after the session. arg: which."
+    phrases: ["trading check in", "pre market check", "before the session", "after the session",
+              "trading journal", "journal my session", "how has my trading process been"]
+    takes_argument: true
+    argument_optional: true
+  - intent: meeting_prep
+    describe: "Prepare the user for their next meeting: who, what, and past notes. arg: which meeting, optional."
+    phrases: ["prep me for my next meeting", "prep me for", "meeting prep", "who am i meeting",
+              "brief me on my next meeting"]
+    takes_argument: true
+    argument_optional: true
+  - intent: snippet
+    describe: "Type or manage a saved text snippet."
+    expose: never
+    phrases: ["type my", "insert my", "type snippet", "insert snippet", "my snippets", "list my snippets",
+              "delete snippet", "forget snippet"]
+    takes_argument: true
+    argument_optional: true
+  - intent: find_file
+    describe: "Find one of the user's files, PDFs, photos or documents. Call it rather than saying you will look. arg: what to look for."
+    expose: core
+    phrases: ["find the file", "find my file", "find file", "find files", "where is my file",
+              "where's my file", "find the pdf", "find my pdf", "find the spreadsheet", "find the document",
+              "find my photos", "find the photo", "find the presentation"]
+    takes_argument: true
+    argument_optional: true
+  - intent: pdf
+    describe: "Merge, split, extract pages from or sign PDFs. arg: what."
+    phrases: ["merge the pdfs", "merge pdfs", "combine the pdfs", "extract pages", "split the pdf",
+              "sign the pdf"]
+    takes_argument: true
+    argument_optional: true
+  - intent: people
+    describe: "Who the user should catch up with, and notes about people. arg: who, optional."
+    phrases: ["who should i catch up with", "who haven't i talked to",
+              "keep in touch with", "stop keeping in touch with", "note about"]
+    takes_argument: true
+    argument_optional: true
+  - intent: feeds
+    describe: "Follow or unfollow sites and read what is new in the user's feeds. arg: which site, optional."
+    phrases: ["subscribe to", "follow the site", "follow the blog", "unfollow", "stop following", "my feeds", "what's new in my feeds",
+              "any new articles", "reading list", "what am i following"]
+    takes_argument: true
+    argument_optional: true
+  - intent: receipt
+    describe: "Keep or read a receipt, and what the user spent at a place or this month. arg: what."
+    phrases: ["keep this receipt", "read this receipt", "save this receipt", "what did i spend at", "what did i spend this month",
+              "how much did i spend at", "my receipts", "receipts for"]
+    takes_argument: true
+    argument_optional: true
+  - intent: habit
+    describe: "Track the user's habits: add one, check them, or pause them. arg: which."
+    phrases: ["new habit", "how are my habits", "my habits", "pause my habits",
+              "stop tracking", "add a habit"]
+    takes_argument: true
+    argument_optional: true
+  - intent: cards
+    describe: "Flashcards: quiz the user, review due cards, or make a card. arg: what."
+    phrases: ["quiz me", "review my cards", "flashcards", "how many cards are due", "make a card"]
+    takes_argument: true
+    argument_optional: true
+  - intent: translate
+    describe: "Translate text into another language. arg: the text and the language."
+    phrases: ["translate", "what does this say in", "say this in"]
+    takes_argument: true
+    argument_optional: true
+
+  # Call notes (Eric, 24 Sep 2026: "call: yes notes, voices ask then record").
+  # Your side is noted; nobody else is recorded until you tell Atlas they said
+  # yes. See src/callnotes.rs.
+  - intent: call_notes_on
+    describe: "Start taking notes on the call the user is on."
+    phrases: ["take notes on this call", "take call notes", "note this call",
+              "start call notes"]
+
+  - intent: call_record_everyone
+    describe: "Record everyone on the call, not just the user."
+    expose: never
+    phrases: ["record everyone", "record the whole call", "record both sides",
+              "record them too"]
+
+  - intent: call_they_agreed
+    describe: "The other people on the call agreed to being recorded."
+    expose: never
+    phrases: ["they said yes", "they're fine with it", "theyre fine with it",
+              "everyone agreed", "they agreed"]
+
+  - intent: call_they_declined
+    describe: "The other people on the call declined being recorded."
+    expose: never
+    phrases: ["they said no", "they don't want it recorded", "they dont want it recorded",
+              "they didn't agree", "they didnt agree"]
+
+  - intent: call_couldnt_ask
+    describe: "The user could not ask the others about recording."
+    expose: never
+    phrases: ["i couldn't ask them", "i couldnt ask them", "i can't ask them", "i cant ask them"]
+
+  - intent: call_no_answer
+    describe: "Nobody answered the question about recording."
+    expose: never
+    phrases: ["nobody answered", "no one answered", "they didn't answer", "they didnt answer"]
+
+  - intent: call_just_mine
+    describe: "Record only the user's side of the call."
+    expose: never
+    phrases: ["just my side", "only my side", "just me"]
+
+  - intent: call_status
+    describe: "Say whether Atlas is recording the call and what."
+    phrases: ["are you recording", "what are you recording", "is this being recorded"]
+
+  - intent: call_what_it_does
+    describe: "Explain what the call recording does, to tell the others."
+    phrases: ["what do i tell them it does", "what does the recording do", "what do i say it does",
+              "they want to know what it does", "they asked what it does"]
+
+  - intent: call_notes_off
+    describe: "Stop taking call notes."
+    phrases: ["stop taking notes", "stop call notes", "stop recording the call",
+              "the call's over", "the calls over", "call's over"]
+
+  # Working the window in front for you (Eric, 24 Sep 2026: "yes it should").
+  # "Draft" leaves the reply in the box; "until I'm back" carries on, and
+  # anything you say stops it. An app Atlas doesn't know is asked about first.
+  - intent: delegate
+    describe: "Draft a reply to a message, or keep a conversation going until the user is back."
+    phrases: ["finish this conversation until i'm back", "finish the conversation until i'm back",
+              "finish this until i'm back", "keep this conversation going", "take over this conversation",
+              "handle this until i'm back", "carry on with this until i'm back",
+              "draft a reply to this", "draft a response to this", "write a reply to this",
+              "reply to this for me"]
+
+  # Your after-me arrangement, read back only when you ask (Eric, 24 Sep 2026).
+  - intent: after_me
+    describe: "Say where the user's 'if something happens to me' envelope is and who knows about it."
+    phrases: ["where's my envelope", "wheres my envelope", "where is my envelope",
+              "what did i arrange if something happens to me", "who knows about the envelope"]

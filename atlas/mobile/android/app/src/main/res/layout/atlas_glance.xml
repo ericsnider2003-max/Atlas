@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status is an icon-free word here (never colour alone), and every piece
+     is text a screen reader reads as it is. Sizes follow the system's font
+     scale because they're in sp. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/glance_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@android:drawable/dialog_holo_light_frame">
+    <TextView android:id="@+id/glance_status"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textSize="13sp" android:textStyle="bold" android:textColor="#37352F" />
+    <TextView android:id="@+id/glance_headline"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginTop="4dp" android:maxLines="3" android:ellipsize="end"
+        android:textSize="16sp" android:textColor="#37352F" />
+    <TextView android:id="@+id/glance_waiting"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textSize="13sp" android:textColor="#5F5D58" />
+    <TextView android:id="@+id/glance_capture"
+        android:layout_width="wrap_content" android:layout_height="48dp"
+        android:gravity="center_vertical" android:minWidth="48dp"
+        android:text="Give Atlas something" android:textSize="14sp" android:textStyle="bold"
+        android:textColor="#8F5003" />
+</LinearLayout>

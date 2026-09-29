@@ -1,0 +1,542 @@
+[
+{
+"file": "corpus/A_s0.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "the installer is coming on tuesday at ten"
+},
+{
+"file": "corpus/A_s1.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "check the server before the market opens"
+},
+{
+"file": "corpus/A_s2.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "send the invoice to the client this afternoon"
+},
+{
+"file": "corpus/A_s3.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "what is on my calendar for tomorrow morning"
+},
+{
+"file": "corpus/A_s4.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "remind me to call the bank about the transfer"
+},
+{
+"file": "corpus/A_s5.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "the euro dollar moved forty pips overnight"
+},
+{
+"file": "corpus/A_s6.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "open the budget file and the notes from friday"
+},
+{
+"file": "corpus/A_s7.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "we need a permit before the work can start"
+},
+{
+"file": "corpus/A_s8.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "read me the last three messages from dana"
+},
+{
+"file": "corpus/A_s9.wav",
+"speaker": "A",
+"kind": "sentence",
+"text": "turn the lights down and start the music"
+},
+{
+"file": "corpus/B_s0.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "the installer is coming on tuesday at ten"
+},
+{
+"file": "corpus/B_s1.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "check the server before the market opens"
+},
+{
+"file": "corpus/B_s2.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "send the invoice to the client this afternoon"
+},
+{
+"file": "corpus/B_s3.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "what is on my calendar for tomorrow morning"
+},
+{
+"file": "corpus/B_s4.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "remind me to call the bank about the transfer"
+},
+{
+"file": "corpus/B_s5.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "the euro dollar moved forty pips overnight"
+},
+{
+"file": "corpus/B_s6.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "open the budget file and the notes from friday"
+},
+{
+"file": "corpus/B_s7.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "we need a permit before the work can start"
+},
+{
+"file": "corpus/B_s8.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "read me the last three messages from dana"
+},
+{
+"file": "corpus/B_s9.wav",
+"speaker": "B",
+"kind": "sentence",
+"text": "turn the lights down and start the music"
+},
+{
+"file": "corpus/C_s0.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "the installer is coming on tuesday at ten"
+},
+{
+"file": "corpus/C_s1.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "check the server before the market opens"
+},
+{
+"file": "corpus/C_s2.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "send the invoice to the client this afternoon"
+},
+{
+"file": "corpus/C_s3.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "what is on my calendar for tomorrow morning"
+},
+{
+"file": "corpus/C_s4.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "remind me to call the bank about the transfer"
+},
+{
+"file": "corpus/C_s5.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "the euro dollar moved forty pips overnight"
+},
+{
+"file": "corpus/C_s6.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "open the budget file and the notes from friday"
+},
+{
+"file": "corpus/C_s7.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "we need a permit before the work can start"
+},
+{
+"file": "corpus/C_s8.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "read me the last three messages from dana"
+},
+{
+"file": "corpus/C_s9.wav",
+"speaker": "C",
+"kind": "sentence",
+"text": "turn the lights down and start the music"
+},
+{
+"file": "corpus/D_s0.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "the installer is coming on tuesday at ten"
+},
+{
+"file": "corpus/D_s1.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "check the server before the market opens"
+},
+{
+"file": "corpus/D_s2.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "send the invoice to the client this afternoon"
+},
+{
+"file": "corpus/D_s3.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "what is on my calendar for tomorrow morning"
+},
+{
+"file": "corpus/D_s4.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "remind me to call the bank about the transfer"
+},
+{
+"file": "corpus/D_s5.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "the euro dollar moved forty pips overnight"
+},
+{
+"file": "corpus/D_s6.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "open the budget file and the notes from friday"
+},
+{
+"file": "corpus/D_s7.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "we need a permit before the work can start"
+},
+{
+"file": "corpus/D_s8.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "read me the last three messages from dana"
+},
+{
+"file": "corpus/D_s9.wav",
+"speaker": "D",
+"kind": "sentence",
+"text": "turn the lights down and start the music"
+},
+{
+"file": "corpus/E_s0.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "the installer is coming on tuesday at ten"
+},
+{
+"file": "corpus/E_s1.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "check the server before the market opens"
+},
+{
+"file": "corpus/E_s2.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "send the invoice to the client this afternoon"
+},
+{
+"file": "corpus/E_s3.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "what is on my calendar for tomorrow morning"
+},
+{
+"file": "corpus/E_s4.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "remind me to call the bank about the transfer"
+},
+{
+"file": "corpus/E_s5.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "the euro dollar moved forty pips overnight"
+},
+{
+"file": "corpus/E_s6.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "open the budget file and the notes from friday"
+},
+{
+"file": "corpus/E_s7.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "we need a permit before the work can start"
+},
+{
+"file": "corpus/E_s8.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "read me the last three messages from dana"
+},
+{
+"file": "corpus/E_s9.wav",
+"speaker": "E",
+"kind": "sentence",
+"text": "turn the lights down and start the music"
+},
+{
+"file": "corpus/F_s0.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "the installer is coming on tuesday at ten"
+},
+{
+"file": "corpus/F_s1.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "check the server before the market opens"
+},
+{
+"file": "corpus/F_s2.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "send the invoice to the client this afternoon"
+},
+{
+"file": "corpus/F_s3.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "what is on my calendar for tomorrow morning"
+},
+{
+"file": "corpus/F_s4.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "remind me to call the bank about the transfer"
+},
+{
+"file": "corpus/F_s5.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "the euro dollar moved forty pips overnight"
+},
+{
+"file": "corpus/F_s6.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "open the budget file and the notes from friday"
+},
+{
+"file": "corpus/F_s7.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "we need a permit before the work can start"
+},
+{
+"file": "corpus/F_s8.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "read me the last three messages from dana"
+},
+{
+"file": "corpus/F_s9.wav",
+"speaker": "F",
+"kind": "sentence",
+"text": "turn the lights down and start the music"
+},
+{
+"file": "corpus/A_wake0.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake1.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake2.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake3.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake4.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake5.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake6.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake7.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_wake8.wav",
+"speaker": "A",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/A_near0.wav",
+"speaker": "A",
+"kind": "near",
+"text": "hey alice"
+},
+{
+"file": "corpus/A_near1.wav",
+"speaker": "A",
+"kind": "near",
+"text": "that's a lot"
+},
+{
+"file": "corpus/A_near2.wav",
+"speaker": "A",
+"kind": "near",
+"text": "hey at last"
+},
+{
+"file": "corpus/A_near3.wav",
+"speaker": "A",
+"kind": "near",
+"text": "atlantic"
+},
+{
+"file": "corpus/A_near4.wav",
+"speaker": "A",
+"kind": "near",
+"text": "hey there"
+},
+{
+"file": "corpus/A_near5.wav",
+"speaker": "A",
+"kind": "near",
+"text": "at least"
+},
+{
+"file": "corpus/B_wake0.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake1.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake2.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake3.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake4.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake5.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake6.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake7.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_wake8.wav",
+"speaker": "B",
+"kind": "wake",
+"text": "hey atlas"
+},
+{
+"file": "corpus/B_near0.wav",
+"speaker": "B",
+"kind": "near",
+"text": "hey alice"
+},
+{
+"file": "corpus/B_near1.wav",
+"speaker": "B",
+"kind": "near",
+"text": "that's a lot"
+},
+{
+"file": "corpus/B_near2.wav",
+"speaker": "B",
+"kind": "near",
+"text": "hey at last"
+},
+{
+"file": "corpus/B_near3.wav",
+"speaker": "B",
+"kind": "near",
+"text": "atlantic"
+},
+{
+"file": "corpus/B_near4.wav",
+"speaker": "B",
+"kind": "near",
+"text": "hey there"
+},
+{
+"file": "corpus/B_near5.wav",
+"speaker": "B",
+"kind": "near",
+"text": "at least"
+}
+]

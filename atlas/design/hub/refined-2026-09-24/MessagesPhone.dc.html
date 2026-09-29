@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Messages (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#f7f4ee;--ink:#26241f;--body:#413d37;--muted:#8b867c;--faint:#aca69b;
+  --line:#e6e1d7;--accent:#c15f1c;--accent2:#d07a2c;--done-ink:#3f7d52;
+  --display:"Fraunces",Georgia,serif;
+  --sans:"Hanken Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.pill{align-self:center;font-size:12px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 13px;box-shadow:0 1px 2px rgba(40,32,20,.04)}
+.meta{font-size:12.5px;color:var(--muted);margin:6px 2px 2px}
+</style>
+</helmet>
+
+<div style="width:390px;height:844px;box-sizing:border-box;background:#0a0b0d;padding:8px;font-family:var(--sans)">
+  <div style="width:100%;height:100%;background:linear-gradient(180deg,#faf7f1,#f5f1e9);border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px 6px">
+      <span style="font-size:15px;font-weight:600;color:var(--ink)">9:41</span>
+      <span style="display:flex;align-items:center;gap:6px;color:var(--ink)">
+        <svg viewBox="0 0 24 24" width="17" height="12" fill="currentColor"><rect x="1" y="7" width="3" height="5"/><rect x="6" y="4" width="3" height="8"/><rect x="11" y="1" width="3" height="11"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a13 13 0 0120 0M5 11a9 9 0 0114 0M8.5 14a4.5 4.5 0 017 0"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" width="22" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="18" height="9" rx="2.5" fill="currentColor"/><rect x="20" y="7" width="2" height="3" rx="1" fill="currentColor"/></svg>
+      </span>
+    </div>
+
+    <!-- convo header -->
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 18px 12px;border-bottom:1px solid var(--line)">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex-shrink:0"><path d="M15 6l-6 6 6 6"/></svg>
+      <span style="width:40px;height:40px;border-radius:50%;background:linear-gradient(160deg,#e9e4d9,#dcd6c9);color:#8a857c;font-size:15px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">S</span>
+      <div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:700;color:var(--ink)">Sam</div><div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)"><span style="width:7px;height:7px;border-radius:50%;background:#b7b1a6"></span>Offline · last seen Fri</div></div>
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--done-ink)" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
+    </div>
+
+    <!-- thread -->
+    <div style="flex-grow:1;overflow:hidden;padding:16px 18px;display:flex;flex-direction:column;gap:4px">
+      <div class="pill" style="margin-bottom:6px">Friday</div>
+      <div style="align-self:flex-start;max-width:78%;background:#fff;border:1px solid var(--line);border-radius:18px 18px 18px 5px;padding:12px 15px;font-size:15px;color:var(--ink);box-shadow:0 1px 2px rgba(40,32,20,.05)">You get the mini-rack sorted?</div>
+      <div class="meta" style="align-self:flex-start">Sam · Fri 6:02 PM</div>
+
+      <div style="align-self:flex-end;max-width:80%;background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-radius:18px 18px 5px 18px;padding:12px 15px;font-size:15px;line-height:1.4;margin-top:8px;box-shadow:0 2px 8px rgba(140,70,20,.2)">Almost — waiting on the 10-inch shelf. I'll send you the parts list.</div>
+      <div class="meta" style="align-self:flex-end">You · Fri 6:04 PM · <span style="color:var(--done-ink);font-weight:600">Delivered</span></div>
+
+      <div class="pill" style="margin:10px 0 6px">Today</div>
+      <div style="align-self:flex-end;max-width:80%;background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-radius:18px 18px 5px 18px;padding:12px 15px;font-size:15px;line-height:1.4;box-shadow:0 2px 8px rgba(140,70,20,.2)">Parts list's in your inbox. Ping me when you're around.</div>
+      <div class="meta" style="align-self:flex-end;display:flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>You · 9:40 AM · <span style="color:var(--accent);font-weight:600">Sent · held for Sam</span></div>
+      <div style="align-self:flex-end;text-align:right;max-width:82%;font-size:13px;color:var(--muted);line-height:1.45;margin-top:4px">Sam's offline, so your Atlas is holding it. It delivers the moment Sam's back — still stamped 9:40, the time you sent it.</div>
+    </div>
+
+    <!-- composer -->
+    <div style="flex-shrink:0;padding:10px 16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:26px;padding:8px 8px 8px 16px;box-shadow:0 1px 3px rgba(40,32,20,.06)">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        <span style="flex:1;font-size:16px;color:var(--faint)">Message</span>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--muted)" stroke-width="1.9"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v3"/></svg>
+        <span style="width:38px;height:38px;border-radius:50%;background:linear-gradient(180deg,var(--accent2),var(--accent));display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(140,70,20,.3)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2"><path d="M4 12l16-8-6 16-3-7z"/></svg></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

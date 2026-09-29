@@ -1,0 +1,68 @@
+# Atlas for Android, built on a cloud Linux machine.
+#
+# Builds the Rust core for 64-bit ARM phones with the Android NDK, then the
+# app around it, and hands back an UNSIGNED release APK. Signing happens on
+# Eric's own machine (atlas/mobile/sign-android.sh), where the signing key
+# lives and never leaves: the key that proves every future update is really
+# from him is never uploaded anywhere.
+#
+# Linux build minutes are the cheap kind; this needs no secrets.
+
+name: Android app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NDK_VERSION: 27.2.12479018
+      # This build's own version, 0.1.<run>, in the core (atlas/build.rs) and
+      # the APK's versionName alike (28 Sep 2026: every build said 0.1.0).
+      ATLAS_BUILD_NUMBER: ${{ github.run_number }}
+      ATLAS_VERSION_NAME: 0.1.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # The core's build and Gradle's downloads cached (28 Sep 2026: every
+      # Android build compiled everything from nothing).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: atlas -> target
+          key: android-aarch64
+          cache-on-failure: true
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            atlas/mobile/android/*.gradle.kts
+            atlas/mobile/android/app/*.gradle.kts
+            atlas/mobile/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: The NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+      # Every APK handed out must count higher than the last, or phones refuse
+      # it as an update. 100 + the run number stays above the hand-built ones
+      # (both hand-built APKs so far are 1).
+      - name: This build's version number
+        run: echo "ATLAS_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: The app (the core, then the APK)
+        working-directory: atlas/mobile
+        run: ./build-android.sh
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Atlas-Android-${{ env.ATLAS_VERSION_NAME }}-${{ github.run_number }}-unsigned
+          path: atlas/mobile/android/app/build/outputs/apk/release/*.apk
+          retention-days: 30

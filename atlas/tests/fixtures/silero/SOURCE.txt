@@ -1,0 +1,3 @@
+silero_vad_16k_op15.onnx: Silero VAD 6.2.3 (pip package silero-vad, file silero_vad/data/silero_vad_16k_op15.onnx), MIT licence, Silero Team. See LICENSE.
+sha256: 7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49
+Used by tests/the_microphone_has_its_own_thread.rs to test cutting in by voice with the real model.

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Atlas at a glance on the home screen (glance.rs). Updated by AtlasService
+     whenever what it shows changes, so no timer of its own: updatePeriodMillis
+     is 0. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/atlas_glance"
+    android:description="@string/glance_description"
+    android:widgetCategory="home_screen" />

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Gestures (setting + how-to)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --panel:#ffffff; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-ink:#ffffff; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  .grpt{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--faint);text-transform:uppercase;margin:16px 0 7px;}
+  .g{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:9px;}
+  .g:hover{background:var(--side);}
+  .gi{width:38px;height:38px;border-radius:9px;background:var(--side);border:1px solid var(--edge);display:grid;place-items:center;flex:none;color:var(--ink);}
+  .gn{font-size:13.5px;font-weight:640;color:var(--ink);}
+  .gd{font-size:12.5px;color:var(--dim);}
+  .arrow{color:var(--faint);}
+</style>
+</helmet>
+
+<div style="width:960px;height:900px;box-sizing:border-box;background:var(--bg);border:1px solid var(--edge);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(30,25,15,.08);">
+
+  <!-- header + enablement state -->
+  <div style="padding:22px 26px 18px;border-bottom:1px solid var(--edge);">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="width:40px;height:40px;border-radius:10px;background:var(--accent-soft);color:var(--accent-tx);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V6a1.5 1.5 0 0 1 3 0v5M16 8.5a1.5 1.5 0 0 1 3 0V14a6 6 0 0 1-6 6h-1.5a5 5 0 0 1-4-2l-3-4a1.6 1.6 0 0 1 2.4-2L7 12"></path></svg></span>
+      <div style="flex:1;">
+        <h1 style="margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em;">Gestures</h1>
+        <div style="font-size:13px;color:var(--dim);margin-top:2px;">Drive Atlas with your hands on camera — a hands-free way to answer, scroll and undo.</div>
+      </div>
+      <!-- ON/OFF state, unmistakable -->
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--ok);background:var(--oks);border-radius:99px;padding:5px 12px;"><span style="width:8px;height:8px;border-radius:99px;background:var(--ok);"></span>On</span>
+        <span style="width:46px;height:27px;border-radius:99px;background:var(--accent);position:relative;flex:none;"><span style="position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);"></span></span>
+      </div>
+    </div>
+    <!-- camera requirement -->
+    <div style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--dim);background:var(--side);border:1px solid var(--edge);border-radius:9px;padding:9px 13px;">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ok)" stroke-width="2"><path d="M23 7l-7 5 7 5zM1 5h15v14H1z"></path></svg>
+      Camera is <b style="color:var(--ink);">on</b> for this — read on-device, nothing leaves your machine. Turn gestures off and the camera isn't used for them.
+    </div>
+  </div>
+
+  <!-- the how-to: real vocabulary -->
+  <div style="flex:1;overflow:hidden;padding:6px 24px;display:grid;grid-template-columns:1fr 1fr;gap:0 34px;">
+    <div>
+      <div class="grpt">Answer a question</div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM7 11l4-8a2 2 0 0 1 2 2v3h5a2 2 0 0 1 2 2.4l-1.4 6A2 2 0 0 1 16.6 20H7"></path></svg></span><div style="flex:1;"><div class="gn">Thumb up</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Yes</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1zM17 13l-4 8a2 2 0 0 1-2-2v-3H6a2 2 0 0 1-2-2.4l1.4-6A2 2 0 0 1 7.4 4H17"></path></svg></span><div style="flex:1;"><div class="gn">Thumb down</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">No</div></div>
+
+      <div class="grpt">Handle what's on screen</div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="12" r="3"></circle><circle cx="16" cy="12" r="3"></circle><path d="M11 12h2"></path></svg></span><div style="flex:1;"><div class="gn">Pinch</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Pick it up</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"></circle></svg></span><div style="flex:1;"><div class="gn">Ring (thumb + finger, others out)</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Confirm it</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="12" r="2.5"></circle><circle cx="16" cy="12" r="2.5"></circle><path d="M6 7l2 2M18 7l-2 2M6 17l2-2M18 17l-2-2"></path></svg></span><div style="flex:1;"><div class="gn">Middle pinch, open &amp; shut</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Resize it</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6v6M8 12l-3 4M8 12l3 3"></path><path d="M14 4l6 6M20 4l-6 6"></path></svg></span><div style="flex:1;"><div class="gn">Flick away</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Dismiss it</div></div>
+    </div>
+
+    <div>
+      <div class="grpt">Get around</div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8c2-2 4-2 6 0M18 8c-1-1-2-1.4-3-1.2M12 20V9"></path><path d="M9 15l3 3 3-3"></path></svg></span><div style="flex:1;"><div class="gn">Hooked stroke down</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Scroll down</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 16c2 2 4 2 6 0M12 4v11"></path><path d="M9 9l3-3 3 3"></path></svg></span><div style="flex:1;"><div class="gn">Hooked stroke up</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Scroll up</div></div>
+      <div class="g"><span class="gi" style="background:var(--infos);border-color:#cfe0ee;color:var(--info);"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6v12M16 6v12"></path><path d="M8 12H3l2-2M8 12l-2 2"></path></svg></span><div style="flex:1;"><div class="gn">Two-handed sweep <span style="font-size:10.5px;font-weight:700;color:var(--info);background:var(--infos);border-radius:5px;padding:1px 6px;">both hands</span></div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Next screen</div></div>
+
+      <div class="grpt">Atlas itself</div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="8" width="12" height="9" rx="3"></rect><path d="M9 8V7M12 8V6.5M15 8V7"></path></svg></span><div style="flex:1;"><div class="gn">Fist</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Undo that</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-6 10-6 10 6 10 6"></path><path d="M4 6l3 3M20 6l-3 3M12 4v3"></path></svg></span><div style="flex:1;"><div class="gn">Cover eyes <span style="font-size:10.5px;color:var(--faint);">(held)</span></div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Hide the screen</div></div>
+      <div class="g"><span class="gi"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V6a1.5 1.5 0 0 1 3 0M10 10V5a1.5 1.5 0 0 1 3 0M13 10V6a1.5 1.5 0 0 1 3 0v6M16 9a1.5 1.5 0 0 1 3 0v5a6 6 0 0 1-6 6h-1a5 5 0 0 1-4-2l-2-3a1.6 1.6 0 0 1 2.4-2L7 12"></path></svg></span><div style="flex:1;"><div class="gn">Palm out <span style="font-size:10.5px;color:var(--faint);">(held)</span></div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;">Stop</div></div>
+      <div class="g" style="background:var(--accent-soft);"><span class="gi" style="background:#fff;border-color:var(--accent);color:var(--accent-tx);"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10M12 13a4 4 0 0 1-4 4H6a1.5 1.5 0 0 1 0-3"></path><path d="M12 13a4 4 0 0 0 4 4h2a1.5 1.5 0 0 0 0-3"></path></svg></span><div style="flex:1;"><div class="gn" style="color:var(--accent-tx);">One finger up</div></div><svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-tx)" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><div class="gd" style="width:120px;text-align:right;color:var(--accent-tx);font-weight:600;">Show this list</div></div>
+    </div>
+  </div>
+
+  <!-- footer: safety + accessibility + teach -->
+  <div style="border-top:1px solid var(--edge);padding:14px 26px;background:var(--side);">
+    <div style="display:flex;gap:22px;">
+      <div style="flex:1;display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.5;color:var(--dim);">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ok)" stroke-width="2" style="flex:none;margin-top:1px;"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+        <span>A gesture can <b style="color:var(--ink);">say no</b> or dismiss, but it never <b style="color:var(--ink);">approves anything irreversible</b> — sending, deleting, anything that leaves your machine still asks for your voice or a tap.</span>
+      </div>
+      <div style="flex:1;display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.5;color:var(--dim);">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--info)" stroke-width="2" style="flex:none;margin-top:1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+        <span>Gestures are <b style="color:var(--ink);">optional</b> — everything they do, you can also say or click. Hold up <b style="color:var(--ink);">one finger</b> any time to bring this list back on screen.</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+      <button style="background:#fff;color:var(--ink);border:1px solid var(--edge);border-radius:9px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>Teach Atlas a new gesture</button>
+      <span style="font-size:12px;color:var(--faint);">Your own shapes win over the defaults — add one in a few seconds on camera.</span>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":900}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

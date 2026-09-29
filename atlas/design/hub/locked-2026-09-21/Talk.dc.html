@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Talk to Atlas (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --edge:#eceae4; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97; --accent:#d9730d; --accent-soft:#fdecc8; --accent-tx:#b26206; --ok:#4f8a5b; --oks:#e8f0e9; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .bar{width:4px;border-radius:99px;background:var(--accent);}
+</style>
+</helmet>
+
+<!-- phone: full-screen "talking to Atlas" -->
+<div style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:#faf9f6;display:flex;flex-direction:column;">
+
+  <!-- status bar -->
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:600;color:var(--ink);flex:none;">
+    <span>9:41</span>
+    <span style="display:flex;gap:5px;align-items:center;"><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--ink)"><path d="M2 20h3v-8H2zM9 20h3V8H9zM16 20h3V4h-3z"></path></svg><svg viewBox="0 0 24 24" width="17" height="17" fill="var(--ink)"><path d="M12 4C7 4 3 7 1 11l11 9 11-9c-2-4-6-7-11-7z" opacity=".55"></path></svg><svg viewBox="0 0 24 24" width="22" height="16" fill="none" stroke="var(--ink)" stroke-width="1.5"><rect x="1" y="5" width="17" height="12" rx="3"></rect><rect x="3" y="7" width="12" height="8" rx="1.5" fill="var(--ink)"></rect><path d="M20 9v6" stroke-width="2.5"></path></svg></span>
+  </div>
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:11px;padding:6px 22px 4px;flex:none;">
+    <svg viewBox="0 0 120 120" width="30" height="30"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="7" opacity=".92"></circle><circle cx="60" cy="60" r="53" fill="none" stroke="var(--accent)" stroke-width="7" opacity=".26"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+    <div style="flex:1;"><div style="font-size:16px;font-weight:680;">Atlas</div><div style="font-size:12.5px;color:var(--ok);font-weight:600;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:99px;background:var(--ok);"></span>Listening</div></div>
+    <span style="width:34px;height:34px;border-radius:99px;background:#fff;border:1px solid var(--edge);display:grid;place-items:center;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--dim)" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+  </div>
+
+  <!-- conversation -->
+  <div style="flex:1;overflow:hidden;padding:12px 18px 0;display:flex;flex-direction:column;gap:12px;">
+
+    <!-- you said -->
+    <div style="align-self:flex-end;max-width:82%;background:var(--accent);color:#fff;border-radius:18px 18px 5px 18px;padding:12px 15px;font-size:15px;line-height:1.45;box-shadow:0 2px 8px rgba(217,115,13,.22);">
+      Send the Q3 report to Jordan, then remind me to call him at four.
+    </div>
+    <div style="align-self:flex-end;font-size:11px;color:var(--faint);margin-top:-6px;margin-right:4px;">You · just now</div>
+
+    <!-- atlas reply: did the in-between, no prompt because trusted -->
+    <div style="align-self:flex-start;max-width:86%;background:#fff;border:1px solid var(--edge);border-radius:18px 18px 18px 5px;padding:13px 15px;font-size:15px;line-height:1.5;color:var(--ink);box-shadow:0 2px 10px rgba(30,25,15,.05);">
+      Sent it — Jordan's on your trusted list, so I didn't stop to ask.
+      <div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--edge);">
+        <span style="width:28px;height:28px;border-radius:7px;background:var(--oks);color:var(--ok);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg></span>
+        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">Q3 report.pdf → Jordan</div><div style="font-size:11.5px;color:var(--faint);">encrypted · they see nothing else</div></div>
+        <span style="font-size:12.5px;font-weight:640;color:var(--accent-tx);">Undo</span>
+      </div>
+      <div style="margin-top:10px;font-size:14px;color:var(--dim);">And I'll nudge you to call him at <b style="color:var(--ink);">4:00</b>.</div>
+    </div>
+    <div style="align-self:flex-start;font-size:11px;color:var(--faint);margin-top:-6px;margin-left:4px;">Atlas · spoken aloud</div>
+
+  </div>
+
+  <!-- live waveform + push-to-talk -->
+  <div style="flex:none;padding:14px 22px 30px;background:linear-gradient(to top,#faf9f6 70%,rgba(250,249,246,0));">
+    <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:34px;margin-bottom:16px;">
+      <div class="bar" style="height:10px;"></div><div class="bar" style="height:22px;"></div><div class="bar" style="height:14px;"></div><div class="bar" style="height:30px;"></div><div class="bar" style="height:20px;"></div><div class="bar" style="height:34px;"></div><div class="bar" style="height:24px;"></div><div class="bar" style="height:12px;"></div><div class="bar" style="height:26px;"></div><div class="bar" style="height:16px;"></div><div class="bar" style="height:28px;"></div><div class="bar" style="height:11px;"></div><div class="bar" style="height:20px;"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+      <span style="width:52px;height:52px;border-radius:99px;background:#fff;border:1px solid var(--edge);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--dim)" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"></path></svg></span>
+      <span style="width:82px;height:82px;border-radius:99px;background:var(--accent);box-shadow:0 8px 24px rgba(217,115,13,.4),0 0 0 8px rgba(217,115,13,.14);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+      <span style="width:52px;height:52px;border-radius:99px;background:#fff;border:1px solid var(--edge);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="var(--dim)" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7"></path></svg></span>
+    </div>
+    <div style="text-align:center;font-size:12.5px;color:var(--faint);margin-top:14px;">Hold to talk · tap the keyboard to type instead</div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

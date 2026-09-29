@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Outstanding</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --panel:#ffffff; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-ink:#ffffff; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+    --stop:#b4453f; --stops:#f7e4e3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  a{color:var(--info);text-decoration:none}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}.nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;}
+  .lane{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);display:flex;align-items:center;gap:8px;margin:0 0 12px;}
+  .chip{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;}
+  .biz{background:var(--infos);color:var(--info);}
+  .card{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:15px 17px;margin-bottom:10px;}
+  .btn{border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn.p{background:var(--accent);color:#fff;} .btn.s{background:transparent;color:var(--ink);border:1px solid var(--edge);}
+  .tsn{display:grid;grid-template-columns:70px 1fr;gap:6px 10px;font-size:13px;margin-top:10px;}
+  .tsn .k{color:var(--faint);font-weight:600;} .tsn .v{color:var(--ink);}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- SIDEBAR -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+    <div class="grp">PERSONAL</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects</div>
+    <div class="nav on"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>Outstanding<span class="mono" style="margin-left:auto;background:var(--waits);color:var(--wait);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">5</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages</div>
+    <div class="grp">NORTHWIND LLC</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path></svg>Shared tasks</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"></circle><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path></svg>Clients</div>
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5 2 2 0 1 1 4 0 1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.4 1z"></path></svg>Settings</div>
+  </div>
+
+  <!-- PAGE -->
+  <div style="flex:1;box-sizing:border-box;min-width:0;overflow:hidden;">
+    <div style="height:42px;border-bottom:1px solid var(--edge2);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:13px;color:var(--faint);">
+      <span>Personal</span><span>/</span><span style="color:var(--ink);">Outstanding</span>
+      <div style="flex:1"></div>
+      <span style="font-size:12.5px;color:var(--faint);">Everything still open — personal and business — most pressing first.</span>
+    </div>
+
+    <div style="padding:26px 40px 0;height:calc(100% - 42px);overflow:hidden;display:grid;grid-template-columns:1.5fr 1fr;gap:32px;">
+
+      <!-- left: waiting + blocked -->
+      <div>
+        <div class="lane"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="2.4"><path d="M12 8v4l3 2"></path><circle cx="12" cy="12" r="9"></circle></svg>Waiting on you <span class="mono" style="color:var(--faint);">2</span></div>
+        <div class="card" style="border-color:#efdcc0;">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <div style="flex:1;"><div style="font-size:15px;font-weight:600;">Approve "faster date parser"</div><div style="font-size:13px;color:var(--dim);margin-top:3px;line-height:1.5;">Checked and ready. Proving test passes, nothing else broke.</div></div>
+            <span class="chip biz" style="background:var(--accent-soft);color:var(--accent-tx);">Atlas</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;"><button class="btn p">Implement</button><button class="btn s">Read the diff</button></div>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <div style="flex:1;"><div style="font-size:15px;font-weight:600;">Reply to the broker's proposed times</div><div style="font-size:13px;color:var(--dim);margin-top:3px;line-height:1.5;">Two slots offered — Tue 2pm or Wed 10am. Neither clashes with your calendar.</div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;"><button class="btn p">Reply</button><button class="btn s">Pick Tue 2pm</button></div>
+        </div>
+
+        <div class="lane" style="margin-top:24px;"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--stop)" stroke-width="2.2"><path d="M12 8v4M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>Blocked <span class="mono" style="color:var(--faint);">2</span></div>
+
+        <div class="card" style="border-color:#eccfcd;">
+          <div style="display:flex;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-size:15px;font-weight:600;">Connect your mailbox</div></div></div>
+          <div class="tsn">
+            <span class="k">Tried</span><span class="v">Signed in over IMAP to the address you gave me.</span>
+            <span class="k" style="color:var(--stop);">Stopped</span><span class="v">The server refused the app password — it looks expired.</span>
+            <span class="k" style="color:var(--accent-tx);">Needs</span><span class="v">A fresh app password from your mail provider. I'll walk you through it.</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:13px;"><button class="btn p">Show me how</button><button class="btn s">Paste a new password</button></div>
+        </div>
+
+        <div class="card" style="border-color:#eccfcd;">
+          <div style="display:flex;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-size:15px;font-weight:600;">Send the Q3 invoice to Meridian</div></div><span class="chip biz">Northwind</span></div>
+          <div class="tsn">
+            <span class="k">Tried</span><span class="v">Built the invoice from the shared task and the client record.</span>
+            <span class="k" style="color:var(--stop);">Stopped</span><span class="v">Meridian's billing email isn't on the client — I won't guess an address.</span>
+            <span class="k" style="color:var(--accent-tx);">Needs</span><span class="v">The billing contact for Meridian, then I'll send it.</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:13px;"><button class="btn p">Add the contact</button><button class="btn s">Open the invoice</button></div>
+        </div>
+      </div>
+
+      <!-- right: in progress + carried -->
+      <div>
+        <div class="lane"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--info)" stroke-width="2.2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>In progress <span class="mono" style="color:var(--faint);">1</span></div>
+        <div class="card">
+          <div style="display:flex;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-size:15px;font-weight:600;">Report export for review</div><div style="font-size:13px;color:var(--dim);margin-top:3px;line-height:1.5;">Jordan's Atlas is building it. It'll land in Projects for your go-ahead.</div></div><span class="chip biz">Northwind</span></div>
+          <div style="display:flex;align-items:center;gap:9px;margin-top:11px;font-size:12.5px;color:var(--info);"><span style="width:20px;height:20px;border-radius:99px;background:var(--infos);color:var(--info);display:grid;place-items:center;font-size:10px;font-weight:700;">J</span>Handed off 8 min ago · checking here when it returns</div>
+        </div>
+
+        <div class="lane" style="margin-top:24px;"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--faint)" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9"></path><path d="M3 4v5h5"></path></svg>Carried over <span class="mono" style="color:var(--faint);">2</span></div>
+        <div style="background:var(--side);border:1px solid var(--edge);border-radius:12px;padding:6px 16px;">
+          <div style="display:flex;align-items:center;gap:11px;padding:12px 0;">
+            <span style="flex:1;font-size:14px;">Sort the receipts in Downloads</span>
+            <span class="chip" style="background:var(--waits);color:var(--wait);">3 days</span>
+            <button class="btn s" style="padding:5px 10px;">Do it now</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid var(--edge2);">
+            <span style="flex:1;font-size:14px;">Decide the offline model to bundle</span>
+            <span class="chip" style="background:var(--waits);color:var(--wait);">5 days</span>
+            <button class="btn s" style="padding:5px 10px;">Help me decide</button>
+          </div>
+        </div>
+
+        <div style="margin-top:24px;background:var(--side);border:1px dashed var(--edge);border-radius:12px;padding:16px 18px;font-size:13px;line-height:1.55;color:var(--dim);">
+          <b style="color:var(--ink);">Nothing here rots quietly.</b> Anything carried more than a week, I raise in your brief. If you want something gone, tell me to drop it and it's gone — I won't keep nagging.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

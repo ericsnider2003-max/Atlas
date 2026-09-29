@@ -1,0 +1,923 @@
+/* The hub design locked with Eric on 20-21 Sep 2026: the pinned canvas
+   "Atlas Hub — Command Deck", kept beside the code as design/hub/ and written
+   down in design/hub/SPEC.md. Notion's calm structure (a labelled sidebar, a
+   Personal group, a business group that appears once a business exists) with
+   a living Home (the Brief, Today, Business at a glance).
+
+   Three colourways, the same layout in each: Warm Paper (the lead, and the
+   base below, so a page with no attributes at all is still the design), Ember
+   Dark, and Access (colour-blind safe). The tokens are copied from the
+   canvas's own artboards; tests/the_hub_design_is_the_locked_one.rs holds
+   them to it. Every rule reads the tokens, so a colourway turns the whole hub
+   over at once and nothing carries a colour of its own.
+
+   Until 26 Sep the hub wore an earlier mock-up (design/superseded/
+   command-deck.html, 20 Sep, delivered "awaiting your steer") recoloured.
+   That mock-up was the only design file in the tree, so each merge took it
+   for the design. */
+:root{
+  color-scheme:light;
+  --bg:#ffffff; --side:#f7f7f5; --raise:#ffffff; --raise-2:#f7f7f5; --hover:#efedea;
+  --edge:#eceae4; --edge-soft:#f0efec;
+  --ink:#37352f; --ink-dim:#5f5d58; --ink-faint:#66645f;
+  --accent:#d9730d; --accent-dim:#fdecc8; --accent-line:#efdcc0; --accent-tx:#8f5003;
+  --accent-fill:#b26206; --on-accent:#ffffff;
+  --good:#3d7148; --good-dim:#e8f0e6; --warm:#8c5a17; --warm-dim:#fbedd6;
+  --cool:#2a6a90; --cool-dim:#e6eef3; --hot:#9f3a35; --hot-dim:#f7e4e3;
+  --spine:#e2dfd8; --glass:rgba(255,255,255,.88);
+  --r:12px; --r-sm:8px; --gap:16px;
+  --font:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+}
+/* Warm Paper by name, and the older stored choices that meant a light hub. */
+:root[data-theme=paper],:root[data-theme=light]{color-scheme:light}
+/* Ember Dark — deep slate, a warm ember accent, the same layout at rest. */
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#0c0f14; --side:#0e1218; --raise:#13181f; --raise-2:#171d26; --hover:#171d26;
+  --edge:#232c37; --edge-soft:#1b222c;
+  --ink:#eceff3; --ink-dim:#97a2ae; --ink-faint:#8e99a5;
+  --accent:#eb9d4a; --accent-dim:#2a2013; --accent-line:#5a3f1e; --accent-tx:#eb9d4a;
+  --accent-fill:#eb9d4a; --on-accent:#1a1206;
+  --good:#5cc79a; --good-dim:#14251f; --warm:#e0a44e; --warm-dim:#2a2013;
+  --cool:#6aa8f0; --cool-dim:#152232; --hot:#ef6f6c; --hot-dim:#2e1716;
+  --spine:#2a333f; --glass:rgba(12,15,20,.88);
+}
+/* Following this computer: Warm Paper in the day, Ember Dark at night. */
+@media (prefers-color-scheme:dark){
+  :root[data-theme=auto]{
+    color-scheme:dark;
+    --bg:#0c0f14; --side:#0e1218; --raise:#13181f; --raise-2:#171d26; --hover:#171d26;
+    --edge:#232c37; --edge-soft:#1b222c;
+    --ink:#eceff3; --ink-dim:#97a2ae; --ink-faint:#8e99a5;
+    --accent:#eb9d4a; --accent-dim:#2a2013; --accent-line:#5a3f1e; --accent-tx:#eb9d4a;
+    --accent-fill:#eb9d4a; --on-accent:#1a1206;
+    --good:#5cc79a; --good-dim:#14251f; --warm:#e0a44e; --warm-dim:#2a2013;
+    --cool:#6aa8f0; --cool-dim:#152232; --hot:#ef6f6c; --hot-dim:#2e1716;
+    --spine:#2a333f; --glass:rgba(12,15,20,.88);
+  }
+}
+/* Access — a blue/amber set that stays distinct for every kind of colour
+   vision, higher contrast throughout. Also what colour-blind mode switches
+   any colourway's accent and status colours to. Status never leans on colour
+   alone: every state is an icon and a word. The server drops any data-accent
+   when a colour-blind mode is on, so safety always wins over the accent. */
+:root[data-theme=access]{
+  color-scheme:light;
+  --bg:#ffffff; --side:#f2f3f5; --raise:#ffffff; --raise-2:#f2f3f5; --hover:#e9ecf1;
+  --edge:#c9ced6; --edge-soft:#e4e7ec;
+  --ink:#12151a; --ink-dim:#454b54; --ink-faint:#505763;
+  --accent-tx:#005a8e; --accent-fill:#0072b2; --on-accent:#ffffff;
+}
+:root[data-theme=access],:root[data-cvd=deuter],:root[data-cvd=tritan]{
+  --accent:#0072b2; --accent-dim:#dcebf5; --accent-line:#a9cde6; --accent-tx:#005a8e; --accent-fill:#0072b2;
+  --good:#005a8e; --good-dim:#dcebf5; --cool:#005a8e; --cool-dim:#dcebf5;
+  --warm:#7a4c00; --warm-dim:#f7e6c6; --hot:#963f00; --hot-dim:#fbe3d3;
+}
+/* Colour-blind mode on a dark ground: the same Okabe-Ito blue and orange,
+   in their light forms, so they keep 4.5:1 on Ember Dark (WCAG 1.4.3). */
+:root[data-theme=dark][data-cvd=deuter],:root[data-theme=dark][data-cvd=tritan]{ --accent:#56b4e9; --accent-dim:#16303f; --accent-line:#2a5670; --accent-tx:#56b4e9; --accent-fill:#56b4e9; --on-accent:#0c0f14; --good:#56b4e9; --good-dim:#16303f; --cool:#56b4e9; --cool-dim:#16303f; --warm:#e69f00; --warm-dim:#2a2013; --hot:#e07b39; --hot-dim:#2e1a10 }
+@media (prefers-color-scheme:dark){
+  :root[data-theme=auto][data-cvd=deuter],:root[data-theme=auto][data-cvd=tritan]{ --accent:#56b4e9; --accent-dim:#16303f; --accent-line:#2a5670; --accent-tx:#56b4e9; --accent-fill:#56b4e9; --on-accent:#0c0f14; --good:#56b4e9; --good-dim:#16303f; --cool:#56b4e9; --cool-dim:#16303f; --warm:#e69f00; --warm-dim:#2a2013; --hot:#e07b39; --hot-dim:#2e1a10 }
+}
+/* A picked accent (Settings, How it looks). Each has a light-ground value and
+   a dark-ground one. */
+:root[data-accent=blue]{ --accent:#1668dc; --accent-dim:#dbe8fb; --accent-tx:#1257b8; --accent-fill:#1257b8 }
+:root[data-accent=teal]{ --accent:#0f9488; --accent-dim:#d0efeb; --accent-tx:#0b7a70; --accent-fill:#0b7a70 }
+:root[data-accent=purple]{ --accent:#7c5cff; --accent-dim:#e7e0ff; --accent-tx:#6446e0; --accent-fill:#6446e0 }
+:root[data-accent=forest]{ --accent:#2f855a; --accent-dim:#d5ecdf; --accent-tx:#246b48; --accent-fill:#246b48 }
+:root[data-theme=dark][data-accent=blue]{ --accent:#5fb0ff; --accent-dim:#20364a; --accent-tx:#5fb0ff; --accent-fill:#5fb0ff }
+:root[data-theme=dark][data-accent=teal]{ --accent:#4fd1c5; --accent-dim:#123a37; --accent-tx:#4fd1c5; --accent-fill:#4fd1c5 }
+:root[data-theme=dark][data-accent=purple]{ --accent:#a58bff; --accent-dim:#241b40; --accent-tx:#a58bff; --accent-fill:#a58bff }
+:root[data-theme=dark][data-accent=forest]{ --accent:#68d391; --accent-dim:#16311f; --accent-tx:#68d391; --accent-fill:#68d391 }
+@media (prefers-color-scheme:dark){
+  :root[data-theme=auto][data-accent=blue]{ --accent:#5fb0ff; --accent-dim:#20364a; --accent-tx:#5fb0ff; --accent-fill:#5fb0ff }
+  :root[data-theme=auto][data-accent=teal]{ --accent:#4fd1c5; --accent-dim:#123a37; --accent-tx:#4fd1c5; --accent-fill:#4fd1c5 }
+  :root[data-theme=auto][data-accent=purple]{ --accent:#a58bff; --accent-dim:#241b40; --accent-tx:#a58bff; --accent-fill:#a58bff }
+  :root[data-theme=auto][data-accent=forest]{ --accent:#68d391; --accent-dim:#16311f; --accent-tx:#68d391; --accent-fill:#68d391 }
+}
+/* Higher contrast — the system's own preference, or a stored choice. Each
+   colourway keeps its own ink, darker on light grounds and brighter on dark:
+   white ink on cream was unreadable. */
+@media (prefers-contrast:more){
+  :root:not([data-theme=dark]){ --ink:#1f1d19; --ink-dim:#45423b; --ink-faint:#625e55; --edge:#c7c1b5 }
+  :root[data-theme=dark]{ --ink:#ffffff; --ink-dim:#ced6de; --ink-faint:#aeb7c0; --edge:#3d4b57 }
+}
+:root[data-contrast=high]:not([data-theme=dark]){ --ink:#1f1d19; --ink-dim:#45423b; --ink-faint:#625e55; --edge:#c7c1b5 }
+:root[data-contrast=high][data-theme=dark]{ --ink:#ffffff; --ink-dim:#ced6de; --ink-faint:#aeb7c0; --edge:#3d4b57 }
+@media (prefers-color-scheme:dark){
+  :root[data-contrast=high][data-theme=auto]{ --ink:#ffffff; --ink-dim:#ced6de; --ink-faint:#aeb7c0; --edge:#3d4b57 }
+}
+/* Text size — a stored choice applied as data-text, scaling the body as one. */
+:root[data-text=large] body{zoom:1.10}
+:root[data-text=larger] body{zoom:1.22}
+:root[data-motion=off] *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+/* Density — Compact tightens the rhythm so more sits on screen; Comfortable
+   (the default) is the roomy layout the rest of the sheet describes. */
+:root[data-density=compact]{ --gap:11px }
+:root[data-density=compact] main{padding-top:14px}
+:root[data-density=compact] .card{padding:12px 14px}
+:root[data-density=compact] .figure{padding:8px 0}
+*{box-sizing:border-box}
+body{
+  font:15px/1.55 var(--font);
+  margin:0;background:var(--bg);color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent-tx)}
+
+/* --- the frame: the design's sidebar, and the page ---------------------- */
+.wrap{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:1px;
+  padding:12px 10px;background:var(--side);border-right:1px solid var(--edge);z-index:30;
+}
+.sidebar .brand{display:flex;align-items:center;gap:9px;padding:5px 8px 10px;color:var(--ink);
+  text-decoration:none;font-weight:600;font-size:14.5px}
+.sidebar .brand svg{width:22px;height:22px;flex:none}
+.sidebar a.nav,.sidebar summary.nav{
+  display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--ink-dim);
+  font-size:14px;line-height:1.3;text-decoration:none;cursor:pointer;list-style:none;
+}
+.sidebar summary.nav::-webkit-details-marker{display:none}
+.sidebar a.nav:hover,.sidebar summary.nav:hover{background:var(--hover)}
+.sidebar a.nav.on{background:var(--hover);color:var(--ink);font-weight:550}
+.sidebar .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+.sidebar .nav kbd{margin-left:auto}
+.sidebar .count{margin-left:auto;font:600 11px var(--mono);border-radius:99px;padding:0 7px;
+  background:var(--warm-dim);color:var(--warm)}
+.sidebar .grp{margin:0;padding:15px 9px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.sidebar .grp small{font-weight:400;text-transform:none;letter-spacing:0}
+.sidebar details.more .side{padding:2px 0 0 12px}
+.sidebar .grow{flex:1;min-height:12px}
+.col-main{min-width:0;display:flex;flex-direction:column}
+/* The top bar: where you are on the left, the tools on the right. */
+header{
+  display:flex;align-items:center;gap:8px;min-height:42px;padding:4px 20px;
+  border-bottom:1px solid var(--edge-soft);background:var(--glass);backdrop-filter:blur(8px);
+  position:sticky;top:0;z-index:20;font-size:13px;color:var(--ink-faint);
+}
+header .crumbs{margin:0}
+header .grow{flex:1}
+header .tool,.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 10px;border-radius:8px;color:var(--ink-dim);
+  text-decoration:none;font-size:12.5px;border:1px solid var(--edge);background:var(--raise);
+}
+header .tool:hover,.chip:hover{color:var(--ink);border-color:var(--ink-faint)}
+header .tool .dot{width:7px;height:7px;border-radius:99px;background:var(--accent);display:inline-block}
+/* A status as an icon and a word, never colour alone. */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;
+  padding:2px 9px 2px 7px;border-radius:99px;white-space:nowrap;color:var(--ink-dim);background:var(--edge)}
+.pill svg{width:13px;height:13px;flex:none}
+.pill.ok{color:var(--good);background:var(--good-dim)}
+.pill.wait{color:var(--warm);background:var(--warm-dim)}
+.pill.info{color:var(--cool);background:var(--cool-dim)}
+.pill.stop{color:var(--hot);background:var(--hot-dim)}
+.pill.bare{background:none;padding-left:0}
+
+/* --- the page list, in the sidebar's More ------------------------------ */
+.side .gh{
+  margin:12px 0 4px;padding:0 9px;font-size:10.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);
+}
+.side .gh:first-child{margin-top:4px}
+.side a{
+  display:block;padding:6px 9px;border-radius:6px;color:var(--ink-dim);
+  text-decoration:none;font-size:13.5px;line-height:1.3;
+}
+.side a:hover{background:var(--hover);color:var(--ink)}
+.side a.here{background:var(--hover);color:var(--ink);font-weight:550}
+main{padding:30px 44px 60px;max-width:1180px;width:100%;flex:1 1 auto;min-width:0}
+
+/* --- where you are ---------------------------------------------------- */
+.crumbs{margin:0 0 6px;font-size:12.5px;color:var(--ink-faint)}
+.crumbs a{color:var(--ink-faint);text-decoration:none}
+.crumbs a:hover{color:var(--ink-dim)}
+.crumbs span{margin:0 7px;opacity:.5}
+.crumbs b{color:var(--ink-dim);font-weight:500}
+h1.page{margin:0 0 22px;font-size:26px;font-weight:640;letter-spacing:-.02em}
+h2{
+  margin:30px 0 10px;font-size:11px;font-weight:650;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+
+/* --- Home, as the design draws it ---------------------------------------- */
+.homehead{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin:0 0 4px}
+.homehead .bigmark{width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:grid;place-items:center}
+.homehead .bigmark svg{width:22px;height:22px}
+.homehead h1{margin:0;font-size:26px;font-weight:680;letter-spacing:-.02em}
+.homehead .hi{margin-left:auto;font-size:13.5px;color:var(--ink-faint)}
+.status{display:flex;align-items:center;gap:8px;color:var(--ink-dim);font-size:13px}
+.status .live{width:8px;height:8px;border-radius:99px;background:var(--good);
+  box-shadow:0 0 0 4px var(--good-dim)}
+.status .live.off{background:var(--ink-faint);box-shadow:none}
+.status .live.held{background:var(--accent);box-shadow:0 0 0 4px var(--accent-dim)}
+/* The Brief: a callout in Atlas's words, carrying what's waiting on you. */
+.brief{display:flex;gap:14px;background:var(--side);border:1px solid var(--edge);border-radius:9px;
+  padding:16px 18px;margin:16px 0 24px}
+.brief>svg{width:20px;height:20px;flex:none;margin-top:2px}
+.brief p{margin:0;font-size:15px;line-height:1.6;color:var(--ink)}
+.brief ul.asks{margin:10px 0 0;padding:0 0 0 18px;font-size:14.5px;line-height:1.6}
+.brief ul.asks a{color:var(--cool);text-decoration:none}
+.brief ul.asks a:hover{text-decoration:underline}
+.brief .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+a.btn{text-decoration:none;display:inline-block}
+.btn.primary,a.btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);font-weight:640}
+/* Today beside Right now, or your businesses at a glance. */
+.living{display:grid;grid-template-columns:1.35fr 1fr;gap:26px;align-items:start}
+.living h2,.living h3,.dashtop h2{margin:0 0 2px;font-size:16px;font-weight:640;color:var(--ink);
+  display:flex;align-items:center;gap:8px;letter-spacing:0;text-transform:none}
+.living h2 svg,.living h3 svg{width:17px;height:17px;color:var(--ink-dim)}
+.days{border-top:1px solid var(--edge-soft);margin-top:9px}
+.day{display:flex;align-items:center;gap:13px;padding:10px 2px;border-bottom:1px solid var(--edge-soft)}
+.day time{width:46px;flex:none;font:13px var(--mono);color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.day .what{flex:1;font-size:14px;color:var(--ink)}
+.day.done .what{color:var(--ink-dim)}
+.day.now{background:var(--warm-dim);border-radius:6px}
+.day.now time{color:var(--warm);font-weight:600}
+.day.now .what{font-weight:560}
+.rightnow .now{font-size:17px;line-height:1.4;font-weight:560;margin:10px 0 4px;letter-spacing:-.01em}
+.rightnow .nowsub{color:var(--ink-dim);font-size:13.5px;margin:0 0 16px}
+form.ask{margin:0;display:flex;align-items:center;gap:10px;background:var(--raise-2);
+  border:1px solid var(--edge);border-radius:10px;padding:4px 8px 4px 14px}
+form.ask input{flex:1;min-width:0;margin:0;border:0;background:transparent;padding:8px 0;font-size:14px}
+form.ask input:focus{border:0}
+form.ask:focus-within{border-color:var(--accent)}
+form.ask button{background:none;border:0;padding:0}
+.glances{display:flex;flex-direction:column;gap:18px}
+.tiles{display:flex;gap:8px;margin:12px 0 14px}
+.tile{flex:1;background:var(--side);border:1px solid var(--edge);border-radius:9px;padding:11px 13px}
+.tile b{display:block;font:680 20px var(--mono);color:var(--ink)}
+.tile span{font-size:11px;color:var(--ink-faint)}
+.who{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--edge-soft);font-size:13.5px}
+.who .meta{margin-left:auto;font-size:12px;color:var(--ink-faint)}
+.av{width:19px;height:19px;border-radius:99px;display:inline-grid;place-items:center;font-size:10px;
+  font-weight:700;background:var(--accent-dim);color:var(--accent-tx)}
+ol.firststeps{list-style:none;counter-reset:s;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:10px}
+ol.firststeps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr auto;gap:2px 12px;align-items:center;
+  background:var(--raise);border:1px solid var(--edge);border-radius:10px;padding:13px 16px}
+ol.firststeps li:before{content:counter(s);grid-row:span 2;width:24px;height:24px;border-radius:99px;
+  background:var(--accent-dim);color:var(--accent-tx);font-weight:700;font-size:12px;display:grid;place-items:center}
+ol.firststeps b{font-size:14.5px}
+ol.firststeps span{grid-column:2;font-size:13px;color:var(--ink-dim)}
+ol.firststeps .btn{grid-column:3;grid-row:1 / span 2}
+.sub{margin:2px 0 22px;color:var(--ink-faint);font-size:14px}
+.kbd{font:11.5px var(--mono);border:1px solid var(--edge);border-bottom-width:2px;
+  border-radius:6px;padding:2px 6px;color:var(--ink-dim)}
+.dashtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:30px 0 12px}
+.dashtop .sub{margin:0;flex:1 1 auto}
+.dashtop button{padding:5px 11px;font-size:12.5px}
+.dashtop .grow{flex:1}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);align-items:stretch;grid-auto-flow:dense}
+.cards>.card>a.more{margin-top:auto;padding-top:14px;align-self:flex-start}
+.cards>.card{
+  background:var(--raise);border:1px solid var(--edge);border-radius:var(--r);
+  padding:16px 18px;margin:0;display:flex;flex-direction:column;min-width:0;
+  transition:border-color .15s ease, transform .12s ease;
+}
+.cards>.card:hover{border-color:var(--ink-faint)}
+.cards>.card.half{grid-column:span 1}
+.cards>.card.full{grid-column:span 2}
+.cards>.card h3{
+  margin:0 0 12px;font-size:12px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-faint);display:flex;align-items:center;gap:8px;
+}
+.cards>.card h3 .grip{
+  margin-left:auto;color:var(--ink-faint);cursor:grab;
+  letter-spacing:2px;font-size:13px;line-height:1;user-select:none;touch-action:none;
+}
+.cards.arranging>.card{border-style:dashed;border-color:var(--ink-faint)}
+.cards>.card.lifted{opacity:.5;transform:scale(.99)}
+.cards>.card.landing{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+
+/* --- Outstanding: the open backlog, in lanes ------------------------------ */
+.lanes{display:grid;grid-template-columns:1.5fr 1fr;gap:32px;align-items:start}
+.lane{margin:0 0 24px}
+.lane>h2{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint);
+  display:flex;align-items:center;gap:8px;margin:0 0 12px}
+.lane>h2 svg{width:15px;height:15px}
+.lane>h2 .n{font:12px var(--mono);color:var(--ink-faint)}
+.item{background:var(--raise);border:1px solid var(--edge);border-radius:12px;padding:15px 17px;margin-bottom:10px}
+.item.wait{border-color:var(--accent-line)}
+.item.stop{border-color:color-mix(in srgb,var(--hot) 30%,var(--edge))}
+.item .t{font-size:15px;font-weight:600;color:var(--ink)}
+.item .d{font-size:13px;color:var(--ink-dim);margin-top:3px;line-height:1.5}
+.item .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.item .area{float:right;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--cool-dim);color:var(--cool)}
+.tsn{display:grid;grid-template-columns:70px 1fr;gap:6px 10px;font-size:13px;margin-top:10px}
+.tsn .k{color:var(--ink-faint);font-weight:600}
+.tsn .k.stopped{color:var(--hot)}
+.tsn .k.needs{color:var(--accent-tx)}
+.tsn .v{color:var(--ink)}
+.carried{background:var(--side);border:1px solid var(--edge);border-radius:12px;padding:6px 16px}
+.carried .row2{display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid var(--edge-soft)}
+.carried .row2:first-child{border-top:0}
+.carried .row2 span.w{flex:1;font-size:14px}
+.chipd{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--warm-dim);color:var(--warm)}
+.rule{margin-top:24px;background:var(--side);border:1px dashed var(--edge);border-radius:12px;padding:16px 18px;
+  font-size:13px;line-height:1.55;color:var(--ink-dim)}
+.rule b{color:var(--ink)}
+
+/* --- Now: the thought process, as a stream -------------------------------- */
+.nowgrid{display:flex;gap:30px;align-items:flex-start}
+.stream{flex:1;min-width:0}
+.streamhead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
+.streamhead .title{font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.02em}
+.streamhead .since{font-size:13px;color:var(--ink-dim);margin-top:3px}
+.seg{display:flex;background:var(--raise-2);border:1px solid var(--edge);border-radius:8px;padding:3px;font-size:12.5px;font-weight:600}
+.seg a{padding:5px 12px;border-radius:6px;color:var(--ink-dim);text-decoration:none}
+.seg a.on{background:var(--raise);color:var(--ink)}
+.seg a.plain{background:var(--raise);color:var(--ink)}
+.stream .step.early{display:none}
+.stream:target .step.early{display:flex}
+.stream:target .seg a.plain{background:none;color:var(--ink-dim)}
+.stream:target .seg a.detail{background:var(--raise);color:var(--ink)}
+.step{display:flex;gap:13px;margin-bottom:18px}
+.step .dot{width:11px;height:11px;border-radius:50%;flex:none;margin-top:4px;background:var(--ink-faint)}
+.step .lab{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-dim)}
+.step .txt{font-size:14px;margin-top:4px;line-height:1.5}
+.step.plan .dot,.step.doing .dot{background:var(--warm)}
+.step.checked .dot{background:var(--good)} .step.checked .lab{color:var(--good)}
+.step.rerouted .dot,.step.now .dot{background:var(--accent)} .step.rerouted .lab,.step.now .lab{color:var(--accent-tx)}
+.step.now .dot{box-shadow:0 0 0 4px var(--accent-dim)}
+.step.now .txt{font-weight:600;color:var(--ink)}
+.step.stuck .dot{background:var(--hot)} .step.stuck .lab{color:var(--hot)}
+.step.next .txt{color:var(--ink-dim)} .step.next .dot{background:none;border:2px dashed var(--ink-faint);width:9px;height:9px}
+.step .worker{margin-top:9px;background:var(--side);border-radius:9px;padding:11px 13px;font-size:13px;color:var(--ink-dim)}
+.rail2{width:290px;flex:none;display:flex;flex-direction:column;gap:14px}
+.rail2 .box{border:1px solid var(--edge);border-radius:11px;padding:15px 16px}
+.rail2 .box.soft{background:var(--side);border-color:transparent}
+.rail2 .lab{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-dim)}
+.rail2 .big{font:600 26px var(--mono);color:var(--ink);margin:8px 0 10px}
+.rail2 .big small{font:400 14px var(--font);color:var(--ink-dim)}
+.rail2 p{font-size:13px;margin:8px 0 0;line-height:1.55;color:var(--ink-dim)}
+.rail2 form{margin-top:12px}
+.rail2 form button{width:100%}
+
+/* A list of things, each with a dot and a quiet figure on the right. */
+ul.rows{margin:0;padding:0;list-style:none}
+ul.rows li{padding:11px 0;border-top:1px solid var(--edge-soft);display:flex;gap:10px;align-items:baseline}
+ul.rows li:first-child{border-top:0;padding-top:2px}
+ul.rows .dot{width:6px;height:6px;border-radius:99px;background:var(--accent);flex:none;translate:0 -2px}
+ul.rows .dot.cool{background:var(--cool)}
+ul.rows .dot.mute{background:var(--ink-faint)}
+ul.rows .t{font-size:14px}
+ul.rows .meta{margin-left:auto;font:12px var(--mono);color:var(--ink-faint);white-space:nowrap}
+
+/* Health as rings, not bars. */
+.gauge{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--edge-soft)}
+.gauge:first-child,h3+.gauge{border-top:0;padding-top:2px}
+.gauge .dial{width:34px;height:34px;flex:none}
+.gauge .lab{font-size:13px}
+.gauge .lab b{display:block;font:600 14px var(--mono)}
+.gauge .lab span{color:var(--ink-faint);font-size:11.5px}
+
+/* Numbers first: a big number is read before anything else on a screen, so
+   it carries the answer and the label underneath explains it. */
+.figures{display:flex;flex-wrap:wrap;gap:26px;margin:2px 0 10px}
+.figure b{
+  display:block;font:640 30px/1 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums;
+}
+.figure span{font-size:11px;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase}
+.figure.warn b,.figure.warm b{color:var(--accent-tx)}
+.figure.cool b{color:var(--cool)}
+
+ul.tight{margin:0;padding:0;list-style:none}
+ul.tight li{
+  padding:10px 0 10px 16px;border-top:1px solid var(--edge-soft);font-size:14px;color:var(--ink);position:relative;
+}
+ul.tight li:before{content:'';position:absolute;left:0;top:17px;width:6px;height:6px;border-radius:99px;background:var(--ink-faint)}
+ul.tight li:first-child{border-top:0;padding-top:2px}
+ul.tight li:first-child:before{top:9px}
+.said{margin:0;font-size:15px;color:var(--ink)}
+.nothing{margin:0;color:var(--ink-faint);font-size:14px}
+a.more{
+  display:inline-block;margin-top:14px;font-size:13px;color:var(--accent-tx);
+  text-decoration:none;font-weight:550;
+}
+a.more:hover{text-decoration:underline}
+a.more:after{content:' \2192'}
+
+/* A bar is read once; two numbers you have to compare are read twice. */
+.readings{display:flex;flex-direction:column;gap:14px}
+.meterhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.meterhead span{font-size:12px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.08em}
+.meterhead b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.bar{height:5px;border-radius:99px;background:var(--raise-2);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.bar i.warm{background:var(--warm)}
+.bar i.hot{background:var(--hot)}
+.of{font-size:11.5px;color:var(--ink-faint)}
+
+/* --- controls --------------------------------------------------------- */
+button,.btn{
+  font:inherit;font-size:13.5px;padding:7px 13px;border-radius:8px;
+  border:1px solid var(--edge);background:var(--raise-2);color:var(--ink);
+  cursor:pointer;
+}
+button:hover{border-color:var(--ink-faint);background:var(--raise)}
+button.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);font-weight:600}
+button.primary:hover{filter:brightness(1.08);background:var(--accent-fill);border-color:var(--accent-fill)}
+button.quiet{background:none;border-color:transparent;color:var(--ink-dim);padding:6px 9px}
+button.quiet:hover{background:var(--raise-2);color:var(--ink)}
+.handles{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+.handles form{display:inline}
+form.inline{display:inline}
+
+
+input[type=text],input:not([type]){
+  font:inherit;font-size:14px;padding:8px 11px;border-radius:8px;
+  border:1px solid var(--edge);background:var(--raise);color:var(--ink);
+  min-width:220px;margin-right:8px;
+}
+input::placeholder{color:var(--ink-faint)}
+input:focus{outline:none;border-color:var(--accent)}
+
+
+/* --- the palette ------------------------------------------------------
+   Menus stop scaling around six items; this is how someone who knows the
+   product moves. It sits on top of the menu, never instead of it. */
+.palette{position:fixed;inset:0;background:rgba(6,9,12,.62);backdrop-filter:blur(3px);
+  z-index:60;display:flex;justify-content:center;padding-top:12vh}
+/* `display:flex` above outranks the browser's own rule for `hidden`, which
+   left the palette open over every page until something closed it (seen on
+   the real laptop, 23 Sep 2026). `hidden` always wins. */
+[hidden]{display:none!important}
+.palbox{width:min(620px,92vw);height:max-content;background:var(--raise);
+  border:1px solid var(--edge);border-radius:14px;overflow:hidden;
+  box-shadow:0 24px 64px rgba(0,0,0,.55)}
+.palq{display:block;width:100%;min-width:0;margin:0;border:0;border-radius:0;
+  border-bottom:1px solid var(--edge);background:transparent;
+  padding:16px 18px;font-size:16px;color:var(--ink)}
+.palq:focus{outline:none;border-color:var(--edge)}
+.hits{max-height:52vh;overflow-y:auto}
+.hitform{display:block;margin:0}
+.hit{display:block;width:100%;text-align:left;padding:11px 18px;background:none;
+  border:0;border-radius:0;color:inherit;text-decoration:none;font:inherit;cursor:pointer}
+.hit:hover,.hit.first{background:var(--accent-dim)}
+.hit:hover .name,.hit.first .name{color:var(--accent-tx)}
+.hit .name{display:block;font-size:14.5px;font-weight:550;color:var(--ink)}
+.hit .what{display:block;font-size:12.5px;color:var(--ink-faint);margin-top:1px}
+.allhit[hidden]{display:none}
+.palfoot{margin:0;padding:9px 18px;border-top:1px solid var(--edge);
+  font-size:11.5px;color:var(--ink-faint);background:var(--raise-2)}
+.hits.plain{border:1px solid var(--edge);border-radius:var(--r);
+  overflow:hidden;margin-top:16px;max-height:none}
+.hits.plain .hit{border-top:1px solid var(--edge)}
+.hits.plain .hitform:first-child .hit,.hits.plain>.hit:first-child{border-top:0}
+kbd{font:inherit;font-size:11px;padding:1px 5px;border-radius:5px;
+  border:1px solid var(--edge);background:var(--raise-2);color:var(--ink-faint)}
+
+
+/* The category index. Forty settings down one page is a scroll, not a
+   choice, and the one you came to change is never at the top. */
+.jump{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+.jump a{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;
+  border:1px solid var(--edge);border-radius:99px;background:var(--raise);
+  color:var(--ink-dim);text-decoration:none;font-size:13.5px}
+.jump a:hover{border-color:var(--ink-faint);color:var(--ink)}
+.jump a span{font-size:11.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.spacename{margin:14px 0 6px;font-size:11px;font-weight:650;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.spacename:first-child{margin-top:0}
+.cardnote{margin:-6px 0 12px;color:var(--ink-faint);font-size:12.5px}
+.pagenote{margin:-14px 0 22px;color:var(--ink-faint);font-size:14px;max-width:62ch}
+.groupnote{margin:-4px 0 12px;color:var(--ink-faint);font-size:13.5px;max-width:62ch}
+h2[id]{scroll-margin-top:74px}
+
+
+/* The gesture reference. Drawn from the definitions, so it cannot go stale. */
+.gestures{display:flex;flex-wrap:wrap;gap:14px}
+.gesture{display:flex;gap:14px;align-items:center;flex:1 1 320px;
+  background:var(--raise);border:1px solid var(--edge);border-radius:var(--r);padding:14px 16px}
+.gesture .draw{color:var(--accent);flex:0 0 auto;opacity:.9}
+.gesture .meaning b{display:block;font-size:15px;margin-bottom:3px}
+
+/* --- lists and rows --------------------------------------------------- */
+.row{padding:13px 0;border-bottom:1px solid var(--edge)}
+.name{font-weight:600}
+.what{color:var(--ink-dim);font-size:14px}
+.cost{color:var(--warm);font-size:13px;margin-top:3px}
+.note{color:var(--ink-dim);font-size:14px}
+table.access{width:100%;border-collapse:collapse}
+table.access td{padding:12px 0;border-bottom:1px solid var(--edge);vertical-align:top}
+td.right{text-align:right}
+tr.stale{opacity:.55}
+
+.index{border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
+a.entry{display:block;padding:14px 16px;background:var(--raise);text-decoration:none;
+  color:inherit;border-top:1px solid var(--edge)}
+a.entry:first-child{border-top:0}
+a.entry:hover{background:var(--raise-2)}
+a.entry .name{display:block;color:var(--ink)}
+a.entry .what{display:block;margin-top:2px}
+
+/* --- the board -------------------------------------------------------- */
+.board-top{display:flex;gap:24px;margin:0 0 20px;flex-wrap:wrap}
+.stat{color:var(--ink-faint);font-size:13px}
+.stat b{color:var(--ink);font-size:23px;margin-right:6px;font-variant-numeric:tabular-nums}
+nav.views{display:flex;gap:18px;margin:0 0 20px;flex-wrap:wrap}
+a.view{color:var(--ink-faint);text-decoration:none;font-size:14px;padding-bottom:4px;
+  border-bottom:2px solid transparent}
+a.view.here{color:var(--ink);border-bottom-color:var(--accent)}
+.columns{display:flex;gap:16px;align-items:flex-start;overflow-x:auto;padding-bottom:10px}
+.col{flex:0 0 268px;min-width:260px}
+.col h2,.col h3{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-faint);margin:0 0 10px}
+.col h2 small,.col h3 small{color:var(--ink-faint);opacity:.7;margin-left:6px}
+.card{display:block;padding:12px 14px;margin-bottom:9px;border-radius:10px;
+  background:var(--raise);border:1px solid var(--edge)}
+.card .what{display:block;line-height:1.4}
+.card .chip{display:inline-block;margin-top:9px;padding:2px 9px;border-radius:99px;
+  font-size:11.5px;color:var(--ink-faint);background:var(--raise-2)}
+.card .why{display:block;margin-top:7px;font-size:12.5px;color:var(--warm)}
+.card.waiting{border-left:2px solid var(--warm)}
+
+.rec{padding:18px 0;border-bottom:1px solid var(--edge)}
+.rec h2,.rec h3{margin:0 0 7px;font-size:17px;font-weight:600}
+.rec .cause{margin:0 0 7px;color:var(--ink-dim)}
+.rec .evidence,.rec .proof{margin:0 0 5px;font-size:13px;color:var(--ink-faint)}
+.rec button{margin-right:12px}
+.go{background:none;border:1px solid var(--edge);color:var(--ink-dim);font:inherit;
+  font-size:13px;cursor:pointer;padding:5px 10px;border-radius:7px}
+.go:hover{color:var(--ink);border-color:var(--ink-faint)}
+button.revoke{background:none;border:0;color:var(--ink-faint);font:inherit;cursor:pointer;padding:0}
+button.revoke:hover{color:var(--hot)}
+
+
+
+/* A setting's weight, as a word in a pill rather than run into its name. */
+.tag{display:inline-block;margin-left:9px;padding:1px 8px;border-radius:99px;font-size:11px;
+  font-weight:600;letter-spacing:.03em;vertical-align:2px;color:var(--ink-faint);
+  border:1px solid var(--edge);background:var(--raise-2)}
+.tag.perm{color:var(--accent-tx);border-color:var(--accent-line);background:var(--accent-dim)}
+.tag.sens{color:var(--hot);border-color:color-mix(in srgb,var(--hot) 40%,transparent);
+  background:color-mix(in srgb,var(--hot) 12%,transparent)}
+.row form{display:inline-flex;gap:8px;align-items:center;margin:0}
+.row span.on,.row span.off{display:inline-block;min-width:34px;font:12px var(--mono);
+  text-transform:uppercase;letter-spacing:.06em;margin-right:6px}
+.row span.on{color:var(--good)}
+.row span.off{color:var(--ink-faint)}
+select,input[type=number]{font:inherit;font-size:14px;padding:7px 10px;border-radius:8px;
+  border:1px solid var(--edge);background:var(--raise);color:var(--ink)}
+header{flex-wrap:wrap}
+header .tool{white-space:nowrap}
+
+/* --- appearance & access menu (recovered from the second chat's hub) ---- */
+header .tool.icon{font-weight:650;letter-spacing:.02em;cursor:pointer;list-style:none}
+header .tool.icon::-webkit-details-marker{display:none}
+.appwrap{position:relative}
+.appmenu{
+  position:absolute;right:0;top:calc(100% + 8px);width:236px;z-index:40;
+  background:var(--raise);border:1px solid var(--edge);border-radius:12px;
+  box-shadow:0 12px 30px rgba(0,0,0,.35);padding:12px;
+}
+.appmenu .mh{
+  margin:10px 4px 6px;font-size:10.5px;font-weight:650;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+.appmenu .mh:first-child{margin-top:2px}
+.segmented{display:flex;gap:4px;background:var(--raise-2);border-radius:9px;padding:3px}
+.segmented a{
+  flex:1;text-align:center;color:var(--ink-dim);text-decoration:none;
+  padding:6px 4px;border-radius:6px;font-size:12.5px;
+}
+.segmented a:hover{color:var(--ink)}
+.looks .segmented{flex-wrap:wrap;margin-top:8px}
+.looks .segmented a.on{background:var(--accent-fill);color:var(--on-accent);font-weight:600}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:8px 4px;font-size:13.5px;color:var(--ink)}
+.toggle .pair{position:relative;width:42px;height:24px;border-radius:99px;border:1px solid var(--edge);background:var(--raise-2)}
+.toggle .pair:before{content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:99px;
+  background:var(--ink-faint);transition:transform .15s ease,background .15s ease}
+.toggle .pair a{position:absolute;inset:0}
+/* Off shows the turn-on link; on shows the turn-off link. */
+.toggle .pair a+a{display:none}
+/* What is chosen now, read from the attributes on the page itself. */
+:root:is(:not([data-theme]),[data-theme=auto]) .segmented a[data-v=theme-auto],
+:root[data-theme=paper] .segmented a[data-v=theme-paper],
+:root[data-theme=light] .segmented a[data-v=theme-light],
+:root[data-theme=dark] .segmented a[data-v=theme-dark],
+:root:not([data-text]) .segmented a[data-v=text-normal],
+:root[data-text=large] .segmented a[data-v=text-large],
+:root[data-text=larger] .segmented a[data-v=text-larger]{background:var(--accent-fill);color:var(--on-accent);font-weight:600}
+:root[data-contrast=high] .toggle a[data-v=contrast-high],
+:root[data-motion=off] .toggle a[data-v=motion-off]{display:none}
+:root[data-contrast=high] .toggle a[data-v=contrast-normal],
+:root[data-motion=off] .toggle a[data-v=motion-on]{display:block}
+:root[data-contrast=high] .toggle:has(a[data-v=contrast-high]) .pair,
+:root[data-motion=off] .toggle:has(a[data-v=motion-off]) .pair{background:var(--accent-dim);border-color:var(--accent)}
+:root[data-contrast=high] .toggle:has(a[data-v=contrast-high]) .pair:before,
+:root[data-motion=off] .toggle:has(a[data-v=motion-off]) .pair:before{transform:translateX(18px);background:var(--accent)}
+/* --- the thinking mark ------------------------------------------------
+   Drawn here rather than fetched, because Atlas works offline and a spinner
+   that needs the internet is a spinner that stops exactly when something has
+   gone wrong. */
+.think{width:44px;height:44px}
+.think .ring{fill:none;stroke:var(--accent);stroke-width:2;opacity:.32}
+.think .r1{animation:spin 2.4s linear infinite;transform-origin:60px 60px}
+.think .r2{animation:spin 3.6s linear infinite reverse;transform-origin:60px 60px}
+.think .core{fill:var(--accent)}
+.think.idle .ring{opacity:.16;animation:none}
+.think.idle .core{fill:var(--ink-faint)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Movement is a preference, not a decision the page gets to make. */
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+
+/* --- accessibility: skip link, focus, targets, forced colours ----------- */
+.skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--accent-fill);color:var(--on-accent);
+  padding:10px 16px;border-radius:8px;font-weight:650;text-decoration:none}
+.skip:focus{top:12px}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* Focus is always visible, and never hidden under the sticky top bar. */
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
+main:focus{outline:none}
+html{scroll-padding-top:64px}
+/* Targets are at least 24px (WCAG 2.5.8), 44px on touch screens. */
+a.nav,summary.nav,button,.btn,.go,select,input,textarea,.tab,.view,.segmented a,.jump a{min-height:32px}
+@media (pointer:coarse){
+  a.nav,summary.nav,button,.btn,.go,select,input:not([type=radio]):not([type=checkbox]),textarea,.tab,.view,.jump a,a.room{min-height:44px}
+  input[type=radio],input[type=checkbox]{width:24px;height:24px}
+}
+/* Windows' high-contrast themes: use the system's colours as they are. */
+@media (forced-colors:active){
+  .pill,.count,.tag,.area,.chipd{border:1px solid CanvasText}
+  :focus-visible{outline:3px solid Highlight}
+  .sw .knob{background:ButtonText}
+  .brief,.item,.card,.tile{border:1px solid CanvasText}
+}
+input[type=text],input:not([type]),input[type=email],input[type=date],input[type=time],textarea{
+  font:inherit;font-size:14px;padding:8px 11px;border-radius:8px;border:1px solid var(--edge);
+  background:var(--raise);color:var(--ink);max-width:100%}
+label{display:block;font-size:13px;color:var(--ink-dim);margin:10px 0 4px}
+label.voice,fieldset label{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:14px;margin:6px 0}
+fieldset{border:0;padding:0;margin:0 0 10px}
+legend{font-size:13px;color:var(--ink-dim);padding:0;margin:10px 0 4px}
+.notice{background:var(--accent-dim);color:var(--ink);border-radius:9px;padding:10px 14px;margin:0 0 16px}
+.lead{color:var(--ink-dim);max-width:70ch;margin:0 0 18px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start}
+.two h2,.msgs h2{margin-top:0}
+ul.plainlist{list-style:none;margin:0;padding:0}
+ul.plainlist li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--edge-soft);font-size:14px}
+ul.plainlist li:first-child{border-top:0}
+ul.plainlist .meta{margin-left:auto;font-size:12.5px;color:var(--ink-faint)}
+.area{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--cool-dim);color:var(--cool)}
+.count{font:600 11px var(--mono);border-radius:99px;padding:0 7px;background:var(--warm-dim);color:var(--warm)}
+.tablewrap{overflow-x:auto;border:1px solid var(--edge);border-radius:8px}
+table.data{width:100%;border-collapse:collapse;background:var(--raise)}
+table.data th,table.data td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--edge-soft);font-size:13.5px;vertical-align:top}
+table.data thead th{font-weight:550;color:var(--ink-faint);font-size:12px}
+table.data tbody th{font-weight:550}
+table.cal td{height:88px;width:14.28%}
+table.cal td.today{background:var(--accent-dim)}
+.daynum{display:block;font:12px var(--mono);color:var(--ink-faint);margin-bottom:4px}
+.calitem{display:flex;flex-direction:column;gap:3px;font-size:12.5px;margin:4px 0}
+.bizname{font-size:20px;letter-spacing:0;text-transform:none;color:var(--ink);margin:0 0 12px}
+.bizname small{font-weight:400;color:var(--ink-faint);font-size:13px}
+form.addtask{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:flex-end;margin:22px 0 0;padding:14px 16px;
+  border:1px solid var(--edge);border-radius:10px;background:var(--side)}
+form.addtask label{margin:0 0 4px}
+form.addtask>*{flex:0 1 auto}
+form.addtask textarea,form.addtask input#tasktext,form.addtask input#pname,form.addtask input#pfolder{min-width:min(360px,100%)}
+/* Messages and Clients: a list, and the open one. */
+.msgs{display:grid;grid-template-columns:300px minmax(0,1fr);gap:24px;align-items:start}
+.roomlist .nothing{padding:12px 14px}
+.roomlist ul{list-style:none;margin:0;padding:0;border:1px solid var(--edge);border-radius:10px;overflow:hidden}
+a.room{display:flex;gap:10px;align-items:center;padding:10px 12px;text-decoration:none;color:var(--ink);border-top:1px solid var(--edge-soft)}
+.roomlist li:first-child a.room{border-top:0}
+a.room:hover{background:var(--hover)}
+a.room.on{background:var(--accent-dim)}
+a.room .rn{flex:1;min-width:0;display:flex;flex-direction:column}
+a.room .last{font-size:12.5px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+a.room .rm{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11.5px;color:var(--ink-faint)}
+form.start{margin-top:14px}
+.convo{border:1px solid var(--edge);border-radius:10px;padding:16px 18px;background:var(--raise);min-width:0}
+.convohead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--edge-soft);padding-bottom:10px;margin-bottom:12px}
+.convohead h2{margin:0;font-size:17px;letter-spacing:0;text-transform:none;color:var(--ink)}
+.convohead .who{font-size:12.5px;color:var(--ink-faint)}
+ol.said{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:10px}
+.msg{display:flex;flex-direction:column;align-items:flex-start;max-width:80%}
+.msg.mine{align-self:flex-end;align-items:flex-end}
+.bubble{background:var(--side);border:1px solid var(--edge);border-radius:14px;padding:9px 13px;font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
+.msg.mine .bubble{background:var(--accent-dim);border-color:var(--accent-line)}
+.bubble .from{font-weight:600}
+.msg .meta{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-faint);margin-top:3px}
+form.compose{display:flex;gap:10px;align-items:flex-end}
+form.compose textarea{flex:1;min-width:0}
+dl.facts{display:grid;grid-template-columns:120px 1fr;gap:6px 14px;margin:0 0 16px;font-size:14px}
+dl.facts dt{color:var(--ink-faint)}
+dl.facts dd{margin:0}
+.wall{border-top:1px solid var(--edge-soft);padding-top:8px}
+.wall h3{font-size:14px;margin:12px 0 6px}
+/* Sound: switches that say their state. */
+.soundtop{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+form.switchrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--edge-soft)}
+.sw{position:relative;width:46px;min-width:46px;height:28px;border-radius:99px;border:1px solid var(--edge);background:var(--edge);padding:0}
+.sw .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:99px;background:var(--raise);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw.on{background:var(--accent-fill);border-color:var(--accent-fill)}
+.sw.on .knob{left:auto;right:3px}
+label.voice.on{font-weight:600}
+output{font:13px var(--mono);color:var(--ink-dim);margin:0 8px}
+input[type=range]{width:min(260px,100%);accent-color:var(--accent)}
+/* Trusted. */
+ul.trustlist{list-style:none;margin:0;padding:0}
+ul.trustlist li{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--edge-soft)}
+ul.trustlist .tn{font-weight:600;min-width:120px}
+ul.trustlist form{margin-left:auto}
+/* Give. */
+form.givebar,form.givefile{padding:16px 18px;border:1px solid var(--edge);border-radius:12px;background:var(--side);margin:0 0 14px}
+form.givebar textarea{width:100%}
+.banner{border-radius:10px;padding:14px 16px;margin:0 0 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.banner.ok{background:var(--good-dim)}
+.banner.wait{background:var(--warm-dim)}
+.banner.stop{background:var(--hot-dim)}
+pre.preview{white-space:pre-wrap;background:var(--raise);border-radius:10px;padding:12px 14px;font-size:13px;max-width:72ch}
+/* Talk. */
+.holdtalk{margin-top:18px;text-align:center}
+.bigtalk{display:inline-flex;align-items:center;gap:10px;font-size:17px;padding:16px 26px;border-radius:99px;
+  background:var(--accent-fill);color:var(--on-accent);border:0;font-weight:650;min-height:56px}
+.bigtalk svg{width:22px;height:22px}
+.bigtalk[aria-pressed=true]{box-shadow:0 0 0 6px var(--accent-dim)}
+/* Settings index cards. */
+.setcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 22px}
+a.setcard{display:flex;flex-direction:column;gap:4px;border:1px solid var(--edge);border-radius:12px;padding:14px 16px;
+  text-decoration:none;color:var(--ink);background:var(--raise)}
+a.setcard:hover{border-color:var(--ink-faint)}
+a.setcard span{font-size:12.5px;color:var(--ink-dim);line-height:1.45}
+/* The phone's tab bar: hidden on a wide screen. */
+.tabs{display:none}
+.weekwrap{margin:0 0 26px}
+.week{display:grid;grid-template-columns:52px repeat(7,minmax(0,1fr));gap:0;border:1px solid var(--edge);border-radius:10px;overflow:hidden;background:var(--raise)}
+.hours{position:relative;margin-top:34px;border-right:1px solid var(--edge-soft)}
+.hours span{position:absolute;right:6px;font:11px var(--mono);color:var(--ink-faint)}
+.wday{border-left:1px solid var(--edge-soft);min-width:0}
+.wday.today{background:var(--accent-dim)}
+.wdh{margin:0;padding:8px 6px;font-size:12px;font-weight:600;border-bottom:1px solid var(--edge-soft);height:34px;box-sizing:border-box;letter-spacing:0;text-transform:none;color:var(--ink)}
+ol.wevents{position:relative;list-style:none;margin:0;padding:0;background:repeating-linear-gradient(180deg,transparent 0 39px,var(--edge-soft) 39px 40px)}
+.wev{position:absolute;left:3px;right:3px;overflow:hidden;border-radius:6px;padding:3px 5px;font-size:11.5px;line-height:1.3;
+  background:var(--cool-dim);color:var(--ink);border-left:3px solid var(--cool)}
+.wev time{font:11px var(--mono);color:var(--ink-dim)}
+.wev .area{display:block;margin-top:2px;font-size:10px;padding:0 5px}
+.wev.block{background:repeating-linear-gradient(45deg,var(--warm-dim) 0 6px,var(--raise) 6px 12px);border-left-color:var(--warm)}
+@media (max-width:760px){.week{grid-template-columns:40px repeat(7,minmax(64px,1fr));overflow-x:auto}}
+.living>*,.two>*,.lanes>*,.msgs>*,.nowgrid>*{min-width:0}
+.streamhead{flex-wrap:wrap}
+.row form{flex-wrap:wrap}
+select{max-width:100%;min-width:0}
+.row form{max-width:100%}
+main{overflow-wrap:break-word}
+code,kbd,pre{overflow-wrap:anywhere;white-space:pre-wrap}
+.tablewrap{max-width:100%;position:relative}
+.pill{max-width:100%;white-space:normal}
+.sidebar .allpages{display:none}
+@media (max-width:1000px){
+  .living,.lanes,.two{grid-template-columns:1fr}
+  .nowgrid{flex-direction:column}
+  .rail2{width:100%}
+  .setcards{grid-template-columns:1fr 1fr}
+}
+/* --- screens: by the room there is, not by device name -------------------
+
+   Sized by width rather than by 'phone' or 'tablet', because the devices keep
+   changing shape: the iPhone Duo (Oct 2026) is a 5.4' phone folded and a 7.6'
+   near-square screen open, iPads turn, Android folds open, and Split View on
+   any of them halves the width. So:
+
+   - up to 600px: the phone. One row on top (the mark, Search, Talk, Aa,
+     Help, Menu), the design's five tabs at the bottom, one column.
+     (A folded iPhone Duo, any phone upright, either half of Split View.)
+   - 601 to 1019px: the rail. The sidebar becomes a slim column of icons
+     with their names under them; the page gets the rest.
+     (An unfolded iPhone Duo either way up, an iPad upright, a phone on its
+     side, an unfolded Android phone.)
+   - 1020px and up: the full sidebar, as on the laptop.
+     (An iPad on its side, the laptop.)
+
+   Touch screens get 44px targets and no keyboard hints, whatever their
+   width; a screen split by a hinge puts the pages on one side and the page
+   on the other. Every one of these turns with the device, because it is
+   only CSS. */
+
+.hbrand,header .talkbtn,header .allpages{display:none}
+input[type=radio],input[type=checkbox]{accent-color:var(--accent-fill)}
+header .tool svg{width:16px;height:16px;flex:none}
+header .allpages{position:relative}
+header .allpages summary{list-style:none;cursor:pointer}
+header .allpages summary::-webkit-details-marker{display:none}
+header .allpages .side{position:absolute;right:0;top:calc(100% + 8px);width:min(300px,88vw);max-height:72vh;overflow-y:auto;
+  background:var(--raise);border:1px solid var(--edge);border-radius:12px;padding:10px;box-shadow:0 18px 50px rgba(0,0,0,.25);z-index:50}
+header .allpages .side a{display:flex;align-items:center;min-height:44px;padding:0 10px}
+.tabs .badge{position:absolute;top:3px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--accent-fill);color:var(--on-accent);font:700 11px/18px var(--font);text-align:center}
+
+/* Touch: fingers, not a pointer. 44px targets (WCAG 2.5.8 asks 24; Apple and
+   Android both ask 44/48), and no 'Ctrl K' on a screen with no keyboard. */
+@media (pointer:coarse){
+  kbd.ck{display:none}
+  .sidebar a.nav,.sidebar summary.nav{min-height:44px}
+  .side a{min-height:44px;display:flex;align-items:center}
+  header .tool,header summary.tool{min-height:44px;min-width:44px;justify-content:center}
+  button,.btn,a.btn,select,input:not([type=radio]):not([type=checkbox]),textarea{min-height:44px}
+  /* A radio or a checkbox is reached through its whole label, 44px tall. */
+  label:has(>input[type=radio]),label:has(>input[type=checkbox]){min-height:44px}
+  .segmented a{min-height:40px;display:inline-flex;align-items:center}
+}
+
+/* The rail: an unfolded iPhone Duo, an iPad upright, a phone on its side. */
+@media (min-width:601px) and (max-width:1019px){
+  .wrap{grid-template-columns:84px minmax(0,1fr)}
+  .sidebar{padding:10px 6px;gap:2px;align-items:stretch}
+  .sidebar .brand{justify-content:center;padding:6px 0 10px}
+  .sidebar .brand .owner,.sidebar .grp,.sidebar kbd,.sidebar .count{display:none}
+  .sidebar a.nav,.sidebar summary.nav{flex-direction:column;justify-content:center;gap:3px;padding:6px 2px;min-height:52px;
+    font-size:10.5px;line-height:1.15;text-align:center;border-radius:10px}
+  .sidebar .nav svg{width:21px;height:21px;opacity:.85}
+  .sidebar a.nav.on{color:var(--accent-tx)}
+  .sidebar details.more .side{position:fixed;left:90px;bottom:16px;width:260px;max-height:70vh;overflow-y:auto;padding:10px;
+    background:var(--raise);border:1px solid var(--edge);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.25);z-index:60}
+  header #palopen{display:none}
+  main{padding:22px 24px 40px}
+  .msgs{grid-template-columns:minmax(200px,38%) minmax(0,1fr)}
+  .convo dl.facts{grid-template-columns:1fr}
+  .cards{grid-template-columns:1fr 1fr}
+}
+
+/* The phone. */
+@media (max-width:600px){
+  .wrap{display:block}
+  html{scroll-padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  /* A board on a phone reads top to bottom, lane under lane, not sideways
+     past the edge of the screen. */
+  .columns{flex-direction:column;align-items:stretch;overflow-x:visible}
+  .columns>.col{width:auto;min-width:0;flex:none}
+  /* A voice's name over its description, not squeezed beside it. */
+  label.voice{display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:2px;align-items:center;margin:0 0 14px}
+  label.voice>span{grid-column:2}
+  .sidebar{display:none}
+  form.addtask>*{flex:1 1 100%}
+  form.addtask textarea,form.addtask input{width:100%}
+  form.addtask button{flex:0 1 auto}
+  header{position:sticky;top:0;flex-wrap:nowrap;gap:2px;padding:6px 8px;padding-top:max(6px,env(safe-area-inset-top));
+    padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right));min-height:56px}
+  .hbrand{display:flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none;font-weight:650;font-size:16px;
+    min-height:44px;padding:0 6px}
+  .hbrand svg{width:24px;height:24px}
+  header .crumbs,header a.tool[href$='outstanding'],header .lbl,header kbd{display:none}
+  header .talkbtn,header .allpages{display:inline-flex}
+  header .tool,header summary.tool{border:0;background:none;padding:0;min-width:44px;min-height:44px;justify-content:center;
+    color:var(--ink-dim)}
+  header .tool svg{width:21px;height:21px}
+  header .talkbtn{color:var(--accent-tx)}
+  main{padding:18px 16px calc(96px + env(safe-area-inset-bottom));
+    padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+  h1.page{font-size:22px}
+  .cards{grid-template-columns:1fr}
+  .cards>.card.full,.cards>.card.half{grid-column:auto}
+  .homehead .hi{margin-left:0;flex-basis:100%}
+  .msgs{grid-template-columns:1fr}
+  .setcards{grid-template-columns:1fr}
+  .msg{max-width:92%}
+  dl.facts{grid-template-columns:1fr}
+  dl.facts dt{margin-top:6px}
+  .tiles{flex-wrap:wrap}
+  .tile{flex:1 1 40%}
+  .tabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;
+    background:var(--side);border-top:1px solid var(--edge);
+    padding:4px max(4px,env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(4px,env(safe-area-inset-left))}
+  .tab{position:relative;flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    min-height:50px;color:var(--ink-faint);font-size:11px;text-decoration:none;border-radius:10px}
+  .tab svg{width:23px;height:23px}
+  .tab.on{color:var(--accent-tx);font-weight:600}
+  .bigtalk{width:100%;justify-content:center}
+}
+@media (max-width:360px){ .hbrand span{display:none} }
+
+/* A phone on its side is short: the top bar stops following you down. */
+@media (max-height:500px) and (orientation:landscape){
+  header{position:static}
+  .sidebar{height:100vh;overflow-y:auto}
+}
+
+/* A screen split by a hinge or fold (Chrome's Viewport Segments, on Android
+   foldables and dual-screen phones): the pages on one side of the fold, the
+   page on the other, nothing drawn across the hinge. Safari doesn't report
+   segments; the iPhone Duo's inner screen has no gap, so the rail above is
+   what it gets. */
+@media (horizontal-viewport-segments:2){
+  .wrap{display:grid;grid-template-columns:env(viewport-segment-width 0 0,50vw) minmax(0,1fr);
+    column-gap:calc(env(viewport-segment-left 1 0,50vw) - env(viewport-segment-right 0 0,50vw))}
+  .sidebar{display:flex;position:sticky;top:0;height:100vh;overflow-y:auto;flex-direction:column}
+  .sidebar a.nav,.sidebar summary.nav{flex-direction:row;font-size:15px;min-height:44px}
+  .sidebar .brand .owner,.sidebar .grp{display:revert}
+  .tabs,header .allpages,.hbrand{display:none}
+  main{padding-bottom:40px}
+}
+/* Folded like a laptop (tabletop): read above the fold, the tabs below it. */
+@media (vertical-viewport-segments:2){
+  main{max-height:env(viewport-segment-bottom 0 0,100vh);overflow-y:auto}
+}
+.files-io{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}.files-io .btn{text-decoration:none;cursor:pointer;display:inline-block}.files-io p{flex-basis:100%;margin:0}

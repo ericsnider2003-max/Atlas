@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Calendar (Ember Dark)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bezel:#050607;--ink:#f3efe6;--body:#c6c2b8;--muted:#878d97;--faint:#565c66;
+  --line:rgba(255,255,255,.055);--line2:rgba(255,255,255,.09);
+  --accent:#e8a25a;--accent-soft:rgba(232,162,90,.14);--blue:#7aa2d6;
+  --display:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"Hanken Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.navitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;font-size:13.5px;color:var(--body);position:relative}
+.navitem .chev{color:var(--faint);width:11px;display:flex;justify-content:center;font-size:11px}
+.badge{margin-left:auto;font-size:10.5px;font-weight:700;color:#f0c088;background:rgba(232,162,90,.16);border-radius:999px;padding:1px 8px}
+.sec{font-size:10px;font-weight:700;letter-spacing:.11em;color:var(--faint);text-transform:uppercase;padding:0 10px}
+.ev{position:absolute;left:5px;right:5px;border-radius:7px;padding:6px 9px;font-size:11px;line-height:1.25;overflow:hidden;box-sizing:border-box;box-shadow:0 2px 6px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.05)}
+.ev b{font-weight:600;display:block;color:#f3efe6;letter-spacing:-.01em}
+.ev span{color:rgba(255,255,255,.5);font-size:10px}
+.ev.blue{background:linear-gradient(160deg,#26374b,#1d2937);border-left:3px solid var(--blue)}
+.ev.amber{background:linear-gradient(160deg,#3a2f1c,#2c2416);border-left:3px solid var(--accent)}
+.ev.grey{background:linear-gradient(160deg,#242830,#1c2027);border-left:3px solid #5b626d}
+.ev.tblock{background:#2a2214;border:1px solid rgba(232,162,90,.3);border-left:3px solid var(--accent);background-image:repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(232,162,90,.13) 7px,rgba(232,162,90,.13) 14px)}
+.seg{display:flex;background:#0b0e12;border:1px solid var(--line2);border-radius:8px;padding:3px;font-size:12px;font-weight:600}
+.seg span{padding:5px 13px;border-radius:6px;color:var(--muted)}
+.seg .on{background:linear-gradient(180deg,#333a44,#2a3038);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06)}
+.daycol{position:relative;border-left:1px solid var(--line);background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 45px,var(--line) 45px,var(--line) 46px)}
+</style>
+</helmet>
+
+<div style="width:1280px;height:840px;box-sizing:border-box;background:var(--bezel);padding:7px;font-family:var(--sans)">
+  <div style="width:100%;height:100%;background:linear-gradient(155deg,#12161c 0%,#0d1014 60%,#0b0e12 100%);border-radius:11px;overflow:hidden;display:flex;box-shadow:0 24px 60px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06)">
+
+    <aside style="width:242px;flex-shrink:0;background:linear-gradient(180deg,#151a21,#11151b);border-right:1px solid rgba(255,255,255,.05);display:flex;flex-direction:column;padding:15px 12px 13px;box-shadow:inset -1px 0 0 rgba(0,0,0,.3)">
+      <div style="display:flex;align-items:center;gap:10px;padding:4px 8px 14px">
+        <span style="width:26px;height:26px;border-radius:8px;background:linear-gradient(160deg,#2a2416,#1d1a10);display:inline-flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 3px rgba(0,0,0,.4)"><svg viewBox="0 0 24 24" width="17" height="17"><circle cx="12" cy="12" r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.7"/><circle cx="12" cy="12" r="3" fill="var(--accent)"/></svg></span>
+        <span style="font-size:14px;font-weight:700;color:var(--ink);letter-spacing:-.01em">Eric's Atlas</span>
+        <svg viewBox="0 0 24 24" width="15" height="15" style="margin-left:auto;color:var(--faint)" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>Search</span></div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg><span>Now</span></div>
+      <div class="sec" style="margin:17px 0 7px">Personal</div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg><span>Home</span></div>
+      <div class="navitem" style="background:var(--accent-soft);box-shadow:inset 0 0 0 1px rgba(232,162,90,.14)"><span style="position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:3px;background:var(--accent);box-shadow:0 0 10px rgba(232,162,90,.6)"></span><span class="chev" style="color:var(--accent)"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M9 6l6 6-6 6"/></svg></span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#f3d9b4" stroke-width="1.9"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg><span style="color:#f8ecd9;font-weight:600">Calendar</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Projects</span><span class="badge">1</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 5h16v11H9l-4 3z"/></svg><span>Messages</span><span class="badge">4</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg><span>Documents</span></div>
+      <div class="sec" style="margin:17px 0 7px">Northwind LLC · <span style="color:#6b7078;font-weight:600;text-transform:none;letter-spacing:0">business</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M5 20V9l7-5 7 5v11"/></svg><span>Overview</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M9 11l3 3L20 6"/><path d="M20 12v7H4V5h11"/></svg><span>Shared tasks</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg><span>Clients</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.5 2.6 14.5 0 17M12 3.5c-2.6 2.5-2.6 14.5 0 17"/></svg><span>Partners</span></div>
+      <div style="margin-top:auto;padding-top:13px;border-top:1px solid var(--line)">
+        <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg><span>Settings</span></div>
+      </div>
+    </aside>
+
+    <main style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+      <div style="height:46px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--muted)">Personal<span style="margin:0 7px;color:var(--faint)">/</span><span style="color:var(--ink);font-weight:600">Calendar</span></div>
+        <div style="display:flex;align-items:center;gap:18px;font-size:12.5px;color:var(--muted)"><span style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M20 11a8 8 0 10-2.3 5.6M20 5v6h-6"/></svg>Synced with iPhone Calendar</span><span style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#6fbf8f" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg><span style="color:var(--ink)">On your machine</span> · offline</span></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 24px 12px">
+        <span style="font-family:var(--display);font-size:25px;font-weight:600;color:var(--ink);letter-spacing:-.01em">Sep 20 – 26</span>
+        <span style="display:flex;gap:3px"><span style="width:27px;height:27px;border:1px solid var(--line2);border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:rgba(255,255,255,.02)">‹</span><span style="width:27px;height:27px;border:1px solid var(--line2);border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:rgba(255,255,255,.02)">›</span></span>
+        <span style="display:flex;align-items:center;gap:6px;border:1px solid var(--line2);border-radius:8px;padding:6px 11px;font-size:12.5px;color:var(--body);background:rgba(255,255,255,.02)"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>All calendars ▾</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span style="width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px rgba(232,162,90,.5)"></span>Personal</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span style="width:9px;height:9px;border-radius:50%;background:var(--blue);box-shadow:0 0 6px rgba(122,162,214,.5)"></span>Northwind</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span style="width:9px;height:9px;border-radius:50%;background:#5f656e"></span>System</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span style="width:12px;height:9px;border-radius:2px;background-image:repeating-linear-gradient(45deg,transparent,transparent 2px,var(--accent) 2px,var(--accent) 4px)"></span>Time-blocked</span>
+        <span style="margin-left:auto" class="seg"><span>Day</span><span class="on">Week</span><span>Month</span></span>
+      </div>
+
+      <div style="display:flex;padding:0 24px;border-bottom:1px solid var(--line)">
+        <div style="width:54px;flex-shrink:0"></div>
+        <div style="flex:1;display:grid;grid-template-columns:repeat(7,1fr)">
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">SUN</div><div style="margin:4px auto 0;width:28px;height:28px;border-radius:50%;background:linear-gradient(160deg,#f0ad63,#dc8f3f);color:#1a1206;font-family:var(--display);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(232,162,90,.45),inset 0 1px 0 rgba(255,255,255,.3)">20</div></div>
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">MON</div><div style="font-family:var(--display);font-size:17px;font-weight:500;color:var(--ink);margin-top:5px">21</div></div>
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">TUE</div><div style="font-family:var(--display);font-size:17px;font-weight:500;color:var(--ink);margin-top:5px">22</div></div>
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">WED</div><div style="font-family:var(--display);font-size:17px;font-weight:500;color:var(--ink);margin-top:5px">23</div></div>
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">THU</div><div style="font-family:var(--display);font-size:17px;font-weight:500;color:var(--ink);margin-top:5px">24</div></div>
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">FRI</div><div style="font-family:var(--display);font-size:17px;font-weight:500;color:var(--ink);margin-top:5px">25</div></div>
+          <div style="text-align:center;padding:7px 0"><div style="font-size:10px;letter-spacing:.08em;color:var(--faint)">SAT</div><div style="font-family:var(--display);font-size:17px;font-weight:500;color:var(--ink);margin-top:5px">26</div></div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1;overflow:hidden;display:flex;padding:0 24px 14px">
+        <div style="width:54px;flex-shrink:0;position:relative;font-family:var(--mono);font-size:10px;color:var(--faint)">
+          <div style="position:absolute;top:34px">8 AM</div><div style="position:absolute;top:80px">9 AM</div><div style="position:absolute;top:126px">10 AM</div><div style="position:absolute;top:172px">11 AM</div><div style="position:absolute;top:218px">12 PM</div><div style="position:absolute;top:264px">1 PM</div><div style="position:absolute;top:310px">2 PM</div><div style="position:absolute;top:356px">3 PM</div><div style="position:absolute;top:402px">4 PM</div><div style="position:absolute;top:448px">5 PM</div><div style="position:absolute;top:494px">6 PM</div>
+        </div>
+        <div style="flex:1;display:grid;grid-template-columns:repeat(7,1fr);position:relative">
+          <!-- now line -->
+          <div style="position:absolute;left:0;right:0;top:503px;height:1px;background:linear-gradient(90deg,rgba(232,120,90,.9),rgba(232,120,90,.15));z-index:5"></div>
+          <div style="position:absolute;left:-4px;top:499px;width:9px;height:9px;border-radius:50%;background:#e8785a;box-shadow:0 0 8px rgba(232,120,90,.8);z-index:6"></div>
+
+          <div class="daycol" style="background-color:rgba(232,162,90,.03)">
+            <div class="ev tblock" style="top:86px;height:112px"><b>Deep work — Q3 su…</b><span>9:00–11:30 · time-blocked</span></div>
+            <div class="ev blue" style="top:402px;height:42px"><b>Broker call</b><span>4:00</span></div>
+            <div class="ev grey" style="top:523px;height:34px"><b style="color:var(--body)">Homelab deploy</b></div>
+          </div>
+          <div class="daycol">
+            <div class="ev amber" style="top:34px;height:42px"><b>Gym</b><span>8:00</span></div>
+            <div class="ev blue" style="top:402px;height:42px"><b>Client call · Maya</b><span>4:00</span></div>
+          </div>
+          <div class="daycol">
+            <div class="ev blue" style="top:126px;height:44px"><b>Sprint sync</b><span>10:00 · Jordan</span></div>
+          </div>
+          <div class="daycol">
+            <div class="ev tblock" style="top:172px;height:90px"><b>Deep work — rack b…</b><span>11:00–1:00 · time-blocked</span></div>
+            <div class="ev amber" style="top:264px;height:42px"><b>Rack parts arrive</b><span>1:00</span></div>
+          </div>
+          <div class="daycol">
+            <div class="ev blue" style="top:310px;height:44px"><b>Review prep</b><span>2:00 · Northwind</span></div>
+          </div>
+          <div class="daycol">
+            <div class="ev blue" style="top:172px;height:44px"><b>Invoice due</b><span>11:00</span></div>
+            <div class="ev amber" style="top:448px;height:44px"><b>Dinner · Sam</b><span>5:00</span></div>
+          </div>
+          <div class="daycol"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":840}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

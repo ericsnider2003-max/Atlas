@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The phone's calendar, kept with Atlas's (CalendarSync.kt, H7). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- No INTERNET permission is needed for Atlas to work: the hub is on
+         127.0.0.1. It is here for the online extras (sync, feeds), which are
+         secondary and off until you turn them on. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <queries><intent><action android:name="android.speech.RecognitionService" /></intent></queries>
+    <application android:label="Atlas" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
+        android:networkSecurityConfig="@xml/loopback_only" android:supportsRtl="true">
+        <!-- No orientation lock: WCAG 1.3.4. -->
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:label="Give to Atlas">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="atlas" />
+            </intent-filter>
+        </activity>
+        <!-- Atlas at a glance on the home screen (GlanceWidget.kt). -->
+        <receiver android:name=".GlanceWidget" android:exported="true" android:label="Atlas">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/atlas_glance_info" />
+        </receiver>
+        <service android:name=".AtlasService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user's on-device assistant, which serves its own interface on loopback." />
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,35 @@
+# Rust build output
+target/
+**/target/
+
+# Runtime state. Atlas generates everything under data/ on first run — notes,
+# state, the vault, logs, the single-instance lock, the self-work build
+# sandboxes, and per-install secrets like the recovery key. None of it is
+# source: tests build their own data dirs in temp, and the app recreates this
+# tree on run. It was committed by accident in the handed-over baseline and
+# churned the working tree on every run; it does not belong in the repo.
+atlas/data/
+data/
+
+# Local logs and OS cruft
+*.log
+.DS_Store
+
+# The phone apps' build output. The Rust core for each phone is built into
+# rustlib/ by the build (mobile/build-android.sh, .github/workflows/ios.yml);
+# the Xcode project is generated from project.yml on the cloud Mac.
+atlas/mobile/android/.gradle/
+atlas/mobile/android/build/
+atlas/mobile/android/app/build/
+atlas/mobile/android/app/.cxx/
+atlas/mobile/android/app/src/main/rustlib/
+atlas/mobile/android/local.properties
+atlas/mobile/ios/rustlib/
+atlas/mobile/ios/*.xcodeproj/
+# Signing keys never belong in the repository.
+*.p12
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
+*.pass

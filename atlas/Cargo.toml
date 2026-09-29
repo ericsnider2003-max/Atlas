@@ -1,0 +1,310 @@
+[package]
+name = "atlas"
+version = "0.1.0"
+edition = "2021"
+# The integration suite links the crate once, through tests/all.rs, instead of
+# once per file (348 separate binaries was the slow part of a dev cycle). So the
+# test targets are declared by hand below rather than auto-discovered: a new
+# self-contained tests/*.rs needs a `mod` line in tests/all.rs, and a file that
+# declares its own `mod common;` needs its own [[test]] entry here.
+autotests = false
+
+[features]
+# Default is the full desktop build — unchanged from before this existed.
+default = ["onnx", "desktop-ui"]
+# On-device ONNX inference. Off for a lean mobile baseline (see tract-onnx).
+onnx = ["dep:tract-onnx"]
+# The eframe/egui desktop window: the notification panel and the first-launch
+# setup window. Off for a mobile/headless core, where the UI is the
+# server-rendered hub (a WebView on the phone) rather than a native desktop
+# window — so the whole GUI stack (eframe/egui/glow/winit) is dropped from that
+# build. `window::Panel`/`Contents`/`open` stay either way; only the drawing
+# goes. See `20_PHONE_AS_PEER`.
+desktop-ui = ["dep:eframe"]
+# The phone's own language model, in-process (llama.cpp through llama-cpp-2):
+# on for the iPhone/iPad and Android builds, off on the desktop, which runs
+# `llama-server` as its own program (`phonemodel`, OPEN_GAPS P.7).
+phone-llm = ["dep:llama-cpp-2", "dep:encoding_rs"]
+# The same with Apple's Metal GPU, for iPhone and iPad.
+phone-llm-metal = ["phone-llm", "llama-cpp-2/metal"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+thiserror = "1"
+
+eframe = { version = "0.28", default-features = false, features = ["default_fonts", "glow"], optional = true }
+argon2 = "0.5"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+# Signing releases so a device can prove an update is really from you before it
+# installs it. ed25519: the private half never leaves the build machine, the
+# public half is baked in as the one trust anchor. The symmetric crypto above
+# proves "from this household"; this proves "authored by the release key",
+# which is what makes the mesh a safe update channel. Pure Rust, no service.
+# See `src/release.rs` and the update-courier spec.
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+# SHA-256, to fingerprint each release file inside the signed manifest: the
+# signature covers the small manifest, and the manifest pins every file by hash,
+# so one signature binds every platform's build. Already compiled in as a
+# dependency of ed25519-dalek; declared here because release.rs uses it directly.
+sha2 = "0.10"
+# X25519 key agreement for Atlas's own encryption between two people's
+# Atlases (`wire`): the same curve the signing keys live on, so the key each
+# Atlas pins for a friend is also the key it encrypts to. Already compiled in
+# as ed25519-dalek's own dependency; declared because `wire` uses its
+# Montgomery form directly. Pure Rust, no service.
+curve25519-dalek = { version = "4", default-features = false, features = ["zeroize"] }
+# On-device ONNX inference (vision, hand tracking). Optional behind the `onnx`
+# feature — on by default, so the desktop build is unchanged. A first mobile
+# baseline builds `--no-default-features` to drop it, because its build script
+# needs the Android/iOS native toolchain (NDK clang) that nothing else here
+# does; `infer::Model` then reports the capability as unavailable rather than
+# failing to compile. See `20_PHONE_AS_PEER`.
+tract-onnx = { version = "0.23", optional = true }
+# The mail client's transport. Uses the system's OpenSSL rather than a
+# vendored Rust TLS stack (rustls pulls in its own crypto backend, which
+# is a much heavier build for one socket's worth of TLS) -- lighter, and
+# IMAP/SMTP servers are exactly the kind of long-established TLS
+# endpoint the system library already handles correctly.
+native-tls = "0.2"
+# QR codes for putting Atlas on your phone: the hub link, scanned rather
+# than typed. Pure Rust, no image features.
+qrcode = { version = "0.14", default-features = false }
+# Reading PDFs and opening zips in Atlas's own code (Eric, H3): both store
+# their contents deflated. Already in the tree under the image decoders, so
+# no new code is downloaded for it.
+miniz_oxide = "0.8"
+# Opening sherpa-onnx's C library (the Kokoro voice, `kokoro`) when Atlas
+# first speaks in it, rather than linking it: its Windows builds are made
+# with Microsoft's compiler and can't be linked into the MinGW build, and
+# linked in they'd add ~20 MB to every atlas.exe for a voice you may never
+# choose. Already in the tree (winit's), so nothing new is downloaded.
+libloading = "0.8"
+
+# llama.cpp, compiled in (only with `phone-llm`). Pinned exactly: its build
+# compiles llama.cpp from the source it ships, and a new version is a new
+# engine. No default features: no OpenMP (not on Apple's compilers) and no
+# llama.cpp `common` library, which Atlas doesn't use.
+llama-cpp-2 = { version = "=0.1.157", default-features = false, optional = true }
+encoding_rs = { version = "0.8", optional = true }
+
+[dev-dependencies]
+serde_yaml = "0.9"
+# Used by twelve assertions across tests/joined.rs and tests/brain_and_wake.rs.
+# It is a normal dependency above, which does NOT make it available to
+# integration tests -- those see only the crate's public API plus what is listed
+# here. Without this line the whole `tests/` tree fails to compile, and the
+# failure is at the crate level rather than in the file that uses it.
+serde_json = "1"
+# Building compressed PDFs and zips to test the readers against.
+miniz_oxide = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+# How much memory the phone has, to choose its model (`phonemodel::device_ram`).
+libc = "0.2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# llama.cpp's C++ runtime linked into Atlas's own library, so the app needn't
+# ship libc++_shared.so beside it.
+llama-cpp-2 = { version = "=0.1.157", default-features = false, features = ["android-static-stdcxx"], optional = true }
+# Android has no system TLS library an app can link, so native-tls's OpenSSL
+# is built from source into the phone app (the `vendored` feature, which
+# brings openssl-src at build time only). iOS uses the system's Security
+# framework and needs nothing extra (26 Sep 2026: Atlas standing alone on
+# phones).
+native-tls = { version = "0.2", features = ["vendored"] }
+
+[target.'cfg(windows)'.dependencies]
+# Screen readers (Narrator, NVDA, JAWS) reach Atlas's own windows through
+# Windows' UI Automation: eframe's accesskit bridge (MIT/Apache-2.0), on
+# Windows only, where Eric's laptop is. Accessibility law for software (EN 301
+# 549 11.5, Section 508) asks for exactly this. Kept off other platforms, where
+# it would pull in a whole D-Bus stack for AT-SPI (26 Sep 2026).
+eframe = { version = "0.28", default-features = false, features = ["accesskit"], optional = true }
+# callrec: recording a call — your microphone, and what the laptop plays
+# (WASAPI loopback) once the others have said yes (Eric, 24 Sep 2026).
+cpal = { version = "0.15", default-features = false }
+# hubwin: the hub shown inside Atlas's own window, drawn by the web view that
+# ships with Windows (WebView2). Not a browser: no address bar, and it only
+# loads Atlas's own hub on this machine (Eric, 23 Sep 2026).
+wry = { version = "0.53", default-features = false, features = ["os-webview"] }
+# hubwin: the handle of Atlas's window, for the web view to sit inside.
+raw-window-handle = "0.6"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_Storage_FileSystem",
+    "Win32_Security_Cryptography",
+    "Win32_System_Power",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "UI_Notifications",
+    "Data_Xml_Dom",
+    "Foundation",
+    # firstlaunch: a double-click lets go of its console; the Start-menu and
+    # desktop shortcuts are made with the shell's own IShellLink.
+    "Win32_System_Console",
+    # round 11: clipboard history reads the clipboard in-process (sequence
+    # number, CF_UNICODETEXT, the password managers' do-not-keep formats),
+    # and "copy the text on screen" reads it with Windows' own on-device OCR.
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Media_Ocr",
+    "Graphics_Imaging",
+    "Storage_Streams",
+    "Foundation_Collections",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    # Typing into a window, pressing keys, and reading a window's text
+    # through UI Automation: dictation and working an app for you.
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Accessibility",
+    # Telling a locked session from an awake one (H13a).
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_Variant",
+    # Tor tied to Atlas: a job object ends it when Atlas ends (onion.rs).
+    "Win32_System_JobObjects",
+    # tray: the icon by the clock loads Atlas's mark from its own exe.
+    "Win32_System_LibraryLoader",
+] }
+
+# The consolidated suite: one binary, one link of the crate.
+[[test]]
+name = "all"
+path = "tests/all.rs"
+[[test]]
+# The engine inside the phone app, on this machine's CPU: only with it built in.
+name = "the_phone_thinks_for_itself"
+path = "tests/the_phone_thinks_for_itself.rs"
+required-features = ["phone-llm"]
+[[test]]
+name = "guests_at_the_daemon"
+path = "tests/guests_at_the_daemon.rs"
+
+# Atlas on someone else's machine: sets ATLAS_HOME for the process.
+[[test]]
+name = "atlas_on_a_friends_machine"
+path = "tests/atlas_on_a_friends_machine.rs"
+
+# Files kept as their own target — either they declare a file submodule
+# (`mod common;`) that a `#[path]` include cannot resolve, or they drive the
+# global vault/handover state that `roots::install_state()` shares per process,
+# so a process per file keeps that state (and each `ATLAS_HOME`) to itself.
+# Points ATLAS_HOME at a scratch folder, as the phone app does at its own.
+[[test]]
+name = "the_phone_stands_alone"
+path = "tests/the_phone_stands_alone.rs"
+[[test]]
+name = "vad_measured"
+path = "tests/vad_measured.rs"
+[[test]]
+name = "voice_measured"
+path = "tests/voice_measured.rs"
+[[test]]
+name = "capability_wiring"
+path = "tests/capability_wiring.rs"
+[[test]]
+name = "dead_capabilities"
+path = "tests/dead_capabilities.rs"
+[[test]]
+name = "editcraft"
+path = "tests/editcraft.rs"
+[[test]]
+name = "guards"
+path = "tests/guards.rs"
+[[test]]
+name = "handed_over"
+path = "tests/handed_over.rs"
+[[test]]
+name = "hub_settings"
+path = "tests/hub_settings.rs"
+[[test]]
+name = "hublive"
+path = "tests/hublive.rs"
+[[test]]
+name = "losing_the_passphrase"
+path = "tests/losing_the_passphrase.rs"
+[[test]]
+name = "mail_off_the_tick"
+path = "tests/mail_off_the_tick.rs"
+[[test]]
+name = "name_collisions"
+path = "tests/name_collisions.rs"
+[[test]]
+name = "new_capabilities_are_wired"
+path = "tests/new_capabilities_are_wired.rs"
+[[test]]
+name = "one_install_root"
+path = "tests/one_install_root.rs"
+[[test]]
+name = "one_word_is_not_an_address"
+path = "tests/one_word_is_not_an_address.rs"
+[[test]]
+name = "pairing_wiring"
+path = "tests/pairing_wiring.rs"
+[[test]]
+name = "saying_youre_back"
+path = "tests/saying_youre_back.rs"
+[[test]]
+name = "settings_that_do_something_now"
+path = "tests/settings_that_do_something_now.rs"
+[[test]]
+name = "the_branches_that_do_damage"
+path = "tests/the_branches_that_do_damage.rs"
+[[test]]
+name = "the_list_of_lies_is_measured"
+path = "tests/the_list_of_lies_is_measured.rs"
+[[test]]
+name = "the_passphrase_is_never_written_down"
+path = "tests/the_passphrase_is_never_written_down.rs"
+[[test]]
+name = "the_splitter_is_honest"
+path = "tests/the_splitter_is_honest.rs"
+[[test]]
+name = "the_trading_numbers_are_yours"
+path = "tests/the_trading_numbers_are_yours.rs"
+[[test]]
+name = "the_hub_holds_the_way_back"
+path = "tests/the_hub_holds_the_way_back.rs"
+[[test]]
+name = "the_vault_relocks_itself"
+path = "tests/the_vault_relocks_itself.rs"
+[[test]]
+name = "the_workspace_cannot_hold_the_tick"
+path = "tests/the_workspace_cannot_hold_the_tick.rs"
+[[test]]
+name = "updating_without_reinstalling"
+path = "tests/updating_without_reinstalling.rs"
+[[test]]
+name = "what_a_stranger_gets"
+path = "tests/what_a_stranger_gets.rs"
+
+[profile.release]
+opt-level = 3
+
+# The window pulled in a GUI stack and the binary went from 9 MB to 20.6 MB.
+# Stripping symbols and letting the linker drop unused code across crates
+# gets most of that back. `panic = "abort"` is deliberately not set: Atlas
+# catches and reports failures rather than dying, and that needs unwinding.
+strip = true
+lto = "thin"
+codegen-units = 1
+
+# Debug symbols are most of a test binary's size, and `tract` multiplied the
+# count. Dropping them takes the suite from ~6.5GB of build output to under
+# 2GB, which is the difference between the suite running and the linker dying
+# on a bus error partway through. Backtraces keep working; only line numbers
+# are lost, and a failing test names itself.
+[profile.test]
+debug = false
+
+[profile.dev]
+debug = false
+
+[patch.crates-io]
+# hubwin: so atlas.exe starts without WebView2Loader.dll beside it. See
+# vendor/webview2-com-sys/ATLAS_VENDORED.md.
+webview2-com-sys = { path = "vendor/webview2-com-sys" }

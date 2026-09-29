@@ -1,0 +1,56 @@
+# Generic. Nothing here is specific to one computer — no usernames, no
+# absolute home directories. `atlas setup` finds the real paths and writes them
+# to config/machine.yaml, which is layered over this and never shared.
+#
+# Paths use %LOCALAPPDATA% style placeholders and forward slashes. A backslash
+# inside a double-quoted YAML string is an escape character and will not parse.
+apps:
+  claude:
+    # Claude is a Microsoft Store app on this machine. Store apps cannot be
+    # started from their install folder — Windows blocks it — so `launch` is
+    # the app id and Atlas opens it through the shell.
+    # Run `atlas adapt` to find the real paths on this machine, then replace
+    # !App below. (An earlier note here named setup\find-claude.bat, which
+    # does not exist -- `atlas adapt` is what does this job.)
+    store: true
+    launch: "Claude_pzs8sxrjxfjjc!Claude"
+    process_names: ["claude.exe"]
+    title_hints: ["Claude"]
+    role: main
+    layout: full
+    standalone_layout: full     # undocked: Claude gets the whole laptop screen
+    poll_ms: 500
+    retries: 30      # Electron apps are slow to show a window
+
+  chrome:
+    launch: "%PROGRAMFILES%/Google/Chrome/Application/chrome.exe"
+    process_names: ["chrome.exe"]
+    role: side
+    layout: left_half
+    standalone_layout: full     # undocked: full screen, alt-tab between them
+    retries: 20
+
+  discord:
+    launch: "%LOCALAPPDATA%/Discord/Update.exe"
+    args: ["--processStart", "Discord.exe"]
+    process_names: ["discord.exe"]
+    no_input: true              # never click or type into Discord
+    title_hints: ["Discord"]
+    role: side
+    layout: right_half
+    standalone_layout: full
+    poll_ms: 750
+    retries: 40      # updater hands off to a second process
+
+  notepad:
+    launch: "%LOCALAPPDATA%/Microsoft/WindowsApps/notepad.exe"
+    process_names: ["notepad.exe"]
+    role: main
+    layout: corner
+    docked_only: true           # no room for a floating pad on one screen
+    retries: 10
+
+# Claude first so the slowest app gets a head start.
+startup_order: [claude, discord, chrome, notepad]
+# Reverse, so focus lands somewhere sane on the way down.
+shutdown_order: [notepad, chrome, discord, claude]

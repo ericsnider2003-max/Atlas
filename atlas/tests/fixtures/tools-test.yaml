@@ -1,0 +1,9 @@
+# Parsed but never executed — these tests only exercise wake-phrase matching,
+# which runs no commands. Deliberately not real binaries, so this file cannot
+# become platform-specific again.
+enabled: true
+work_dir: "data/test-tmp"
+record: { command: "unused" }
+stt:    { command: "unused" }
+tts:    { command: "unused" }
+play:   { command: "unused" }

@@ -1,0 +1,6 @@
+
+[env]
+# The test suite runs on UTC's clock, wherever it runs, so a test written for
+# "noon" means noon. Only affects `cargo test`/`cargo run`; the built program
+# reads the machine's own zone. See `src/localclock.rs`.
+ATLAS_CLOCK_OFFSET = "0"

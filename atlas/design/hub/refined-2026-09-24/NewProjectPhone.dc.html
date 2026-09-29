@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Start a project (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#fffefb;--ink:#26241f;--body:#413d37;--muted:#8b867c;--faint:#aca69b;
+  --line:#efeae1;--line2:#e6e0d5;--accent:#c15f1c;--accent2:#d07a2c;--done-ink:#3f7d52;
+  --display:"Fraunces",Georgia,serif;
+  --sans:"Hanken Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.qchip{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:9px 15px;font-size:14px;color:var(--ink);box-shadow:0 1px 2px rgba(40,32,20,.04)}
+.area{flex:1;text-align:center;padding:10px;border-radius:10px;font-size:14px;font-weight:600}
+</style>
+</helmet>
+
+<div style="width:390px;height:844px;box-sizing:border-box;background:#0a0b0d;padding:8px;font-family:var(--sans)">
+  <div style="width:100%;height:100%;background:var(--page);border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px 4px">
+      <span style="font-size:15px;font-weight:600;color:var(--ink)">9:41</span>
+      <span style="display:flex;align-items:center;gap:6px;color:var(--ink)">
+        <svg viewBox="0 0 24 24" width="17" height="12" fill="currentColor"><rect x="1" y="7" width="3" height="5"/><rect x="6" y="4" width="3" height="8"/><rect x="11" y="1" width="3" height="11"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a13 13 0 0120 0M5 11a9 9 0 0114 0M8.5 14a4.5 4.5 0 017 0"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" width="22" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="18" height="9" rx="2.5" fill="currentColor"/><rect x="20" y="7" width="2" height="3" rx="1" fill="currentColor"/></svg>
+      </span>
+    </div>
+
+    <div style="display:flex;align-items:center;padding:6px 18px 14px;border-bottom:1px solid var(--line)">
+      <span style="font-size:15px;color:var(--muted)">Cancel</span>
+      <span style="margin:0 auto;font-size:16px;font-weight:600;color:var(--ink)">New project</span>
+      <span style="font-size:15px;color:var(--faint)">&nbsp;</span>
+    </div>
+
+    <div style="flex-grow:1;overflow:hidden;padding:22px 20px 0">
+      <div style="font-family:var(--display);font-size:27px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1.1">What should Atlas<br>take on?</div>
+      <div style="font-size:14.5px;color:var(--muted);margin:8px 0 18px">Say it in your words. Atlas plans it first, then checks with you before it runs.</div>
+
+      <!-- input -->
+      <div style="border:1.5px solid var(--accent);border-radius:16px;padding:15px 16px;min-height:96px;box-shadow:0 2px 12px -6px rgba(196,95,28,.3)">
+        <div style="font-size:16px;color:var(--ink);line-height:1.5">Speed up the report export and prove it against the guard suite<span style="color:var(--accent)">│</span></div>
+      </div>
+
+      <!-- quick starts -->
+      <div style="display:flex;flex-wrap:wrap;gap:9px;margin-top:16px">
+        <span class="qchip">⚡ Fix a bug</span>
+        <span class="qchip">📄 Draft a doc</span>
+        <span class="qchip">🔎 Research something</span>
+        <span class="qchip">📊 Build a report</span>
+      </div>
+
+      <!-- area picker -->
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;margin:24px 0 10px">Area</div>
+      <div style="display:flex;gap:8px;background:#f2eee7;border-radius:13px;padding:4px">
+        <span class="area" style="background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(40,32,20,.08)">Personal</span>
+        <span class="area" style="color:var(--muted)">Northwind</span>
+        <span class="area" style="color:var(--muted)">Homelab</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:9px;margin-top:20px;font-size:13.5px;color:var(--muted);line-height:1.45"><svg viewBox="0 0 24 24" width="16" height="16" style="flex-shrink:0" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg>Runs on this phone. If you're offline, Atlas starts planning and syncs when you reconnect.</div>
+    </div>
+
+    <!-- footer actions -->
+    <div style="flex-shrink:0;padding:14px 20px 22px;display:flex;gap:12px;align-items:center">
+      <span style="width:54px;height:54px;border-radius:50%;background:#fff;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;color:var(--accent);box-shadow:0 1px 3px rgba(40,32,20,.08)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></span>
+      <button style="flex:1;border:none;background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;font-family:var(--sans);font-size:16px;font-weight:600;padding:16px;border-radius:14px;box-shadow:0 3px 10px rgba(140,70,20,.3),inset 0 1px 0 rgba(255,255,255,.2)">Start — Atlas will plan it</button>
+    </div>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

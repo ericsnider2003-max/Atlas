@@ -1,0 +1,29 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-09-24T05:00:00Z" },
+  "title": "Atlas Hub",
+  "launch": { "view": "focused", "file": "Main.dc.html" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html":     { "x": 0,    "y": 0,   "w": 1280, "h": 840, "title": "Home — Warm Paper (light)" },
+    "Now.dc.html":      { "x": 1360, "y": 0,   "w": 1280, "h": 840, "title": "Now — the thought-stream" },
+    "Project.dc.html":  { "x": 2720, "y": 0,   "w": 1280, "h": 840, "title": "Project — how Atlas built it" },
+    "Calendar.dc.html": { "x": 4080, "y": 0,   "w": 1280, "h": 840, "title": "Calendar — Ember Dark" },
+    "Settings.dc.html": { "x": 0,    "y": 960, "w": 1280, "h": 840, "title": "Settings" },
+    "HomePhone.dc.html":{ "x": 1360, "y": 960, "w": 390,  "h": 844, "title": "Home (phone)" },
+    "VoicePhone.dc.html":{ "x": 1830,"y": 960, "w": 390,  "h": 844, "title": "Voice (phone)" },
+    "MessagesPhone.dc.html":{ "x": 2300,"y": 960, "w": 390,  "h": 844, "title": "Messages (phone)" },
+    "SharePhone.dc.html":{ "x": 2770,"y": 960, "w": 390,  "h": 844, "title": "Share sheet (phone)" },
+    "NotificationsPhone.dc.html":{ "x": 3240,"y": 960, "w": 390,  "h": 844, "title": "Lock screen (phone)" },
+    "ProjectsPhone.dc.html":{ "x": 3710,"y": 960, "w": 390,  "h": 844, "title": "Projects (phone)" },
+    "ProjectDetailPhone.dc.html":{ "x": 4180,"y": 960, "w": 390,  "h": 844, "title": "Project detail (phone)" },
+    "NewProjectPhone.dc.html":{ "x": 4650,"y": 960, "w": 390,  "h": 844, "title": "Start a project (phone)" },
+    "OfflinePhone.dc.html":{ "x": 5120,"y": 960, "w": 390,  "h": 844, "title": "Offline (phone)" }
+  },
+  "order": ["Main.dc.html", "Now.dc.html", "Project.dc.html", "Calendar.dc.html", "Settings.dc.html", "HomePhone.dc.html", "VoicePhone.dc.html", "MessagesPhone.dc.html", "SharePhone.dc.html", "NotificationsPhone.dc.html", "ProjectsPhone.dc.html", "ProjectDetailPhone.dc.html", "NewProjectPhone.dc.html", "OfflinePhone.dc.html"],
+  "notes": {
+    "t1": { "x": 0, "y": -300, "text": "Desktop — Warm Paper (light) & Ember Dark", "kind": "title1", "maxW": 5360 },
+    "t2": { "x": 1360, "y": 640, "text": "Phone — a full peer to the desktop, on or offline", "kind": "title1", "maxW": 4150 }
+  },
+  "designSystems": []
+}

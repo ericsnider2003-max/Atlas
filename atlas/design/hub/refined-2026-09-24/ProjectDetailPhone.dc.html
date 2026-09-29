@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Project detail (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#fffefb;--ink:#26241f;--body:#413d37;--muted:#8b867c;--faint:#aca69b;
+  --line:#efeae1;--line2:#e6e0d5;--accent:#c15f1c;--accent2:#d07a2c;
+  --done-ink:#3f7d52;--amber-ink:#a9741f;--amber-bg:#f6ecd6;
+  --display:"Fraunces",Georgia,serif;
+  --sans:"Hanken Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.wl{display:flex;gap:10px;margin-bottom:13px}
+.wl svg{flex-shrink:0;margin-top:1px}
+</style>
+</helmet>
+
+<div style="width:390px;height:844px;box-sizing:border-box;background:#0a0b0d;padding:8px;font-family:var(--sans)">
+  <div style="width:100%;height:100%;background:var(--page);border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px 4px">
+      <span style="font-size:15px;font-weight:600;color:var(--ink)">9:41</span>
+      <span style="display:flex;align-items:center;gap:6px;color:var(--ink)">
+        <svg viewBox="0 0 24 24" width="17" height="12" fill="currentColor"><rect x="1" y="7" width="3" height="5"/><rect x="6" y="4" width="3" height="8"/><rect x="11" y="1" width="3" height="11"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a13 13 0 0120 0M5 11a9 9 0 0114 0M8.5 14a4.5 4.5 0 017 0"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" width="22" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="18" height="9" rx="2.5" fill="currentColor"/><rect x="20" y="7" width="2" height="3" rx="1" fill="currentColor"/></svg>
+      </span>
+    </div>
+
+    <!-- nav bar -->
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 18px 12px;border-bottom:1px solid var(--line)">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--accent)" stroke-width="2.4"><path d="M15 6l-6 6 6 6"/></svg>
+      <span style="font-size:15px;color:var(--accent);font-weight:600">Projects</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg>On your machine</span>
+    </div>
+
+    <div style="flex-grow:1;overflow:hidden;padding:18px 20px 0">
+      <div style="font-family:var(--display);font-size:25px;font-weight:600;color:var(--ink);letter-spacing:-.02em">⚡ Faster date-parser</div>
+      <div style="display:flex;align-items:center;gap:10px;margin:10px 0 14px">
+        <span style="font-size:12px;font-weight:600;color:var(--amber-ink);background:var(--amber-bg);padding:4px 10px;border-radius:999px">Ready to approve</span>
+        <span style="font-size:12.5px;color:var(--muted)">Area · Homelab</span>
+      </div>
+      <div style="font-size:15px;line-height:1.55;color:var(--body)">Replaced the hand-rolled timestamp parser with a table-driven one. Built in a copy, proved against the guard suite — waiting on your yes.</div>
+
+      <!-- proven card -->
+      <div style="margin-top:16px;background:#eef4ec;border:1px solid #dbe8d8;border-radius:14px;padding:15px 16px">
+        <div style="display:flex;gap:9px"><svg viewBox="0 0 24 24" width="17" height="17" style="flex-shrink:0;margin-top:1px" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg><div style="font-size:14px;line-height:1.5;color:var(--body)"><strong style="color:var(--ink)">Proven in a copy.</strong> 5,188 guards pass · ~11% faster · your main tree untouched.</div></div>
+        <div style="display:flex;gap:10px;margin-top:13px">
+          <button style="flex:1;border:none;background:var(--done-ink);color:#fff;font-family:var(--sans);font-size:15px;font-weight:600;padding:13px;border-radius:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.15)">Approve &amp; merge</button>
+          <button style="border:1px solid var(--line2);background:#fff;color:var(--ink);font-family:var(--sans);font-size:15px;font-weight:600;padding:13px 18px;border-radius:12px">Diff</button>
+        </div>
+      </div>
+
+      <!-- work log -->
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;margin:22px 0 12px">How Atlas built this</div>
+      <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--done-ink)" stroke-width="2"><path d="M5 12.5l4 4 10-10"/></svg><div><div style="font-size:14px;font-weight:600;color:var(--ink)">Wrote it + tests</div><div style="font-size:13px;color:var(--muted)">2 files · 214 lines</div></div></div>
+      <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--amber-ink)" stroke-width="2"><path d="M4 12h9M13 8l4 4-4 4"/></svg><div><div style="font-size:14px;font-weight:600;color:var(--ink)">Hit a wall, rerouted</div><div style="font-size:13px;color:var(--muted)">Locale edge case — added a fallback</div></div></div>
+      <div class="wl"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg><div><div style="font-size:14px;font-weight:600;color:var(--accent)">Waiting on you</div><div style="font-size:13px;color:var(--muted)">Approve to merge</div></div></div>
+    </div>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

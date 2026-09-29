@@ -1,0 +1,13 @@
+# The two public keys every copy of Atlas built from this tree trusts
+# (src/release.rs reads this file when Atlas is compiled).
+#
+#   release   signs every update the courier carries
+#   recovery  replaces the release key if it's lost or stolen
+#
+# Made on Eric's laptop with "Make my release key" on the hub's Updates page,
+# which shows these two lines as the key card to send. Public halves only:
+# the private release key stays in Eric's vault, the recovery key on paper.
+# "none" means no key yet, and a build with none trusts no update at all.
+# Eric's key, made 27 Sep 2026:
+release=107ad00abcc9a466ddacb816ca55ccc31134ffa38052149a17069b0f86d2536c
+recovery=1b38c4d7e30aacd025a26c3198c5608ef502d5ce3b1f0fdf3eb27ca1521c6090

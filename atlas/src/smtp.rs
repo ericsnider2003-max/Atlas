@@ -1,0 +1,450 @@
+//! SMTP, from scratch, over whatever transport you hand it.
+//!
+//! The only two things Atlas is allowed to use this for: unsubscribing
+//! (the one send that never needs asking — Eric's rule, not a default
+//! this module invented) and, once given standing approval, mail to
+//! clients or brands. Neither of those decisions lives here — this
+//! module only knows how to *send*, not when it's allowed to.
+//!
+//! Same shape as `imap.rs` on purpose: `Session<S>` is generic over
+//! `Read + Write` so the protocol — command formatting, multi-line reply
+//! parsing — is testable against an in-memory stream, and the one real
+//! socket (`connect`, over TLS) is a single, separately-untestable call
+//! site rather than tangled into the parsing.
+
+use std::io::{self, Read, Write};
+
+pub struct Session<S: Read + Write> {
+    stream: S,
+    inbuf: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reply {
+    pub code: u32,
+    pub lines: Vec<String>,
+}
+
+impl Reply {
+    /// SMTP's own convention: 2xx and 3xx are success (3xx meaning "go
+    /// on", as in "354 start mail input"); 4xx and 5xx are failures.
+    pub fn ok(&self) -> bool {
+        self.code < 400
+    }
+
+    pub fn text(&self) -> String {
+        self.lines.join(" ")
+    }
+}
+
+/// The most either mail module will hold from a server before giving up.
+///
+/// 64 MiB: comfortably past a large message with attachments, and far short
+/// of "until the machine stops". See `Session::fill`.
+const MAX_BUFFER: usize = 64 * 1024 * 1024;
+
+/// How long a mail socket may be silent before Atlas gives up on it.
+///
+/// There were no timeouts at all. A server that completes the TCP and TLS
+/// handshakes and then stops talking hung `fill` for ever — and mail runs as
+/// a crew errand, so the effect was a permanently stuck errand and a leaked
+/// thread, once per mail check, accumulating for as long as Atlas ran.
+/// `http.rs` sets both timeouts and has since it was written; these two were
+/// never given the same.
+const QUIET_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
+impl<S: Read + Write> Session<S> {
+    pub fn new(stream: S) -> Session<S> {
+        Session { stream, inbuf: Vec::new() }
+    }
+
+    /// One read into the buffer, with the buffer bounded.
+    ///
+    /// ## The cap, and why it lives here
+    ///
+    /// `fill` is the only place either mail module takes bytes off the wire,
+    /// so it is the one place a bound can cover every reader at once —
+    /// `read_line`, `read_reply` and `read_exact_n` all loop on it and all
+    /// used to loop without limit:
+    ///
+    /// * `read_line` grew the buffer until it saw CRLF. A server that never
+    ///   sends one grows it for ever.
+    /// * `read_reply` pushed every line shorter than four bytes and carried
+    ///   on. A server streaming `"ok\r\n"` grows the line list for ever.
+    /// * `read_exact_n(n)` took `n` straight from the server's own `{N}`
+    ///   literal announcement, with no ceiling. A server announcing
+    ///   `{4294967295}` makes Atlas buffer until the OOM killer arrives —
+    ///   and the process it kills is the one holding the vault and the mail
+    ///   credentials.
+    ///
+    /// None of those needs a hostile server; a broken one does it too. The
+    /// cap is generous for the job — a large message with attachments is
+    /// megabytes, not tens — and it fails with a sentence rather than by
+    /// dying.
+    fn fill(&mut self) -> io::Result<()> {
+        if self.inbuf.len() >= MAX_BUFFER {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "the server has sent {} bytes without finishing what it was \
+                     saying, past the {MAX_BUFFER} I will hold. Stopping rather \
+                     than filling memory.",
+                    self.inbuf.len()
+                ),
+            ));
+        }
+        let mut chunk = [0u8; 4096];
+        let n = self.stream.read(&mut chunk)?;
+        if n == 0 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection"));
+        }
+        self.inbuf.extend_from_slice(&chunk[..n]);
+        Ok(())
+    }
+
+    fn read_line(&mut self) -> io::Result<String> {
+        loop {
+            if let Some(pos) = self.inbuf.windows(2).position(|w| w == b"\r\n") {
+                let line: Vec<u8> = self.inbuf.drain(..pos).collect();
+                self.inbuf.drain(..2);
+                return Ok(String::from_utf8_lossy(&line).into_owned());
+            }
+            self.fill()?;
+        }
+    }
+
+    /// A reply is one or more lines sharing a code; every line but the
+    /// last has a `-` right after the code (`250-STARTTLS`), the last has
+    /// a space (`250 AUTH LOGIN PLAIN`). Reading stops at the first line
+    /// without a dash.
+    fn read_reply(&mut self) -> io::Result<Reply> {
+        let mut lines = Vec::new();
+        let code = loop {
+            let line = self.read_line()?;
+            if line.len() < 4 {
+                lines.push(line);
+                continue;
+            }
+            // Bytes, not a string slice.
+            //
+            // `line[..3]` byte-slices a `String` that came from
+            // `from_utf8_lossy` -- valid UTF-8, but not necessarily ASCII. A
+            // reply line beginning with two two-byte characters is four bytes
+            // long, so it passes the guard above and then puts index 3 in the
+            // middle of a character, and `&line[..3]` **panics**. Reached from
+            // `read_greeting`, i.e. before authentication, from anything on
+            // the wire that answers on 465.
+            let bytes = line.as_bytes();
+            let code = std::str::from_utf8(&bytes[..3]).ok().and_then(|c| c.parse().ok()).unwrap_or(0);
+            let sep = bytes[3];
+            // Same hazard one line down: `line[4..]` is a string slice at a
+            // byte offset. Taken from the bytes and decoded, so a non-ASCII
+            // reply is mangled rather than fatal.
+            lines.push(String::from_utf8_lossy(&bytes[4..]).into_owned());
+            if sep != b'-' {
+                break code;
+            }
+        };
+        Ok(Reply { code, lines })
+    }
+
+    pub fn read_greeting(&mut self) -> io::Result<Reply> {
+        self.read_reply()
+    }
+
+    pub fn command(&mut self, cmd: &str) -> io::Result<Reply> {
+        self.stream.write_all(cmd.as_bytes())?;
+        self.stream.write_all(b"\r\n")?;
+        self.stream.flush()?;
+        self.read_reply()
+    }
+
+    pub fn ehlo(&mut self, client_name: &str) -> Result<Reply, String> {
+        let r = self.command(&format!("EHLO {client_name}")).map_err(|e| e.to_string())?;
+        if !r.ok() {
+            return Err(r.text());
+        }
+        Ok(r)
+    }
+
+    /// `AUTH LOGIN` — username and password each sent as their own
+    /// base64-encoded line, in response to the server's own `334`
+    /// prompts. The prompts' own text ("VXNlcm5hbWU6", "UGFzc3dvcmQ6" —
+    /// base64 for "Username:"/"Password:") isn't decoded or checked; the
+    /// exchange is positional (username first, password second) per RFC
+    /// 4954, not driven by what the prompt says.
+    pub fn auth_login(&mut self, user: &str, pass: &str) -> Result<(), String> {
+        let r = self.command("AUTH LOGIN").map_err(|e| e.to_string())?;
+        if r.code != 334 {
+            return Err(format!("server didn't offer AUTH LOGIN: {}", r.text()));
+        }
+        let r = self.command(&crate::b64::encode(user.as_bytes())).map_err(|e| e.to_string())?;
+        if r.code != 334 {
+            return Err(format!("username rejected: {}", r.text()));
+        }
+        let r = self.command(&crate::b64::encode(pass.as_bytes())).map_err(|e| e.to_string())?;
+        if !r.ok() {
+            return Err(format!("authentication failed: {}", r.text()));
+        }
+        Ok(())
+    }
+
+    /// `AUTH XOAUTH2` — Outlook/Microsoft 365's SMTP auth, once password
+    /// auth is gone. Simpler than IMAP's version: SMTP's continuation is
+    /// just an ordinary reply with code 334, not a special marker, so
+    /// `command` already knows how to read it — this only has to notice
+    /// the 334 and answer it with an empty line to get the real result.
+    pub fn auth_xoauth2(&mut self, user: &str, access_token: &str) -> Result<(), String> {
+        let initial = crate::msoauth::xoauth2_string(user, access_token);
+        let r = self.command(&format!("AUTH XOAUTH2 {initial}")).map_err(|e| e.to_string())?;
+        // 334 is checked before the general `ok()` — a continuation is
+        // technically a "3xx, keep going" code, so `ok()` alone reads it
+        // as success and never gets the chance to answer it.
+        if r.code == 334 {
+            let r2 = self.command("").map_err(|e| e.to_string())?;
+            return Err(r2.text());
+        }
+        if r.ok() {
+            return Ok(());
+        }
+        Err(r.text())
+    }
+
+    /// One message, start to finish: `MAIL FROM`, `RCPT TO`, the `DATA`
+    /// block, terminated the way SMTP requires — a line that is just
+    /// `.`, and any line in the body that itself starts with `.` gets a
+    /// second `.` in front of it first, or the server reads it as the
+    /// terminator instead of content. `subject`/`body` are ASCII-assumed;
+    /// nothing here MIME-encodes non-ASCII text, which is a real
+    /// limitation for names and subjects outside it.
+    pub fn send_mail(&mut self, from: &str, to: &str, subject: &str, body: &str) -> Result<(), String> {
+        let r = self.command(&format!("MAIL FROM:<{from}>")).map_err(|e| e.to_string())?;
+        if !r.ok() {
+            return Err(format!("MAIL FROM refused: {}", r.text()));
+        }
+        let r = self.command(&format!("RCPT TO:<{to}>")).map_err(|e| e.to_string())?;
+        if !r.ok() {
+            return Err(format!("RCPT TO refused: {}", r.text()));
+        }
+        let r = self.command("DATA").map_err(|e| e.to_string())?;
+        if r.code != 354 {
+            return Err(format!("server refused to start the message: {}", r.text()));
+        }
+        let escaped_body = escape_dot_stuffing(body);
+        let message =
+            format!("From: {from}\r\nTo: {to}\r\nSubject: {subject}\r\n\r\n{escaped_body}\r\n.\r\n");
+        self.stream.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
+        self.stream.flush().map_err(|e| e.to_string())?;
+        let r = self.read_reply().map_err(|e| e.to_string())?;
+        if !r.ok() {
+            return Err(format!("message refused: {}", r.text()));
+        }
+        Ok(())
+    }
+
+    pub fn quit(&mut self) {
+        let _ = self.command("QUIT");
+    }
+}
+
+/// SMTP's "dot-stuffing": a line that starts with `.` is escaped to `..`
+/// so it isn't read as the message terminator. Applied line by line
+/// rather than as a single find-replace, since a `.` anywhere but the
+/// very start of a line is ordinary content.
+fn escape_dot_stuffing(body: &str) -> String {
+    body.lines()
+        .map(|l| if l.starts_with('.') { format!(".{l}") } else { l.to_string() })
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+/// A live connection, over real TLS, on SMTP's implicit-TLS port. The one
+/// place this module touches an actual socket — see `imap::connect` for
+/// why this is deliberately the one untested function here.
+pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<std::net::TcpStream>>, String> {
+    let tcp = std::net::TcpStream::connect((host, port))
+        .map_err(|e| format!("couldn't reach {host}:{port}: {e}"))?;
+    // Before TLS, so the handshake is covered too. A server that completes
+    // the TCP connection and then goes quiet during the handshake used to
+    // hang here with nothing to break it.
+    tcp.set_read_timeout(Some(QUIET_FOR))
+        .map_err(|e| format!("couldn't set a read timeout on {host}: {e}"))?;
+    tcp.set_write_timeout(Some(QUIET_FOR))
+        .map_err(|e| format!("couldn't set a write timeout on {host}: {e}"))?;
+    let connector = native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
+    let tls =
+        connector.connect(host, tcp).map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
+    let mut session = Session::new(tls);
+    let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+    if !greeting.ok() {
+        return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+    }
+    Ok(session)
+}
+
+/// A ceiling on outgoing mail per sending account: 30 an hour, 5 back to
+/// back (GCRA, `ratelimit::Gcra`). A drafting loop or a bug that tries to
+/// send more is refused with how long to wait, instead of emailing a client
+/// thirty times. Chosen, not measured — it is a fuse, not a quota.
+pub fn may_send(account: &str, now_ms: u64) -> Result<(), String> {
+    static LIMIT: std::sync::OnceLock<std::sync::Mutex<crate::ratelimit::Gcra>> = std::sync::OnceLock::new();
+    let lim = LIMIT.get_or_init(|| std::sync::Mutex::new(crate::ratelimit::Gcra::new(30, 3_600_000, 5)));
+    match lim.lock() {
+        Ok(mut g) => g.check(&account.to_lowercase(), now_ms).map_err(|wait| {
+            format!("sending paused: more than 5 in a row from {account} — the next can go in {}s", wait.div_ceil(1000))
+        }),
+        // A poisoned lock is a panic elsewhere; not sending is the safe side.
+        Err(_) => Err("sending paused: the send limiter is unavailable".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    struct Scripted {
+        replies: Cursor<Vec<u8>>,
+        sent: Vec<u8>,
+    }
+    impl Scripted {
+        fn new(script: &str) -> Scripted {
+            Scripted { replies: Cursor::new(script.as_bytes().to_vec()), sent: Vec::new() }
+        }
+    }
+    impl Read for Scripted {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.replies.read(buf)
+        }
+    }
+    impl Write for Scripted {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.sent.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_single_line_reply_is_read_correctly() {
+        let s = Scripted::new("250 OK\r\n");
+        let mut sess = Session::new(s);
+        let r = sess.read_reply().unwrap();
+        assert_eq!(r.code, 250);
+        assert_eq!(r.lines, vec!["OK".to_string()]);
+    }
+
+    #[test]
+    fn a_multi_line_reply_stops_at_the_line_with_a_space_not_a_dash() {
+        let s = Scripted::new("250-example.com at your service\r\n250-STARTTLS\r\n250 AUTH LOGIN PLAIN\r\n");
+        let mut sess = Session::new(s);
+        let r = sess.read_reply().unwrap();
+        assert_eq!(r.code, 250);
+        assert_eq!(r.lines.len(), 3);
+        assert_eq!(r.lines[2], "AUTH LOGIN PLAIN");
+    }
+
+    #[test]
+    fn ok_is_true_for_2xx_and_3xx_but_false_for_4xx_and_5xx() {
+        assert!(Reply { code: 250, lines: vec![] }.ok());
+        assert!(Reply { code: 354, lines: vec![] }.ok());
+        assert!(!Reply { code: 450, lines: vec![] }.ok());
+        assert!(!Reply { code: 550, lines: vec![] }.ok());
+    }
+
+    #[test]
+    fn auth_login_sends_username_and_password_base64_encoded_in_order() {
+        let script = "334 VXNlcm5hbWU6\r\n334 UGFzc3dvcmQ6\r\n235 Authentication successful\r\n";
+        let s = Scripted::new(script);
+        let mut sess = Session::new(s);
+        sess.auth_login("me@gmail.com", "app-password").unwrap();
+        let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
+        assert!(sent.contains(&crate::b64::encode(b"me@gmail.com")));
+        assert!(sent.contains(&crate::b64::encode(b"app-password")));
+        // Username before password.
+        let user_pos = sent.find(&crate::b64::encode(b"me@gmail.com")).unwrap();
+        let pass_pos = sent.find(&crate::b64::encode(b"app-password")).unwrap();
+        assert!(user_pos < pass_pos);
+    }
+
+    #[test]
+    fn auth_login_reports_the_servers_own_reason_on_failure() {
+        let script = "334 VXNlcm5hbWU6\r\n334 UGFzc3dvcmQ6\r\n535 Authentication failed: bad app password\r\n";
+        let s = Scripted::new(script);
+        let mut sess = Session::new(s);
+        let e = sess.auth_login("me@gmail.com", "wrong").unwrap_err();
+        assert!(e.contains("bad app password"), "got: {e}");
+    }
+
+    #[test]
+    fn send_mail_walks_mail_from_rcpt_to_and_data_in_order() {
+        let script = "250 OK\r\n250 OK\r\n354 Start mail input\r\n250 OK: queued\r\n";
+        let s = Scripted::new(script);
+        let mut sess = Session::new(s);
+        sess.send_mail("me@gmail.com", "shop@example.com", "unsubscribe", "").unwrap();
+        let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
+        assert!(sent.contains("MAIL FROM:<me@gmail.com>"));
+        assert!(sent.contains("RCPT TO:<shop@example.com>"));
+        assert!(sent.contains("DATA"));
+        assert!(sent.ends_with("\r\n.\r\n"), "the message must end with the SMTP terminator");
+    }
+
+    #[test]
+    fn a_body_line_starting_with_a_dot_is_escaped_so_it_is_not_read_as_the_terminator() {
+        let escaped = escape_dot_stuffing(".this line starts with a dot\nordinary line");
+        assert_eq!(escaped, "..this line starts with a dot\r\nordinary line");
+    }
+
+    #[test]
+    fn mail_from_being_refused_stops_before_rcpt_to_is_ever_sent() {
+        let script = "550 Sender address rejected\r\n";
+        let s = Scripted::new(script);
+        let mut sess = Session::new(s);
+        let e = sess.send_mail("blocked@example.com", "shop@example.com", "x", "").unwrap_err();
+        assert!(e.contains("MAIL FROM refused"), "got: {e}");
+        let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
+        assert!(!sent.contains("RCPT TO"), "must not proceed to RCPT TO after MAIL FROM was refused");
+    }
+
+    #[test]
+    fn rcpt_to_being_refused_stops_before_data_is_ever_sent() {
+        let script = "250 OK\r\n550 No such recipient\r\n";
+        let s = Scripted::new(script);
+        let mut sess = Session::new(s);
+        let e = sess.send_mail("me@gmail.com", "nobody@example.com", "x", "").unwrap_err();
+        assert!(e.contains("RCPT TO refused"), "got: {e}");
+        let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
+        assert!(!sent.contains("\r\nDATA\r\n"), "must not proceed to DATA after RCPT TO was refused");
+    }
+
+    #[test]
+    fn smtp_auth_xoauth2_succeeds_on_235() {
+        let s = Scripted::new("235 2.7.0 Authentication successful\r\n");
+        let mut sess = Session::new(s);
+        sess.auth_xoauth2("me@outlook.com", "sometoken").unwrap();
+    }
+
+    #[test]
+    fn smtp_auth_xoauth2_answers_a_334_continuation_before_reading_the_real_failure() {
+        let error_json = crate::b64::encode(br#"{"status":"401","schemes":"bearer"}"#);
+        let script = format!("334 {error_json}\r\n535 5.7.3 Authentication unsuccessful\r\n");
+        let s = Scripted::new(&script);
+        let mut sess = Session::new(s);
+        let err = sess.auth_xoauth2("me@outlook.com", "badtoken").unwrap_err();
+        assert!(err.contains("Authentication unsuccessful"), "got: {err}");
+        let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
+        assert!(sent.ends_with("\r\n\r\n"), "the 334 continuation must be answered with an empty line");
+    }
+
+    #[test]
+    fn smtp_auth_xoauth2_sends_the_initial_response_with_the_auth_command() {
+        let s = Scripted::new("235 2.7.0 Authentication successful\r\n");
+        let mut sess = Session::new(s);
+        sess.auth_xoauth2("me@outlook.com", "sometoken").unwrap();
+        let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
+        assert!(sent.starts_with("AUTH XOAUTH2 "));
+        assert!(sent.contains(&crate::msoauth::xoauth2_string("me@outlook.com", "sometoken")));
+    }
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Lock screen (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#26241f;--body:#413d37;--muted:#8b867c;--faint:#aca69b;
+  --line:#e6e1d7;--accent:#c15f1c;--accent2:#d07a2c;--done-ink:#3f7d52;--blue:#4f74a0;
+  --display:"Fraunces",Georgia,serif;
+  --sans:"Hanken Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+body{margin:0;font-family:var(--sans);-webkit-font-smoothing:antialiased}
+</style>
+</helmet>
+
+<div style="width:390px;height:844px;box-sizing:border-box;background:#0a0b0d;padding:8px;font-family:var(--sans)">
+  <div style="width:100%;height:100%;border-radius:32px;overflow:hidden;position:relative;background:linear-gradient(180deg,#c98a3f 0%,#a9743a 26%,#7c5f45 52%,#5f5560 74%,#4a4658 100%)">
+
+    <!-- status + dynamic island -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 26px 0">
+      <span style="font-family:var(--mono);font-size:17px;font-weight:600;color:#fff">6:04</span>
+      <div style="display:flex;align-items:center;gap:8px;background:#0c0d0f;border-radius:999px;padding:7px 15px">
+        <svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="8.5" fill="none" stroke="var(--accent2)" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="var(--accent2)"/></svg>
+        <span style="font-size:13px;font-weight:600;color:#fff">Drafting Q3</span><span style="font-family:var(--mono);font-size:12px;color:var(--accent2)">1m</span>
+      </div>
+      <span style="display:flex;align-items:center;gap:5px;color:#fff">
+        <svg viewBox="0 0 24 24" width="16" height="12" fill="currentColor"><rect x="1" y="7" width="3" height="5"/><rect x="6" y="4" width="3" height="8"/><rect x="11" y="1" width="3" height="11"/></svg>
+        <svg viewBox="0 0 24 24" width="22" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="18" height="9" rx="2.5" fill="currentColor"/><rect x="20" y="7" width="2" height="3" rx="1" fill="currentColor"/></svg>
+      </span>
+    </div>
+
+    <div style="padding:26px 16px 0;display:flex;flex-direction:column;gap:14px">
+      <!-- working card -->
+      <div style="background:rgba(250,248,244,.97);border-radius:22px;padding:18px 19px;box-shadow:0 10px 30px rgba(0,0,0,.28)">
+        <div style="display:flex;align-items:center;gap:9px"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.7"/><circle cx="12" cy="12" r="3" fill="var(--accent)"/></svg><span style="font-size:15px;font-weight:700;color:var(--ink)">Atlas is working</span><span style="margin-left:auto;font-size:13px;color:var(--muted)">now</span></div>
+        <div style="font-size:19px;font-weight:600;color:var(--ink);margin:12px 0 12px">Drafting the Q3 summary.</div>
+        <div style="display:flex;align-items:center;gap:9px;font-size:14px;color:var(--muted);margin-bottom:12px"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--done-ink)" stroke-width="2.4"><path d="M5 12.5l4 4 10-10"/></svg>Checked the numbers · writing it now</div>
+        <div style="height:6px;background:#e7e2d8;border-radius:3px;overflow:hidden"><div style="width:74%;height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><span style="font-family:var(--mono);font-size:13px;color:var(--muted)">~1 min left</span><span style="font-size:15px;font-weight:600;color:var(--accent)">Open</span></div>
+      </div>
+
+      <!-- ready for you card -->
+      <div style="background:rgba(250,248,244,.97);border-radius:22px;padding:18px 19px;box-shadow:0 10px 30px rgba(0,0,0,.28)">
+        <div style="display:flex;align-items:center;gap:9px"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.7"/><circle cx="12" cy="12" r="3" fill="var(--accent)"/></svg><span style="font-size:12.5px;font-weight:700;letter-spacing:.05em;color:var(--accent)">ATLAS · READY FOR YOU</span><span style="margin-left:auto;font-size:13px;color:var(--muted)">now</span></div>
+        <div style="font-size:19px;font-weight:600;color:var(--ink);margin:12px 0 8px">Approve the "faster date parser"</div>
+        <div style="font-size:14.5px;line-height:1.45;color:var(--muted);margin-bottom:15px">Checked and ready — proving test passes, nothing else broke.</div>
+        <div style="display:flex;gap:10px">
+          <button style="flex:1.3;border:none;background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;font-family:var(--sans);font-size:15px;font-weight:600;padding:13px;border-radius:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)">Implement</button>
+          <button style="flex:1;border:none;background:#eae5db;color:var(--ink);font-family:var(--sans);font-size:15px;font-weight:600;padding:13px;border-radius:12px">Read diff</button>
+          <button style="flex:.85;border:none;background:#eae5db;color:var(--ink);font-family:var(--sans);font-size:15px;font-weight:600;padding:13px;border-radius:12px">Later</button>
+        </div>
+      </div>
+
+      <!-- jordan stacked card peeking -->
+      <div style="background:rgba(250,248,244,.9);border-radius:20px;padding:15px 18px;margin:-4px 10px 0;box-shadow:0 8px 22px rgba(0,0,0,.2)">
+        <div style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--blue)" stroke-width="1.9"><path d="M4 5h16v11H9l-4 3z"/></svg><span style="font-size:14px;font-weight:600;color:var(--blue)">Jordan · Northwind</span><span style="margin-left:auto;font-size:12.5px;color:var(--muted)">2m</span></div>
+        <div style="font-size:15px;color:var(--ink);margin-top:8px">"Report export is ready for your review."</div>
+      </div>
+    </div>
+
+    <div style="position:absolute;left:0;right:0;bottom:24px;text-align:center;font-size:13.5px;color:rgba(255,255,255,.85)">Swipe a card away to dismiss · tap to open the full view</div>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# The iPhones and iPads the Atlas app is built for, one per line:
+#   <UDID><tab><name>     (spaces instead of the tab work too)
+# Atlas collects these itself: a phone uses the hub's Your phone page, and the
+# list appears on Eric's Your phone page with a Copy button. Paste it below.
+# The iPhone build (ios.yml) registers any new ones with Apple, so the build
+# after that installs on them. Nobody types a UDID into Apple's site.

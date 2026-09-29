@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang=en data-theme=dark>
+<head>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Atlas — a command deck</title>
+<style>
+/* ============================================================
+   Atlas hub — redesign direction: "the command deck"
+   Everything inline. System fonts. Hand-drawn SVG. No network.
+   ============================================================ */
+:root{
+  color-scheme:dark;
+  /* cool slate base + one warm signature accent (an ember, not a corporate blue) */
+  --ink:#eef1f4; --ink-dim:#9aa6b2; --ink-faint:#697585;
+  --bg:#0b0e13; --panel:#12161d; --panel-2:#171d26; --edge:#212a35; --edge-soft:#1a212b;
+  --ember:#f0a24b; --ember-soft:#3a2a17; --ember-line:#5a3f1e;
+  --cool:#6fb2ff; --good:#5fca9b; --hot:#ef6f6c;
+  --r:16px; --r-sm:11px;
+  --spine:#2a333f;
+  --font:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+}
+:root[data-theme=light]{
+  color-scheme:light;
+  --ink:#182028; --ink-dim:#51606f; --ink-faint:#8593a2;
+  --bg:#eef1f5; --panel:#ffffff; --panel-2:#f5f7fa; --edge:#dde3ea; --edge-soft:#e7ecf1;
+  --ember:#c9761a; --ember-soft:#f8ecdd; --ember-line:#e8cca2;
+  --cool:#1f6fe0; --good:#1f8b64; --hot:#c94b48;
+  --spine:#d5dde5;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--font);
+  -webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(1100px 500px at 8% -6%, rgba(240,162,75,.06), transparent 60%);
+}
+
+/* ---- the frame: a slim left presence rail + the deck ------------------- */
+.wrap{display:grid;grid-template-columns:76px 1fr;min-height:100vh}
+
+.rail{
+  border-right:1px solid var(--edge-soft);padding:18px 0;
+  display:flex;flex-direction:column;align-items:center;gap:22px;
+  position:sticky;top:0;height:100vh;
+}
+.mark{width:40px;height:40px;position:relative}
+.mark svg{width:100%;height:100%;display:block}
+.mark .glow{position:absolute;inset:-8px;border-radius:99px;
+  background:radial-gradient(circle, rgba(240,162,75,.28), transparent 68%);filter:blur(3px);z-index:-1}
+.rail .ico{
+  width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+  color:var(--ink-faint);cursor:pointer;position:relative;
+}
+.rail .ico:hover{background:var(--panel-2);color:var(--ink)}
+.rail .ico.on{color:var(--ember)}
+.rail .ico.on:after{content:'';position:absolute;left:-18px;top:9px;width:3px;height:22px;border-radius:2px;background:var(--ember)}
+.rail .grow{flex:1}
+.rail svg{width:20px;height:20px}
+
+.deck{padding:26px 30px 60px;max-width:1180px}
+
+/* ---- greeting row ----------------------------------------------------- */
+.hello{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:4px}
+.hello h1{margin:0;font-size:30px;font-weight:660;letter-spacing:-.025em}
+.hello h1 span{color:var(--ink-faint);font-weight:500}
+.status{display:flex;align-items:center;gap:9px;color:var(--ink-dim);font-size:13px}
+.status .live{width:8px;height:8px;border-radius:99px;background:var(--good);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 22%,transparent)}
+.sub{margin:2px 0 22px;color:var(--ink-faint);font-size:14px}
+.kbd{font:11.5px var(--mono);border:1px solid var(--edge);border-bottom-width:2px;
+  border-radius:6px;padding:2px 6px;color:var(--ink-dim)}
+
+/* ---- the deck grid: asymmetric, not equal cards ----------------------- */
+.grid{display:grid;grid-template-columns:1.55fr 1fr 1fr;gap:16px;align-items:start}
+.panel{
+  background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 140%);
+  border:1px solid var(--edge);border-radius:var(--r);padding:18px 20px;min-width:0;
+}
+.panel h3{
+  margin:0 0 14px;font-size:11px;font-weight:680;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-faint);display:flex;align-items:center;gap:8px;
+}
+.panel h3 .ring{width:7px;height:7px;border-radius:99px;border:2px solid var(--ember);display:inline-block}
+
+/* hero: "right now" spans two rows, tall */
+.hero{grid-row:span 2;position:relative;overflow:hidden}
+.hero .now{font-size:19px;line-height:1.4;font-weight:560;margin:0 0 4px;letter-spacing:-.01em}
+.hero .nowsub{color:var(--ink-dim);font-size:13.5px;margin:0 0 20px}
+
+/* the day spine — a vertical timeline of today. distinctive, ties to the calendar */
+.spine{position:relative;margin:6px 0 4px;padding-left:20px}
+.spine:before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--spine);border-radius:2px}
+.ev{position:relative;padding:9px 0}
+.ev:before{content:'';position:absolute;left:-16.5px;top:14px;width:11px;height:11px;border-radius:99px;
+  background:var(--panel);border:2px solid var(--ink-faint)}
+.ev.now:before{border-color:var(--ember);background:var(--ember);box-shadow:0 0 0 4px var(--ember-soft)}
+.ev.done:before{border-color:var(--good)}
+.ev time{font:12px/1 var(--mono);color:var(--ink-faint);letter-spacing:.02em}
+.ev .what{font-size:14.5px;margin-top:3px;color:var(--ink)}
+.ev.now .what{color:var(--ember);font-weight:560}
+.ev.done .what{color:var(--ink-dim)}
+
+/* figures: mono tabular, a big number carries the answer */
+.figs{display:flex;gap:26px;margin:2px 0 4px}
+.fig b{display:block;font:640 30px/1 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.fig.warm b{color:var(--ember)}
+.fig.cool b{color:var(--cool)}
+.fig span{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em}
+
+.rows{margin:0;padding:0;list-style:none}
+.rows li{padding:11px 0;border-top:1px solid var(--edge-soft);display:flex;gap:10px;align-items:baseline}
+.rows li:first-child{border-top:0;padding-top:2px}
+.rows .dot{width:6px;height:6px;border-radius:99px;background:var(--ember);flex:none;translate:0 -2px}
+.rows .dot.cool{background:var(--cool)} .rows .dot.mute{background:var(--ink-faint)}
+.rows .t{font-size:14px}
+.rows .meta{margin-left:auto;font:12px var(--mono);color:var(--ink-faint)}
+
+.more{display:inline-block;margin-top:14px;font-size:13px;color:var(--ember);text-decoration:none;font-weight:550}
+.more:after{content:' \2192'}
+
+/* a slim health strip with rings, not bars */
+.gauge{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--edge-soft)}
+.gauge:first-of-type{border-top:0}
+.gauge .dial{width:34px;height:34px;flex:none}
+.gauge .lab{font-size:13px} .gauge .lab b{display:block;font:600 14px var(--mono)}
+.gauge .lab span{color:var(--ink-faint);font-size:11.5px}
+
+/* the ask box at the base of the hero */
+.ask{position:absolute;left:20px;right:20px;bottom:18px;
+  display:flex;align-items:center;gap:10px;background:var(--panel-2);
+  border:1px solid var(--edge);border-radius:12px;padding:11px 14px;color:var(--ink-faint);font-size:14px}
+.ask .k{margin-left:auto}
+.hero{padding-bottom:74px}
+
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .hero{grid-row:auto}
+  .wrap{grid-template-columns:60px 1fr}
+}
+
+/* the appearance switch, top-right */
+.top{position:absolute;top:22px;right:30px;display:flex;gap:8px}
+.chip{border:1px solid var(--edge);background:var(--panel);color:var(--ink-dim);
+  border-radius:9px;padding:7px 11px;font-size:13px;cursor:pointer}
+.chip:hover{color:var(--ink);border-color:var(--ink-faint)}
+</style>
+</head>
+<body>
+<div class=top>
+  <button class=chip onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark')">Light / Dark</button>
+</div>
+<div class=wrap>
+
+  <!-- presence rail -->
+  <div class=rail>
+    <div class=mark>
+      <div class=glow></div>
+      <svg viewBox="0 0 120 120" aria-label="Atlas, thinking">
+        <circle cx=60 cy=60 r=40 fill=none stroke="var(--ember)" stroke-width=2 opacity=.9/>
+        <circle cx=60 cy=60 r=52 fill=none stroke="var(--ember)" stroke-width=2 opacity=.28/>
+        <circle cx=60 cy=60 r=8 fill="var(--ember)"/>
+      </svg>
+    </div>
+    <div class="ico on" title="Now"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><circle cx=12 cy=12 r=9/><path d="M12 7v5l3 2"/></svg></div>
+    <div class=ico title="Board"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><rect x=3 y=3 width=7 height=7 rx=1/><rect x=14 y=3 width=7 height=11 rx=1/><rect x=3 y=14 width=7 height=7 rx=1/></svg></div>
+    <div class=ico title="Calendar"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><rect x=3 y=4 width=18 height=17 rx=2/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+    <div class=ico title="Projects"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><path d="M4 5h16M4 12h16M4 19h10"/></svg></div>
+    <div class=grow></div>
+    <div class=ico title="Settings"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><circle cx=12 cy=12 r=3/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+  </div>
+
+  <!-- the deck -->
+  <div class=deck>
+    <div class=hello>
+      <h1>Good evening, Eric. <span>Here's where things stand.</span></h1>
+      <div class=status><span class=live></span> On, listening · synced 2m ago</div>
+    </div>
+    <p class=sub>Everything below is on your machine. <span class=kbd>Ctrl</span> <span class=kbd>K</span> to find anything.</p>
+
+    <div class=grid>
+
+      <!-- HERO: right now + the day spine -->
+      <div class="panel hero">
+        <h3><span class=ring></span> Right now</h3>
+        <p class=now>Drafting the Q3 summary for finance.</p>
+        <p class=nowsub>Checking the revenue figures against the spreadsheet you attached — about a minute left.</p>
+
+        <div class=spine>
+          <div class="ev done"><time>09:00</time><div class=what>Dentist</div></div>
+          <div class="ev done"><time>11:30</time><div class=what>Reviewed the landlord reply</div></div>
+          <div class="ev now"><time>NOW</time><div class=what>Drafting Q3 summary</div></div>
+          <div class=ev><time>16:00</time><div class=what>Call with the broker — 30 min</div></div>
+          <div class=ev><time>18:30</time><div class=what>Homelab deploy window opens</div></div>
+        </div>
+
+        <div class=ask>Ask Atlas anything… <span class=k><span class=kbd>Enter</span></span></div>
+      </div>
+
+      <!-- waiting on you -->
+      <div class=panel>
+        <h3>Waiting on you</h3>
+        <div class=figs>
+          <div class="fig warm"><b>3</b><span>to act</span></div>
+          <div class="fig cool"><b>2</b><span>proposed</span></div>
+        </div>
+        <ul class=rows>
+          <li><span class=dot></span><span class=t>Approve the "faster date parser" change</span><span class=meta>Atlas</span></li>
+          <li><span class="dot cool"></span><span class=t>Reply to the broker's proposed times</span><span class=meta>2</span></li>
+          <li><span class="dot mute"></span><span class=t>Confirm the mailbox to connect</span><span class=meta>setup</span></li>
+        </ul>
+        <a class=more href=#>Everything outstanding</a>
+      </div>
+
+      <!-- projects -->
+      <div class=panel>
+        <h3>Projects</h3>
+        <ul class=rows>
+          <li><span class=dot></span><span class=t>Atlas</span><span class=meta>1 ready</span></li>
+          <li><span class="dot cool"></span><span class=t>Homelab</span><span class=meta>building</span></li>
+        </ul>
+        <a class=more href=#>Open the workshop</a>
+      </div>
+
+      <!-- health, as rings -->
+      <div class=panel>
+        <h3>Health</h3>
+        <div class=gauge>
+          <svg class=dial viewBox="0 0 36 36"><circle cx=18 cy=18 r=15 fill=none stroke="var(--edge)" stroke-width=3/><circle cx=18 cy=18 r=15 fill=none stroke="var(--good)" stroke-width=3 stroke-linecap=round stroke-dasharray="66 94" transform="rotate(-90 18 18)"/></svg>
+          <div class=lab><b>7.1 GB</b><span>memory, 70% free</span></div>
+        </div>
+        <div class=gauge>
+          <svg class=dial viewBox="0 0 36 36"><circle cx=18 cy=18 r=15 fill=none stroke="var(--edge)" stroke-width=3/><circle cx=18 cy=18 r=15 fill=none stroke="var(--ember)" stroke-width=3 stroke-linecap=round stroke-dasharray="80 94" transform="rotate(-90 18 18)"/></svg>
+          <div class=lab><b>128 GB</b><span>disk, 15% free</span></div>
+        </div>
+      </div>
+
+      <!-- recent, spans two -->
+      <div class=panel style="grid-column:span 2">
+        <h3>What I did without being asked</h3>
+        <ul class=rows>
+          <li><span class="dot mute"></span><span class=t>Filed 40 receipts from your Downloads into Ledger</span><span class=meta>14:02</span></li>
+          <li><span class="dot mute"></span><span class=t>Backed up the vault before the update</span><span class=meta>13:40</span></li>
+          <li><span class="dot mute"></span><span class=t>Noticed the settings page got slow — diagnosed it</span><span class=meta>11:15</span></li>
+        </ul>
+        <a class=more href=#>Full activity</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

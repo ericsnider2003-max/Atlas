@@ -1,0 +1,363 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Atlas — Dashboard</title><style>:root{
+  color-scheme:dark;
+  --ink:#e9ecef; --ink-dim:#9aa3ab; --ink-faint:#6b747c;
+  --bg:#0d1013; --raise:#151a1f; --raise-2:#1b2128; --edge:#232b33;
+  --accent:#5fb0ff; --accent-dim:#254257;
+  --warm:#f0b25a; --hot:#ef6f6c; --good:#63c9a0;
+  --r:12px; --gap:16px;
+}
+/* Light — chosen outright, or followed from the system when nothing is set.
+   The tokens are the only thing that changes; every rule below reads them, so
+   the whole hub turns over at once and nothing has a colour of its own. */
+:root[data-theme=light]{
+  color-scheme:light;
+  --ink:#1b2026; --ink-dim:#586069; --ink-faint:#89929b;
+  --bg:#f6f8fa; --raise:#ffffff; --raise-2:#eef1f4; --edge:#e0e4e9;
+  --accent:#1668dc; --accent-dim:#dbe8fb;
+  --warm:#9a6516; --hot:#c33c39; --good:#227a59;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --ink:#1b2026; --ink-dim:#586069; --ink-faint:#89929b;
+    --bg:#f6f8fa; --raise:#ffffff; --raise-2:#eef1f4; --edge:#e0e4e9;
+    --accent:#1668dc; --accent-dim:#dbe8fb;
+    --warm:#9a6516; --hot:#c33c39; --good:#227a59;
+  }
+}
+/* An explicit choice always wins over the system. */
+:root[data-theme=dark]{color-scheme:dark}
+/* Higher contrast: push the text toward the extremes and lift the edges, in
+   whichever theme is active. Kept as its own layer so it composes with both. */
+:root[data-contrast=high]{
+  --ink:#ffffff; --ink-dim:#ced6de; --ink-faint:#aeb7c0; --edge:#3d4b57;
+}
+:root[data-theme=light][data-contrast=high],
+:root[data-contrast=high][data-theme=light]{
+  --ink:#000000; --ink-dim:#2c343b; --ink-faint:#525b63; --edge:#b4bcc4;
+}
+@media (prefers-color-scheme:light){
+  :root[data-contrast=high]:not([data-theme]){
+    --ink:#000000; --ink-dim:#2c343b; --ink-faint:#525b63; --edge:#b4bcc4;
+  }
+}
+/* Text size — a blunt zoom on the body so every px scales together, not just
+   the ones that happened to be in rem. */
+:root[data-text=large] body{zoom:1.10}
+:root[data-text=larger] body{zoom:1.22}
+/* Motion off by choice, on top of the system preference honoured below. */
+:root[data-motion=off] *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+*{box-sizing:border-box}
+body{
+  font:15px/1.55 ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  margin:0;background:var(--bg);color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent)}
+
+/* --- the frame ------------------------------------------------------- */
+header{
+  display:flex;align-items:center;gap:14px;
+  padding:0 20px;height:56px;
+  background:rgba(13,16,19,.88);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--edge);position:sticky;top:0;z-index:20;
+}
+header strong{font-size:15px;font-weight:650;letter-spacing:-.01em}
+header .spacer{flex:1}
+header .tool{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:6px 11px;border-radius:8px;color:var(--ink-dim);
+  text-decoration:none;font-size:13.5px;border:1px solid transparent;
+}
+header .tool:hover{background:var(--raise-2);color:var(--ink);border-color:var(--edge)}
+header .tool .dot{
+  width:7px;height:7px;border-radius:99px;background:var(--warm);display:inline-block;
+}
+header .tool.icon{font-weight:650;letter-spacing:.02em;cursor:pointer;background:transparent}
+.shellwrap{display:flex;align-items:flex-start}
+
+/* --- appearance & access menu ---------------------------------------- */
+.appwrap{position:relative}
+.appmenu{
+  position:absolute;right:0;top:calc(100% + 8px);width:236px;z-index:40;
+  background:var(--raise);border:1px solid var(--edge);border-radius:12px;
+  box-shadow:0 12px 30px rgba(0,0,0,.35);padding:12px;
+}
+.appmenu[hidden]{display:none}
+.appmenu h5{
+  margin:10px 4px 6px;font-size:10.5px;font-weight:650;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+.appmenu h5:first-child{margin-top:2px}
+.segmented{display:flex;gap:4px;background:var(--raise-2);border-radius:9px;padding:3px}
+.segmented button{
+  flex:1;border:0;background:transparent;color:var(--ink-dim);
+  padding:6px 4px;border-radius:6px;font-size:12.5px;cursor:pointer;
+}
+.segmented button[aria-pressed=true]{background:var(--accent);color:#fff;font-weight:600}
+.toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 4px;font-size:13.5px;color:var(--ink);
+}
+.toggle button{
+  border:1px solid var(--edge);background:var(--raise-2);color:var(--ink-dim);
+  border-radius:99px;width:42px;height:24px;position:relative;cursor:pointer;padding:0;
+}
+.toggle button:before{
+  content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:99px;
+  background:var(--ink-faint);transition:transform .15s ease,background .15s ease;
+}
+.toggle button[aria-pressed=true]{background:var(--accent-dim);border-color:var(--accent)}
+.toggle button[aria-pressed=true]:before{transform:translateX(18px);background:var(--accent)}
+
+/* --- side navigation -------------------------------------------------- */
+nav.side{
+  flex:0 0 218px;padding:18px 12px 40px;border-right:1px solid var(--edge);
+  position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;
+}
+nav.side h4{
+  margin:20px 0 6px;padding:0 8px;font-size:10.5px;font-weight:650;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);
+}
+nav.side h4:first-child{margin-top:0}
+nav.side a{
+  display:block;padding:7px 10px;border-radius:8px;color:var(--ink-dim);
+  text-decoration:none;font-size:14px;line-height:1.3;
+}
+nav.side a:hover{background:var(--raise);color:var(--ink)}
+nav.side a.here{background:var(--accent-dim);color:#cfe8ff;font-weight:550}
+main{padding:24px 28px 64px;max-width:1080px;flex:1 1 auto;min-width:0}
+
+/* --- where you are ---------------------------------------------------- */
+.crumbs{margin:0 0 6px;font-size:12.5px;color:var(--ink-faint)}
+.crumbs a{color:var(--ink-faint);text-decoration:none}
+.crumbs a:hover{color:var(--ink-dim)}
+.crumbs span{margin:0 7px;opacity:.5}
+.crumbs b{color:var(--ink-dim);font-weight:500}
+h1.page{margin:0 0 22px;font-size:26px;font-weight:640;letter-spacing:-.02em}
+h2{
+  margin:30px 0 10px;font-size:11px;font-weight:650;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+
+/* --- the dashboard ---------------------------------------------------- */
+.dashtop{display:flex;gap:10px;align-items:center;margin:0 0 18px}
+.dashtop .grow{flex:1}
+.cards{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:flex-start}
+.cards>.card{
+  background:linear-gradient(180deg,var(--raise) 0%,#12171c 100%);
+  border:1px solid var(--edge);border-radius:var(--r);
+  padding:16px 18px 18px;margin:0;display:block;min-width:0;
+  transition:border-color .15s ease, transform .12s ease;
+}
+.cards>.card:hover{border-color:#2e3841}
+.cards>.card.half{flex:1 1 340px}
+.cards>.card.full{flex:1 1 100%}
+.cards>.card h3{
+  margin:0 0 12px;font-size:11px;font-weight:650;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-faint);
+  display:flex;align-items:center;gap:8px;
+}
+.cards>.card h3 .grip{
+  margin-left:auto;color:var(--ink-faint);cursor:grab;
+  letter-spacing:2px;font-size:13px;line-height:1;user-select:none;touch-action:none;
+}
+.cards.arranging>.card{border-style:dashed;border-color:#33414d}
+.cards>.card.lifted{opacity:.5;transform:scale(.99)}
+.cards>.card.landing{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+
+/* Numbers first: a big number is read before anything else on a screen, so
+   it carries the answer and the label underneath explains it. */
+.figures{display:flex;flex-wrap:wrap;gap:22px;margin:0 0 14px}
+.figure b{
+  display:block;font-size:27px;font-weight:640;letter-spacing:-.03em;
+  line-height:1.05;font-variant-numeric:tabular-nums;
+}
+.figure span{font-size:11.5px;color:var(--ink-faint);letter-spacing:.04em;text-transform:uppercase}
+.figure.warn b{color:var(--warm)}
+
+ul.tight{margin:0;padding:0;list-style:none}
+ul.tight li{
+  padding:8px 0;border-top:1px solid var(--edge);font-size:14px;color:var(--ink);
+}
+ul.tight li:first-child{border-top:0;padding-top:0}
+.said{margin:0;font-size:15px;color:var(--ink)}
+.nothing{margin:0;color:var(--ink-faint);font-size:14px}
+a.more{
+  display:inline-block;margin-top:12px;font-size:13px;color:var(--accent);
+  text-decoration:none;
+}
+a.more:hover{text-decoration:underline}
+a.more:after{content:' \2192'}
+
+/* A bar is read once; two numbers you have to compare are read twice. */
+.readings{display:flex;flex-direction:column;gap:14px}
+.meterhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.meterhead span{font-size:12px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.08em}
+.meterhead b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.bar{height:5px;border-radius:99px;background:var(--raise-2);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.bar i.warm{background:var(--warm)}
+.bar i.hot{background:var(--hot)}
+.of{font-size:11.5px;color:var(--ink-faint)}
+
+/* --- controls --------------------------------------------------------- */
+button,.btn{
+  font:inherit;font-size:13.5px;padding:7px 13px;border-radius:8px;
+  border:1px solid var(--edge);background:var(--raise-2);color:var(--ink);
+  cursor:pointer;
+}
+button:hover{border-color:#3a4650;background:#222a32}
+button.primary{background:var(--accent);border-color:var(--accent);color:#06121c;font-weight:600}
+button.primary:hover{background:#7cbdff;border-color:#7cbdff}
+button.quiet{background:none;border-color:transparent;color:var(--ink-dim);padding:6px 9px}
+button.quiet:hover{background:var(--raise-2);color:var(--ink)}
+.handles{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+.handles form{display:inline}
+form.inline{display:inline}
+
+
+input[type=text],input:not([type]){
+  font:inherit;font-size:14px;padding:8px 11px;border-radius:8px;
+  border:1px solid var(--edge);background:var(--raise);color:var(--ink);
+  min-width:220px;margin-right:8px;
+}
+input::placeholder{color:var(--ink-faint)}
+input:focus{outline:none;border-color:var(--accent)}
+
+
+/* --- the palette ------------------------------------------------------
+   Menus stop scaling around six items; this is how someone who knows the
+   product moves. It sits on top of the menu, never instead of it. */
+.palette{position:fixed;inset:0;background:rgba(6,9,12,.62);backdrop-filter:blur(3px);
+  z-index:60;display:flex;justify-content:center;padding-top:12vh}
+.palbox{width:min(620px,92vw);height:max-content;background:var(--raise);
+  border:1px solid #2e3841;border-radius:14px;overflow:hidden;
+  box-shadow:0 24px 64px rgba(0,0,0,.55)}
+.palq{display:block;width:100%;min-width:0;margin:0;border:0;border-radius:0;
+  border-bottom:1px solid var(--edge);background:transparent;
+  padding:16px 18px;font-size:16px;color:var(--ink)}
+.palq:focus{outline:none;border-color:var(--edge)}
+.hits{max-height:52vh;overflow-y:auto}
+.hitform{display:block;margin:0}
+.hit{display:block;width:100%;text-align:left;padding:11px 18px;background:none;
+  border:0;border-radius:0;color:inherit;text-decoration:none;font:inherit;cursor:pointer}
+.hit:hover,.hit.first{background:var(--accent-dim)}
+.hit:hover .name,.hit.first .name{color:#cfe8ff}
+.hit .name{display:block;font-size:14.5px;font-weight:550;color:var(--ink)}
+.hit .what{display:block;font-size:12.5px;color:var(--ink-faint);margin-top:1px}
+.allhit[hidden]{display:none}
+.palfoot{margin:0;padding:9px 18px;border-top:1px solid var(--edge);
+  font-size:11.5px;color:var(--ink-faint);background:#12171c}
+.hits.plain{border:1px solid var(--edge);border-radius:var(--r);
+  overflow:hidden;margin-top:16px;max-height:none}
+.hits.plain .hit{border-top:1px solid var(--edge)}
+.hits.plain .hitform:first-child .hit,.hits.plain>.hit:first-child{border-top:0}
+kbd{font:inherit;font-size:11px;padding:1px 5px;border-radius:5px;
+  border:1px solid var(--edge);background:var(--raise-2);color:var(--ink-faint)}
+
+
+/* The category index. Forty settings down one page is a scroll, not a
+   choice, and the one you came to change is never at the top. */
+.jump{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+.jump a{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;
+  border:1px solid var(--edge);border-radius:99px;background:var(--raise);
+  color:var(--ink-dim);text-decoration:none;font-size:13.5px}
+.jump a:hover{border-color:#3a4650;color:var(--ink)}
+.jump a span{font-size:11.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.spacename{margin:14px 0 6px;font-size:11px;font-weight:650;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.spacename:first-child{margin-top:0}
+.cardnote{margin:-6px 0 12px;color:var(--ink-faint);font-size:12.5px}
+.pagenote{margin:-14px 0 22px;color:var(--ink-faint);font-size:14px;max-width:62ch}
+.groupnote{margin:-4px 0 12px;color:var(--ink-faint);font-size:13.5px;max-width:62ch}
+h2[id]{scroll-margin-top:74px}
+
+
+/* The gesture reference. Drawn from the definitions, so it cannot go stale. */
+.gestures{display:flex;flex-wrap:wrap;gap:14px}
+.gesture{display:flex;gap:14px;align-items:center;flex:1 1 320px;
+  background:var(--raise);border:1px solid var(--edge);border-radius:var(--r);padding:14px 16px}
+.gesture .draw{color:var(--accent);flex:0 0 auto;opacity:.9}
+.gesture .meaning b{display:block;font-size:15px;margin-bottom:3px}
+
+/* --- lists and rows --------------------------------------------------- */
+.row{padding:13px 0;border-bottom:1px solid var(--edge)}
+.name{font-weight:600}
+.what{color:var(--ink-dim);font-size:14px}
+.cost{color:var(--warm);font-size:13px;margin-top:3px}
+.note{color:var(--ink-dim);font-size:14px}
+table.access{width:100%;border-collapse:collapse}
+table.access td{padding:12px 0;border-bottom:1px solid var(--edge);vertical-align:top}
+td.right{text-align:right}
+tr.stale{opacity:.55}
+
+.index{border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
+a.entry{display:block;padding:14px 16px;background:var(--raise);text-decoration:none;
+  color:inherit;border-top:1px solid var(--edge)}
+a.entry:first-child{border-top:0}
+a.entry:hover{background:var(--raise-2)}
+a.entry .name{display:block;color:var(--ink)}
+a.entry .what{display:block;margin-top:2px}
+
+/* --- the board -------------------------------------------------------- */
+.board-top{display:flex;gap:24px;margin:0 0 20px;flex-wrap:wrap}
+.stat{color:var(--ink-faint);font-size:13px}
+.stat b{color:var(--ink);font-size:23px;margin-right:6px;font-variant-numeric:tabular-nums}
+nav.views{display:flex;gap:18px;margin:0 0 20px;flex-wrap:wrap}
+a.view{color:var(--ink-faint);text-decoration:none;font-size:14px;padding-bottom:4px;
+  border-bottom:2px solid transparent}
+a.view.here{color:var(--ink);border-bottom-color:var(--accent)}
+.columns{display:flex;gap:16px;align-items:flex-start;overflow-x:auto;padding-bottom:10px}
+.col{flex:0 0 268px;min-width:260px}
+.col h3{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-faint);margin:0 0 10px}
+.col h3 small{color:var(--ink-faint);opacity:.7;margin-left:6px}
+.card{display:block;padding:12px 14px;margin-bottom:9px;border-radius:10px;
+  background:var(--raise);border:1px solid var(--edge)}
+.card .what{display:block;line-height:1.4}
+.card .chip{display:inline-block;margin-top:9px;padding:2px 9px;border-radius:99px;
+  font-size:11.5px;color:var(--ink-faint);background:var(--raise-2)}
+.card .why{display:block;margin-top:7px;font-size:12.5px;color:var(--warm)}
+.card.waiting{border-left:2px solid var(--warm)}
+
+.rec{padding:18px 0;border-bottom:1px solid var(--edge)}
+.rec h3{margin:0 0 7px;font-size:17px;font-weight:600}
+.rec .cause{margin:0 0 7px;color:var(--ink-dim)}
+.rec .evidence,.rec .proof{margin:0 0 5px;font-size:13px;color:var(--ink-faint)}
+.rec button{margin-right:12px}
+.go{background:none;border:1px solid var(--edge);color:var(--ink-dim);font:inherit;
+  font-size:13px;cursor:pointer;padding:5px 10px;border-radius:7px}
+.go:hover{color:var(--ink);border-color:#3a4650}
+button.revoke{background:none;border:0;color:var(--ink-faint);font:inherit;cursor:pointer;padding:0}
+button.revoke:hover{color:var(--hot)}
+
+
+/* --- the thinking mark ------------------------------------------------
+   Drawn here rather than fetched, because Atlas works offline and a spinner
+   that needs the internet is a spinner that stops exactly when something has
+   gone wrong. */
+.think{width:44px;height:44px}
+.think .ring{fill:none;stroke:var(--accent);stroke-width:2;opacity:.32}
+.think .r1{animation:spin 2.4s linear infinite;transform-origin:60px 60px}
+.think .r2{animation:spin 3.6s linear infinite reverse;transform-origin:60px 60px}
+.think .core{fill:var(--accent)}
+.think.idle .ring{opacity:.16;animation:none}
+.think.idle .core{fill:var(--ink-faint)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Movement is a preference, not a decision the page gets to make. */
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+
+@media (max-width:760px){
+  .shellwrap{display:block}
+  nav.side{position:static;flex:none;border-right:0;border-bottom:1px solid var(--edge);
+    max-height:none;display:flex;flex-wrap:wrap;gap:4px;padding:10px 12px}
+  nav.side h4{width:100%;margin:8px 0 2px}
+  nav.side a{display:inline-block}
+  main{padding:18px 16px 56px}
+  .cards>.card.half{flex:1 1 100%}
+}
+</style><script>(function(){try{var d=document.documentElement,s=localStorage;['theme','text','contrast','motion'].forEach(function(k){var v=s.getItem('atlas-'+k);if(v)d.setAttribute('data-'+k,v);});}catch(e){}})();</script></head><body><header><strong>Atlas</strong><span class=spacer></span><a class=tool id=palopen href='/hub/find'>Find anything <kbd>Ctrl K</kbd></a><a class=tool href='/hub/outstanding'>Nothing waiting</a><div class=appwrap><button class='tool icon' id=appbtn aria-haspopup=true aria-expanded=false aria-label='Appearance and access'>Aa</button><div class=appmenu id=appmenu hidden role=menu aria-label='Appearance and access'><h5>Theme</h5><div class=segmented data-pref=theme><button data-val=light aria-pressed=false>Light</button><button data-val=dark aria-pressed=false>Dark</button><button data-val='' aria-pressed=false>Auto</button></div><h5>Text size</h5><div class=segmented data-pref=text><button data-val='' aria-pressed=false>Normal</button><button data-val=large aria-pressed=false>Large</button><button data-val=larger aria-pressed=false>Larger</button></div><h5>Access</h5><div class=toggle>High contrast<button data-pref=contrast data-on=high data-off='' aria-pressed=false aria-label='High contrast'></button></div><div class=toggle>Reduce motion<button data-pref=motion data-on=off data-off='' aria-pressed=false aria-label='Reduce motion'></button></div></div></div><a class=tool href='/hub/settings'>Settings</a></header><div class=shellwrap><nav class=side><a class='here' href='/hub'>Dashboard</a><h4>Your work</h4><a class='' href='/hub/workspace'>Board</a><a class='' href='/hub/workshop'>Projects</a><a class='' href='/hub/calendar'>Calendar</a><a class='' href='/hub/outstanding'>Blocked</a><a class='' href='/hub/back'>History</a><a class='' href='/hub/activity'>Activity</a><h4>Atlas itself</h4><a class='' href='/hub/now'>Thinking</a><a class='' href='/hub/gestures'>Gestures</a><a class='' href='/hub/status'>Health</a><a class='' href='/hub/connections'>Connections</a><a class='' href='/hub/recommendations'>Improvements</a><h4>What it may do</h4><a class='' href='/hub/settings'>Settings</a><a class='' href='/hub/permissions'>Permissions</a><a class='' href='/hub/accounts'>Accounts</a><a class='' href='/hub/access'>Access</a><a class='' href='/hub/sync'>Your devices</a></nav><main><p class=crumbs><a href=/hub>Atlas</a></p><div class=cards><div class='card half'><h3>Today</h3><div class=figures><div class=figure><b>3</b><span>waiting</span></div><div class=figure><b>12</b><span>done</span></div></div><ul class=tight><li>Review the Q3 numbers</li><li>Reply to the landlord</li></ul></div><div class='card half'><h3>Next up</h3><p class=said>Dentist tomorrow at 9:00.</p><a class=more href=#>Your calendar</a></div></div></main></div><script>(function(){var d=document.documentElement;var btn=document.getElementById('appbtn');var menu=document.getElementById('appmenu');if(!btn||!menu)return;function get(k){try{return localStorage.getItem('atlas-'+k)||''}catch(e){return ''}}function set(k,v){try{v?localStorage.setItem('atlas-'+k,v):localStorage.removeItem('atlas-'+k)}catch(e){}v?d.setAttribute('data-'+k,v):d.removeAttribute('data-'+k);reflect();}function reflect(){menu.querySelectorAll('.segmented').forEach(function(g){var k=g.getAttribute('data-pref');var cur=get(k);g.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-val')===cur));});});menu.querySelectorAll('.toggle button').forEach(function(b){var k=b.getAttribute('data-pref');b.setAttribute('aria-pressed',String(get(k)===b.getAttribute('data-on')));});}menu.querySelectorAll('.segmented button').forEach(function(b){b.addEventListener('click',function(){set(b.parentNode.getAttribute('data-pref'),b.getAttribute('data-val'));});});menu.querySelectorAll('.toggle button').forEach(function(b){b.addEventListener('click',function(){var on=get(b.getAttribute('data-pref'))===b.getAttribute('data-on');set(b.getAttribute('data-pref'),on?b.getAttribute('data-off'):b.getAttribute('data-on'));});});function open(o){menu.hidden=!o;btn.setAttribute('aria-expanded',String(o));}btn.addEventListener('click',function(e){e.stopPropagation();open(menu.hidden);});document.addEventListener('click',function(e){if(!menu.contains(e.target)&&e.target!==btn)open(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')open(false);});reflect();})();</script></body></html>

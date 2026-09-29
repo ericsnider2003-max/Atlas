@@ -1,0 +1,25 @@
+# The meaning encoder behind Atlas's search-by-meaning.
+#
+# A standalone program on purpose — Atlas treats every model as an external
+# tool (whisper, piper, and now this), so the seam in `atlas/src/meaning.rs`
+# runs whatever `tools.meaning.encoder` names and never links a model into
+# the daemon. This is the reference implementation of that contract: text on
+# stdin, one vector of plain numbers on stdout.
+#
+# tract rather than onnxruntime because it is pure Rust: no C toolchain, no
+# DLLs to ship beside the exe, and it cross-compiles to Windows the same way
+# the atlas crates already do. Same tract major version personal Atlas
+# already builds with, so nothing new is trusted.
+[package]
+name = "embed"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tract-onnx = "0.23"
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = "thin"
+codegen-units = 1

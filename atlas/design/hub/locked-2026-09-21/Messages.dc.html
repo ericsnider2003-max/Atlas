@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Messages</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --panel:#ffffff; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-ink:#ffffff; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}
+  .nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;display:flex;align-items:center;gap:6px;}
+  .av{border-radius:99px;display:inline-grid;place-items:center;font-weight:700;flex:none;}
+  .chat{display:flex;gap:11px;padding:11px 13px;border-radius:9px;cursor:pointer;align-items:center;}
+  .chat:hover{background:var(--hover);}
+  .chat.on{background:#fff;box-shadow:0 1px 4px rgba(30,25,15,.08);border:1px solid var(--edge);}
+  .me{align-self:flex-end;max-width:74%;background:var(--accent);color:#fff;border-radius:16px 16px 5px 16px;padding:9px 13px;font-size:14px;line-height:1.45;}
+  .them{align-self:flex-start;max-width:74%;background:#fff;border:1px solid var(--edge);border-radius:16px 16px 16px 5px;padding:9px 13px;font-size:14px;line-height:1.45;color:var(--ink);}
+  .ts{font-size:11px;color:var(--faint);margin:2px 4px 0;}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- ===== SIDEBAR (same as Home, Messages active) ===== -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+
+    <div class="grp">PERSONAL</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects<span class="mono" style="margin-left:auto;background:var(--accent-soft);color:var(--accent-tx);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">1</span></div>
+    <div class="nav on"><span class="tw">&#9662;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages<span class="mono" style="margin-left:auto;background:var(--infos);color:var(--info);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">4</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Documents</div>
+
+    <div class="grp">NORTHWIND LLC <span style="font-weight:400;color:#c3c2bd;">· business</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg>Overview</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path></svg>Shared tasks</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"></circle><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path></svg>Clients</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>Partners</div>
+
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.2-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.2-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.2 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.2 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.2 2.7z"></path></svg>Settings</div>
+  </div>
+
+  <!-- ===== CHAT LIST ===== -->
+  <div style="width:298px;flex:none;border-right:1px solid var(--edge);box-sizing:border-box;padding:16px 10px;display:flex;flex-direction:column;background:var(--side);">
+    <div style="display:flex;align-items:center;gap:8px;padding:0 6px 12px;">
+      <h1 style="margin:0;font-size:19px;font-weight:700;flex:1;">Messages</h1>
+      <span style="width:30px;height:30px;border-radius:8px;background:#fff;border:1px solid var(--edge);display:grid;place-items:center;color:var(--accent);"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--edge);border-radius:8px;padding:7px 11px;margin:0 6px 10px;color:var(--faint);font-size:13px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search chats</div>
+
+    <div class="chat on">
+      <span class="av" style="width:40px;height:40px;background:var(--infos);color:var(--info);font-size:13px;">J</span>
+      <div style="flex:1;min-width:0;"><div style="display:flex;"><span style="font-size:14.5px;font-weight:640;flex:1;">Jordan</span><span class="mono" style="font-size:11px;color:var(--faint);">3:58</span></div><div style="font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">You: Sent the Q3 report 📄</div></div>
+    </div>
+    <div class="chat">
+      <span class="av" style="width:40px;height:40px;background:var(--accent-soft);color:var(--accent-tx);font-size:11px;"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"></circle><circle cx="16" cy="9" r="2.5"></circle><path d="M2 20v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1M15 20v-1a3 3 0 0 0-2-2.8"></path></svg></span>
+      <div style="flex:1;min-width:0;"><div style="display:flex;"><span style="font-size:14.5px;font-weight:640;flex:1;">Northwind project</span><span class="mono" style="font-size:11px;color:var(--faint);">2:10</span></div><div style="font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Maya: works for me — ship it</div></div>
+      <span style="width:18px;height:18px;border-radius:99px;background:var(--info);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;">2</span>
+    </div>
+    <div class="chat">
+      <span class="av" style="width:40px;height:40px;background:var(--edge);color:var(--dim);font-size:13px;">S</span>
+      <div style="flex:1;min-width:0;"><div style="display:flex;"><span style="font-size:14.5px;font-weight:640;flex:1;">Sam</span><span class="mono" style="font-size:11px;color:var(--faint);">Fri</span></div><div style="font-size:12.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Held — delivers when Sam's online</div></div>
+    </div>
+
+    <div style="flex:1;"></div>
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 8px;font-size:11.5px;color:var(--faint);border-top:1px solid var(--edge);">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ok)" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      End-to-end encrypted · Atlas-to-Atlas, no server in between
+    </div>
+  </div>
+
+  <!-- ===== THREAD ===== -->
+  <div style="flex:1;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;">
+    <!-- thread header -->
+    <div style="height:60px;flex:none;border-bottom:1px solid var(--edge);display:flex;align-items:center;gap:12px;padding:0 22px;">
+      <span class="av" style="width:36px;height:36px;background:var(--infos);color:var(--info);font-size:12px;">J</span>
+      <div style="flex:1;"><div style="font-size:15px;font-weight:660;">Jordan</div><div style="font-size:12px;color:var(--ok);font-weight:600;display:flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:99px;background:var(--ok);"></span>Online · their Atlas is reachable</div></div>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ok);background:var(--oks);border-radius:99px;padding:4px 11px;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg>Trusted</span>
+      <span style="width:32px;height:32px;border-radius:8px;border:1px solid var(--edge);display:grid;place-items:center;color:var(--dim);"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.4"></circle><circle cx="19" cy="12" r="1.4"></circle><circle cx="5" cy="12" r="1.4"></circle></svg></span>
+    </div>
+
+    <!-- messages -->
+    <div style="flex:1;overflow:hidden;padding:22px 26px 8px;display:flex;flex-direction:column;gap:4px;background:#faf9f6;">
+      <div style="align-self:center;font-size:11px;color:var(--faint);background:#fff;border:1px solid var(--edge);border-radius:99px;padding:3px 11px;margin-bottom:10px;">Today</div>
+
+      <div class="them">Did the date-parser change land? Want to run the report before the deploy.</div>
+      <div class="ts" style="align-self:flex-start;">Jordan · 3:41 PM</div>
+
+      <div class="me" style="margin-top:8px;">Yep, checked and merged. Sending the Q3 report now.</div>
+      <div class="ts" style="align-self:flex-end;">You · 3:57 PM · <span style="color:var(--ok);">Delivered</span></div>
+
+      <!-- in-chat document share: SAME trusted rule as everywhere else -->
+      <div class="me" style="margin-top:8px;background:#fff;border:1px solid var(--edge);padding:0;overflow:hidden;color:var(--ink);">
+        <div style="display:flex;align-items:center;gap:11px;padding:12px 14px;">
+          <span style="width:36px;height:36px;border-radius:8px;background:var(--accent-soft);color:var(--accent-tx);display:grid;place-items:center;flex:none;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg></span>
+          <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:640;">Q3 report.pdf</div><div style="font-size:11.5px;color:var(--faint);">1.8 MB · business document</div></div>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--dim)" stroke-width="2"><path d="M12 3v13M7 11l5 5 5-5M5 21h14"></path></svg>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:8px 14px;background:var(--oks);border-top:1px solid var(--edge);font-size:11.5px;color:#3f6f49;">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+          Sent without asking — Jordan is trusted for business docs · <b>Undo</b>
+        </div>
+      </div>
+      <div class="ts" style="align-self:flex-end;">You · 3:58 PM · <span style="color:var(--ok);">Delivered · encrypted</span></div>
+
+      <div class="them" style="margin-top:8px;">Got it, thanks. Running now.</div>
+      <div class="ts" style="align-self:flex-start;">Jordan · 3:58 PM</div>
+    </div>
+
+    <!-- composer -->
+    <div style="flex:none;padding:12px 22px 18px;border-top:1px solid var(--edge);">
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--edge);border-radius:12px;padding:8px 10px 8px 14px;">
+        <span style="color:var(--faint);cursor:pointer;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5l-8.5 8.5a5 5 0 0 1-7-7L14 5.5a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.6 1.6 0 0 1-2.3-2.3l8.5-8.5"></path></svg></span>
+        <span style="flex:1;font-size:14px;color:var(--faint);">Message Jordan…</span>
+        <span style="color:var(--faint);cursor:pointer;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+        <span style="width:36px;height:36px;border-radius:9px;background:var(--accent);display:grid;place-items:center;cursor:pointer;"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2"><path d="M4 12l16-8-6 16-3-6-7-2z"></path></svg></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11.5px;color:var(--faint);padding-left:2px;">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l2.5 1.5"></path></svg>
+        Sends the instant you hit enter, stamped at your time · if they're offline, Atlas holds it and delivers when they're back.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

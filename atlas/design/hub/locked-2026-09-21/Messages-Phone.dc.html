@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Messages (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --edge:#eceae4; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97; --accent:#d9730d; --accent-soft:#fdecc8; --accent-tx:#b26206; --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .me{align-self:flex-end;max-width:78%;background:var(--accent);color:#fff;border-radius:18px 18px 5px 18px;padding:9px 14px;font-size:15px;line-height:1.4;}
+  .them{align-self:flex-start;max-width:78%;background:#fff;border:1px solid var(--edge);border-radius:18px 18px 18px 5px;padding:9px 14px;font-size:15px;line-height:1.4;color:var(--ink);}
+  .ts{font-size:11px;color:var(--faint);margin:3px 6px 0;}
+</style>
+</helmet>
+
+<div style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:#faf9f6;display:flex;flex-direction:column;">
+
+  <!-- status bar -->
+  <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:600;">
+    <span>9:41</span>
+    <span style="display:flex;gap:5px;align-items:center;"><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--ink)"><path d="M2 20h3v-8H2zM9 20h3V8H9zM16 20h3V4h-3z"></path></svg><svg viewBox="0 0 24 24" width="17" height="17" fill="var(--ink)"><path d="M12 4C7 4 3 7 1 11l11 9 11-9c-2-4-6-7-11-7z" opacity=".55"></path></svg><svg viewBox="0 0 24 24" width="22" height="16" fill="none" stroke="var(--ink)" stroke-width="1.5"><rect x="1" y="5" width="17" height="12" rx="3"></rect><rect x="3" y="7" width="12" height="8" rx="1.5" fill="var(--ink)"></rect></svg></span>
+  </div>
+
+  <!-- thread header -->
+  <div style="flex:none;display:flex;align-items:center;gap:11px;padding:6px 16px 10px;border-bottom:1px solid var(--edge);background:#faf9f6;">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M15 18l-6-6 6-6"></path></svg>
+    <span style="width:36px;height:36px;border-radius:99px;background:var(--edge);color:var(--dim);display:grid;place-items:center;font-weight:700;font-size:13px;">S</span>
+    <div style="flex:1;"><div style="font-size:15.5px;font-weight:660;">Sam</div><div style="font-size:12px;color:var(--faint);display:flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:99px;background:var(--faint);"></span>Offline · last seen Fri</div></div>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+  </div>
+
+  <!-- messages -->
+  <div style="flex:1;overflow:hidden;padding:16px 14px 6px;display:flex;flex-direction:column;gap:3px;">
+    <div style="align-self:center;font-size:11px;color:var(--faint);background:#fff;border:1px solid var(--edge);border-radius:99px;padding:3px 11px;margin-bottom:8px;">Friday</div>
+
+    <div class="them">You get the mini-rack sorted?</div>
+    <div class="ts" style="align-self:flex-start;">Sam · Fri 6:02 PM</div>
+
+    <div class="me" style="margin-top:6px;">Almost — waiting on the 10-inch shelf. I'll send you the parts list.</div>
+    <div class="ts" style="align-self:flex-end;">You · Fri 6:04 PM · <span style="color:var(--ok);">Delivered</span></div>
+
+    <div style="align-self:center;font-size:11px;color:var(--faint);background:#fff;border:1px solid var(--edge);border-radius:99px;padding:3px 11px;margin:10px 0 8px;">Today</div>
+
+    <div class="me">Parts list's in your inbox. Ping me when you're around.</div>
+    <!-- the stated delivery rule, shown honestly -->
+    <div class="ts" style="align-self:flex-end;display:flex;align-items:center;gap:5px;">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="var(--wait)" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l2.5 1.5"></path></svg>
+      <span>You · 9:40 AM · <span style="color:var(--wait);font-weight:600;">Sent · held for Sam</span></span>
+    </div>
+    <div style="align-self:flex-end;max-width:80%;font-size:11.5px;color:var(--faint);text-align:right;margin:2px 6px 0;line-height:1.4;">Sam's offline, so your Atlas is holding it. It delivers the moment Sam's back — still stamped 9:40, the time you sent it.</div>
+  </div>
+
+  <!-- composer -->
+  <div style="flex:none;padding:10px 14px 26px;border-top:1px solid var(--edge);background:#faf9f6;">
+    <div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--edge);border-radius:22px;padding:7px 8px 7px 14px;">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="var(--faint)" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>
+      <span style="flex:1;font-size:15px;color:var(--faint);">Message</span>
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="var(--faint)" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+      <span style="width:34px;height:34px;border-radius:99px;background:var(--accent);display:grid;place-items:center;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" stroke-width="2"><path d="M4 12l16-8-6 16-3-6-7-2z"></path></svg></span>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

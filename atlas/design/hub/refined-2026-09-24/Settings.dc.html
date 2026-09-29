@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --bezel:#0d0f12;--page:#ffffff;--side:#f6f3ec;--side-active:#ece7dc;
+  --ink:#2b2926;--body:#413d37;--muted:#8b867c;--faint:#a9a49a;
+  --line:#ece7de;--line2:#e4dfd5;--accent:#c46a24;--done-ink:#3f7d52;
+  --sans:-apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+}
+body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
+.navitem{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:8px;font-size:13.5px;color:var(--body)}
+.navitem .chev{color:var(--faint);width:12px;display:flex;justify-content:center;font-size:12px}
+.badge{margin-left:auto;font-size:11px;font-weight:600;color:var(--accent);background:#f2e5d6;border-radius:999px;padding:1px 7px}
+.sec{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;padding:0 10px}
+.scard{border:1px solid var(--line2);border-radius:12px;padding:16px 17px}
+.scard h3{margin:11px 0 5px;font-size:14.5px;color:var(--ink);font-weight:600}
+.scard p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
+.ico{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+</style>
+</helmet>
+
+<div style="width:1280px;height:840px;box-sizing:border-box;background:var(--bezel);padding:6px 0;display:flex;flex-direction:column;font-family:var(--sans)">
+  <div style="flex-grow:1;display:flex;background:var(--page);margin:0 6px;border-radius:8px;overflow:hidden">
+
+    <aside style="width:240px;flex-shrink:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px 12px">
+      <div style="display:flex;align-items:center;gap:9px;padding:4px 8px 12px">
+        <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.5" fill="none" stroke="var(--accent)" stroke-width="1.6"/><circle cx="12" cy="12" r="3.2" fill="var(--accent)"/></svg>
+        <span style="font-size:14px;font-weight:700;color:var(--ink)">Eric's Atlas</span>
+        <svg viewBox="0 0 24 24" width="15" height="15" style="margin-left:auto;color:var(--faint)" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>Search</span></div>
+      <div class="navitem"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg><span>Now</span></div>
+      <div class="sec" style="margin:16px 0 7px">Personal</div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg><span>Home</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg><span>Calendar</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Projects</span><span class="badge">1</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M4 5h16v11H9l-4 3z"/></svg><span>Messages</span><span class="badge">4</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg><span>Documents</span></div>
+      <div class="sec" style="margin:16px 0 7px">Northwind LLC · <span style="color:#b8b2a7;font-weight:600;text-transform:none;letter-spacing:0">business</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M5 20V9l7-5 7 5v11"/></svg><span>Overview</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><path d="M9 11l3 3L20 6"/><path d="M20 12v7H4V5h11"/></svg><span>Shared tasks</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg><span>Clients</span></div>
+      <div class="navitem"><span class="chev">›</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--muted)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.5 2.6 14.5 0 17M12 3.5c-2.6 2.5-2.6 14.5 0 17"/></svg><span>Partners</span></div>
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="navitem" style="background:var(--side-active)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ink)" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2M6.5 6.5l1.5 1.5M16 16l1.5 1.5M17.5 6.5L16 8M8 16l-1.5 1.5"/></svg><span style="color:var(--ink);font-weight:600">Settings</span></div>
+      </div>
+    </aside>
+
+    <main style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+      <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;color:var(--ink);font-weight:600">Settings</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--done-ink)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg>Stored on your machine</div>
+      </div>
+
+      <div style="flex-grow:1;overflow:hidden;padding:22px 30px">
+        <div style="font-size:26px;font-weight:700;color:var(--ink);letter-spacing:-.02em">Settings</div>
+        <div style="font-size:13.5px;color:var(--muted);margin:4px 0 18px">Everything here lives on this machine. Nothing syncs to a company or a cloud.</div>
+
+        <!-- appearance card -->
+        <div style="border:1px solid var(--line2);border-radius:13px;padding:17px 18px;margin-bottom:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:9px"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--accent)" stroke-width="1.8"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg><span style="font-size:15px;font-weight:700;color:var(--ink)">Appearance</span></div>
+            <span style="font-size:12px;color:var(--muted)">Applies to the whole hub — every page, desktop &amp; phone</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+            <div style="border:2px solid var(--accent);border-radius:10px;padding:5px;background:#fff"><div style="height:64px;border-radius:6px;background:linear-gradient(135deg,#ffffff,#f2efe8);border:1px solid var(--line)"></div><div style="text-align:center;font-size:12.5px;color:var(--ink);font-weight:600;padding:7px 0 3px">Light · <span style="color:var(--accent)">on</span></div></div>
+            <div style="border:1px solid var(--line2);border-radius:10px;padding:5px"><div style="height:64px;border-radius:6px;background:#12161d"></div><div style="text-align:center;font-size:12.5px;color:var(--body);padding:7px 0 3px">Dark</div></div>
+            <div style="border:1px solid var(--line2);border-radius:10px;padding:5px"><div style="height:64px;border-radius:6px;background:linear-gradient(115deg,#243a5e 0 55%,#e3b25f 55% 100%)"></div><div style="text-align:center;font-size:12.5px;color:var(--body);padding:7px 0 3px">Access</div></div>
+            <div style="border:1px solid var(--line2);border-radius:10px;padding:5px"><div style="height:64px;border-radius:6px;background:repeating-linear-gradient(90deg,#e9e5dc 0 5px,#cfcabf 5px 10px)"></div><div style="text-align:center;font-size:12.5px;color:var(--body);padding:7px 0 3px">Match system</div></div>
+          </div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:13px">Colour-blind mode switches any theme to the Access palette. More in <strong style="color:var(--ink)">Appearance &amp; access</strong> below.</div>
+        </div>
+
+        <!-- grid of setting cards -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+          <div class="scard"><div class="ico" style="background:#f6e7d3"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--accent)" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></div><h3>Appearance &amp; access</h3><p>Theme, accent, text size, density, colour-blind mode, and when Atlas may pop up.</p></div>
+          <div class="scard"><div class="ico" style="background:#e4ecf5"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#456e9c" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></div><h3>Sound &amp; voice</h3><p>Atlas's voice, speaking volume, wake word, mic, quiet hours, and mute.</p></div>
+          <div class="scard"><div class="ico" style="background:#f6ecd6;position:relative"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--accent)" stroke-width="1.7"><path d="M8 11V5.5a1.5 1.5 0 013 0V11M11 10V4.5a1.5 1.5 0 013 0V11M14 10.5V6a1.5 1.5 0 013 0v7a6 6 0 01-6 6h-1a6 6 0 01-5-3l-2-3.5a1.5 1.5 0 012.6-1.5L8 13"/></svg><span style="position:absolute;top:-6px;right:-6px;font-size:9px;font-weight:700;color:var(--done-ink);background:#e7f0e6;border-radius:999px;padding:1px 6px">On</span></div><h3>Gestures</h3><p>Hands-free control on camera. See if it's on and how each gesture works.</p></div>
+          <div class="scard"><div class="ico" style="background:#e7f0e6"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--done-ink)" stroke-width="1.7"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Trusted recipients</h3><p>Who Atlas can send to without asking, per person and per kind. Undo window.</p></div>
+          <div class="scard"><div class="ico" style="background:#f6e7d3"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--accent)" stroke-width="1.7"><path d="M6 9a6 6 0 0112 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 004 0"/></svg></div><h3>Notifications &amp; pop-ups</h3><p>When Atlas surfaces a pop-up: only when you ask, when it's urgent, or anything ready.</p></div>
+          <div class="scard"><div class="ico" style="background:#eeeae2"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--muted)" stroke-width="1.7"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg></div><h3>Calendars &amp; accounts</h3><p>Phone calendar sync, mailboxes (IMAP), and connected devices.</p></div>
+        </div>
+        <div style="grid-column:span 3;margin-top:14px;width:calc((100% - 28px)/3)"><div class="scard"><div class="ico" style="background:#f6e7d3"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--accent)" stroke-width="1.7"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></div><h3>Data &amp; privacy</h3><p>What stays on this machine, the as-is notice, recovery key, and export.</p></div></div>
+
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:18px"><svg viewBox="0 0 24 24" width="15" height="15"><circle cx="12" cy="12" r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="var(--accent)"/></svg>Atlas · running on this machine · offline-first. You can also just tell me what to change.</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":840}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

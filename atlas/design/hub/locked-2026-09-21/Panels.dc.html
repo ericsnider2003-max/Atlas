@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Desktop pop-up panels</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .panel{background:#fff;border:1px solid var(--edge);border-radius:16px;box-shadow:0 18px 44px rgba(30,25,15,.20),0 3px 10px rgba(30,25,15,.10);}
+  .x{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--faint);cursor:pointer;}
+  .x:hover{background:var(--hover);color:var(--ink);}
+  .btn{border:none;border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn.p{background:var(--accent);color:#fff;} .btn.s{background:#fff;color:var(--ink);border:1px solid var(--edge);}
+</style>
+</helmet>
+
+<!-- the SCREEN: a faint desktop, with panels floating on top -->
+<div style="width:1440px;height:980px;box-sizing:border-box;position:relative;overflow:hidden;
+  background:#e7e3dc;background-image:radial-gradient(1200px 700px at 30% 20%,#efece5,#e2ddd4 70%,#d9d3c8);">
+
+  <!-- a faint window behind, to show the panels float OVER your work -->
+  <div style="position:absolute;left:70px;top:70px;right:70px;bottom:70px;background:#fff;opacity:.55;border-radius:14px;border:1px solid rgba(0,0,0,.06);box-shadow:0 8px 30px rgba(0,0,0,.06);"></div>
+  <div style="position:absolute;left:104px;top:118px;width:360px;height:16px;border-radius:99px;background:rgba(0,0,0,.06);"></div>
+  <div style="position:absolute;left:104px;top:150px;width:520px;height:12px;border-radius:99px;background:rgba(0,0,0,.045);"></div>
+  <div style="position:absolute;left:104px;top:176px;width:470px;height:12px;border-radius:99px;background:rgba(0,0,0,.045);"></div>
+  <div style="position:absolute;left:104px;top:210px;width:300px;height:12px;border-radius:99px;background:rgba(0,0,0,.04);"></div>
+
+  <!-- COLLAPSED PILL (top-right): the always-there ambient state -->
+  <div style="position:absolute;top:26px;right:30px;display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--edge);border-radius:99px;padding:7px 8px 7px 12px;box-shadow:0 8px 22px rgba(30,25,15,.14);">
+    <span style="position:relative;width:18px;height:18px;"><svg viewBox="0 0 120 120" width="18" height="18"><circle cx="60" cy="60" r="42" fill="none" stroke="var(--accent)" stroke-width="9" opacity=".9"></circle><circle cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="9" opacity=".25"></circle><circle cx="60" cy="60" r="13" fill="var(--accent)"></circle></svg></span>
+    <span style="font-size:13px;color:var(--ink);font-weight:500;">Drafting Q3 summary</span>
+    <span class="mono" style="font-size:12px;color:var(--faint);">1m</span>
+    <span style="width:22px;height:22px;border-radius:99px;background:var(--hover);display:grid;place-items:center;color:var(--dim);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"></path></svg></span>
+  </div>
+  <div style="position:absolute;top:58px;right:34px;font-size:11px;color:var(--dim);background:rgba(255,255,255,.7);padding:2px 8px;border-radius:6px;">tap to expand · always here, never in the way</div>
+
+  <!-- FLOATING PANEL 1: thought process (bottom-right, top of stack) -->
+  <div class="panel" style="position:absolute;right:30px;bottom:250px;width:366px;padding:16px 17px;">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
+      <span style="position:relative;width:26px;height:26px;"><svg viewBox="0 0 120 120" width="26" height="26"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="7" opacity=".9"></circle><circle cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="7" opacity=".25"></circle><circle cx="60" cy="60" r="11" fill="var(--accent)"></circle></svg></span>
+      <span style="font-size:13.5px;font-weight:640;">Atlas is working</span>
+      <div style="margin-left:auto;display:flex;gap:2px;">
+        <span class="x"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path></svg></span>
+        <span class="x"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+      </div>
+    </div>
+    <div style="font-size:15px;font-weight:560;margin-bottom:12px;">Drafting the Q3 summary for finance.</div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dim);padding:4px 0;">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ok)" stroke-width="2.6"><path d="M5 12l5 5L20 6"></path></svg>
+      Checked the numbers against your sheet
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);padding:4px 0;">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M5 3l14 9-14 9z"></path></svg>
+      Writing the summary now
+    </div>
+    <div style="height:5px;border-radius:99px;background:var(--edge);margin:12px 0 8px;overflow:hidden;"><span style="display:block;height:100%;width:70%;background:var(--accent);border-radius:99px;"></span></div>
+    <div style="display:flex;align-items:center;">
+      <span class="mono" style="font-size:12px;color:var(--faint);">~1 min left</span>
+      <a href="#" style="margin-left:auto;font-size:13px;color:var(--info);text-decoration:none;font-weight:550;">Open Now &#8250;</a>
+    </div>
+  </div>
+
+  <!-- FLOATING PANEL 2: outstanding / needs you (bottom-right, front) -->
+  <div class="panel" style="position:absolute;right:30px;bottom:30px;width:366px;padding:16px 17px;border-color:#efdcc0;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="width:8px;height:8px;border-radius:99px;background:var(--accent);"></span>
+      <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-tx);">Ready for you</span>
+      <div style="margin-left:auto;"><span class="x"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"></path></svg></span></div>
+    </div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:5px;">Approve the "faster date parser"</div>
+    <div style="font-size:13px;color:var(--dim);line-height:1.5;margin-bottom:13px;">Checked and ready — the proving test passes and nothing else broke.</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn p">Implement</button>
+      <button class="btn s">Read the diff</button>
+      <button class="btn s" style="margin-left:auto;color:var(--dim);">Later</button>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

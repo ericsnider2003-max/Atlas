@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Offline (still working)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --panel:#ffffff; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-ink:#ffffff; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}
+  .nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;display:flex;align-items:center;gap:6px;}
+  .stat{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:2px 9px 2px 7px;border-radius:99px;}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- SIDEBAR -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+    <div class="grp">PERSONAL</div>
+    <div class="nav on"><span class="tw">&#9662;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects<span class="mono" style="margin-left:auto;background:var(--accent-soft);color:var(--accent-tx);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">1</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages<span class="mono" style="margin-left:auto;background:var(--waits);color:var(--wait);font-size:11px;border-radius:99px;padding:0 7px;font-weight:600;">2 queued</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Documents</div>
+    <div class="grp">NORTHWIND LLC <span style="font-weight:400;color:#c3c2bd;">· business</span></div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg>Overview</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path></svg>Shared tasks</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"></circle><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path></svg>Clients</div>
+    <div class="nav"><span class="tw">&#8250;</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>Partners</div>
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.2-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.2-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.2 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.2 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.2 2.7z"></path></svg>Settings</div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex:1;box-sizing:border-box;min-width:0;overflow:hidden;">
+    <div style="height:42px;border-bottom:1px solid var(--edge2);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:13px;color:var(--faint);">
+      <span>Personal</span><span>/</span><span style="color:var(--ink);">Home</span>
+      <div style="flex:1"></div>
+      <span class="stat" style="background:var(--waits);color:var(--wait);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 1l22 22M16.7 11.1A5 5 0 0 0 12 9M8.5 8.5A5 5 0 0 0 5 11M12 20h.01M2 8.8a15 15 0 0 1 4-2.6M20 8.8a15 15 0 0 0-2.9-2"></path></svg>Offline</span>
+    </div>
+
+    <div style="padding:26px 44px;">
+      <!-- offline banner -->
+      <div style="display:flex;gap:14px;background:var(--waits);border:1px solid #ead4ab;border-radius:11px;padding:16px 18px;margin-bottom:26px;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--wait)" stroke-width="2" style="flex:none;margin-top:1px;"><path d="M1 1l22 22M16.7 11.1A5 5 0 0 0 12 9M8.5 8.5A5 5 0 0 0 5 11M12 20h.01M2 8.8a15 15 0 0 1 4-2.6M20 8.8a15 15 0 0 0-2.9-2"></path></svg>
+        <div style="flex:1;">
+          <div style="font-size:15px;font-weight:660;color:#8a5a1e;">You're offline — and Atlas is still working.</div>
+          <div style="font-size:13.5px;line-height:1.6;color:#93702e;margin-top:4px;">Everything on this machine runs as normal: your calendar, files, drafts, and anything I'm building. The few things that need the internet are paused and will pick up on their own the moment you're back — nothing is lost.</div>
+        </div>
+      </div>
+
+      <!-- two columns: works now / waiting -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:26px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:660;margin-bottom:12px;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--ok)" stroke-width="2.2"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M8 12l3 3 5-6"></path></svg>Working now</div>
+          <div style="border-top:1px solid var(--edge2);">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--oks);color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg>Live</span>Your calendar &amp; today's plan</div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--oks);color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg>Live</span>Documents &amp; drafting</div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--oks);color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg>Live</span>Building the date-parser change</div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--oks);color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"></path></svg>Live</span>Voice, wake word &amp; talking to Atlas</div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:660;margin-bottom:12px;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--wait)" stroke-width="2.2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l3 2"></path></svg>Waiting for a connection</div>
+          <div style="border-top:1px solid var(--edge2);">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--waits);color:var(--wait);">Paused</span>Mailbox sync <span style="color:var(--faint);font-size:12.5px;">· last checked 8:12</span></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--waits);color:var(--wait);">Queued</span>2 messages to Jordan &amp; Sam</div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--waits);color:var(--wait);">Queued</span>Share Q3 deck → Maya</div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--edge2);font-size:14px;"><span class="stat" style="background:var(--waits);color:var(--wait);">Paused</span>Calendar mirror to iPhone</div>
+          </div>
+          <div style="font-size:12.5px;color:var(--faint);margin-top:12px;line-height:1.55;">These send themselves when you reconnect — in the order you made them, with their original timestamps. You don't have to do anything.</div>
+        </div>
+      </div>
+
+      <!-- brief still works, from local -->
+      <div style="display:flex;gap:14px;background:var(--side);border:1px solid var(--edge);border-radius:10px;padding:16px 18px;margin-top:28px;max-width:900px;">
+        <svg viewBox="0 0 120 120" width="20" height="20" style="flex:none;margin-top:2px;"><circle cx="60" cy="60" r="42" fill="none" stroke="var(--accent)" stroke-width="8" opacity=".9"></circle><circle cx="60" cy="60" r="13" fill="var(--accent)"></circle></svg>
+        <div style="font-size:14.5px;line-height:1.6;color:var(--ink);">Since you're offline, I'll keep to what's here: the <b>Q3 summary</b> is drafting, your <b>4:00 broker call</b> is still on, and the deploy window's at 6:30. I've held two replies and a share to send the moment we're back.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

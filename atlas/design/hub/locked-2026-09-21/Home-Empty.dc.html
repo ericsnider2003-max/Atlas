@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — First run (empty home)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  :root{
+    --bg:#ffffff; --side:#f7f7f5; --panel:#ffffff; --edge:#eceae4; --edge2:#f0efec; --hover:#efedea;
+    --ink:#37352f; --dim:#787774; --faint:#9b9a97;
+    --accent:#d9730d; --accent-soft:#fdecc8; --accent-ink:#ffffff; --accent-tx:#b26206;
+    --ok:#4f8a5b; --oks:#e8f0e6; --wait:#b5762a; --waits:#fbedd6; --info:#337ea9; --infos:#e6eef3;
+  }
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:var(--dim);font-size:14px;cursor:pointer;}
+  .nav:hover{background:var(--hover);}
+  .nav.on{background:var(--hover);color:var(--ink);font-weight:550;}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.7}
+  .tw{color:var(--faint);font-size:11px;width:13px;text-align:center;flex:none}
+  .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;padding:15px 9px 4px;display:flex;align-items:center;gap:6px;}
+  .step{display:flex;align-items:center;gap:14px;padding:15px 17px;border:1px solid var(--edge);border-radius:11px;margin-bottom:10px;background:#fff;}
+  .num{width:30px;height:30px;border-radius:99px;flex:none;display:grid;place-items:center;font-size:13px;font-weight:700;}
+</style>
+</helmet>
+
+<div style="width:1440px;height:980px;box-sizing:border-box;background:var(--bg);color:var(--ink);display:flex;">
+
+  <!-- SIDEBAR: personal only, no business yet -->
+  <div style="width:256px;flex:none;background:var(--side);border-right:1px solid var(--edge);box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 8px 10px;">
+      <svg viewBox="0 0 120 120" width="22" height="22"><circle cx="60" cy="60" r="40" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".92"></circle><circle cx="60" cy="60" r="12" fill="var(--accent)"></circle></svg>
+      <span style="font-weight:600;font-size:14.5px;">Eric's Atlas</span>
+      <svg style="margin-left:auto;width:14px;height:14px;color:var(--faint);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Search</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Now</div>
+    <div class="grp">PERSONAL</div>
+    <div class="nav on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg>Home</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"></rect><path d="M3 9.5h18M8 2.5v4M16 2.5v4"></path></svg>Calendar</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Projects</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"></path></svg>Messages</div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Documents</div>
+
+    <div class="grp" style="color:#c9c8c4;">NORTHWIND LLC · not set up</div>
+    <div class="nav" style="color:#c3c2bd;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>Add a business</div>
+
+    <div style="flex:1"></div>
+    <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.2-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.2-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.2 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.2 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.2 2.7z"></path></svg>Settings</div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex:1;box-sizing:border-box;min-width:0;overflow:hidden;">
+    <div style="height:42px;border-bottom:1px solid var(--edge2);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:13px;color:var(--faint);">
+      <span>Personal</span><span>/</span><span style="color:var(--ink);">Home</span>
+      <div style="flex:1"></div>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ok);"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M8 12l3 3 5-6"></path></svg>On your machine · offline</span>
+    </div>
+
+    <div style="max-width:720px;margin:0 auto;padding:56px 40px;">
+      <div style="width:52px;height:52px;border-radius:13px;background:var(--accent-soft);display:grid;place-items:center;margin-bottom:18px;">
+        <svg viewBox="0 0 120 120" width="30" height="30"><circle cx="60" cy="60" r="42" fill="none" stroke="var(--accent)" stroke-width="8" opacity=".9"></circle><circle cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="8" opacity=".25"></circle><circle cx="60" cy="60" r="14" fill="var(--accent)"></circle></svg>
+      </div>
+      <h1 style="margin:0;font-size:30px;font-weight:720;letter-spacing:-.02em;">Good to meet you, Eric.</h1>
+      <p style="font-size:16px;line-height:1.65;color:var(--dim);margin:12px 0 30px;max-width:600px;">
+        This is home. It fills in as you go — your brief, your day, what I'm working on. Nothing here yet, so let's give it a little to work with. You can skip any of these and come back; I run fine offline the whole time.
+      </p>
+
+      <!-- guided steps -->
+      <div class="step">
+        <span class="num" style="background:var(--accent-soft);color:var(--accent-tx);">1</span>
+        <div style="flex:1;"><div style="font-size:15px;font-weight:640;">Connect a calendar</div><div style="font-size:13px;color:var(--faint);">Mirror your iPhone or Android calendar — two-way, stays on this machine.</div></div>
+        <button style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 15px;font-size:13px;font-weight:640;cursor:pointer;">Connect</button>
+      </div>
+      <div class="step">
+        <span class="num" style="background:var(--accent-soft);color:var(--accent-tx);">2</span>
+        <div style="flex:1;"><div style="font-size:15px;font-weight:640;">Add a mailbox</div><div style="font-size:13px;color:var(--faint);">So I can pull out what needs a reply. IMAP — no third-party account required.</div></div>
+        <button style="background:#fff;color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:8px 15px;font-size:13px;cursor:pointer;">Add</button>
+      </div>
+      <div class="step">
+        <span class="num" style="background:var(--accent-soft);color:var(--accent-tx);">3</span>
+        <div style="flex:1;"><div style="font-size:15px;font-weight:640;">Hand me something to look at</div><div style="font-size:13px;color:var(--faint);">A file, a link, a photo — any type, any size. Drag it in or paste it.</div></div>
+        <button style="background:#fff;color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:8px 15px;font-size:13px;cursor:pointer;">Give Atlas a file</button>
+      </div>
+      <div class="step" style="background:var(--side);">
+        <span class="num" style="background:#fff;border:1px solid var(--edge);color:var(--dim);"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"></path></svg></span>
+        <div style="flex:1;"><div style="font-size:15px;font-weight:640;">Running a business? Add it. <span style="font-weight:400;color:var(--faint);">Optional</span></div><div style="font-size:13px;color:var(--faint);">Opens a separate business section — clients, partners, shared tasks — walled off from personal.</div></div>
+        <button style="background:transparent;color:var(--dim);border:1px solid var(--edge);border-radius:8px;padding:8px 15px;font-size:13px;cursor:pointer;">Later</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:9px;margin-top:22px;font-size:13px;color:var(--faint);">
+        <svg viewBox="0 0 120 120" width="16" height="16"><circle cx="60" cy="60" r="42" fill="none" stroke="var(--accent)" stroke-width="9" opacity=".9"></circle><circle cx="60" cy="60" r="14" fill="var(--accent)"></circle></svg>
+        Or just tell me what you need — say <b style="color:var(--dim);">“Atlas”</b> or type in the bar. I'll take it from there.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>
