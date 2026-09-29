@@ -214,7 +214,8 @@ fn the_typed_path_takes_a_turn_rather_than_executing_an_intent() {
     let src = crate::common::source_of("main");
     let start = src.find("fn prompt_line(").expect("prompt_line still exists");
     let body = &src[start..start + 4000.min(src.len() - start)];
-    let end = body.find("\nfn ").unwrap_or(body.len());
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let end = body.find("\n}\n").unwrap_or(body.len());
     let body = &body[..end];
 
     assert!(

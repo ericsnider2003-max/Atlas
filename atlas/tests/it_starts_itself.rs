@@ -171,11 +171,12 @@ fn it_says_what_it_will_do_before_it_does_it() {
     // the microphone every time you sign in. The person agreeing to that
     // should see the command, not a sentence claiming one was run.
     let src = main_rs();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = src
         .split_once("fn run_startup(")
         .expect("run_startup")
         .1
-        .split("\nfn ")
+        .split("\n}\n")
         .next()
         .unwrap_or_default()
         .to_string();
@@ -200,11 +201,12 @@ fn it_uses_its_own_absolute_path_rather_than_how_it_was_invoked() {
     // would come up with an empty memory and write a `data/` tree into
     // `system32` without reporting anything wrong.
     let src = main_rs();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = src
         .split_once("fn run_startup(")
         .expect("run_startup")
         .1
-        .split("\nfn ")
+        .split("\n}\n")
         .next()
         .unwrap_or_default()
         .to_string();
@@ -224,11 +226,12 @@ fn turning_it_off_is_offered_wherever_it_is_turned_on() {
     // A thing that starts itself and does not say how to stop is the shape of
     // software people uninstall.
     let src = main_rs();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = src
         .split_once("fn run_startup(")
         .expect("run_startup")
         .1
-        .split("\nfn ")
+        .split("\n}\n")
         .next()
         .unwrap_or_default()
         .to_string();

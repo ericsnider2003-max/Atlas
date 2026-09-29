@@ -553,7 +553,8 @@ fn the_background_loop_is_caught_and_the_way_out_still_runs() {
     let src = crate::common::source_of("main");
     let at = src.find("fn run_daemon(").expect("run_daemon");
     let body = &src[at..];
-    let end = body.find("\nfn ").unwrap_or(body.len());
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let end = body.find("\n}\n").unwrap_or(body.len());
     let body = &body[..end];
     assert!(body.contains("catch_unwind"), "a panic past the loop still ends Atlas silently");
     assert!(body.contains("d.shut_down()"), "a crash skips the way out, so the lock stays held");

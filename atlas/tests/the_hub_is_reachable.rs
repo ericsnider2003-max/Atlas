@@ -240,11 +240,12 @@ fn there_is_one_command_that_says_where_the_hub_is() {
     );
     // It must print the address even when it cannot open a browser, because
     // the address is the useful part and the browser is a convenience.
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = src
         .split_once("fn run_hub_address(")
         .expect("run_hub_address")
         .1
-        .split("\nfn ")
+        .split("\n}\n")
         .next()
         .unwrap_or_default()
         .to_string();

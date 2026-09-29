@@ -131,10 +131,11 @@ fn the_reclaim_command_is_what_reaches_it_rather_than_this_test() {
     // Both ways out of `run_reclaim` say it. The early return is the one that
     // matters: "nothing to reclaim", from a program sitting on 900 MB of its
     // own, is the answer that makes you stop trusting the other one.
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = raw
         .split("fn run_reclaim(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        .and_then(|r| r.split("\n}\n").next())
         .expect("run_reclaim");
     assert_eq!(
         body.matches("report_own_footprint(cfg)").count(),
@@ -154,10 +155,11 @@ fn the_breakdown_uses_the_classs_own_words_for_the_classs_own_meanings() {
     assert_eq!(retention::classify(&PathBuf::from("data/captures/a.png")), Class::Captures);
 
     let raw = crate::common::source_of("main");
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = raw
         .split("fn report_own_footprint(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        .and_then(|r| r.split("\n}\n").next())
         .expect("report_own_footprint");
     let line = body
         .lines()
@@ -176,10 +178,11 @@ fn reporting_is_all_it_does() {
     // *your* disk; the data folder is pruned hourly against the budget, by
     // `retention::plan` and `retention::apply`, and nowhere else.
     let raw = crate::common::source_of("main");
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = raw
         .split("fn report_own_footprint(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        .and_then(|r| r.split("\n}\n").next())
         .expect("report_own_footprint");
     for destructive in ["retention::plan(", "retention::apply(", "remove_file", "remove_dir"] {
         assert!(

@@ -39,7 +39,15 @@ fn source(path: &str) -> String {
 fn body_of(src: &str, sig: &str) -> String {
     let at = src.find(sig).unwrap_or_else(|| panic!("{sig} is gone"));
     let rest = &src[at + sig.len()..];
-    let end = rest.find("\n    pub fn ").or_else(|| rest.find("\n    fn ")).unwrap_or(rest.len());
+    // The earliest of the next method at any visibility and the end of the
+    // `impl` (29 Sep 2026). This took the next `pub fn`, else the next `fn`;
+    // after daemon.rs was split a `pub(super) fn` was neither, and a method
+    // at the end of one child ran on into the next file.
+    let end = ["\n    pub fn ", "\n    pub(super) fn ", "\n    fn ", "\n}\n"]
+        .iter()
+        .filter_map(|m| rest.find(m))
+        .min()
+        .unwrap_or(rest.len());
     rest[..end].lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n")
 }
 

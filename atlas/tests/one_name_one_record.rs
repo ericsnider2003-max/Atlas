@@ -114,7 +114,13 @@ fn accesses() -> Vec<(String, String, String)> {
         if p.extension().and_then(|e| e.to_str()) != Some("rs") {
             continue;
         }
-        let module = p.file_stem().unwrap().to_string_lossy().to_string();
+        // A file inside a split module's folder is that module (29 Sep 2026):
+        // `src/daemon/tick.rs` and `src/daemon/running.rs` are both `daemon`.
+        // Keyed by file stem, the split of daemon.rs made one module read as
+        // several, and a record the daemon saves from two places looked
+        // like two modules writing it.
+        let module = crate::common::split_parent(&p)
+            .unwrap_or_else(|| p.file_stem().unwrap().to_string_lossy().to_string());
         let text = std::fs::read_to_string(&p).unwrap_or_default();
         for line in text.lines() {
             let t = line.trim_start();

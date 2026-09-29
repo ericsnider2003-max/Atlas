@@ -102,7 +102,11 @@ fn what_it_found_is_not_written_into_your_settings() {
     let body = raw
         .split("fn run_nearby(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        // To the function's closing brace at column zero (29 Sep 2026). This
+        // cut at the next "\nfn ", which after main.rs was split meant the next
+        // `pub(super) fn` was not an end and the body ran on into other
+        // commands' writes.
+        .and_then(|r| r.split("\n}\n").next())
         .expect("run_nearby");
     for writing in ["save(", "write(", "fs::"] {
         assert!(!body.contains(writing), "the nearby command writes something: {writing}");
@@ -313,7 +317,11 @@ fn something_actually_starts_the_answerer() {
     let body = raw
         .split("fn run_hub(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        // To the function's closing brace at column zero (29 Sep 2026). This
+        // cut at the next "\nfn ", which after main.rs was split meant the next
+        // `pub(super) fn` was not an end and the body ran on into other
+        // commands' writes.
+        .and_then(|r| r.split("\n}\n").next())
         .expect("run_hub");
     assert!(body.contains("atlas::nearby::answer_probes("), "nothing answers probes");
     assert!(body.contains("if ncfg.announce {"), "it answers whether or not you asked it to");

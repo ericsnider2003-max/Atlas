@@ -162,17 +162,20 @@ fn a_switched_off_hub_is_still_an_error_at_once_not_a_wait() {
 #[test]
 fn the_daemon_writes_the_hubs_real_port_down_and_tells_the_icon() {
     let main = crate::common::source_of("main");
-    let body = main.split_once("fn run_daemon(").unwrap().1.split("\nfn ").next().unwrap().to_string();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let body = main.split_once("fn run_daemon(").unwrap().1.split("\n}\n").next().unwrap().to_string();
     assert!(body.contains("atlas::server::open_hub("), "the hub isn't opened by open_hub");
     assert!(body.contains("atlas::server::record_door("), "the real port isn't written down");
     assert!(body.contains("atlas::notifyicon::tray_hub_address("), "the icon isn't told");
     assert!(body.contains("atlas::notifyicon::tray_hub_note("), "the icon doesn't say it moved");
     // `atlas hub` and the phone link ask for the real port.
-    let hub = main.split_once("fn run_hub_address(").unwrap().1.split("\nfn ").next().unwrap().to_string();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let hub = main.split_once("fn run_hub_address(").unwrap().1.split("\n}\n").next().unwrap().to_string();
     assert!(hub.contains("atlas::server::hub_port("), "`atlas hub` prints the configured port only");
     // The loop writes the door's news in the log.
     let daemon = crate::common::source_of("daemon");
-    let answer = daemon.split_once("fn answer_hub_saying(").unwrap().1.split("\n    fn ").next().unwrap().to_string();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let answer = daemon.split_once("fn answer_hub_saying(").unwrap().1.split("\n    }\n").next().unwrap().to_string();
     assert!(answer.contains("take_news()"), "the door's news never reaches the log");
 }
 

@@ -271,7 +271,8 @@ fn pause_and_resume_reach_the_run_loop_and_nothing_else_does() {
     assert_eq!(tray::tray_asks(), vec![TrayAction::Pause, TrayAction::Resume]);
     assert!(tray::tray_asks().is_empty(), "asks are taken once");
     let daemon = crate::common::source_of("daemon");
-    let body = daemon.split_once("fn answer_tray(").expect("answer_tray").1.split("\n    fn ").next().unwrap().to_string();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let body = daemon.split_once("fn answer_tray(").expect("answer_tray").1.split("\n    }\n").next().unwrap().to_string();
     assert!(body.contains("tray_asks()"));
     assert!(body.contains(r#"self.turn("pause""#), "not the hub's Pause: {body}");
     assert!(body.contains(r#"self.turn("carry on""#), "not the hub's Carry on: {body}");
@@ -292,7 +293,8 @@ fn quitting_from_the_icon_is_the_clean_way_out() {
 #[test]
 fn the_background_atlas_puts_up_the_icon_when_the_setting_says_so() {
     let main = crate::common::source_of("main");
-    let body = main.split_once("fn run_daemon(").expect("run_daemon").1.split("\nfn ").next().unwrap().to_string();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let body = main.split_once("fn run_daemon(").expect("run_daemon").1.split("\n}\n").next().unwrap().to_string();
     assert!(body.contains("tc.desktop.tray_icon"), "the setting isn't read");
     assert!(body.contains("atlas::notifyicon::show_icon("), "no icon");
     // Held across the run loop, not dropped at once.
@@ -319,7 +321,8 @@ fn the_setting_is_on_by_default_and_in_the_list() {
 #[test]
 fn opening_atlas_starts_the_background_atlas_with_no_window() {
     let main = crate::common::source_of("main");
-    let body = main.split_once("fn run_home(").expect("run_home").1.split("\nfn ").next().unwrap().to_string();
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
+    let body = main.split_once("fn run_home(").expect("run_home").1.split("\n}\n").next().unwrap().to_string();
     assert!(body.contains("what_opening_does("));
     assert!(body.contains(r#"spawn_quietly(&exe, &["--daemon"])"#), "{body}");
     let setup = std::fs::read_to_string("src/setupwin.rs").unwrap();

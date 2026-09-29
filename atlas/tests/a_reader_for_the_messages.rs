@@ -186,10 +186,11 @@ fn the_offset_goes_into_the_request_and_so_does_the_limit() {
 fn how_far_it_got_is_written_before_anything_that_could_fail() {
     // A crash after printing is a crash that repeats itself.
     let raw = crate::common::source_of("main");
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = raw
         .split("fn run_telegram(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        .and_then(|r| r.split("\n}\n").next())
         .expect("run_telegram");
     let saved = body.find("telegram::READ_UP_TO, &Some(n)").expect("it never records progress");
     let printed = body.find("messaging::spoken(&fresh").expect("it never says anything");
@@ -207,10 +208,11 @@ fn the_token_never_goes_in_a_settings_file() {
     assert!(!block.contains("token"), "there is a token field in the config: {block}");
 
     let raw = crate::common::source_of("main");
+    // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let body = raw
         .split("fn run_telegram(")
         .nth(1)
-        .and_then(|r| r.split("\nfn ").next())
+        .and_then(|r| r.split("\n}\n").next())
         .expect("run_telegram");
     assert!(body.contains("vault.put(atlas::telegram::TOKEN"), "the token isn't kept in the vault");
     assert!(body.contains("vault.get(atlas::telegram::TOKEN"), "it isn't read from the vault");
