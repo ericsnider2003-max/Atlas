@@ -1,0 +1,33 @@
+{
+  "organic_insights_reels": [
+    {
+      "media_map_data": {
+        "Media Thumbnail": {
+          "uri": "media/reels/202609/r1.mp4",
+          "creation_timestamp": 1790010000,
+          "title": "If you edit on a laptop, watch this"
+        }
+      },
+      "string_map_data": {
+        "Views": {
+          "value": "5,310"
+        },
+        "Accounts reached": {
+          "value": "4,002"
+        },
+        "Likes": {
+          "value": "301"
+        },
+        "Comments": {
+          "value": "22"
+        },
+        "Saves": {
+          "value": "57"
+        },
+        "Shares": {
+          "value": "19"
+        }
+      }
+    }
+  ]
+}

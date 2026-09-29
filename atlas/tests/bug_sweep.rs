@@ -268,6 +268,9 @@ const APPLIED_IN_CODE: &[(&str, &str)] = &[
     ("models.draft", "models::server_args adds -md and the draft flags when the file exists"),
     ("models.speculate", "models::server_args adds --spec-type for a draft-free mode the build supports"),
     ("research.searxng_url", "research asks that SearXNG first and falls back to the built-in search"),
+    // 29 Sep 2026: your own handles, set from the Social page.
+    ("workday.social.youtube_channel", "social::glue's refresh reads that channel through the YouTube Data API"),
+    ("workday.social.bluesky_handle", "social::glue's refresh reads that profile from Bluesky's public API"),
     ("identity.trusted_devices", "kin checks it before accepting a knock"),
     ("voice_settings.voice", "becomes {voice_file}, which the speech command uses"),
     // Offered since 28 Sep 2026.

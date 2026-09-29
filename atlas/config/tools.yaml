@@ -2620,6 +2620,28 @@ workday:
     capture: ctrl+alt+space   # what's selected becomes a note
     expand: ctrl+alt+e        # the snippet word before the cursor, expanded
     copy_text: ctrl+alt+t     # the text off the window in front
+  # Your social accounts and the people you watch (`social`). Answers come
+  # from what's kept; the two schedules below are off until you turn them on
+  # (Settings: "Your accounts' numbers", "Watching others"). Keys live in the
+  # vault -- the Social page takes them.
+  social:
+    enabled: true
+    own_refresh: false        # your own accounts' numbers, once a day
+    scan: false               # the channels, hashtags and topics you watch
+    refresh_hours: 24
+    scan_every_minutes: 60    # per source; never under 30
+    youtube_channel: ""       # your channel's id (UC...) or @handle
+    bluesky_handle: ""        # e.g. jordan.bsky.social
+    instagram: false          # needs a Professional account and a token
+    threads: false            # needs a token from your own Meta app
+    facebook_page: false      # needs a Page token (a Page, not a profile)
+    tiktok: false             # your own TikTok app's Sandbox; sign in from the Social page
+    youtube_analytics: false  # retention; sign in once from the Social page
+    google_app_in_testing: true  # Google ends sign-ins after 7 days while true
+    youtube_searches_per_day: 20 # of Google's 100 a day, for watched topics
+    mastodon_instance: mastodon.social
+    trends_geo: US
+    in_brief: true
   meeting_prep_minutes: 15    # 0 turns it off
   mail_keep_days: 60
   signature_png: ""           # a PNG of your signature, for "sign the pdf"

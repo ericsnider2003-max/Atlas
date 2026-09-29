@@ -1141,6 +1141,15 @@ commands:
               "any new articles", "reading list", "what am i following"]
     takes_argument: true
     argument_optional: true
+  - intent: social
+    describe: "The user's own social media accounts (how a video or post did, what worked, posting times, followers, importing a platform's export, refreshing the numbers) and watching other channels, hashtags and topics (what's trending, what's working for them, reading one TikTok/Instagram/X page). arg: what they asked."
+    phrases: ["how did my last video do", "how did my last post do", "how's my last video doing", "what worked this month",
+              "what worked this week", "my best post", "best time to post", "when should i post", "my followers",
+              "follower count", "import my export", "import my archive", "refresh my numbers", "my social accounts",
+              "what's trending", "what is trending", "start watching", "stop watching", "keep an eye on",
+              "my watch list", "what's working for them", "read this tiktok", "read this instagram", "read this tweet"]
+    takes_argument: true
+    argument_optional: true
   - intent: receipt
     describe: "Keep or read a receipt, and what the user spent at a place or this month. arg: what."
     phrases: ["keep this receipt", "read this receipt", "save this receipt", "what did i spend at", "what did i spend this month",

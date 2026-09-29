@@ -478,6 +478,8 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "presence", what: "notice whether you're at the desk, and read a nod, a thumbs-up or where you're looking off the camera", area: Seeing, state: Off, needs: None, offline: true, added: 40, runs: &[Needs::Camera], modules: &["presence", "gaze"] },
         Capability { id: "settings", what: "keep every switch on one page, and keep what you change -- sound and voice too: when it speaks, how loud, when it may pop up", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["settings", "preferences", "sound"] },
         Capability { id: "dash", what: "arrange the hub's home the way you want it -- which parts, in what order, how big", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["dash", "layout_prefs"] },
+        Capability { id: "social", what: "keep your own accounts' numbers as a daily record -- from each platform's own export (X, TikTok, Instagram, LinkedIn, YouTube Studio) and the free APIs (YouTube, Instagram, Threads, a Facebook Page, TikTok, Bluesky) -- and say how your last video did, what worked this month and why, when to post, and your followers over time, naming what each platform doesn't give", area: Writing, state: Untested, needs: Some("a platform's export, or its key in the vault"), offline: true, added: 41, runs: &[Needs::Files], modules: &["social", "snapshots", "exports", "xlsx", "apis", "analysis", "page", "glue"] },
+        Capability { id: "watchlist", what: "watch the channels, hashtags and topics you name through their public feeds -- YouTube, Mastodon, Bluesky, Hacker News, Product Hunt, Google trends, Reddit -- and say what's working for them; TikTok, Instagram and X one page when you ask, never on a schedule", area: Web, state: Untested, needs: None, offline: false, added: 41, runs: &[Needs::Background], modules: &["watchlist", "onepage"] },
         Capability { id: "appearance", what: "look the way you choose -- light, dark, or following this computer's own settings -- everywhere at once", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["appearance", "oslook"] },
     ]
 }
@@ -1313,7 +1315,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `himalaya` (reading mail through the Himalaya program).
 // 411 -> 410 (28 Sep): `ladder` left personal Atlas; it was not general
 // trading knowledge (tests/personal_atlas_is_its_own.rs).
-pub const MODULES_IN_TREE: usize = 410;
+// 410 -> 420 (29 Sep): `social` and its nine children (`snapshots`,
+// `exports`, `xlsx`, `apis`, `analysis`, `watchlist`, `onepage`, `page`,
+// `glue`), claimed by the `social` and `watchlist` capabilities.
+pub const MODULES_IN_TREE: usize = 420;
 
 /// Every module no capability claims, and why it is not one.
 ///

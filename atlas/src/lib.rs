@@ -409,6 +409,9 @@ pub mod findfile;
 pub mod pdfkit;
 pub mod people;
 pub mod feeds;
+// Your social accounts' numbers kept over time, and what's working for the
+// people you watch, from free official routes only (29 Sep 2026).
+pub mod social;
 pub mod receipts;
 pub mod habits;
 pub mod srs;

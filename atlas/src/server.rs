@@ -973,7 +973,8 @@ impl Action {
             Action::Vault { .. } | Action::TakeBack { .. } | Action::SyncKeySet { .. } => true,
             // The Updates page's release-key forms take the vault passphrase
             // as an ordinary field.
-            Action::HubPost { fields, .. } => fields.iter().any(|(k, _)| k == "passphrase" || k == "again"),
+            // The Social page's key and sign-in forms carry a `secret`.
+            Action::HubPost { fields, .. } => fields.iter().any(|(k, _)| k == "passphrase" || k == "again" || k == "secret"),
             _ => false,
         }
     }
@@ -1060,7 +1061,7 @@ pub fn route(r: &Request) -> Option<Action> {
             "POST",
             "/hub/messages" | "/hub/tasks" | "/hub/clients" | "/hub/sound" | "/hub/trusted" | "/hub/give"
             | "/hub/talk" | "/hub/help" | "/hub/workshop" | "/hub/updates" | "/hub/feedback" | "/hub/phonemodel" | "/hub/documents" | "/hub/phone" | "/hub/mcp" | "/hub/draftmodel"
-            | "/hub/recommendations/go" | "/hub/reclaim" | "/hub/sync-setup",
+            | "/hub/recommendations/go" | "/hub/reclaim" | "/hub/sync-setup" | "/hub/social",
         ) => Some(Action::HubPost { path: r.path.clone(), fields: crate::hub::form_fields(&r.body) }),
         ("POST", "/hub/pause") => match crate::hub::form_field(&r.body, "what").as_deref() {
             Some("pause") => Some(Action::Pause(true)),

@@ -1,0 +1,102 @@
+[
+ {
+  "id": "117354417997032934",
+  "created_at": "2026-09-29T12:51:45.000Z",
+  "in_reply_to_id": null,
+  "in_reply_to_account_id": null,
+  "sensitive": false,
+  "spoiler_text": "",
+  "visibility": "public",
+  "language": "en",
+  "uri": "https://mastodon.social/users/gokayburuc/statuses/117354417719137105",
+  "url": "https://mastodon.social/@gokayburuc/117354417719137105",
+  "replies_count": 0,
+  "reblogs_count": 0,
+  "favourites_count": 0,
+  "quotes_count": 0,
+  "edited_at": "2026-09-29T12:52:01.000Z",
+  "content": "<p><a href=\"https://mastodon.social/tags/100daysofcoding\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>100daysofcoding</span></a>  </p><p><a href=\"https://mastodon.social/tags/rustlang\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>rustlang</span></a> learning by doing repository: </p><p>Extended Rust by Examples : <br>- Closures and Methods updated<br>-  Line comments are added in Turkish language</p><p><a href=\"https://github.com/gokayburuc/extended-rust-by-examples\" rel=\"nofollow noopener\" translate=\"no\" target=\"_blank\"><span class=\"invisible\">https://</span><span class=\"ellipsis\">github.com/gokayburuc/extended</span><span class=\"invisible\">-rust-by-examples</span></a></p>",
+  "reblog": null,
+  "account": {
+   "id": "112359323151149731",
+   "username": "gokayburuc",
+   "acct": "gokayburuc@mastodon.social",
+   "display_name": "gokayburuc",
+   "url": "https://mastodon.social/@gokayburuc",
+   "followers_count": 19
+  },
+  "mentions": [],
+  "tags": [
+   {
+    "name": "100daysofcoding",
+    "url": "https://fosstodon.org/tags/100daysofcoding"
+   },
+   {
+    "name": "rustlang",
+    "url": "https://fosstodon.org/tags/rustlang"
+   }
+  ],
+  "tagged_collections": [],
+  "quote": null,
+  "poll": null,
+  "quote_approval": {
+   "automatic": [
+    "public"
+   ],
+   "manual": [],
+   "current_user": "denied"
+  }
+ },
+ {
+  "id": "117354196969859723",
+  "created_at": "2026-09-29T11:55:36.000Z",
+  "in_reply_to_id": null,
+  "in_reply_to_account_id": null,
+  "sensitive": false,
+  "spoiler_text": "",
+  "visibility": "public",
+  "language": "en",
+  "uri": "https://mastodon.gamedev.place/users/muhuk/statuses/117354196947279858",
+  "url": "https://mastodon.gamedev.place/@muhuk/117354196947279858",
+  "replies_count": 0,
+  "reblogs_count": 0,
+  "favourites_count": 0,
+  "quotes_count": 0,
+  "edited_at": null,
+  "content": "<p>Are you using Emacs to edit Bevy code? Have you found a solution to electric-indent messing up the bsn! bodies every time you press ENTER?</p><p>(Disabling electric-indent for rust-mode altogether also results in a less than optimal experience) <a href=\"https://mastodon.gamedev.place/tags/Bevy\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Bevy</span></a> <a href=\"https://mastodon.gamedev.place/tags/emacs\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>emacs</span></a> <a href=\"https://mastodon.gamedev.place/tags/rustlang\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>rustlang</span></a></p>",
+  "reblog": null,
+  "account": {
+   "id": "110186831259905520",
+   "username": "muhuk",
+   "acct": "muhuk@mastodon.gamedev.place",
+   "display_name": "Atamert Ölçgen",
+   "url": "https://mastodon.gamedev.place/@muhuk",
+   "followers_count": 20
+  },
+  "mentions": [],
+  "tags": [
+   {
+    "name": "bevy",
+    "url": "https://fosstodon.org/tags/bevy"
+   },
+   {
+    "name": "emacs",
+    "url": "https://fosstodon.org/tags/emacs"
+   },
+   {
+    "name": "rustlang",
+    "url": "https://fosstodon.org/tags/rustlang"
+   }
+  ],
+  "tagged_collections": [],
+  "quote": null,
+  "poll": null,
+  "quote_approval": {
+   "automatic": [
+    "public"
+   ],
+   "manual": [],
+   "current_user": "denied"
+  }
+ }
+]

@@ -1,0 +1,43 @@
+{
+  "organic_insights_posts": [
+    {
+      "media_map_data": {
+        "Media Thumbnail": {
+          "uri": "media/posts/202609/1.jpg",
+          "creation_timestamp": 1789063200,
+          "title": "Here\u00e2\u0080\u0099s the finished desk"
+        }
+      },
+      "string_map_data": {
+        "Creation Timestamp": {
+          "value": "Sep 10, 2026 6:00 pm",
+          "timestamp": 0
+        },
+        "Impressions": {
+          "value": "1,204",
+          "timestamp": 0
+        },
+        "Accounts reached": {
+          "value": "980",
+          "timestamp": 0
+        },
+        "Likes": {
+          "value": "88",
+          "timestamp": 0
+        },
+        "Comments": {
+          "value": "6",
+          "timestamp": 0
+        },
+        "Saves": {
+          "value": "14",
+          "timestamp": 0
+        },
+        "Shares": {
+          "value": "3",
+          "timestamp": 0
+        }
+      }
+    }
+  ]
+}

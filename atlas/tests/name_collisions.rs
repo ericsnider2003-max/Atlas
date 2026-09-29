@@ -162,12 +162,9 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "explain::check",
     "facts::slug",
     "faithful::check",
-    // `feeds::text_of` joined 26 Sep 2026 when 25j's `pdftext` brought its own
-    // private `text_of`. It is live -- `feeds` calls it bare, three times, to
-    // strip tags from titles and summaries -- and `tests/round11.rs` calls it
-    // too; nothing outside `feeds` names it with its module, which is all this
-    // scan can see.
-    "feeds::text_of",
+    // `feeds::text_of` left 29 Sep 2026: `social::watchlist` now calls it as
+    // `crate::feeds::text_of` to read Mastodon posts and feed titles, a real
+    // module-qualified caller.
     "files::join",
     // finance::review and finance::summary came off 19 Sep 2026: `atlas money`
     // calls both module-qualified, so the scan can see which `review` and

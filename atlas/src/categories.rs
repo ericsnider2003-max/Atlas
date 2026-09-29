@@ -108,6 +108,7 @@ pub fn category_of(intent: &Intent) -> Category {
         | Intent::Pdf(_)
         | Intent::People(_)
         | Intent::Feeds(_)
+        | Intent::Social(_)
         | Intent::Receipt(_)
         | Intent::Habit(_)
         | Intent::Cards(_)

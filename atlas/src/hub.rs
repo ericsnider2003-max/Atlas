@@ -99,6 +99,9 @@ pub enum Page {
     Feedback,
     /// Putting Atlas on your phone or iPad: pick which, scan a code (D5).
     Phone,
+    /// Your social accounts' numbers, and what's working for the people and
+    /// topics you watch (`social`, 29 Sep 2026).
+    Social,
 }
 
 
@@ -137,7 +140,7 @@ pub const NAV: &[(&str, &[Page])] = &[
     // and who may be sent to without asking.
     ("People", &[Page::Friends, Page::Groups, Page::Trusted]),
     // Your work in other shapes, and handing Atlas something.
-    ("Your work", &[Page::Workspace, Page::LookingBack, Page::Give]),
+    ("Your work", &[Page::Workspace, Page::LookingBack, Page::Give, Page::Social]),
     // The business section: under More until a business exists, when each
     // business also gets its own group in the sidebar.
     ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners]),
@@ -215,6 +218,7 @@ impl Page {
             Page::Sound => "/hub/sound",
             Page::Trusted => "/hub/trusted",
             Page::Give => "/hub/give",
+            Page::Social => "/hub/social",
             Page::Offline => "/hub/offline",
             Page::Talk => "/hub/talk",
             Page::Help => "/hub/help",
@@ -262,6 +266,7 @@ impl Page {
             Page::Sound => "Sound & voice",
             Page::Trusted => "Trusted",
             Page::Give => "Give Atlas something",
+            Page::Social => "Social",
             Page::Offline => "Offline",
             Page::Talk => "Talk",
             Page::Help => "Help & accessibility",
@@ -308,6 +313,7 @@ impl Page {
             Page::Sound => "Atlas's voice, how it speaks, the wake word, push-to-talk, and quiet hours.",
             Page::Trusted => "People Atlas may send to without asking each time. Personal things still ask.",
             Page::Give => "A link, a photo, words, or any file, any size. It stays on your machine.",
+            Page::Social => "Your accounts' numbers over time, and what's working for the people you watch.",
             Page::Offline => "What still works with no connection, and what's queued to go when it's back.",
             Page::Talk => "Say it or type it. Atlas does the in-between and shows you what it did.",
             Page::Help => "How to use Atlas with a screen reader, keyboard, voice or larger text — and how to tell me when something's in the way.",
@@ -688,6 +694,7 @@ pub fn route(path: &str) -> Option<Page> {
         "/hub/sound" => Some(Page::Sound),
         "/hub/trusted" => Some(Page::Trusted),
         "/hub/give" => Some(Page::Give),
+        "/hub/social" => Some(Page::Social),
         "/hub/offline" => Some(Page::Offline),
         "/hub/talk" => Some(Page::Talk),
         "/hub/help" => Some(Page::Help),
@@ -1160,6 +1167,7 @@ fn icon(page: Page) -> &'static str {
         Page::Sound => "<path d='M11 5L6 9H2v6h4l5 4V5z'/><path d='M15.5 8.5a5 5 0 0 1 0 7'/>",
         Page::Trusted => "<path d='M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z'/><path d='M9 12l2 2 4-4'/>",
         Page::Give => "<path d='M12 5v14M5 12h14'/>",
+        Page::Social => "<path d='M4 19V9M10 19V5M16 19v-7M22 19H2'/>",
         Page::Offline => "<path d='M2 8.8a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0'/><path d='M12 20h.01'/>",
         Page::Talk => "<rect x=9 y=3 width=6 height=12 rx=3 /><path d='M6 11a6 6 0 0 0 12 0M12 17v4'/>",
         Page::Help => "<circle cx=12 cy=12 r=9 /><path d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01'/>",
@@ -1247,7 +1255,7 @@ fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     };
     out.push_str(&folded(
         "More",
-        &[("Your work", &[Page::Workspace, Page::LookingBack, Page::Give]), ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners])],
+        &[("Your work", &[Page::Workspace, Page::LookingBack, Page::Give, Page::Social]), ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners])],
     ));
     out.push_str(&folded(
         "Atlas setup",

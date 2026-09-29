@@ -207,6 +207,7 @@ pub fn kind_of(i: &Intent) -> &'static str {
         Intent::Pdf(_) => "pdf",
         Intent::People(_) => "people",
         Intent::Feeds(_) => "feeds",
+        Intent::Social(_) => "social",
         Intent::Receipt(_) => "receipt",
         Intent::Habit(_) => "habit",
         Intent::Cards(_) => "cards",
