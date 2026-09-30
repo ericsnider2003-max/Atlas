@@ -27,7 +27,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
-| hear a wake word and listen | waiting on whisper | `hearing` `voice` | ready | would | would | **no** | would | **no** |
+| hear a wake word and listen | waiting on whisper | `hearing` `voice` `parakeet` | ready | would | would | **no** | would | **no** |
 | stop listening when you stop talking | waiting on ffmpeg, for audio in | `endpoint` | ready | would | would | would | would | would |
 | type what you say into a window | waiting on whisper | `dictate` | ready | catch | would | **no** | catch | **no** |
 | notice when it's mishearing you and offer a better model | waiting on whisper | `language` | ready | would | would | would | would | would |
@@ -350,4 +350,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-231 things, across 388 of 422 source files. The other 34 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+231 things, across 389 of 423 source files. The other 34 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

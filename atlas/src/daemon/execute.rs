@@ -1622,7 +1622,7 @@ impl<'a> Daemon<'a> {
                         // means the next start has neither, and a vault with
                         // no check value opens for anything.
                         let first = !self.vault.proved_it();
-                        if let Err(e) = self.vault.save(&crate::roots::install_state()) {
+                        if let Err(e) = self.vault.save(&self.vault_home) {
                             format!(
                                 "Open, but I couldn't write the vault to disk ({e}), so this \
                                  passphrase won't be remembered past this run."

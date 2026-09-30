@@ -866,3 +866,98 @@ fn the_talk_bench_catches_made_up_history() {
     assert!(faults_in("I can -- and I'm already doing it.", 5).iter().any(|f| f.contains("invents") || f.contains("claims")));
     assert!(faults_in("Sure. Keep the vents clear.", 5).is_empty());
 }
+
+// ---- 30 Sep 2026: hearing with Parakeet (a quarter of whisper base.en's
+// mistakes up close, a third across the room, measured on LibriSpeech).
+
+/// The request is what sherpa-onnx's offline server reads: rate, byte count,
+/// then f32 samples, little-endian.
+#[test]
+fn a_recording_is_sent_the_way_the_hearing_server_reads_it() {
+    let b = atlas::parakeet::request_bytes(&[0.5, -0.25], 16_000);
+    assert_eq!(&b[0..4], &16_000i32.to_le_bytes());
+    assert_eq!(&b[4..8], &8i32.to_le_bytes());
+    assert_eq!(&b[8..12], &0.5f32.to_le_bytes());
+    assert_eq!(&b[12..16], &(-0.25f32).to_le_bytes());
+    assert_eq!(atlas::parakeet::text_from(r#"{"lang": "", "text": " Can you see me? ", "timestamps": []}"#).as_deref(), Some("Can you see me?"));
+    assert_eq!(atlas::parakeet::text_from("not json"), None);
+}
+
+/// Only counted as installed when the server and all four model files are
+/// there; the server is told where each file is and how many threads to use.
+#[test]
+fn parakeet_is_installed_only_when_every_file_is_there() {
+    let root = std::env::temp_dir().join(format!("atlas-parakeet-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let bin = root.join("tools/sherpa/bin");
+    let model = root.join("models/parakeet");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&model).unwrap();
+    std::fs::write(bin.join(atlas::parakeet::server_name()), b"").unwrap();
+    for f in ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx"] {
+        std::fs::write(model.join(f), b"").unwrap();
+    }
+    assert!(atlas::parakeet::installed(&root).is_none(), "tokens.txt is missing");
+    std::fs::write(model.join("tokens.txt"), b"").unwrap();
+    let files = atlas::parakeet::installed(&root).expect("all there");
+    let args = atlas::parakeet::launch_args(&files, 8094, 3).join(" ");
+    assert!(args.contains("--port=8094") && args.contains("--model-type=nemo_transducer") && args.contains("--num-threads=3"), "{args}");
+    assert!(args.contains("encoder.int8.onnx") && args.contains("tokens.txt"));
+    assert_eq!(atlas::parakeet::threads_for(8), 4);
+    assert_eq!(atlas::parakeet::threads_for(2), 2);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// `atlas get hearing` fetches the server and the model, pinned.
+#[test]
+fn getting_hearing_fetches_the_server_and_the_model_pinned() {
+    let (_, pieces) = atlas::getpieces::set(Some("hearing")).expect("a set called hearing");
+    assert_eq!(pieces.len(), 2);
+    assert!(pieces.iter().all(|p| p.sha256.len() == 64 && p.url.starts_with("https://github.com/k2-fsa/sherpa-onnx/releases/download/")));
+    assert!(pieces.iter().any(|p| p.key_path() == "models/parakeet/encoder.int8.onnx"));
+    assert!(pieces.iter().any(|p| p.key_path().starts_with("tools/sherpa/bin/sherpa-onnx-offline-websocket-server")));
+    let yaml = std::fs::read_to_string("config/tools.yaml").unwrap();
+    assert!(yaml.contains("stt_engine: auto"));
+}
+
+/// The real server and model, through Atlas's own client, when the kit is
+/// here (`ATLAS_PARAKEET_KIT`: a folder holding `tools/sherpa` and
+/// `models/parakeet`, and a `speech.wav` with its words in `speech.txt`).
+#[test]
+fn parakeet_hears_real_speech_through_atlas_own_client() {
+    let Ok(kit) = std::env::var("ATLAS_PARAKEET_KIT") else { return };
+    let kit = std::path::PathBuf::from(kit);
+    let started = std::time::Instant::now();
+    let heard = atlas::parakeet::transcribe_file(&kit, &kit.join("speech.wav")).expect("installed").expect("heard");
+    let first = started.elapsed();
+    let again = std::time::Instant::now();
+    let heard2 = atlas::parakeet::transcribe_file(&kit, &kit.join("speech.wav")).unwrap().unwrap();
+    let second = again.elapsed();
+    atlas::parakeet::stop();
+    let want = std::fs::read_to_string(kit.join("speech.txt")).unwrap().to_lowercase();
+    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect::<String>();
+    let (h, w) = (norm(&heard), norm(&want));
+    let hit = w.split_whitespace().filter(|x| h.split_whitespace().any(|y| y == *x)).count();
+    println!("first {first:?} (starts the server), then {second:?}: {heard}");
+    assert!(hit * 10 >= w.split_whitespace().count() * 8, "heard {heard:?}, said {want:?}");
+    assert_eq!(heard, heard2);
+    assert!(second < first);
+}
+
+/// Eric, 30 Sep 2026: "Atlas can still freely talk I just want a question
+/// answered when I ask or task completed when I ask." The answer comes
+/// first; talk after it is still welcome.
+#[test]
+fn a_question_is_answered_first_and_talk_is_still_free() {
+    let p = atlas::persona::Persona::default();
+    let c = p.character();
+    assert!(c.contains("A question gets its answer, in your first sentence"), "{c}");
+    assert!(c.contains("Never answer a question with a question"));
+    assert!(c.contains("After that you're free to talk"));
+    let chat = p.for_this_turn_on(atlas::register::Register::Chatting, 3, "what's your favourite film", false);
+    assert!(chat.contains("answer it first") && chat.contains("go with a tangent"), "{chat}");
+    use atlas::talkbench::question_dodged;
+    assert!(question_dodged("give me three ideas for dinner tonight", "What's your mood? Something simple?").is_some());
+    assert!(question_dodged("give me three ideas for dinner tonight", "Pasta, soup, or eggs. Want the recipe?").is_none());
+    assert!(question_dodged("I've had a long day", "Rough one? I'm here.").is_none());
+}

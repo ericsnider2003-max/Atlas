@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "parakeet"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -1339,7 +1339,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 420 -> 422 (30 Sep): `freeonline` (the free online models, second to the
 // one on this machine -- part of `reason`) and `talkbench` (Atlas's own
 // conversation, timed against a model).
-pub const MODULES_IN_TREE: usize = 422;
+// 422 -> 423 (30 Sep): `parakeet` (hearing through sherpa-onnx's server
+// with NVIDIA's Parakeet model -- part of `wake`).
+pub const MODULES_IN_TREE: usize = 423;
 
 /// Every module no capability claims, and why it is not one.
 ///

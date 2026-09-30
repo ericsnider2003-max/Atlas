@@ -771,6 +771,8 @@ pub struct Daemon<'a> {
     asks_quietly: Option<Box<dyn crate::typed::AsksQuietly>>,
     /// The passphrase-locked store. Sealed until you open it.
     pub vault: crate::vault::Vault,
+    /// Where the vault is kept (`vault_home_for`).
+    pub vault_home: crate::store::Store,
     /// How many times each undelivered message has been tried, and when.
     ///
     /// Not persisted, deliberately: it is about the network rather than the
@@ -1381,6 +1383,7 @@ impl<'a> Daemon<'a> {
         proactive: Proactive,
     ) -> Self {
         let store_for_load = store.clone();
+        let store_for_vault = store.clone();
         let store_for_load2 = store.clone();
         let store_for_reached = store.clone();
         let tools_resolved = std::sync::Arc::new(resolve_tools(cfg.tools.as_ref(), &store));
@@ -1574,7 +1577,12 @@ impl<'a> Daemon<'a> {
             // a `default()` vault has no salt and no check value, so it
             // held nothing across a restart and its passphrase was set
             // afresh by the first unlock of every run.
-            vault: crate::vault::Vault::load(&crate::roots::install_state()),
+            vault: if keeps_the_install_vault(&store_for_vault) {
+                crate::vault::Vault::load(&crate::roots::install_state())
+            } else {
+                crate::vault::Vault::load(&store_for_vault)
+            },
+            vault_home: if keeps_the_install_vault(&store_for_vault) { crate::roots::install_state() } else { store_for_vault.clone() },
             chats: chats_at_start,
             tries: crate::courier::Tries::default(),
             // Loaded rather than defaulted, for the same reason the vault is:
@@ -3579,6 +3587,22 @@ pub const QUESTION_LIFETIME_SECS: u64 = 600;
 /// model is asked for fewer and stopped at a sentence's end when it reaches
 /// them; this is only the ceiling for a model that runs on.
 pub const SAFETY_SENTENCES: usize = 16;
+
+/// Does a daemon given `store` keep the install's vault
+/// (`roots::install_state`, `vault::Vault::FILE`: one vault per copy of
+/// Atlas, whoever is using it)? Yes when `store` is this install's -- the
+/// owner's or a profile's -- or when you named the install (`ATLAS_HOME`).
+/// Otherwise the vault is kept in `store` itself.
+///
+/// 30 Sep 2026: every daemon went to the install's state whatever store it
+/// was given, so every test daemon, each in its own temporary store, shared
+/// the one vault in the checkout's `data/state`. One test saved a vault
+/// under its own passphrase there, and from then on every test that opened
+/// the vault with another was told "that isn't the passphrase" -- eleven
+/// failures in a full run, from a file no test had meant to create.
+fn keeps_the_install_vault(store: &crate::store::Store) -> bool {
+    store.root().starts_with(crate::roots::state_dir()) || crate::roots::how() == crate::roots::Chosen::Told
+}
 
 /// How long the floor stays open after Atlas speaks, in a conversation.
 pub const CHATTING_FOLLOWUP_SECS: u32 = 10;

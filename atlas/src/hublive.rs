@@ -2993,7 +2993,7 @@ impl Daemon<'_> {
         let now = crate::store::now();
         self.vault.open(&phrase, now, &self.tools_cfg().vault)?;
         let made = crate::release::make_release_key(&mut self.vault, now)?;
-        self.vault.save(&crate::roots::install_state()).map_err(|e| {
+        self.vault.save(&self.vault_home).map_err(|e| {
             format!("The key was made but I couldn't write your vault ({e}), so it isn't kept. Nothing was lost; try again.")
         })?;
         let kept = self.store.save(crate::release::KEY_CARD, &made.card);

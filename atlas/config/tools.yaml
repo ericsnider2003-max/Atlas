@@ -40,6 +40,11 @@ record:
          "-i", "audio={mic_device}", "-t", "{seconds}",
          "-ar", "16000", "-ac", "1", "-y", "{in_wav}"]
 
+# Which speech-to-text hears you: auto (Parakeet when `atlas get hearing`
+# has fetched it, whisper otherwise), parakeet, or whisper. Parakeet is
+# English; another language or translating goes to whisper either way.
+stt_engine: auto
+
 stt:
   command: "{whisper}"
   # {hint_opt} {hint_val}: your own words (names, projects) as whisper's

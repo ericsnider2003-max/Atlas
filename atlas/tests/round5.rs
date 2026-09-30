@@ -399,10 +399,30 @@ fn the_background_mixture_tells_two_sounds_apart() {
 #[test]
 fn atlas_fix_on_the_command_line_reads_its_separator_and_says_when_there_is_no_model() {
     let home = tmp("fix-cli");
+    // The shipped settings with the free online models off (30 Sep 2026:
+    // `models.online_second` makes them the model when there's none here,
+    // and this is about having no model at all -- and a test mustn't reach
+    // the internet).
+    let conf = tmp("fix-cli-config");
+    fn copy_all(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for f in std::fs::read_dir(from).unwrap().flatten() {
+            let p = f.path();
+            if p.is_dir() {
+                copy_all(&p, &to.join(f.file_name()));
+            } else {
+                std::fs::copy(&p, to.join(f.file_name())).unwrap();
+            }
+        }
+    }
+    copy_all(std::path::Path::new("config"), &conf);
+    let tools = std::fs::read_to_string(conf.join("tools.yaml")).unwrap();
+    assert!(tools.contains("online_second: true"));
+    std::fs::write(conf.join("tools.yaml"), tools.replace("online_second: true", "online_second: false")).unwrap();
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_atlas"))
         .args(["fix", home.to_str().unwrap(), "total", "should", "count", "quantity", "--", "python3", "test_calc.py"])
         .env("ATLAS_HOME", &home)
-        .env("ATLAS_CONFIG", std::fs::canonicalize("config").unwrap())
+        .env("ATLAS_CONFIG", &conf)
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&out.stdout);

@@ -186,6 +186,12 @@ impl<'a> Daemon<'a> {
         // reading happens on a thread of its own (`warm_the_model`).
         self.keep_model_server(clock());
         let _ = self.warm_the_model(clock());
+        // The hearing model too, when it's here and chosen (`parakeet`):
+        // loading it takes seconds, and the first thing you say shouldn't.
+        let engine = self.tools_ref().map(|t| t.stt_engine.trim().to_lowercase()).unwrap_or_default();
+        if engine != "whisper" {
+            crate::parakeet::warm(&crate::roots::install_root());
+        }
         if !audio_ok {
             self.audio_tools_missing = true;
             if let Some(m) = self.tiers.audio_unavailable() {
@@ -900,6 +906,8 @@ impl<'a> Daemon<'a> {
         if let Some(mut m) = self.mic.take() {
             m.stop();
         }
+        // The hearing server Atlas started goes with it.
+        crate::parakeet::stop();
         // The typing watcher saves what it learned on the way out.
         self.typing_stop.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Some(h) = self.typing_thread.take() {

@@ -24,6 +24,9 @@ pub struct ToolsConfig {
     pub vars: BTreeMap<String, String>,
     pub record: ExternalTool,
     pub stt: ExternalTool,
+    /// Which speech-to-text hears you: `auto` (Parakeet when `atlas get
+    /// hearing` has fetched it, whisper otherwise), `parakeet`, or `whisper`.
+    pub stt_engine: String,
     pub tts: ExternalTool,
     pub play: ExternalTool,
     pub capture_screen: Option<ExternalTool>,
@@ -630,6 +633,17 @@ impl<'a> Voice<'a> {
                     }
                     crate::audio::SpeechCheck::Speech => {}
                 }
+            }
+        }
+        // Parakeet first, when it's here (`parakeet`: a quarter of whisper
+        // base.en's mistakes up close, a third across the room); whisper for
+        // anything it can't do, so hearing never depends on it.
+        let english = vars.get("lang_val").is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
+            && vars.get("task_opt").is_none_or(|t| t.trim().is_empty());
+        if english && !self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper") {
+            if let Some(Ok(text)) = crate::parakeet::transcribe_file(&crate::roots::install_root(), std::path::Path::new(&in_wav)) {
+                let text = clean_transcript(&text);
+                return Ok(if not_really_said(&text) { String::new() } else { text });
             }
         }
         let raw = self.cfg.stt.run(vars, None)?;
@@ -1338,6 +1352,102 @@ impl<'a> Voice<'a> {
         Ok(self.wake_heard_until(stop)?.is_some())
     }
 
+    /// The wake word, listened for by what's said rather than by clips
+    /// (30 Sep 2026).
+    ///
+    /// The clip way records three seconds, looks for the name in them, and
+    /// records the next three: "Atl-" at the end of one clip and "-as" at
+    /// the start of the next is never heard, and whatever is said while a
+    /// clip is being transcribed is lost. Here the microphone streams the
+    /// whole time; each thing said is taken from where the talking starts
+    /// to where it stops (`endpoint`), heard (Parakeet, about a tenth of its
+    /// length), and checked for the name.
+    ///
+    /// `Ok(Some(Some(words)))`: the name, and what followed it (maybe
+    /// nothing). `Ok(Some(None))`: listened until `stop` or the stream's end
+    /// without the name. `Ok(None)`: can't listen this way here (no
+    /// streaming microphone, endpointing off) -- use clips.
+    fn wake_by_speech(&self, phrase: &str, stop: &dyn Fn() -> bool) -> Result<Option<Option<String>>> {
+        use std::io::Read;
+        let cfg = &self.cfg.endpoint;
+        let device = microphone_now(self.cfg).1;
+        if !cfg.enabled || device.trim().is_empty() {
+            return Ok(None);
+        }
+        let vars = self.vars()?;
+        let rate = RECORD_RATE_HZ;
+        let want = crate::audio::window_samples(rate, 250);
+        // A minute a stream, then the loop starts another: a recorder that
+        // dies is replaced, and settings changed meanwhile are picked up.
+        let mut child = crate::tools::command(&self.cfg.record.command)
+            .args(crate::audio::stream_args(&device, rate, 60))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| AtlasError::Platform(format!("could not start '{}' to listen: {e}", self.cfg.record.command)))?;
+        let mut out = child.stdout.take().ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
+        // Time by the sound itself, not the clock: what's heard is measured in
+        // what was recorded, however late it's read.
+        let mut heard_ms: u64 = 0;
+        let mut vad = crate::vad::Vad::tuned(rate, cfg.vad_params());
+        let mut ep = crate::endpoint::Endpointer::start(0);
+        let mut kept: Vec<i16> = Vec::new();
+        let mut pending: Vec<u8> = Vec::new();
+        let mut buf = vec![0u8; want * 2];
+        let preroll = want * 2;
+        let mut heard: Option<String> = None;
+        'stream: while !stop() {
+            let n = match out.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            pending.extend_from_slice(&buf[..n]);
+            while pending.len() >= want * 2 {
+                let chunk: Vec<u8> = pending.drain(..want * 2).collect();
+                let samples = crate::audio::samples_from_le(&chunk);
+                let db = crate::audio::level_db(&samples);
+                kept.extend_from_slice(&samples);
+                heard_ms += 250;
+                let now_ms = heard_ms;
+                let level = crate::vad::level_for_endpoint(db, vad.window(&samples), cfg.silence_below_db);
+                ep.feed(level, "", now_ms, cfg);
+                if !ep.finished() {
+                    continue;
+                }
+                if ep.heard_anything {
+                    let said = self.heard_in(&kept, &vars).unwrap_or_default();
+                    if let Some(rest) = after_wake_phrase(&said, phrase) {
+                        heard = Some(rest);
+                        break 'stream;
+                    }
+                    kept.clear();
+                } else {
+                    // Nothing said: keep only the last moment, in case the
+                    // name starts right at the edge.
+                    let from = kept.len().saturating_sub(preroll);
+                    kept.drain(..from);
+                }
+                ep = crate::endpoint::Endpointer::start(now_ms);
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        // The stream ended mid-sentence: what was said so far still counts.
+        if heard.is_none() && ep.heard_anything && !stop() {
+            let said = self.heard_in(&kept, &vars).unwrap_or_default();
+            heard = after_wake_phrase(&said, phrase);
+        }
+        Ok(Some(heard))
+    }
+
+    /// Words in samples already recorded, through the usual hearing.
+    fn heard_in(&self, samples: &[i16], vars: &Vars) -> Result<String> {
+        let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
+        std::fs::write(&in_wav, crate::audio::wav_bytes(samples, RECORD_RATE_HZ))?;
+        Ok(clean_transcript(&self.transcribe_heard(vars)?))
+    }
+
     /// `wake_once_until`, keeping what was said after the name in the same
     /// clip: `None` not heard, `Some("")` the name alone, `Some(words)` the
     /// name and then those words (29 Sep 2026: they were thrown away).
@@ -1356,6 +1466,17 @@ impl<'a> Voice<'a> {
         let name_alone = |heard: bool| heard.then(String::new);
         if let Some(det) = &wake.detector {
             return Ok(name_alone(det.run_stoppable(&self.vars()?, None, stop)?.is_some()));
+        }
+        // Listening the whole time, by what you say rather than by clips,
+        // when Parakeet is here to hear each thing said quickly.
+        // (Not with a phrase you taught it: that one is matched by sound.)
+        if crate::parakeet::installed(&crate::roots::install_root()).is_some()
+            && !self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper")
+            && crate::wakeword::load(&crate::roots::store()).is_none()
+        {
+            if let Some(heard) = self.wake_by_speech(&wake.phrase, stop)? {
+                return Ok(heard);
+            }
         }
         let mut vars = self.vars()?;
         vars.insert("seconds".into(), wake.clip_seconds.to_string());

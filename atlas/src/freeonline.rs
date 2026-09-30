@@ -45,7 +45,7 @@ pub const REST_AFTER_REFUSAL_SECS: u64 = 120;
 pub const REST_AFTER_FAILURE_SECS: u64 = 600;
 
 /// The request body.
-pub fn body(p: &Provider, system: &str, user: &str, max_tokens: u32) -> String {
+fn body(p: &Provider, system: &str, user: &str, max_tokens: u32) -> String {
     serde_json::json!({
         "model": p.model,
         "messages": [

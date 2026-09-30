@@ -187,7 +187,7 @@ impl<'a> Daemon<'a> {
             String::new()
         };
         if !said.is_empty() {
-            let _ = self.vault.save(&crate::roots::install_state());
+            let _ = self.vault.save(&self.vault_home);
         }
         said
     }

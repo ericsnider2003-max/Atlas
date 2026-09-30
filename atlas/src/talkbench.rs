@@ -101,6 +101,18 @@ pub fn faults_in(reply: &str, max_sentences: usize) -> Vec<String> {
     out
 }
 
+/// A question or request answered with a question (the laptop, 30 Sep
+/// 2026: "give me three ideas for dinner" got "What's your mood?" and then
+/// "I gave you three quick options", when it hadn't). Eric: "I just want a
+/// question answered when I ask or task completed when I ask."
+pub fn question_dodged(said: &str, reply: &str) -> Option<String> {
+    let low = said.trim().to_lowercase();
+    let asked = low.ends_with('?')
+        || ["give me", "tell me", "what ", "how ", "why ", "which ", "who ", "where ", "when "].iter().any(|w| low.starts_with(w));
+    let first = reply.split_inclusive(['.', '!', '?']).map(str::trim).find(|s| s.split_whitespace().count() >= 2)?;
+    (asked && first.ends_with('?')).then(|| "answered a question with a question".to_string())
+}
+
 /// The report, as it's printed.
 pub fn report(model: &str, answers: &[Answer]) -> String {
     let mut s = format!("Model: {model}\n");
@@ -151,7 +163,11 @@ pub fn run(cfg: &crate::config::Config, llm: std::sync::Arc<dyn crate::brain::Ll
         let started = Instant::now();
         let reply = d.turn(said, t);
         let ms = started.elapsed().as_millis();
-        out.push(Answer { said: said.to_string(), faults: faults_in(&reply, max), reply, ms });
+        let mut faults = faults_in(&reply, max);
+        if let Some(f) = question_dodged(said, &reply) {
+            faults.push(f);
+        }
+        out.push(Answer { said: said.to_string(), faults, reply, ms });
         t += 20;
     }
     out
