@@ -918,6 +918,7 @@ pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
         "camera" => Some("vision"),
         "research" => Some("research"),
         "screen" => Some("picture_talk"),
+        "files" => Some("findfile"),
         _ => None,
     };
     let c = match id {

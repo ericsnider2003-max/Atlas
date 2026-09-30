@@ -48,6 +48,17 @@ pub const STOCK_CLOSERS: &[&str] = &[
     "or keep chatting",
     "keep going",
     "want me to look it up",
+    // 30 Sep 2026, a real Qwen3.5-2B through the new prompt: every chat reply
+    // closed on a question about his evening.
+    "what do you want me to do",
+    "what do you want me to do next",
+    "what else do you want to check out tonight",
+    "what else do you want to do",
+    "what are your plans for tonight",
+    "what are we doing for tonight",
+    "what are we doing tonight",
+    "did you get enough coffee",
+    "what do you want to know",
 ];
 
 /// Phrases that only ever come from a reply's boilerplate, looked for

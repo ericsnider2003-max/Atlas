@@ -113,6 +113,17 @@ fn his_small_talk_is_offered_no_tools() {
 }
 
 #[test]
+fn what_he_asked_earlier_is_not_offered_to_small_talk() {
+    let r = router();
+    let goal = Some("Research ways to improve in house language models");
+    assert!(r.for_turn("hey, how's it going", goal, atlas::router::SHORTLIST).is_empty());
+    assert!(r.for_turn("thanks", goal, atlas::router::SHORTLIST).is_empty());
+    // "That's it" leans on it.
+    let names: Vec<String> = r.for_turn("That's it.", goal, atlas::router::SHORTLIST).iter().map(|e| e.name.clone()).collect();
+    assert!(names.contains(&"research".to_string()), "{names:?}");
+}
+
+#[test]
 fn a_tool_is_described_in_one_line() {
     let book = atlas::intent::ToolBook::new(&cfg().commands);
     for e in book.entries() {
@@ -277,3 +288,31 @@ fn write_the_capabilities_document_when_asked() {
     }
 }
 
+
+/// Every command Atlas has, asked for in its own words (its description, as
+/// the capability list and "what can you do" say it): the router must find
+/// it. This is the "long list of capabilities" -- each one reachable by
+/// asking for what it does, not only by its set phrases.
+#[test]
+fn every_command_is_found_by_what_it_does() {
+    let book = atlas::intent::ToolBook::new(&cfg().commands);
+    let r = router();
+    let mut missed = Vec::new();
+    let mut total = 0;
+    for e in book.entries() {
+        if e.exposure == atlas::intent::Exposure::Never || e.name == atlas::router::META_TOOL {
+            continue;
+        }
+        total += 1;
+        let asked = e.describe.split(" arg: ").next().unwrap_or("").trim().to_string();
+        let got = r.names_for(&asked, atlas::router::SHORTLIST);
+        if !got.contains(&e.name) {
+            missed.push(format!("{}: {asked:?} -> {got:?}", e.name));
+        }
+    }
+    println!("{} of {total} commands found by their own description", total - missed.len());
+    for m in &missed {
+        println!("MISSED {m}");
+    }
+    assert!(missed.len() * 20 <= total, "{} of {total} not found:\n{}", missed.len(), missed.join("\n"));
+}

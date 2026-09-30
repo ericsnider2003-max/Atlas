@@ -197,11 +197,18 @@ impl<'a> Daemon<'a> {
         // "that's it" or "this means organize my desktop" is read as about
         // that (29 Sep 2026). Only a request no command of Atlas's took:
         // those were done.
+        // Only for a sentence that leans on it -- a request, or next to
+        // nothing of its own ("that's it") -- and never for small talk (30 Sep
+        // 2026, a real model: "hey, how's it going" was answered about the
+        // research asked for earlier).
         let parser = &self.parser;
+        let leans_on_it = crate::doing::looks_like_an_action(said)
+            || (crate::router::content_words(said).len() <= 1 && !crate::router::small_talk(said));
         if let Some(goal) = self
             .thread
             .current_goal_where(|s| matches!(parser.parse(s), Intent::Unknown(_)))
             .filter(|g| g.trim() != said.trim())
+            .filter(|_| leans_on_it)
         {
             now.push_str(&format!("Lately they've been asking you: \"{}\"\n", clip_words(&goal, 100)));
         }

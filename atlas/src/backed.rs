@@ -31,6 +31,18 @@ pub fn claims_work_started(sentence: &str) -> bool {
         " consider it done ", " all done ", " i've done it ", " i have done it ", " done and done ",
         " i'll report back ", " i will report back ", " i'll let you know what i find ", " i'll tell you what i find ",
         " i'll get back to you ", " i'm already doing ", " im already doing ",
+        // A result claimed with nothing run to get it (30 Sep 2026, a real
+        // 2B model: "The machine health check found that the RAM usage has
+        // spiked to 85%", no tool called).
+        " check found ", " health check found ", " the check shows ", " the model trace shows ", " i checked ",
+        " i've checked ", " i have checked ", " i am checking ", " i'm checking ", " here is what i found ",
+        " here's what i found ", " i looked it up ", " i've looked it up ", " i just looked ",
+        // And a switch claimed flipped, or a camera claimed on (the same 2B:
+        // "I'm looking through your camera and can definitely see you right
+        // now ... I've turned on Recognising things in settings").
+        " i've turned on ", " i have turned on ", " i turned on ", " i've switched on ", " i've enabled ",
+        " i'm looking through your camera ", " looking through your camera ", " can definitely see you ",
+        " i can see you right now ",
     ];
     CLAIMS.iter().any(|c| t.contains(c))
 }
@@ -102,7 +114,25 @@ pub fn denies_an_ability(sentence: &str) -> Option<&'static str> {
         (" i'm not allowed to", ""),
         (" i am not allowed to", ""),
     ];
-    DENIALS.iter().find(|(p, _)| t.contains(p)).map(|(_, topic)| *topic)
+    if let Some((_, topic)) = DENIALS.iter().find(|(p, _)| t.contains(p)) {
+        return Some(topic);
+    }
+    // Said another way: "I don't have personal cameras", "I do not have
+    // access to external files" (30 Sep 2026, a real 0.8B model) -- a
+    // "can't" or "don't have" with the ability named in the same sentence.
+    let negated = [" don't have ", " can't ", " not able to ", " unable to ", " no access ", " don't have access", " without access"]
+        .iter()
+        .any(|n| t.contains(n));
+    if !negated {
+        return None;
+    }
+    const TOPICS: &[(&[&str], &str)] = &[
+        (&[" camera", " cameras", " webcam", " your face"], "camera"),
+        (&[" internet", " the web", " browse", " research", " look things up", " online"], "research"),
+        (&[" your files", " external files", " files", " documents", " your computer's files"], "files"),
+        (&[" your screen", " the screen"], "screen"),
+    ];
+    TOPICS.iter().find(|(words, _)| words.iter().any(|w| t.contains(w))).map(|(_, topic)| *topic)
 }
 
 /// Does this sentence bring in a person or a story nobody mentioned --
@@ -150,6 +180,8 @@ pub fn ability_asked_about(said: &str) -> &'static str {
         "research"
     } else if t.contains(" screen") || t.contains(" monitor") {
         "screen"
+    } else if [" file", " files", " pdf", " document", " folder"].iter().any(|w| t.contains(w)) {
+        "files"
     } else {
         ""
     }

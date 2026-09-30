@@ -1364,8 +1364,12 @@ pub const STABLE_TOOLS_KWARG: &str = "atlas_stable_tools";
 pub fn tools_late_template(original: &str) -> Option<String> {
     const TOOLS_LOOP: &str = "{%- for tool in tools %}";
     const USER_BRANCH: &str = "{%- if message.role == \"user\" %}";
+    // Qwen3.5's template (30 Sep 2026) tests the user role in an `elif`: the
+    // late tools go just inside that branch, before the user's words.
+    const USER_ELIF: &str = "{%- elif message.role == \"user\" %}";
+    let (if_form, elif_form) = (original.matches(USER_BRANCH).count(), original.matches(USER_ELIF).count());
     if original.matches(TOOLS_LOOP).count() != 1
-        || original.matches(USER_BRANCH).count() != 1
+        || if_form + elif_form != 1
         || !original.contains("<tool_call>")
         || !original.contains("<tools>")
         || original.contains(STABLE_TOOLS_KWARG)
@@ -1384,9 +1388,12 @@ pub fn tools_late_template(original: &str) -> Option<String> {
         {%- endfor %}\n\
         {{- '\\n</tools><|im_end|>\\n' }}\n\
         {%- endif %}\n    ";
-    let t = original
-        .replacen(TOOLS_LOOP, "{%- for tool in tools[:atlas_early] %}", 1)
-        .replacen(USER_BRANCH, &format!("{late}{USER_BRANCH}"), 1);
+    let early_loop = original.replacen(TOOLS_LOOP, "{%- for tool in tools[:atlas_early] %}", 1);
+    let t = if if_form == 1 {
+        early_loop.replacen(USER_BRANCH, &format!("{late}{USER_BRANCH}"), 1)
+    } else {
+        early_loop.replacen(USER_ELIF, &format!("{USER_ELIF}\n    {late}"), 1)
+    };
     Some(format!("{early}{t}"))
 }
 

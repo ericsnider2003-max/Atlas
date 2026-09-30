@@ -243,7 +243,10 @@ impl Router {
         let mut picked: Vec<&ToolEntry> = self.shortlist(said, k).into_iter().map(|(e, _)| e).collect();
         // Only for a sentence with next to nothing of its own ("that's it",
         // "do it now"): "tell me about octopuses" is its own subject.
-        if picked.is_empty() && content_words(said).len() <= 1 {
+        // Never for small talk: "hey, how's it going" has no words of its own
+        // either, and was offered the tools for research asked an hour before
+        // (30 Sep 2026, a real model then called one of them).
+        if picked.is_empty() && content_words(said).len() <= 1 && !small_talk(said) {
             if let Some(g) = goal.filter(|g| !g.trim().is_empty()) {
                 picked = self.shortlist(g, k.min(3)).into_iter().map(|(e, _)| e).collect();
             }
@@ -331,4 +334,18 @@ pub fn clip_words(text: &str, most: usize) -> String {
         _ => cut,
     };
     format!("{}…", cut.trim_end_matches([',', ';', ':', '.']))
+}
+
+/// A greeting, a thanks, a goodbye or "how's it going": said to be sociable,
+/// not about anything asked earlier.
+pub fn small_talk(said: &str) -> bool {
+    let t: String = said.to_lowercase().replace('\u{2019}', "'").chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    let t = format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "));
+    [
+        " hi ", " hey ", " hello ", " morning ", " evening ", " thanks ", " thank you ", " cheers ", " bye ", " goodbye ",
+        " good night ", " goodnight ", " how's it going ", " hows it going ", " how are you ", " how's your day ",
+        " what's up ", " whats up ", " see you ", " have a good ", " you there ", " can you hear me ",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
 }

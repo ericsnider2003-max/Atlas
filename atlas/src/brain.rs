@@ -1317,8 +1317,15 @@ impl<'a> Brain<'a> {
         // stands, and the tool's answer follows it.
         // The same for "I'm on it" with nothing started (30 Sep 2026): the
         // claim was held back from speech (`SpeechGate::claimed`).
-        if reply.tool_calls.is_empty() && !turn.tools.is_empty() && (gate.claimed || announces_an_action(&reply.text)) {
-            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
+        // And for "I can't -- I don't have access to your files" when a tool
+        // that does it was offered: the tool, not the denial.
+        let denied_with_a_tool = gate.denied.is_some() && turn.tools.len() > turn.stable_tools;
+        if reply.tool_calls.is_empty() && !turn.tools.is_empty() && (gate.claimed || denied_with_a_tool || announces_an_action(&reply.text)) {
+            // A tool call is short: capped, so a small model that can't find
+            // one doesn't write for half a minute instead (30 Sep 2026, a real
+            // 0.8B model: 450 tokens, 37 s; at 120 a 2B one still wrote for 20 s on
+            // this machine's processor -- a call is 20-40 tokens).
+            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens.min(FORCED_TOOL_TOKENS), force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
             if let Ok(forced) = self.llm.chat(&req, &mut |_| true) {
                 let mut more = Vec::new();
                 let f = decision_from_chat_noting(&forced, &turn.said, &turn.tools, &mut more);
@@ -1367,6 +1374,9 @@ fn own_up(gate: &SpeechGate, mut d: Decision, turn: &Turn, on_text: &mut dyn FnM
     }
     d
 }
+
+/// The most a reply asked for with a tool call required may write.
+pub const FORCED_TOOL_TOKENS: u32 = 64;
 
 /// What was passed on before a chat call failed, as the reply -- said
 /// plainly that it stopped -- or `None` when nothing was, so another way of

@@ -194,7 +194,7 @@ fn what_can_you_do_is_answered_without_the_model() {
 #[test]
 fn a_claim_of_work_is_recognised() {
     use atlas::backed::claims_work_started;
-    for s in ["Alright -- I'm on it.", "I\u{2019}m already on it -- no need to wait.", "I've started the research.", "I'll get started on that.", "I'll let you know what I find."] {
+    for s in ["Yes, I'm looking through your camera and can definitely see you right now.", "I've turned on Recognising things in settings.", "The machine health check found that the RAM usage has spiked to 85%.", "I am checking what's in front of the lens.", "Here is what I found.", "Alright -- I'm on it.", "I\u{2019}m already on it -- no need to wait.", "I've started the research.", "I'll get started on that.", "I'll let you know what I find."] {
         assert!(claims_work_started(s), "{s}");
     }
     for s in ["I'm starting to think you're right.", "It's done wonders for my mood.", "Research is off; Settings turns it on.", "Found it: tax-2025.pdf."] {
@@ -222,6 +222,7 @@ fn im_on_it_with_nothing_started_becomes_the_truth() {
     assert!(s.contains(atlas::backed::NOT_STARTED), "{s}");
     assert_eq!(llm.requests().len(), 2, "asked once more with a tool call required");
     assert!(llm.requests()[1].force_tool);
+    assert!(llm.requests()[1].max_tokens <= atlas::brain::FORCED_TOOL_TOKENS, "a tool call is short");
 }
 
 #[test]
@@ -480,6 +481,34 @@ fn a_stranger_nobody_mentioned_is_not_brought_in() {
     assert_eq!(ability_asked_about("Please use my camera and look at me."), "camera");
     assert_eq!(ability_asked_about("Why are you refusing to do research?"), "research");
     assert_eq!(ability_asked_about("What permission do you need?"), "");
+    assert_eq!(ability_asked_about("find the tax pdf from last year"), "files");
+}
+
+/// The denials a real 0.8B model made on this machine (30 Sep 2026), said
+/// other ways than his evening's.
+#[test]
+fn a_denial_said_another_way_is_still_caught() {
+    use atlas::backed::denies_an_ability;
+    assert_eq!(denies_an_ability("No, I don't have personal cameras or access to your face, so there's no permission."), Some("camera"));
+    assert_eq!(denies_an_ability("The request cannot be fulfilled because I do not have access to external files."), Some("files"));
+    assert_eq!(denies_an_ability("I can't browse the web right now."), Some("research"));
+    assert_eq!(denies_an_ability("Octopuses can't see colour the way we do."), None);
+    assert!(atlas::capability::truth_about("files", false).unwrap().starts_with("Actually, I can find a file"));
+}
+
+/// Qwen3.5's own chat template (from the GGUF's metadata, served by
+/// llama-server) takes the picked tools late too, so its prompt keeps its
+/// start from turn to turn.
+#[test]
+fn the_qwen35_template_takes_the_picked_tools_late() {
+    let original = include_str!("fixtures/models/qwen3.5-chat-template.jinja");
+    let t = atlas::models::tools_late_template(original).expect("Qwen3.5's template is one it knows");
+    assert_eq!(t.matches("{%- for tool in tools[:atlas_early] %}").count(), 1);
+    let elif = t.find("{%- elif message.role == \"user\" %}").unwrap();
+    let late = t.find("# Tools for this request").unwrap();
+    assert!(elif < late, "the late tools are inside the user branch");
+    assert!(t[late..].contains("{%- for tool in tools[atlas_early:] %}"));
+    assert_eq!(atlas::models::tools_late_template(&t), None, "not changed twice");
 }
 
 #[test]
