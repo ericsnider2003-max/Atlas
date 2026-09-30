@@ -1798,6 +1798,9 @@ impl<'a> Daemon<'a> {
         let reply = if failed_silent {
             let why = self.model_server_trouble.clone().unwrap_or_else(|| decision.say.clone());
             self.log.warn(&format!("the model call failed: {}", decision.say));
+            // Ours may be running but stuck (a graphics driver hang): the
+            // next pass asks it, and restarts it if it doesn't answer.
+            self.model_suspect = self.starts_model_server;
             model_failed_words(&why)
         } else {
             reply

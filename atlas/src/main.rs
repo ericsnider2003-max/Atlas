@@ -411,8 +411,15 @@ fn main() {
     // reach, and the shipped files brought up to this build. Before
     // `Config::load`, which lays those edits back over them. Cannot fail
     // startup: the worst case leaves a file as it was and says so.
-    for notice in atlas::yourchanges::keep_hand_edits(&dir).notices {
-        println!("{notice}");
+    // Also in the log (29 Sep 2026): the background Atlas has no console,
+    // so a notice only printed was a notice nobody saw.
+    let kept = atlas::yourchanges::keep_hand_edits(&dir).notices;
+    if !kept.is_empty() {
+        let log = atlas::log::Log::new(atlas::roots::store().logs_dir(), 8 * 1024 * 1024);
+        for notice in kept {
+            println!("{notice}");
+            log.info(&notice);
+        }
     }
     // Atlas's own copies of its tools (the sound tools) are found where it
     // put them, with nothing installed system-wide.

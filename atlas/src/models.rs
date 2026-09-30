@@ -615,6 +615,18 @@ static LAUNCHED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// it. The 4B picture model loads in well under a minute on a laptop CPU.
 pub const LOADING_SECS: u64 = 120;
 
+/// How long ago Atlas last started a model server; `None` if it hasn't.
+pub fn launched_secs_ago() -> Option<u64> {
+    let at = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
+    (at != 0).then(|| crate::store::now().saturating_sub(at))
+}
+
+/// Is the model server Atlas started probably still loading its model? Just
+/// started, within the time a load takes.
+pub fn probably_still_loading(launched_secs_ago: Option<u64>) -> bool {
+    launched_secs_ago.is_some_and(|s| s < LOADING_SECS)
+}
+
 /// The server program to run. The shipped setting says `llama-server`,
 /// which a fresh Windows doesn't have on its PATH; `atlas get pictures`
 /// puts it in `tools/llama/` in Atlas's own folder, so that's used when

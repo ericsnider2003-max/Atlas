@@ -110,6 +110,66 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// List the sound devices every few minutes, off the loop, and record
+    /// from a different microphone when the pick changes: a headset that
+    /// connected after sign-in, a dock, the picked one unplugged (29 Sep
+    /// 2026: the microphone was picked once, at start, for the whole
+    /// session). A listing that fails changes nothing.
+    pub(super) fn look_again_at_the_microphone(&mut self, t: u64) {
+        if let Some(rx) = &self.mic_listing {
+            match rx.try_recv() {
+                Ok(Ok(devices)) => {
+                    self.mic_listing = None;
+                    self.microphone_from(&devices, t);
+                }
+                Ok(Err(e)) => {
+                    self.mic_listing = None;
+                    self.log.warn(&format!("couldn't list the microphones this time: {e}"));
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.mic_listing = None,
+            }
+            return;
+        }
+        if t < self.mic_look_at || self.tiers.tier == Tier::Typed && self.audio_tools_missing {
+            return;
+        }
+        self.mic_look_at = t + MIC_LOOK_EVERY_SECS;
+        let Some(tc) = self.tools_ref() else { return };
+        let ffmpeg = tc.vars.get("ffmpeg").cloned().unwrap_or_else(|| "ffmpeg".into());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new().name("atlas-mic-list".into()).spawn(move || {
+            let _ = tx.send(crate::audio::probe_devices(&ffmpeg).map_err(|e| e.to_string()));
+        });
+        if spawned.is_ok() {
+            self.mic_listing = Some(rx);
+        }
+    }
+
+    /// The pick from a fresh listing; switched to, and said, when it differs.
+    fn microphone_from(&mut self, devices: &[crate::audio::Device], t: u64) {
+        let Some(tc) = self.tools_ref().cloned() else { return };
+        let screens = self.plat.monitors();
+        let w = crate::hearing::Where {
+            at_desk: screens.as_ref().map(|m| !m.is_empty()).unwrap_or(true),
+            presence_unknown: screens.is_err(),
+            headset_connected: devices.iter().any(|d| d.kind == crate::audio::Kind::Input && crate::hearing::Candidate::from(d).bluetooth),
+            phone_active: false,
+            audio_playing: false,
+        };
+        let store = crate::roots::store();
+        let mut hearing = crate::hearing::Hearing::load_from(&store);
+        let laptop_active = self.plat.built_in_screen_on().unwrap_or(true);
+        let Some(p) = crate::hearing::pick_microphone(devices, &mut hearing, &tc, &w, laptop_active, t) else { return };
+        let _ = hearing.save_to(&store);
+        let (now_name, now_device) = crate::voice::microphone_now(&tc);
+        if let Some(line) = microphone_change(&now_name, &now_device, &p) {
+            crate::voice::set_microphone(&p.name, &p.device);
+            self.log.info(&line);
+            self.heard_note = Some(line);
+        }
+    }
+
     /// `keep_model_server`, waiting at most `wait` for the "is it up?"
     /// answer. The loop calls it with no wait on every pass (29 Sep 2026):
     /// at start-up the first check hadn't answered in time, and nothing
@@ -147,6 +207,30 @@ impl<'a> Daemon<'a> {
         let cfg = tc.models.clone();
         let vars = tc.vars.clone();
         if self.helpers.is_running("model-server") {
+            // A call to it failed: is it answering at all? Not while it may
+            // still be loading. One that isn't is stopped, and the next turn
+            // starts a fresh one (29 Sep 2026: a running process was trusted
+            // however stuck it was, and every question waited out the whole
+            // read timeout, twice, before failing).
+            let loading = self.model_started.is_some_and(|s| s.elapsed() < MODEL_SERVER_LOADING);
+            if self.model_suspect && !loading {
+                // (The finding is cleared on every pass that isn't asking,
+                // below, so what this reads is this question's answer.)
+                match self.probe_model_server(&cfg, &vars, wait) {
+                    Some(false) => {
+                        self.model_suspect = false;
+                        self.log.warn("my model server is running but not answering; restarting it");
+                        self.helpers.finished("model-server");
+                        self.model_started = None;
+                        self.model_start_tried = None;
+                        self.model_server_trouble = Some("my language model stopped answering, so I'm restarting it".into());
+                        return;
+                    }
+                    Some(true) => self.model_suspect = false,
+                    // Still being asked: looked at again next pass.
+                    None => return,
+                }
+            }
             // Lived through its load and some use: not dying young.
             if self.model_started.is_some_and(|s| s.elapsed() > MODEL_SERVER_YOUNG) {
                 self.model_started = None;

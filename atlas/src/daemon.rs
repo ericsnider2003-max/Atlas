@@ -732,6 +732,9 @@ pub struct Daemon<'a> {
     /// `None` for the overwhelming majority of installs, which will never
     /// have another Atlas to hear from -- see `with_signal_listener`.
     signal_listener: Option<crate::server::SignalListener>,
+    /// The friends' door that couldn't be opened at start (its port busy),
+    /// tried again once a minute: (port, who may come in, next try).
+    signal_retry: Option<(u16, Vec<crate::kin::Peer>, u64)>,
     /// A running tally of where answers came from -- named capability,
     /// cached report, or an actual model call. Kept because the useful
     /// question is not whether tiering runs, it is whether it is doing
@@ -915,6 +918,11 @@ pub struct Daemon<'a> {
     model_look_at: u64,
     /// When typing-only last looked again at whether the voice tools work.
     audio_look_at: u64,
+    /// When to list the sound devices again and see whether a different
+    /// microphone should be recorded from (29 Sep 2026).
+    mic_look_at: u64,
+    /// That listing, running off the loop.
+    mic_listing: Option<std::sync::mpsc::Receiver<std::result::Result<Vec<crate::audio::Device>, String>>>,
     /// The voice tools weren't there at start (not a failing microphone).
     audio_tools_missing: bool,
     /// What was typed or said on the hub's Talk page, waiting for its turn:
@@ -956,6 +964,9 @@ pub struct Daemon<'a> {
     /// Model servers that ended soon after being started, in a row: each
     /// doubles the pause before the next try (29 Sep 2026).
     model_deaths: u32,
+    /// A model call failed while our model server was running: it is asked
+    /// whether it is still answering, and restarted if not.
+    model_suspect: bool,
     /// Turns may hand their model call to a worker (`pending_turn`): set by
     /// the Talk page's queue and the voice loop around a turn.
     defer_turns: bool,
@@ -1539,6 +1550,7 @@ impl<'a> Daemon<'a> {
             audio_devices: None,
             audio_devices_retry_at: 0,
             signal_listener: None,
+            signal_retry: None,
             sync_server: None,
             tier_mix: crate::tier::Mix::default(),
             nudger: {
@@ -1629,6 +1641,8 @@ impl<'a> Daemon<'a> {
             starts_model_server: false,
             model_look_at: 0,
             audio_look_at: 0,
+            mic_look_at: crate::store::now() + MIC_LOOK_EVERY_SECS,
+            mic_listing: None,
             audio_tools_missing: false,
             talk_queue: Vec::new(),
             pending_turn: None,
@@ -1643,6 +1657,7 @@ impl<'a> Daemon<'a> {
             model_start_tried: None,
             model_started: None,
             model_deaths: 0,
+            model_suspect: false,
             defer_turns: false,
             may_defer: false,
             decided_already: None,
@@ -3695,6 +3710,17 @@ fn one_at_a_time(also: &[String]) -> String {
 /// How long a finding that another model server is (or isn't) up holds.
 const MODEL_SERVER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How long a spoken question waits in silence before Atlas says its model is
+/// still loading, when it is.
+pub const STILL_LOADING_AFTER: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// What it says then.
+pub const STILL_LOADING_WORDS: &str = "One moment -- my language model is still loading. The first answer takes about a minute.";
+
+/// A model server this young may still be loading its model: not judged
+/// stuck for not answering yet.
+const MODEL_SERVER_LOADING: std::time::Duration = std::time::Duration::from_secs(150);
+
 /// A model server that ends within this long of being started died young.
 const MODEL_SERVER_YOUNG: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -3786,4 +3812,20 @@ pub fn what_this_machine_cant_do(limits: Vec<String>, pictures: Option<std::resu
             Some(l)
         })
         .collect()
+}
+
+/// How often the microphones are listed again.
+pub const MIC_LOOK_EVERY_SECS: u64 = 180;
+
+/// What to say when a fresh pick differs from the microphone in use; `None`
+/// when it is the same one.
+pub fn microphone_change(now_name: &str, now_device: &str, picked: &crate::hearing::Picked) -> Option<String> {
+    if picked.device == now_device || (!now_name.is_empty() && picked.name == now_name) {
+        return None;
+    }
+    Some(format!(
+        "Listening with {} now -- {}.",
+        crate::hearing::short(&picked.name),
+        picked.why.trim().trim_end_matches('.')
+    ))
 }

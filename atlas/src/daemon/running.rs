@@ -522,6 +522,8 @@ impl<'a> Daemon<'a> {
             // you say (29 Sep 2026).
             self.keep_model_server_waiting(clock(), std::time::Duration::ZERO, false);
             self.look_again_at_audio(ears, clock());
+            self.look_again_at_the_microphone(clock());
+            self.open_signal_door_again(clock());
             let signals = self.observe(clock());
             let nap = throttle.next_interval(&signals, self.power);
             if self.tiers.tier == Tier::Typed {
@@ -1270,6 +1272,9 @@ impl<'a> Daemon<'a> {
             return;
         }
         self.log.warn(&format!("listening failed: {why}"));
+        // The microphone may have gone (unplugged, the headset switched
+        // off): look for the right one now rather than in a few minutes.
+        self.mic_look_at = 0;
         self.degrade(mouth);
     }
 

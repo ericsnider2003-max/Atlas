@@ -628,6 +628,11 @@ impl<'a> Voice<'a> {
         let dir = PathBuf::from(&self.cfg.work_dir);
         std::fs::create_dir_all(&dir)?;
         let mut v: Vars = self.cfg.vars.clone();
+        // The microphone picked again since start, if it was (`set_microphone`).
+        if let Some((name, device)) = microphone_override() {
+            v.insert("mic_name".into(), name);
+            v.insert("mic_device".into(), device);
+        }
         let stem = dir.join("turn");
         v.insert("work_dir".into(), dir.display().to_string());
         v.insert("in_wav".into(), format!("{}.wav", stem.display()));
@@ -798,7 +803,7 @@ impl<'a> Voice<'a> {
     /// is no mic device named for streaming.
     fn listen_while_held(&self, held: &dyn Fn() -> bool) -> Result<Option<String>> {
         use std::io::Read;
-        let device = self.cfg.vars.get("mic_device").cloned().unwrap_or_default();
+        let device = microphone_now(self.cfg).1;
         if device.trim().is_empty() {
             return self.listen().map(Some);
         }
@@ -869,7 +874,7 @@ impl<'a> Voice<'a> {
         // an `Err` means the streaming recorder could not start. Both fall
         // through to the fixed-length path below, because a slower turn is a
         // far better outcome than a failed one.
-        let device = self.cfg.vars.get("mic_device").cloned().unwrap_or_default();
+        let device = microphone_now(self.cfg).1;
         let streamed = self.cfg.endpoint.enabled && !device.trim().is_empty();
         match self.listen_until_you_stop(&self.cfg.endpoint, &device) {
             Ok(Some(text)) => return Ok(text),
@@ -952,10 +957,20 @@ impl<'a> Voice<'a> {
         // Kokoro, spoken inside Atlas, when it's the engine chosen and it's
         // here; otherwise the configured command (piper) below, as always.
         if self.cfg.tts_engine.engine == crate::tts::Engine::Kokoro {
-            if let Some(done) = self.speak_kokoro(text) {
-                return done;
+            match self.speak_kokoro(text) {
+                Kokoro::Done(done) => return done,
+                Kokoro::Unavailable => {}
+                // Kokoro stopped partway: piper says only what's left (29
+                // Sep 2026: it was handed the whole line, so what you had
+                // already heard was said again).
+                Kokoro::Rest(rest) => return self.speak_with_piper(&rest),
             }
         }
+        self.speak_with_piper(text)
+    }
+
+    /// The configured speech command (piper), for the whole of `text`.
+    fn speak_with_piper(&self, text: &str) -> Result<()> {
         let vars = self.speech_command_vars()?;
         let t0 = std::time::Instant::now();
         // Said the way it should sound: "EURUSD" as "euro dollar", "VPS" as
@@ -1084,14 +1099,14 @@ impl<'a> Voice<'a> {
     /// Speak in Kokoro. `None` when it isn't available -- said once, in
     /// words, and then piper speaks instead; never an error, and never
     /// tried again on every sentence (`kokoro::engine` keeps the failure).
-    fn speak_kokoro(&self, text: &str) -> Option<Result<()>> {
+    fn speak_kokoro(&self, text: &str) -> Kokoro {
         let synth = match self.kokoro_synth() {
             Ok(s) => s,
             Err(why) => {
                 if let Some(note) = crate::kokoro::note_once(&why) {
                     println!("{note}");
                 }
-                return None;
+                return Kokoro::Unavailable;
             }
         };
         let spoken = crate::pronounce::for_speech(text, &self.cfg.pronounce);
@@ -1106,27 +1121,28 @@ impl<'a> Voice<'a> {
         }
         let vars = match self.vars() {
             Ok(v) => v,
-            Err(e) => return Some(Err(e)),
+            Err(e) => return Kokoro::Done(Err(e)),
         };
         let out_wav = vars.get("out_wav").cloned().unwrap_or_default();
         let data = crate::roots::data_dir();
         let (mut synth_ms, mut play_ms) = (0u128, 0u128);
-        for s in &sentences {
+        for (i, s) in sentences.iter().enumerate() {
             let t0 = std::time::Instant::now();
             let wav = match self.ahead.take(s).unwrap_or_else(|| synth(s)) {
                 Ok(w) => w,
                 Err(why) => {
-                    // Fails mid-reply: say why once, and piper says the rest.
+                    // Fails mid-reply: say why once, and piper says the rest
+                    // -- only the rest.
                     crate::kokoro::forget();
                     if let Some(note) = crate::kokoro::note_once(&why) {
                         println!("{note}");
                     }
-                    return None;
+                    return kokoro_stopped_at(&sentences, i);
                 }
             };
             synth_ms += t0.elapsed().as_millis();
             if let Err(e) = std::fs::write(&out_wav, &wav) {
-                return Some(Err(e.into()));
+                return Kokoro::Done(Err(e.into()));
             }
             // The mark moves with the voice, sentence by sentence.
             let _ = crate::speaking::begin(&data, s, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS);
@@ -1142,11 +1158,11 @@ impl<'a> Voice<'a> {
             play_ms += t1.elapsed().as_millis();
             crate::speaking::end(&data);
             if let Err(e) = played {
-                return Some(Err(e));
+                return Kokoro::Done(Err(e));
             }
         }
         self.last_speak.store(pack(synth_ms, play_ms), std::sync::atomic::Ordering::Relaxed);
-        Some(Ok(()))
+        Kokoro::Done(Ok(()))
     }
 
     /// Photo from the webcam. Returns the file path.
@@ -1391,7 +1407,7 @@ impl crate::micthread::MicWork for VoiceWork {
         self.voice().listen()
     }
     fn open_stream(&mut self) -> Option<Box<dyn crate::micthread::MicStream>> {
-        let device = self.cfg.vars.get("mic_device").cloned().unwrap_or_default();
+        let device = microphone_now(&self.cfg).1;
         if device.trim().is_empty() {
             return None;
         }
@@ -1522,4 +1538,53 @@ pub fn recorder_could_not_open(stderr: &str) -> Option<String> {
                 _ => l.to_string(),
             }
         })
+}
+
+/// The microphone picked again while Atlas runs (29 Sep 2026): AirPods
+/// connecting after sign-in, a dock, or the picked one unplugged. Every
+/// recorder reads through `microphone_now`, so a new pick takes effect at the
+/// next recording without rebuilding anything. `None`: the pick made at start
+/// (in `vars`) stands.
+static MIC_NOW: std::sync::RwLock<Option<(String, String)>> = std::sync::RwLock::new(None);
+
+/// Record from this microphone from now on: `name` as the device calls
+/// itself, `device` as ffmpeg opens it.
+pub fn set_microphone(name: &str, device: &str) {
+    if let Ok(mut m) = MIC_NOW.write() {
+        *m = Some((name.to_string(), device.to_string()));
+    }
+}
+
+fn microphone_override() -> Option<(String, String)> {
+    MIC_NOW.read().ok().and_then(|m| m.clone())
+}
+
+/// The microphone recorded from now: (its name, what ffmpeg opens).
+pub fn microphone_now(cfg: &ToolsConfig) -> (String, String) {
+    if let Some(m) = microphone_override() {
+        return m;
+    }
+    let device = cfg.vars.get("mic_device").cloned().unwrap_or_default();
+    let name = cfg.vars.get("mic_name").cloned().unwrap_or_else(|| device.clone());
+    (name, device)
+}
+
+/// How a line went in Kokoro.
+#[derive(Debug)]
+pub enum Kokoro {
+    /// Said (or failed to play) in Kokoro.
+    Done(Result<()>),
+    /// Not available: piper says the whole line.
+    Unavailable,
+    /// Stopped partway: piper says this, the part not yet said.
+    Rest(String),
+}
+
+/// Kokoro failed on sentence `at` of `sentences`: nothing said yet is
+/// `Unavailable` (piper says it all), otherwise the rest from `at`.
+pub fn kokoro_stopped_at(sentences: &[String], at: usize) -> Kokoro {
+    if at == 0 {
+        return Kokoro::Unavailable;
+    }
+    Kokoro::Rest(sentences[at.min(sentences.len())..].join(" "))
 }

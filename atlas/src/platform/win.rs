@@ -334,6 +334,40 @@ impl Platform for WindowsPlatform {
         })
     }
 
+    fn built_in_screen_on(&self) -> Option<bool> {
+        use windows::Win32::Devices::Display::{
+            GetDisplayConfigBufferSizes, QueryDisplayConfig, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO, QDC_ALL_PATHS,
+        };
+        unsafe {
+            let (mut np, mut nm) = (0u32, 0u32);
+            if GetDisplayConfigBufferSizes(QDC_ALL_PATHS, &mut np, &mut nm).is_err() {
+                return None;
+            }
+            let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); np as usize];
+            let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); nm as usize];
+            if QueryDisplayConfig(QDC_ALL_PATHS, &mut np, paths.as_mut_ptr(), &mut nm, modes.as_mut_ptr(), None).is_err() {
+                return None;
+            }
+            paths.truncate(np as usize);
+            let outputs: Vec<(bool, bool)> = paths
+                .iter()
+                // Every path, available or not: with the lid shut Windows may
+                // list the built-in panel as unavailable, and that is still a
+                // laptop whose screen is off, not a desktop with none.
+                .map(|p| {
+                    let t = p.targetInfo.outputTechnology;
+                    let internal = t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL
+                        || t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED
+                        || t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED;
+                    // DISPLAYCONFIG_PATH_ACTIVE
+                    (internal, p.flags & 1 != 0)
+                })
+                .collect();
+            crate::layout::built_in_screen_from(&outputs)
+        }
+    }
+
     fn monitors(&self) -> Result<Vec<Monitor>> {
         let mut acc = MonAcc(Vec::new());
         unsafe {

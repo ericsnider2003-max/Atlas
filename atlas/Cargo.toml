@@ -169,6 +169,9 @@ windows = { version = "0.58", features = [
     "Win32_System_JobObjects",
     # tray: the icon by the clock loads Atlas's mark from its own exe.
     "Win32_System_LibraryLoader",
+    # Is the laptop's own screen on (the lid open)? Windows' display paths
+    # name the built-in panel as an internal output (29 Sep 2026).
+    "Win32_Devices_Display",
 ] }
 
 # The consolidated suite: one binary, one link of the crate.

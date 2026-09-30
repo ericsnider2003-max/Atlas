@@ -2034,6 +2034,39 @@ pub struct Waiting {
     state: std::sync::Arc<std::sync::atomic::AtomicU8>,
     /// How long its connection waits (`Server::answer_wait`).
     wait: std::time::Duration,
+    /// Where a Talk page message goes when it is given up on.
+    late: LateTalk,
+}
+
+/// Words sent from the Talk page that Atlas didn't get to before the page
+/// gave up (29 Sep 2026: during a long stall they were answered "busy" and
+/// never run -- what you typed was simply gone). Kept by the door, off the
+/// loop, and taken into the Talk page's queue on its next pass
+/// (`HubDoor::take_late_talk`). The page's own retry then shows them
+/// "thinking".
+type LateTalk = std::sync::Arc<std::sync::Mutex<Vec<(String, bool)>>>;
+
+/// A Talk page message given up on, kept rather than dropped.
+fn keep_if_talk(action: &Action, late: &LateTalk) {
+    if let Some(talk) = talk_in(action) {
+        if let Ok(mut v) = late.lock() {
+            v.push(talk);
+        }
+    }
+}
+
+/// The words and "said aloud" of a Talk page post, if this is one.
+fn talk_in(action: &Action) -> Option<(String, bool)> {
+    let Action::HubPost { path, fields } = action else { return None };
+    if path != "/hub/talk" {
+        return None;
+    }
+    let field = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    let text = field("text").unwrap_or_default();
+    if text.trim().is_empty() {
+        return None;
+    }
+    Some((text.trim().to_string(), field("spoken").as_deref() == Some("1")))
 }
 
 const WAITING: u8 = 0;
@@ -2046,7 +2079,9 @@ impl Waiting {
     fn take(&self) -> bool {
         use std::sync::atomic::Ordering;
         if self.arrived.elapsed() >= self.wait {
-            let _ = self.state.compare_exchange(WAITING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst);
+            if self.state.compare_exchange(WAITING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                keep_if_talk(&self.action, &self.late);
+            }
             return false;
         }
         self.state.compare_exchange(WAITING, TAKEN, Ordering::SeqCst, Ordering::SeqCst).is_ok()
@@ -2104,6 +2139,8 @@ pub struct HubDoor {
     news: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Set when the door is dropped: the retrying thread stops.
     shut: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Talk page messages given up on (`LateTalk`).
+    late: LateTalk,
 }
 
 /// The hub's end of a `HubDoor`: what a listener, bound now or later, feeds.
@@ -2115,6 +2152,7 @@ struct Serving {
     port: std::sync::Arc<std::sync::atomic::AtomicU16>,
     news: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     shut: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    late: LateTalk,
 }
 
 impl Clone for Serving {
@@ -2127,6 +2165,7 @@ impl Clone for Serving {
             port: self.port.clone(),
             news: self.news.clone(),
             shut: self.shut.clone(),
+            late: self.late.clone(),
         }
     }
 }
@@ -2196,9 +2235,9 @@ impl Serving {
                 continue;
             }
             self.open.fetch_add(1, Ordering::SeqCst);
-            let (s, tx, still_open, per) = (s.clone(), self.tx.clone(), self.open.clone(), self.per_address.clone());
+            let (s, tx, still_open, per, late) = (s.clone(), self.tx.clone(), self.open.clone(), self.per_address.clone(), self.late.clone());
             let spawned = std::thread::Builder::new().name("atlas-hub-conn".into()).spawn(move || {
-                s.serve_on_its_own(stream, &tx);
+                s.serve_on_its_own(stream, &tx, &late);
                 still_open.fetch_sub(1, Ordering::SeqCst);
                 by_address_give_back(&per, from);
             });
@@ -2449,7 +2488,7 @@ impl Server {
 
     /// One connection, on its own thread: read and check it, hand an
     /// authenticated action to the daemon, wait for the answer, send it.
-    fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &std::sync::mpsc::Sender<Waiting>) {
+    fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &std::sync::mpsc::Sender<Waiting>, late: &LateTalk) {
         let Ok(Some(mut asked)) = self.read_asked(stream) else {
             return;
         };
@@ -2466,6 +2505,7 @@ impl Server {
             reply: reply_tx,
             state: state.clone(),
             wait: self.answer_wait,
+            late: late.clone(),
         };
         let reply = if to_daemon.send(waiting).is_err() {
             None
@@ -2478,7 +2518,10 @@ impl Server {
                     // which case it is being answered and its answer is the
                     // one to send.
                     match state.compare_exchange(WAITING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst) {
-                        Ok(_) => None,
+                        Ok(_) => {
+                            keep_if_talk(&asked.action, late);
+                            None
+                        }
                         Err(_) => reply_rx.recv_timeout(ANSWER_WAIT).ok(),
                     }
                 }
@@ -2518,6 +2561,7 @@ impl HubDoor {
         let port = std::sync::Arc::new(std::sync::atomic::AtomicU16::new(0));
         let news = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let shut = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let late: LateTalk = Default::default();
         let serving = Serving {
             server: server.clone(),
             tx,
@@ -2526,8 +2570,14 @@ impl HubDoor {
             port: port.clone(),
             news: news.clone(),
             shut: shut.clone(),
+            late: late.clone(),
         };
-        (HubDoor { server, asks, port, news, shut }, serving)
+        (HubDoor { server, asks, port, news, shut, late }, serving)
+    }
+
+    /// Talk page messages given up on since last asked, oldest first.
+    pub fn take_late_talk(&self) -> Vec<(String, bool)> {
+        self.late.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
     }
 
     /// Is anything listening yet?

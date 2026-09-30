@@ -241,3 +241,170 @@ fn the_internet_check_asks_more_than_one_door() {
     });
     assert_eq!(c.status(1), atlas::connectivity::Reach::Offline);
 }
+
+// ------------------------------------------- the microphone, picked again
+
+fn input(name: &str, bluetooth: bool, builtin: bool, id: &str) -> atlas::audio::Device {
+    atlas::audio::Device {
+        name: name.into(),
+        kind: atlas::audio::Kind::Input,
+        bluetooth,
+        builtin,
+        id: if id.is_empty() { None } else { Some(id.into()) },
+    }
+}
+
+#[test]
+fn a_microphone_is_always_picked_when_the_machine_has_one() {
+    let tc = atlas::voice::ToolsConfig::default();
+    let mut h = atlas::hearing::Hearing::default();
+    let w = atlas::hearing::Where { at_desk: true, presence_unknown: false, headset_connected: false, phone_active: false, audio_playing: false };
+    let devices = vec![input("Microphone Array (Intel® Smart Sound Technology for Digital Microphones)", false, true, "@device_cm_{X}\\wave_{Y}")];
+    let p = atlas::hearing::pick_microphone(&devices, &mut h, &tc, &w, true, 1_000).expect("the only microphone wasn't picked");
+    assert!(p.name.starts_with("Microphone Array (Intel"), "{p:?}");
+    assert_eq!(p.device, "@device_cm_{X}\\wave_{Y}", "opened by name, not by Windows' id");
+    assert!(atlas::hearing::pick_microphone(&[], &mut atlas::hearing::Hearing::default(), &tc, &w, true, 1_000).is_none());
+}
+
+#[test]
+fn a_different_pick_is_said_and_the_same_one_is_not() {
+    let p = atlas::hearing::Picked { name: "Headset (AirPods Pro)".into(), device: "@device_cm_{A}".into(), why: "the headset is on".into(), costs_quality: true };
+    assert_eq!(atlas::daemon::microphone_change("Headset (AirPods Pro)", "@device_cm_{A}", &p), None);
+    assert_eq!(atlas::daemon::microphone_change("Headset (AirPods Pro)", "Headset (AirPods Pro)", &p), None, "the same microphone by another spelling");
+    let said = atlas::daemon::microphone_change("Microphone Array (Intel)", "@device_cm_{I}", &p).expect("a new microphone went unsaid");
+    assert!(said.contains("AirPods") && said.contains("headset is on"), "{said}");
+}
+
+#[test]
+fn every_recording_reads_the_microphone_in_use_now() {
+    let voice = source("src/voice.rs");
+    assert!(!voice.contains(r#"self.cfg.vars.get("mic_device")"#), "a recorder still reads the start-up pick directly");
+    let vars = voice.find("    fn vars(&self) -> Result<Vars> {").expect("vars()");
+    let clone = voice[vars..].find("self.cfg.vars.clone()").unwrap() + vars;
+    let over = voice[clone..].find("microphone_override()").map(|i| i + clone).expect("the command values ignore a new pick");
+    assert!(over - clone < 400);
+    let daemon = source("src/daemon.rs");
+    let run = daemon.find("self.look_again_at_audio(ears, clock());").unwrap();
+    assert!(daemon[run..run + 200].contains("self.look_again_at_the_microphone(clock());"), "the loop never looks again");
+}
+
+// ------------------------------------------ a stuck model, a loading model
+
+#[test]
+fn a_running_model_server_that_stops_answering_is_restarted() {
+    let daemon = source("src/daemon.rs");
+    // A failed call makes it suspect...
+    let failed = daemon.find("let failed_silent = decision.model == brain::Reached::No").unwrap();
+    assert!(daemon[failed..failed + 1200].contains("self.model_suspect = self.starts_model_server;"), "a failed call no longer asks after the server");
+    // ...and a suspect server that doesn't answer, and isn't loading, is stopped.
+    let keep = daemon.find("fn keep_model_server_waiting(").unwrap();
+    let body = &daemon[keep..keep + daemon[keep..].find("\n    }\n").unwrap()];
+    let asked = body.find("if self.model_suspect && !loading {").expect("a running server is trusted however stuck");
+    let stopped = body[asked..].find("self.helpers.finished(\"model-server\");").map(|i| i + asked).expect("never stopped");
+    let probe = body[asked..].find("probe_model_server(").map(|i| i + asked).unwrap();
+    assert!(probe < stopped);
+}
+
+#[test]
+fn a_model_just_started_is_said_to_be_loading() {
+    use atlas::models::{probably_still_loading, LOADING_SECS};
+    assert!(probably_still_loading(Some(5)));
+    assert!(!probably_still_loading(Some(LOADING_SECS + 1)));
+    assert!(!probably_still_loading(None), "a server Atlas never started isn't loading");
+    assert!(atlas::daemon::STILL_LOADING_WORDS.contains("loading"));
+    assert!(atlas::daemon::STILL_LOADING_AFTER.as_secs() <= 5, "a minute of silence before saying so");
+}
+
+#[test]
+fn the_usual_voice_says_only_what_kokoro_didnt() {
+    use atlas::voice::{kokoro_stopped_at, Kokoro};
+    let s: Vec<String> = ["First.", "Second.", "Third."].iter().map(|x| x.to_string()).collect();
+    match kokoro_stopped_at(&s, 1) {
+        Kokoro::Rest(r) => assert_eq!(r, "Second. Third."),
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(kokoro_stopped_at(&s, 0), Kokoro::Unavailable), "nothing said yet is the whole line");
+}
+
+#[test]
+fn the_camera_is_one_this_machine_has() {
+    let listing = "[dshow @ 01] \"Integrated Webcam\" (video)\n\
+                   [dshow @ 01]   Alternative name \"@device_pnp_\\\\?\\usb#vid_0c45\"\n\
+                   [dshow @ 01] \"OBS Virtual Camera\" (video)\n\
+                   [dshow @ 01] \"Microphone Array (Intel® Smart Sound)\" (audio)\n";
+    let cams = atlas::audio::parse_cameras(listing);
+    assert_eq!(cams, vec!["Integrated Webcam".to_string(), "OBS Virtual Camera".to_string()]);
+    assert_eq!(atlas::audio::pick_camera(&cams, "Integrated Camera").as_deref(), Some("Integrated Webcam"), "the shipped guess was kept");
+    assert_eq!(atlas::audio::pick_camera(&cams, "OBS Virtual Camera").as_deref(), Some("OBS Virtual Camera"), "your own choice was overridden");
+    assert_eq!(atlas::audio::pick_camera(&["OBS Virtual Camera".to_string()], "x"), None);
+    assert_eq!(atlas::audio::pick_camera(&[], "Integrated Camera"), None);
+}
+
+#[test]
+fn a_shut_lid_reads_as_a_shut_lid() {
+    use atlas::layout::built_in_screen_from as screen;
+    // (built in, active)
+    assert_eq!(screen(&[(true, true), (false, true)]), Some(true), "lid open with a monitor");
+    assert_eq!(screen(&[(true, false), (false, true), (false, true)]), Some(false), "lid shut behind two monitors");
+    assert_eq!(screen(&[(false, true)]), None, "a desktop has no screen of its own");
+    assert_eq!(screen(&[]), None);
+}
+
+#[test]
+fn the_typing_key_is_blamed_on_another_program_only_when_one_has_it() {
+    assert!(atlas::hotkeys::typing_key_refused(1409, "Hot key is already registered.").contains("another program"));
+    let other = atlas::hotkeys::typing_key_refused(5, "Access is denied.");
+    assert!(!other.contains("another program") && other.contains("Access is denied"), "{other}");
+}
+
+#[test]
+fn turning_off_start_with_windows_is_checked_not_assumed() {
+    assert!(atlas::startup::turned_off_says(Ok(false)).is_ok());
+    assert!(atlas::startup::turned_off_says(Ok(true)).unwrap_err().contains("Task Scheduler"), "a refused delete is reported as done");
+    // Can't ask: not a reason to say it failed.
+    assert!(atlas::startup::turned_off_says(Err("couldn't run schtasks".into())).is_ok());
+    let src = source("src/startup.rs");
+    let run = src.find("pub fn run(plan: &Plan)").unwrap();
+    assert!(src[run..run + 900].contains("CREATE_NO_WINDOW"), "the switch flashes a console again");
+}
+
+// ------------------------------------------------ setup and reinstalling
+
+#[test]
+fn a_tool_folder_is_swapped_whole_and_keeps_what_only_it_had() {
+    let root = scratch("swap");
+    let live = root.join("tools").join("piper");
+    std::fs::create_dir_all(&live).unwrap();
+    std::fs::write(live.join("piper.exe"), b"old").unwrap();
+    std::fs::write(live.join("yours.txt"), b"kept").unwrap();
+    let new = root.join("unpacked");
+    std::fs::create_dir_all(new.join("espeak")).unwrap();
+    std::fs::write(new.join("piper.exe"), b"new").unwrap();
+    atlas::getpieces::swap_folder(&new, &live).unwrap();
+    assert_eq!(std::fs::read(live.join("piper.exe")).unwrap(), b"new");
+    assert!(live.join("espeak").is_dir());
+    assert_eq!(std::fs::read(live.join("yours.txt")).unwrap(), b"kept", "a file only the old folder had was lost");
+    let leftovers: Vec<_> = std::fs::read_dir(root.join("tools")).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(leftovers.len(), 1, "the old folder was left beside it: {leftovers:?}");
+    // A new folder that isn't there leaves the live one as it was.
+    assert!(atlas::getpieces::swap_folder(&root.join("nothing"), &live).is_err());
+    assert_eq!(std::fs::read(live.join("piper.exe")).unwrap(), b"new", "a failed swap broke the tool");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn only_an_atlas_is_ended_to_make_way() {
+    use atlas::onlyone::is_atlas_program as is_atlas;
+    assert!(is_atlas(std::path::Path::new(r"C:\Users\erics\AppData\Local\Atlas\atlas.exe")));
+    assert!(is_atlas(std::path::Path::new(r"C:\x\atlas.exe.set-aside-4242")));
+    assert!(is_atlas(std::path::Path::new("/opt/atlas/atlas")));
+    assert!(!is_atlas(std::path::Path::new(r"C:\Windows\explorer.exe")));
+    assert!(!is_atlas(std::path::Path::new(r"C:\x\notatlas.exe")));
+    // A lock naming no holder, or this process, ends nothing.
+    let dir = scratch("end-holder");
+    std::fs::write(atlas::onlyone::OnlyOne::at(&dir).path(), "1000").unwrap();
+    assert!(!atlas::onlyone::end_holder(&dir, std::time::Duration::from_millis(10)));
+    std::fs::write(atlas::onlyone::OnlyOne::at(&dir).path(), format!("1000 {}", std::process::id())).unwrap();
+    assert!(!atlas::onlyone::end_holder(&dir, std::time::Duration::from_millis(10)), "it would end itself");
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -148,7 +148,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     {
         let port = if tc.kin.port != 0 { tc.kin.port } else { atlas::kin::DEFAULT_PORT };
         let names: Vec<String> = all_peers.iter().map(|p| p.name.clone()).collect();
-        match atlas::server::SignalListener::bind(port, all_peers) {
+        match atlas::server::SignalListener::bind(port, all_peers.clone()) {
             Ok(l) => {
                 if names.is_empty() {
                     println!("The door for friends is open on port {port}, with nobody let in yet.");
@@ -164,7 +164,9 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
             }
             Err(e) => {
                 eprintln!("couldn't open the door friends reach you on: {e}");
-                eprintln!("continuing without it -- everything else still works.");
+                eprintln!("continuing without it, and trying again each minute -- everything else still works.");
+                d.log.warn(&format!("couldn't open the door friends reach you on (port {port}): {e}; trying again each minute"));
+                d = d.with_signal_door_later(port, all_peers);
             }
         }
     }
@@ -333,7 +335,12 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
     let mut tc_owned = tc.clone();
     match atlas::audio::probe_devices("ffmpeg") {
         Ok(devices) => {
-            let laptop_active = plat
+            // The laptop's own screen, asked of Windows directly (29 Sep 2026:
+            // "is a screen in the laptop role" was true whenever any screen
+            // existed, so a shut lid never counted as shut and the mic under
+            // it stayed a candidate). The role guess stands where that can't
+            // be told.
+            let laptop_active = plat.built_in_screen_on().unwrap_or_else(|| plat
                 .monitors()
                 .map(|monitors| {
                     let roles = atlas::layout::resolve_roles(&cfg.layouts, &monitors);
@@ -342,7 +349,7 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
                 // No monitors readable is not evidence the lid is down --
                 // default to trusting the built-in mic rather than silently
                 // excluding it on a guess.
-                .unwrap_or(true);
+                .unwrap_or(true));
             // Which ear to listen with, measured rather than guessed.
             //
             // `audio::choose` picks on the device's *name* -- is it built in,
@@ -419,42 +426,18 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
                 audio_playing: false,
             };
 
-            let choice = hearing.decide(&whereabouts, &tc.hearing, atlas::store::now());
-            // Only a real microphone is a pick. "Nothing" (no microphone
-            // heard you) and "your phone" are not devices to record from:
-            // the name-based choice below stands in (29 Sep 2026 -- ffmpeg
-            // was being asked to open a device called "nothing").
-            let picked = match &choice.ear {
-                atlas::hearing::Ear::Desk(n) | atlas::hearing::Ear::Headset(n) => n.clone(),
-                _ => String::new(),
-            };
-            if picked.is_empty() {
-                let sel = atlas::audio::choose(&devices, &tc.audio, laptop_active);
-                match &sel.input {
-                    Some(mic) => {
-                        tc_owned.vars.insert("mic_name".into(), mic.clone());
-                        tc_owned.vars.insert("mic_device".into(), atlas::audio::ffmpeg_name_for(&devices, mic));
-                        println!("Using \"{mic}\" -- {}.", sel.why);
+            // The same pick the running Atlas makes again later
+            // (`hearing::pick_microphone`, 29 Sep 2026).
+            match atlas::hearing::pick_microphone(&devices, &mut hearing, tc, &whereabouts, laptop_active, atlas::store::now()) {
+                Some(p) => {
+                    tc_owned.vars.insert("mic_name".into(), p.name.clone());
+                    tc_owned.vars.insert("mic_device".into(), p.device.clone());
+                    println!("Using \"{}\" -- {}.", atlas::hearing::short(&p.name), p.why);
+                    if p.costs_quality {
+                        println!("  (that one costs audio quality while it listens.)");
                     }
-                    // Nothing chosen: any microphone this machine really
-                    // has beats tools.yaml's guess, which names a device
-                    // most machines don't have (29 Sep 2026).
-                    None => match devices.iter().find(|d| d.kind == atlas::audio::Kind::Input) {
-                        Some(d) => {
-                            tc_owned.vars.insert("mic_name".into(), d.name.clone());
-                            tc_owned.vars.insert("mic_device".into(), d.ffmpeg_name());
-                            eprintln!("(no microphone stood out -- {}; using {})", sel.why, d.name);
-                        }
-                        None => eprintln!("(no usable microphone found -- {})", sel.why),
-                    },
                 }
-            } else {
-                tc_owned.vars.insert("mic_name".into(), picked.clone());
-                tc_owned.vars.insert("mic_device".into(), atlas::audio::ffmpeg_name_for(&devices, &picked));
-                println!("Using \"{}\" -- {}.", atlas::hearing::short(&picked), choice.why);
-                if choice.costs_quality {
-                    println!("  (that one costs audio quality while it listens.)");
-                }
+                None => eprintln!("(no usable microphone found on this machine)"),
             }
             for deaf in hearing.deaf_devices(&tc.hearing) {
                 println!("  ({} can't hear you from here.)", atlas::hearing::short(&deaf.name));
@@ -463,6 +446,14 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
         }
         Err(e) => {
             eprintln!("(couldn't list audio devices, using what's in tools.yaml: {e})");
+        }
+    }
+    // The camera this machine really has, not the shipped guess (29 Sep 2026).
+    let configured = tc_owned.vars.get("webcam_device").cloned().unwrap_or_default();
+    if let Some(cam) = atlas::audio::pick_camera(&atlas::audio::probe_cameras("ffmpeg"), &configured) {
+        if cam != configured {
+            println!("Camera: \"{cam}\".");
+            tc_owned.vars.insert("webcam_device".into(), cam);
         }
     }
     tc_owned

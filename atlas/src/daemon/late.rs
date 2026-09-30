@@ -1700,10 +1700,7 @@ impl<'a> Daemon<'a> {
         // By the microphone's own name: `mic_device` holds what ffmpeg opens,
         // which on Windows is now the device's id (29 Sep 2026), and the
         // record of which microphone understands you is kept by name.
-        let mic = self
-            .tools_ref()
-            .and_then(|t| t.vars.get("mic_name").or_else(|| t.vars.get("mic_device")).cloned())
-            .unwrap_or_default();
+        let mic = self.tools_ref().map(|t| crate::voice::microphone_now(t).0).unwrap_or_default();
         if mic.is_empty() {
             return;
         }

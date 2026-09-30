@@ -10,6 +10,38 @@ impl<'a> Daemon<'a> {
     /// Open the door this daemon will check every tick. Not called unless
     /// you have actually registered a peer -- an empty-but-listening door is
     /// a different, worse thing than no door at all.
+    /// The friends' door couldn't be opened at start: try again once a
+    /// minute (29 Sep 2026: a busy port kept it shut for the whole session,
+    /// where the hub already tried again).
+    pub fn with_signal_door_later(mut self, port: u16, peers: Vec<crate::kin::Peer>) -> Self {
+        self.signal_retry = Some((port, peers, 0));
+        self
+    }
+
+    pub fn open_signal_door_again(&mut self, t: u64) {
+        let Some((port, peers, at)) = self.signal_retry.as_ref() else { return };
+        if self.signal_listener.is_some() {
+            self.signal_retry = None;
+            return;
+        }
+        if t < *at {
+            return;
+        }
+        let (port, peers) = (*port, peers.clone());
+        match crate::server::SignalListener::bind(port, peers.clone()) {
+            Ok(l) => {
+                self.log.info(&format!("the door for friends is open now, on port {port}"));
+                self.fit_door(&l);
+                self.signal_listener = Some(l);
+                self.signal_retry = None;
+                if let Err(e) = self.start_tor() {
+                    self.log.warn(&format!("Tor didn't start: {e}"));
+                }
+            }
+            Err(_) => self.signal_retry = Some((port, peers, t + 60)),
+        }
+    }
+
     pub fn with_signal_listener(mut self, l: crate::server::SignalListener) -> Self {
         self.fit_door(&l);
         self.signal_listener = Some(l);
@@ -2151,7 +2183,17 @@ impl<'a> Daemon<'a> {
                         self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
                         let _ = self.reach_you(crate::notify::Note::new("Atlas update", &said, crate::notify::Urgency::Routine, t), t);
                     }
-                    Fetched::Partway(..) | Fetched::Nothing => {}
+                    Fetched::Partway(..) => {}
+                    // Nothing to fetch although an update was announced: its
+                    // notice names no usable file. Looked at again after the
+                    // usual pause and said in the log (29 Sep 2026: tried on
+                    // every tick, silently).
+                    Fetched::Nothing => {
+                        if !self.peer_tries.contains_key(&k) {
+                            self.log.warn("an Atlas update was announced, but its notice names no file I can fetch; I'll look again later");
+                        }
+                        self.peer_tries.insert(k, t);
+                    }
                 }
             }
         }

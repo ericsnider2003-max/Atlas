@@ -424,3 +424,41 @@ fn process_gone(pid: u32) -> bool {
         false
     }
 }
+
+/// End the Atlas holding the lock in `dir`, when it wouldn't stop when asked
+/// (29 Sep 2026: reinstalling over a running Atlas left the old one running
+/// from the file it was moved aside to, and the new one never started). Only
+/// a holder named in the lock whose program really is an Atlas
+/// (`is_atlas_program`) is ended; never this process. True when it has gone.
+pub fn end_holder(dir: &Path, wait: std::time::Duration) -> bool {
+    let lock = OnlyOne::at(dir);
+    let Some(pid) = std::fs::read_to_string(lock.path()).ok().and_then(|t| holder_in(&t)) else { return false };
+    if pid == std::process::id() {
+        return false;
+    }
+    if process_gone(pid) {
+        return true;
+    }
+    if !crate::onion::process_program(pid).is_some_and(|p| is_atlas_program(&p)) {
+        return false;
+    }
+    if !crate::onion::kill_process(pid) {
+        return false;
+    }
+    let until = std::time::Instant::now() + wait;
+    while std::time::Instant::now() < until {
+        if process_gone(pid) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    process_gone(pid)
+}
+
+/// Is this program file an Atlas: `atlas.exe`, or one set aside by an
+/// update or a reinstall (`atlas.exe.set-aside-…`, `atlas-previous.exe`)?
+pub fn is_atlas_program(p: &Path) -> bool {
+    let full = p.to_string_lossy().to_lowercase();
+    let name = full.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+    name == "atlas" || name.starts_with("atlas.exe") || (name.starts_with("atlas") && name.ends_with(".exe"))
+}

@@ -452,3 +452,60 @@ pub fn calibration_args(device: &str, seconds: u32) -> Vec<String> {
         "-".into(),
     ]
 }
+
+/// A microphone to record from, and why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Picked {
+    /// The device's own name.
+    pub name: String,
+    /// What ffmpeg opens (Windows' id where there is one).
+    pub device: String,
+    pub why: String,
+    /// Listening on it costs sound quality (a Bluetooth headset's call mode).
+    pub costs_quality: bool,
+}
+
+/// Which microphone to record from, of `devices`, the way `atlas --daemon`
+/// picks at start: by which one hears you (`Hearing::decide`), then by name
+/// (`audio::choose`), then any real input. `None` only when there is no
+/// input at all. Used again while Atlas runs (29 Sep 2026), so a headset
+/// that connects later, or a dock, is picked up without a restart.
+pub fn pick_microphone(
+    devices: &[Device],
+    hearing: &mut Hearing,
+    tc: &crate::voice::ToolsConfig,
+    w: &Where,
+    laptop_active: bool,
+    now: u64,
+) -> Option<Picked> {
+    hearing.observe_devices(devices);
+    let choice = hearing.decide(w, &tc.hearing, now);
+    // "Nothing" and "your phone" are not devices to record from.
+    let picked = match &choice.ear {
+        Ear::Desk(n) | Ear::Headset(n) => n.clone(),
+        _ => String::new(),
+    };
+    if !picked.is_empty() {
+        return Some(Picked {
+            device: crate::audio::ffmpeg_name_for(devices, &picked),
+            name: picked,
+            why: choice.why.clone(),
+            costs_quality: choice.costs_quality,
+        });
+    }
+    let sel = crate::audio::choose(devices, &tc.audio, laptop_active);
+    if let Some(mic) = &sel.input {
+        return Some(Picked {
+            device: crate::audio::ffmpeg_name_for(devices, mic),
+            name: mic.clone(),
+            why: sel.why.clone(),
+            costs_quality: false,
+        });
+    }
+    devices.iter().find(|d| d.kind == crate::audio::Kind::Input).map(|d| Picked {
+        name: d.name.clone(),
+        device: d.ffmpeg_name(),
+        why: format!("no microphone stood out ({}), so the first one", sel.why),
+        costs_quality: false,
+    })
+}

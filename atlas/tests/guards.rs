@@ -376,10 +376,18 @@ const GUARDS: &[(&str, &str, &str)] = &[
         "const ORPHANS",
         "the enumerated list of functions nothing calls goes back to being a bare number, and a new one stops failing the build by name",
     ),
+    // 29 Sep 2026: the pick moved into the library (`hearing::pick_microphone`)
+    // so the running Atlas can pick again when a headset connects; start-up
+    // (`main.rs`) and the running Atlas both call it.
+    (
+        "src/hearing.rs",
+        "let choice = hearing.decide(w, &tc.hearing, now);",
+        "the microphone goes back to being picked by how its name looks rather than by whether it can actually hear you -- a laptop shut on a stand behind two monitors has the most built-in-looking name there is",
+    ),
     (
         "src/main.rs",
-        "hearing.decide(&whereabouts",
-        "the microphone goes back to being picked by how its name looks rather than by whether it can actually hear you -- a laptop shut on a stand behind two monitors has the most built-in-looking name there is",
+        "atlas::hearing::pick_microphone(&devices, &mut hearing, tc, &whereabouts",
+        "start-up stops using the pick that listens for which microphone hears you",
     ),
     (
         "src/voice.rs",

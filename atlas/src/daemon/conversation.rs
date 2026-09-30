@@ -543,6 +543,12 @@ impl<'a> Daemon<'a> {
     /// The Talk page's queue: finish a turn whose model call came back, then
     /// start the next ones.
     pub(super) fn talk_queue_turns(&mut self, t: u64) {
+        // What the Talk page sent while Atlas was too busy to take it.
+        let late = self.hub_server.as_ref().map(|d| d.take_late_talk()).unwrap_or_default();
+        for late in late {
+            self.log.info("a Talk message that waited too long is answered now");
+            self.talk_queue.push(late);
+        }
         self.poll_pending_talk(t);
         while self.pending_turn.is_none() && !self.talk_queue.is_empty() {
             let (said, aloud) = self.talk_queue[0].clone();
@@ -673,6 +679,9 @@ impl<'a> Daemon<'a> {
         // Once a tool's result is being put into words, what the model
         // writes is the reply: nothing of the tool's own words is said.
         let mut rewording = false;
+        // Said at most once a turn: the model is still loading (29 Sep 2026:
+        // the first question after start was met with a minute of silence).
+        let mut told_loading = false;
         let (reply, acted, stock) = loop {
             let mut talk_key = self.hotkeys.take();
             let decision = loop {
@@ -735,6 +744,15 @@ impl<'a> Daemon<'a> {
                         if crate::goodbye::asked_to_stop() {
                             self.drop_pending_turn(clock(), "Stopped before I answered -- Atlas is closing.");
                             continue;
+                        }
+                        let waited = self.pending_turn.as_ref().map(|p| p.started.elapsed()).unwrap_or_default();
+                        if !told_loading
+                            && spoken.is_empty()
+                            && waited >= STILL_LOADING_AFTER
+                            && crate::models::probably_still_loading(crate::models::launched_secs_ago())
+                        {
+                            told_loading = true;
+                            self.say(mouth, STILL_LOADING_WORDS);
                         }
                         let playing = saying.as_ref().is_some_and(|sp| sp.busy());
                         if let Some(sp) = saying.as_mut().filter(|_| playing) {
