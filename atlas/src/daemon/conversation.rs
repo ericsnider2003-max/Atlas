@@ -203,7 +203,7 @@ impl<'a> Daemon<'a> {
         // research asked for earlier).
         let parser = &self.parser;
         let leans_on_it = crate::doing::looks_like_an_action(said)
-            || (crate::router::content_words(said).len() <= 1 && !crate::router::small_talk(said));
+            || (crate::router::request_words(said).len() <= 1 && !crate::router::small_talk(said));
         if let Some(goal) = self
             .thread
             .current_goal_where(|s| matches!(parser.parse(s), Intent::Unknown(_)))

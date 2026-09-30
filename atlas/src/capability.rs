@@ -847,7 +847,7 @@ const ABILITY_WORDS: &[(&str, &str)] = &[
 ];
 
 /// What turns an ability on, or that it's already there, in a clause.
-pub fn state_said(c: &Capability) -> String {
+fn state_said(c: &Capability) -> String {
     match c.state {
         State::Working => "works now".to_string(),
         State::Off => "built, switched off -- Settings turns it on".to_string(),
@@ -863,7 +863,7 @@ pub fn state_said(c: &Capability) -> String {
 /// The catalogue as it stands on this machine: the entries whose state
 /// depends on a setting read from it (`research_on`: web research turned
 /// on in Settings).
-pub fn as_set_up(research_on: bool) -> Vec<Capability> {
+fn as_set_up(research_on: bool) -> Vec<Capability> {
     let mut all = all();
     for c in all.iter_mut() {
         if c.id == "research" {
@@ -874,7 +874,7 @@ pub fn as_set_up(research_on: bool) -> Vec<Capability> {
 }
 
 /// The abilities a question is about, best first, at most `most`.
-pub fn find(said: &str, research_on: bool, most: usize) -> Vec<Capability> {
+pub fn find_abilities(said: &str, research_on: bool, most: usize) -> Vec<Capability> {
     let all = as_set_up(research_on);
     let mut index = crate::bm25::Index::default();
     for (i, c) in all.iter().enumerate() {
@@ -882,7 +882,7 @@ pub fn find(said: &str, research_on: bool, most: usize) -> Vec<Capability> {
         // The everyday words count as much as its own description does.
         index.add(i as u64, &format!("{} {}", c.what, extra.join(" ")), &format!("{} {}", c.id, c.area.plain()));
     }
-    let q = crate::router::content_words(said).join(" ");
+    let q = crate::router::request_words(said).join(" ");
     if q.trim().is_empty() {
         return Vec::new();
     }
@@ -900,7 +900,7 @@ const ABILITY_FLOOR: f64 = 3.0;
 /// "Can you X", answered from the catalogue: the ability, its state, and
 /// what turns it on. `None` when nothing in the catalogue is about X.
 pub fn answer_can(what: &str, research_on: bool) -> Option<String> {
-    let found = find(what, research_on, 2);
+    let found = find_abilities(what, research_on, 2);
     let first = found.first()?;
     let mut s = format!("Yes -- I can {}: {}.", first.what, state_said(first));
     if let Some(second) = found.get(1) {
@@ -923,7 +923,7 @@ pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
     };
     let c = match id {
         Some(id) => as_set_up(research_on).into_iter().find(|c| c.id == id)?,
-        None => find(topic, research_on, 1).into_iter().next()?,
+        None => find_abilities(topic, research_on, 1).into_iter().next()?,
     };
     Some(format!("Actually, I can {}: {}.", c.what, state_said(&c)))
 }
@@ -932,7 +932,7 @@ pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
 /// a few catalogue lines with their states, and the rule that it never says
 /// it lacks one of them.
 pub fn abilities_for_prompt(said: &str, research_on: bool, most: usize) -> String {
-    let found = find(said, research_on, most);
+    let found = find_abilities(said, research_on, most);
     let pages = hub_pages_for(said, most);
     let mut out = format!(
         "About Atlas (you) -- true, so never say you lack one of these; for a setting, name its hub page. Web research: {}.\n",
@@ -963,7 +963,7 @@ fn hub_pages_for(said: &str, most: usize) -> Vec<String> {
     if !about_where {
         return Vec::new();
     }
-    let words: Vec<String> = crate::router::content_words(said).into_iter().filter(|w| w.len() > 2).collect();
+    let words: Vec<String> = crate::router::request_words(said).into_iter().filter(|w| w.len() > 2).collect();
     if words.is_empty() {
         return Vec::new();
     }

@@ -173,7 +173,7 @@ fn the_prompt_never_says_atlas_lacks_what_the_catalogue_has() {
     assert!(ch.contains("capabilities tool"));
     // Every ability the prompt names is in the catalogue, and not as unbuilt.
     for (said, id) in [("camera", "vision"), ("research", "research"), ("calendar", "calendar")] {
-        let found = atlas::capability::find(said, true, 3);
+        let found = atlas::capability::find_abilities(said, true, 3);
         assert!(found.iter().any(|c| c.id == id), "{said}: {:?}", found.iter().map(|c| c.id).collect::<Vec<_>>());
         assert!(found.iter().all(|c| c.state != atlas::capability::State::Planned));
     }

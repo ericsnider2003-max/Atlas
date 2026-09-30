@@ -33,7 +33,7 @@ pub enum State {
 }
 
 impl State {
-    pub fn plain(&self) -> &'static str {
+    fn plain(&self) -> &'static str {
         match self {
             State::Running => "running in the background",
             State::Done => "done",

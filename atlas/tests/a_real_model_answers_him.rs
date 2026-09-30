@@ -72,6 +72,14 @@ const TALK: &[&str] = &[
 
 #[test]
 fn his_sentences_against_a_real_model() {
+    // Without a model: each of these requests is at least offered the tool
+    // that does it (the part that doesn't need a model to check).
+    let book = atlas::intent::ToolBook::new(&atlas::config::Config::load(Path::new("config")).unwrap().commands);
+    let router = atlas::router::Router::new(&book);
+    for (said, want) in REQUESTS {
+        let names = router.names_for(said, atlas::router::SHORTLIST);
+        assert!(names.iter().any(|n| n == want), "{said:?}: {names:?}");
+    }
     let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else { return };
     let c = atlas::config::Config::load(Path::new("config")).unwrap();
     let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);

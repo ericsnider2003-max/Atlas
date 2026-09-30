@@ -1229,12 +1229,17 @@ impl<'a> Daemon<'a> {
                     // matched the first entry sharing a long word, and said
                     // "I don't have anything for that" otherwise).
                     let research = self.tools_cfg().research.enabled;
-                    match crate::capability::answer_can(what, research) {
-                        Some(a) => a,
-                        None => format!(
-                            "Nothing I can do is about \u{201c}{}\u{201d}, as far as my own list goes. Ask what I can do for the list.",
-                            what.trim()
-                        ),
+                    // The capabilities tool may name an entry by its id
+                    // ("vision"): that entry's own state.
+                    match crate::capability::can(w.trim()).filter(|_| w.trim() != "research") {
+                        Some((_, why)) => why,
+                        None => match crate::capability::answer_can(what, research) {
+                            Some(a) => a,
+                            None => format!(
+                                "Nothing I can do is about \u{201c}{}\u{201d}, as far as my own list goes. Ask what I can do for the list.",
+                                what.trim()
+                            ),
+                        },
                     }
                 }
             }

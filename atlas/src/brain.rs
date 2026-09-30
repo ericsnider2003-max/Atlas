@@ -1476,7 +1476,7 @@ impl SpeechGate {
 
     /// With what the model was given to go on, so a sentence bringing in
     /// someone none of it mentions is left out (`backed::invents_someone`).
-    pub fn knowing(mut self, known: String) -> SpeechGate {
+    fn knowing(mut self, known: String) -> SpeechGate {
         self.known = known;
         self
     }

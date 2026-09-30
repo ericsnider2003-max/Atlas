@@ -165,10 +165,10 @@ impl<'a> Daemon<'a> {
             crate::taskloop::run(&*llm, &turn, &plan, &mut hands, crate::taskloop::MAX_STEPS)
         };
         self.log.info(&format!(
-            "worked through {} step(s) of a {}-part request: {:?}",
+            "worked through {} step(s) of a {}-part request: {}",
             run.steps.len(),
             plan.len(),
-            run.verdict
+            run.verdict.plain()
         ));
         // Where each part stands now, for "what are you working on".
         for (i, s) in self.streams.iter_mut().enumerate() {

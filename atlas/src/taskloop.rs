@@ -72,6 +72,18 @@ pub enum Verdict {
     OutOfSteps,
 }
 
+impl Verdict {
+    /// In words, for the log.
+    pub fn plain(&self) -> &'static str {
+        match self {
+            Verdict::Finished => "finished",
+            Verdict::Blocked => "stopped to ask",
+            Verdict::Started => "handed long work to the background",
+            Verdict::OutOfSteps => "ran out of steps",
+        }
+    }
+}
+
 /// One step as it happened.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Step {
@@ -158,7 +170,7 @@ pub fn parts(said: &str) -> Vec<String> {
             });
             p
         })
-        .filter(|p| !crate::router::content_words(p).is_empty())
+        .filter(|p| !crate::router::request_words(p).is_empty())
         .collect()
 }
 
@@ -182,7 +194,7 @@ pub fn refers_back(part: &str) -> bool {
 }
 
 /// The instruction the loop adds to the turn: the plan, and how to work.
-pub fn plan_line(plan: &[String]) -> String {
+fn plan_line(plan: &[String]) -> String {
     let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
     format!(
         "This takes more than one step. Plan: {}. Do it one step at a time: call the tool for the next step; \

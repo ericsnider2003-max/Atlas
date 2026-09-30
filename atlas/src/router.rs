@@ -143,7 +143,7 @@ const SAME_THING: &[(&str, &str)] = &[
 
 /// The sentence as words that could say which tool: lowercased, without
 /// the conversational ones.
-pub fn content_words(said: &str) -> Vec<String> {
+pub fn request_words(said: &str) -> Vec<String> {
     compounds(&said.to_lowercase().replace('\u{2019}', "'"))
         .split(|c: char| !c.is_alphanumeric() && c != '\'' && c != '-')
         .map(|w| w.trim_matches(|c: char| c == '\'' || c == '-'))
@@ -206,7 +206,7 @@ impl Router {
     /// command whose phrase the sentence starts with ("research ways to
     /// ...") comes first whatever the scores say.
     pub fn shortlist(&self, said: &str, k: usize) -> Vec<(&ToolEntry, f64)> {
-        let q = content_words(said).join(" ");
+        let q = request_words(said).join(" ");
         if q.trim().is_empty() {
             return Vec::new();
         }
@@ -246,7 +246,7 @@ impl Router {
         // Never for small talk: "hey, how's it going" has no words of its own
         // either, and was offered the tools for research asked an hour before
         // (30 Sep 2026, a real model then called one of them).
-        if picked.is_empty() && content_words(said).len() <= 1 && !small_talk(said) {
+        if picked.is_empty() && request_words(said).len() <= 1 && !small_talk(said) {
             if let Some(g) = goal.filter(|g| !g.trim().is_empty()) {
                 picked = self.shortlist(g, k.min(3)).into_iter().map(|(e, _)| e).collect();
             }
@@ -312,7 +312,7 @@ pub fn meta_spec() -> Value {
 /// due -- so the calendar and today's reminders are worth putting in front
 /// of the model? (They went in front of every turn until 30 Sep 2026.)
 pub fn about_the_day(said: &str) -> bool {
-    let words = content_words(said);
+    let words = request_words(said);
     const DAY: &[&str] = &[
         "today", "tonight", "tomorrow", "tomorrow's", "week", "weekend", "calendar", "schedule", "agenda", "busy",
         "free", "meeting", "meetings", "appointment", "appointments", "plans", "reminder", "reminders", "due",

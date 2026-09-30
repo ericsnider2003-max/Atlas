@@ -235,6 +235,10 @@ const KNOWN: &[&str] = &[
     // One `ladder` entry left with `ladder.rs` on 28 Sep 2026.
     // language::good_enough deleted 27 Sep 2026: an orphan method (see
     // ORPHAN_METHODS in dead_methods.rs), no caller and no test.
+    // 30 Sep 2026, the prompt diet: a conversation turn is offered the few
+    // tools `router::Router::for_turn` picks, not every core command; kept
+    // for the tests that measure the old shape against the new.
+    "intent::for_sentence",
     "language::live_line",
     "language::notes",
     "ledger::relevant_rule",

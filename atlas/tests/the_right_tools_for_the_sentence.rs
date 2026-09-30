@@ -113,6 +113,21 @@ fn his_small_talk_is_offered_no_tools() {
 }
 
 #[test]
+fn the_shortlist_is_best_first_and_nothing_weak_gets_in() {
+    let r = router();
+    let got = r.shortlist("find the tax pdf from last year", atlas::router::SHORTLIST);
+    assert_eq!(got.first().map(|(e, _)| e.name.as_str()), Some("find_file"));
+    for w in got.windows(2) {
+        assert!(w[0].1 >= w[1].1, "not best first: {} {} / {} {}", w[0].0.name, w[0].1, w[1].0.name, w[1].1);
+    }
+    let best = got[0].1;
+    assert!(got.iter().all(|(_, s)| *s >= atlas::router::FLOOR && *s >= best * atlas::router::RELATIVE));
+    // A sentence that starts with a command's own phrase leads with it.
+    let got = r.shortlist("research the best small language models for a laptop", 2);
+    assert_eq!(got[0].0.name, "research");
+}
+
+#[test]
 fn what_he_asked_earlier_is_not_offered_to_small_talk() {
     let r = router();
     let goal = Some("Research ways to improve in house language models");

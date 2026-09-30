@@ -252,11 +252,9 @@ const NO_DAEMON_TEST: &[(&str, &str)] = &[
     // the window's words when the picture reader can't, and
     // `tests/reading_without_the_picture_reader.rs` drives it through the
     // daemon.
-    (
-        "whats_there",
-        "describes what is on screen. `vision` and `words` have 39 and 38 \
-         tests; the branch adds no decision.",
-    ),
+    // `whats_there` came off on 30 Sep 2026: "can you see me" and "use my
+    // camera and look at me" reach it through the daemon
+    // (`tests/finishing_what_it_starts.rs`).
     (
         "whats_this",
         "the same as `whats_there`, scoped to one thing rather than the whole \

@@ -417,7 +417,7 @@ pub fn clean_summary(summary: &str, replies: &[&str]) -> String {
 }
 
 /// The lines of a summary that bear on what was just said: those sharing a
-/// word that says something (`router::content_words`, stemmed) with it,
+/// word that says something (`router::request_words`, stemmed) with it,
 /// best first, at most `most`, each cut to a line (30 Sep 2026).
 ///
 /// The whole summary used to go in front of every turn. Eric's held fifteen
@@ -427,7 +427,7 @@ pub fn clean_summary(summary: &str, replies: &[&str]) -> String {
 /// talk that bears on this still comes back; the rest stays folded.
 pub fn summary_bearing_on(summary: &str, said: &str, most: usize) -> Vec<String> {
     let want: std::collections::BTreeSet<String> =
-        crate::stemmer::stems_of(&crate::router::content_words(said).join(" ")).into_iter().filter(|w| w.len() > 2).collect();
+        crate::stemmer::stems_of(&crate::router::request_words(said).join(" ")).into_iter().filter(|w| w.len() > 2).collect();
     if want.is_empty() || most == 0 {
         return Vec::new();
     }
