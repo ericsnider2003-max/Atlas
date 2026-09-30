@@ -188,6 +188,12 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // `input::is_talking` came off 26 Sep 2026 with 25j: the Windows key hook
     // (`hotkeys`, H1) asks it.
     "integrations::panel",
+    // 30 Sep 2026, the prompt diet: a conversation turn is offered the
+    // capabilities tool and the few tools the router picks
+    // (`router::Router::for_turn`), not every core command; `for_sentence`
+    // is kept for the tests that measure the old shape.
+    // (`ToolBook::retrieved_for` lost its one caller and was deleted.)
+    "intent::for_sentence",
     "interrupt::forget_stale",
     // `knowhow::for_symptom` came off 22 Sep 2026: the new `Intent::Diagnose`
     // handler (`Daemon::diagnose_symptom`, reached by "troubleshoot …", "why

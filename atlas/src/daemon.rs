@@ -66,6 +66,7 @@ mod making;
 mod reading;
 mod execute;
 mod turn;
+mod tasks;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -993,8 +994,15 @@ pub struct Daemon<'a> {
     /// When Atlas last finished speaking to you. A follow-up soon after is
     /// the conversation carrying on, whoever it mentions.
     last_spoke_at: u64,
-    /// Every command, as a tool the model can call (`intent::ToolBook`).
-    tool_book: crate::intent::ToolBook,
+    /// The few of them a sentence needs (`router`, 30 Sep 2026).
+    router: crate::router::Router,
+    /// The parts of the last request of several parts, and where each
+    /// stands (`streams`), for "what are you working on".
+    streams: Vec<crate::streams::Stream>,
+    /// How long after the model was asked the first sentence of this turn's
+    /// reply went to be spoken (30 Sep 2026): the wait you actually hear,
+    /// for the turn's timing line. Taken by `log_turn_timing`.
+    first_words_ms: std::cell::Cell<Option<u64>>,
     /// Other programs' tools (`mcp`): the servers in `tools.yaml`, started
     /// on their own threads the first time a conversation needs tools.
     mcp: crate::mcp::McpHub,
@@ -1678,7 +1686,9 @@ impl<'a> Daemon<'a> {
             talk_partial: Default::default(),
             pending_stamp: None,
             last_spoke_at: 0,
-            tool_book: crate::intent::ToolBook::new(&cfg.commands),
+            router: crate::router::Router::new(&crate::intent::ToolBook::new(&cfg.commands)),
+            streams: Vec::new(),
+            first_words_ms: std::cell::Cell::new(None),
             by_chat: false,
             model_server_trouble: None,
             helpers: crate::lifecycle::Helpers::new(
@@ -3597,6 +3607,12 @@ pub const CHATTING_FOLLOWUP_SECS: u32 = 10;
 
 /// How many earlier exchanges go to the model as turns, and roughly how many
 /// tokens they may take.
+/// Kept at six (30 Sep 2026, the prompt diet): the window's start steps
+/// forward three exchanges at a time, so the model server can reuse the
+/// conversation it already read on two turns in three
+/// (`speed_measured::a_conversation_rereads_only_what_is_new`); what keeps
+/// the prompt small is `HISTORY_TOKENS`, and past replies going back as
+/// their first sentences.
 pub const HISTORY_EXCHANGES: usize = 6;
 /// How long nothing has been said before the conversation is summarised
 /// (`fold_if_due`): the summary is a model call, and shares the model with
@@ -3609,12 +3625,25 @@ pub const REPLIES_CHECKED: usize = 4;
 /// for (`persona::asks_for_more`).
 pub const SPOKEN_SENTENCES: usize = 3;
 /// Said to the model when a sentence reads as a request (`doing::looks_like_an_action`).
-pub const ACTION_OR_SAY_SO: &str = "This is a request to do something. If one of your tools does it, call it. If none \
-does, say in one sentence what you can do instead and ask one short question. Don't chat around it.";
-pub const HISTORY_TOKENS: usize = 1200;
+pub const ACTION_OR_SAY_SO: &str = "This is a request: if a tool does it, call it now. If none does, say in one \
+sentence what you can do instead. Don't chat around it.";
+/// 30 Sep 2026: 1200 -> 350, with `HISTORY_EXCHANGES` (the prompt diet).
+pub const HISTORY_TOKENS: usize = 350;
+
+/// Lines of the summary of older talk, at most, that go in when they bear
+/// on what was said.
+pub const SUMMARY_LINES: usize = 2;
+
+/// Lines from the capability catalogue a question about Atlas gets.
+pub const ABILITY_LINES: usize = 2;
+
+/// The standing rules learned from corrections, at most this many characters.
+pub const LEARNED_CHARS: usize = 300;
 
 /// How many facts you told Atlas go in front of the model every turn.
-pub const FACTS_IN_PROMPT: usize = 10;
+/// 30 Sep 2026: 10 -> 4, each cut to 100 characters (the prompt diet);
+/// the rest come in as hints when they bear on what was said.
+pub const FACTS_IN_PROMPT: usize = 4;
 
 /// A note's score below which it isn't worth putting in front of the model.
 pub const NOTE_HINT_FLOOR: f32 = 0.25;

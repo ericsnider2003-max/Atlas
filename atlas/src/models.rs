@@ -1305,13 +1305,19 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     if let Some(m) = body.as_object_mut() {
         m.extend(sampling_now().fields(req.stronger));
     }
+    // No thinking out loud (30 Sep 2026): Qwen3 and Qwen3.5 templates think
+    // before answering unless told not to, which is hundreds of tokens before
+    // the first spoken word on a laptop writing 15-23 a second. Eric's
+    // measurement that answered in 1-3 s sent exactly this. A template that
+    // doesn't read it ignores it.
+    body["chat_template_kwargs"] = json!({ "enable_thinking": false });
     if !req.tools.is_empty() {
         body["tools"] = Value::Array(req.tools.clone());
         body["tool_choice"] = json!(if req.force_tool { "required" } else { "auto" });
         // Which tools are the same every turn, for Atlas's own template
         // (`tools_late_template`); any other template never reads it.
         if req.stable_tools > 0 && req.stable_tools < req.tools.len() {
-            body["chat_template_kwargs"] = json!({ STABLE_TOOLS_KWARG: req.stable_tools });
+            body["chat_template_kwargs"][STABLE_TOOLS_KWARG] = json!(req.stable_tools);
         }
     }
     body.to_string()

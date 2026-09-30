@@ -406,9 +406,13 @@ fn the_prompt_prefix_is_identical_across_turns_with_different_window_titles() {
     // Neither the time nor a sentence count sits in the stable part.
     assert!(!first[0].content.contains("At most"), "{}", first[0].content);
     // The tools that are always offered come first, in the same order.
-    let names = |r: &ChatRequest| -> Vec<String> { r.tools.iter().take(10).map(|t| t["function"]["name"].as_str().unwrap_or("").to_string()).collect() };
+    // 30 Sep 2026 (the prompt diet, `router`): that is the one capabilities
+    // tool now; the rest are picked for each sentence and go after the
+    // conversation (`stable_tools` says how many lead).
+    let names = |r: &ChatRequest| -> Vec<String> { r.tools.iter().take(r.stable_tools).map(|t| t["function"]["name"].as_str().unwrap_or("").to_string()).collect() };
     let asked = spy.asked.lock().unwrap();
     assert_eq!(names(&asked[0]), names(&asked[1]));
+    assert_eq!(names(&asked[0]), vec!["capabilities".to_string()]);
 }
 
 #[test]
@@ -705,6 +709,7 @@ fn live_llama_server_smoke() {
             one_prompt: String::new(),
             skip_phrases: true,
             recent_replies: None,
+            research_on: false,
         };
         let started = std::time::Instant::now();
         let mut first: Option<std::time::Duration> = None;

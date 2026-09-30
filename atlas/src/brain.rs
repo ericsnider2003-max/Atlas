@@ -1018,6 +1018,9 @@ pub struct Turn {
     /// the model reads carries only their first sentences. `None`: whatever
     /// the history holds of them.
     pub recent_replies: Option<Vec<String>>,
+    /// Web research is turned on in Settings: what a reply that says Atlas
+    /// can't research is corrected with (`backed::denies_an_ability`).
+    pub research_on: bool,
 }
 
 /// Roughly how many tokens `text` is: three and a half characters to a
@@ -1233,7 +1236,8 @@ impl<'a> Brain<'a> {
             Some(r) => r.iter().map(|s| s.as_str()).collect(),
             None => turn.history.iter().filter(|m| m.role == Role::Assistant).map(|m| m.content.as_str()).collect(),
         };
-        let (reply, gate) = self.chat_gated(&req, turn.max_sentences, SpeechGate::new(&earlier), on_text);
+        let known = req.messages.iter().filter(|m| m.role != Role::Assistant).map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n");
+        let (reply, gate) = self.chat_gated(&req, turn.max_sentences, SpeechGate::new(&earlier).knowing(known), on_text);
         // A reply that is starting a loop: its first sentence repeats an
         // earlier reply (held back until checked, so never said), or every
         // sentence of it was one already said. Asked once more -- without the
@@ -1245,7 +1249,11 @@ impl<'a> Brain<'a> {
         // the same settings, and only a word-for-word first sentence counted.
         // Most of it was sentences already said: what's left is an opening
         // line, not an answer.
-        let looped = reply.as_ref().is_ok_and(|r| r.tool_calls.is_empty()) && !gate.calling && gate.filter.looping();
+        // Or all it said was a story about someone nobody mentioned
+        // (`backed::invents_someone`): asked again the same way.
+        let looped = reply.as_ref().is_ok_and(|r| r.tool_calls.is_empty())
+            && !gate.calling
+            && (gate.filter.looping() || (gate.invented && gate.sent.trim().is_empty()));
         if gate.repeated || looped {
             let mut fresh = Turn { history: Vec::new(), tools: Vec::new(), stable_tools: 0, ..turn.clone() };
             fresh.now = format!("{}\n{}", fresh.now.trim_end(), ANSWER_AFRESH);
@@ -1256,13 +1264,15 @@ impl<'a> Brain<'a> {
             if !already.is_empty() {
                 against.push(&already);
             }
-            let (again, g2) = self.chat_gated(&req, turn.max_sentences, SpeechGate::asking_again(&against), on_text);
+            let known = req.messages.iter().filter(|m| m.role != Role::Assistant).map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n");
+            let (again, g2) = self.chat_gated(&req, turn.max_sentences, SpeechGate::asking_again(&against).knowing(known), on_text);
             return match again {
                 Ok(mut again) => {
-                    if g2.filter.dropped > 0 || !already.is_empty() {
+                    if g2.filter.dropped > 0 || !already.is_empty() || g2.claimed || g2.denied.is_some() || g2.invented {
                         again.text = format!("{already} {}", g2.sent.trim()).trim().to_string();
                     }
-                    Some(decision_from_chat_noting(&again, &turn.said, &turn.tools, also))
+                    let d = decision_from_chat_noting(&again, &turn.said, &turn.tools, also);
+                    Some(own_up(&g2, d, turn, on_text))
                 }
                 Err(_) => partial_or_none(&format!("{already} {}", g2.sent.trim())),
             };
@@ -1276,7 +1286,7 @@ impl<'a> Brain<'a> {
         };
         // Sentences left out as repeats were never said: the reply is what
         // was (`SpeechGate::sent`), so that is what is shown and remembered.
-        if gate.filter.dropped > 0 && !reply.text.trim().is_empty() {
+        if (gate.filter.dropped > 0 || gate.claimed || gate.denied.is_some() || gate.invented) && !reply.text.trim().is_empty() {
             reply.text = gate.sent.trim().to_string();
         }
         let mut d = decision_from_chat_noting(&reply, &turn.said, &turn.tools, also);
@@ -1290,18 +1300,24 @@ impl<'a> Brain<'a> {
                 Ok(a) => a,
                 Err(_) => return partial_or_none(&g2.sent),
             };
+            let mut again = again;
+            if g2.claimed || g2.denied.is_some() || g2.invented {
+                again.text = g2.sent.trim().to_string();
+            }
             d = decision_from_chat(&again, &turn.said);
             // Still nothing to say: the one-prompt path answers instead.
-            if spoken_text(&again.text).is_none() && matches!(d.intent, Intent::Say(_)) && g2.sent.trim().is_empty() {
+            if spoken_text(&again.text).is_none() && matches!(d.intent, Intent::Say(_)) && g2.sent.trim().is_empty() && !g2.claimed && g2.denied.is_none() {
                 return None;
             }
-            return Some(d);
+            return Some(own_up(&g2, d, turn, on_text));
         }
         // "I'll check your calendar" with no call to the calendar (live, 28
         // Sep 2026): the model announced the tool instead of calling it.
         // Asked once more with a tool call required; what it said already
         // stands, and the tool's answer follows it.
-        if reply.tool_calls.is_empty() && !turn.tools.is_empty() && announces_an_action(&reply.text) {
+        // The same for "I'm on it" with nothing started (30 Sep 2026): the
+        // claim was held back from speech (`SpeechGate::claimed`).
+        if reply.tool_calls.is_empty() && !turn.tools.is_empty() && (gate.claimed || announces_an_action(&reply.text)) {
             let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
             if let Ok(forced) = self.llm.chat(&req, &mut |_| true) {
                 let mut more = Vec::new();
@@ -1312,8 +1328,44 @@ impl<'a> Brain<'a> {
                 }
             }
         }
-        Some(d)
+        Some(own_up(&gate, d, turn, on_text))
     }
+}
+
+/// A reply with what the speech gate held back put right (30 Sep 2026,
+/// `backed`): a denial of an ability Atlas has becomes the catalogue's
+/// answer; a claim that work started, with nothing started, becomes
+/// `backed::NOT_STARTED`. What is added is passed to `on_text` too, so it
+/// is said as well as shown.
+fn own_up(gate: &SpeechGate, mut d: Decision, turn: &Turn, on_text: &mut dyn FnMut(&str) -> bool) -> Decision {
+    // Nothing of the reply was said: it was all claims or denials, so the
+    // truth is the whole of it (not "I didn't get a usable answer").
+    let nothing_said = gate.sent.trim().is_empty();
+    if let (Some(ability), Intent::Say(s)) = (gate.denied, &d.intent) {
+        // "I'm not supposed to" names no ability: the one the question was
+        // about, or -- about none -- that nothing stops it.
+        let asked = if ability.is_empty() { crate::backed::ability_asked_about(&turn.said) } else { ability };
+        let truth = match asked {
+            "" => Some(crate::backed::NOTHING_STOPS_ME.to_string()),
+            a => crate::capability::truth_about(a, turn.research_on),
+        };
+        if let Some(truth) = truth {
+            let before = if nothing_said { "" } else { s.trim() };
+            let said = format!("{before} {truth}").trim().to_string();
+            on_text(&format!(" {truth}"));
+            d = Decision { intent: Intent::Say(said.clone()), say: said, model: d.model };
+        }
+    }
+    // Still nothing started: the truth instead of the claim.
+    if gate.claimed {
+        if let Intent::Say(s) = &d.intent {
+            let before = if nothing_said && gate.denied.is_none() { "" } else { s.trim() };
+            let said = format!("{before} {}", crate::backed::NOT_STARTED).trim().to_string();
+            on_text(&format!(" {}", crate::backed::NOT_STARTED));
+            d = Decision { intent: Intent::Say(said.clone()), say: said, model: d.model };
+        }
+    }
+    d
 }
 
 /// What was passed on before a chat call failed, as the reply -- said
@@ -1369,6 +1421,18 @@ pub struct SpeechGate {
     held: String,
     pub calling: bool,
     pub repeated: bool,
+    /// A sentence said work had started or was done (`backed`): held back,
+    /// so it is never said unless a tool call backs it.
+    pub claimed: bool,
+    /// A sentence said Atlas lacks an ability it has ("I don't have a
+    /// camera"): held back, and the catalogue's answer said instead. The
+    /// ability, as the sentence named it (`backed::denies_an_ability`).
+    pub denied: Option<&'static str>,
+    /// What the model was given to go on (`backed::invents_someone`): a
+    /// sentence bringing in a stranger none of it mentions isn't said.
+    known: String,
+    /// A sentence was left out as invented (`knowing`).
+    pub invented: bool,
     pub sent: String,
     earlier: Vec<String>,
     /// Words not yet a whole sentence.
@@ -1387,6 +1451,10 @@ impl SpeechGate {
             held: String::new(),
             calling: false,
             repeated: false,
+            claimed: false,
+            denied: None,
+            known: String::new(),
+            invented: false,
             sent: String::new(),
             earlier: earlier.iter().map(|s| s.to_string()).collect(),
             pending: String::new(),
@@ -1394,6 +1462,13 @@ impl SpeechGate {
             regenerate_on_a_repeat: !earlier.is_empty(),
             filter: crate::repeating::SentenceFilter::new(earlier),
         }
+    }
+
+    /// With what the model was given to go on, so a sentence bringing in
+    /// someone none of it mentions is left out (`backed::invents_someone`).
+    pub fn knowing(mut self, known: String) -> SpeechGate {
+        self.known = known;
+        self
     }
 
     /// The same, for a reply that is itself the asking-again: a repeated
@@ -1476,7 +1551,23 @@ impl SpeechGate {
                     self.repeated = true;
                 }
             }
-            let ok = !self.repeated && self.filter.pass(sentence);
+            let mut ok = !self.repeated && self.filter.pass(sentence);
+            // "I'm on it", "already on it": never said on the model's word
+            // alone (30 Sep 2026, `backed`).
+            if ok && crate::backed::claims_work_started(sentence) {
+                ok = false;
+                self.claimed = true;
+            }
+            if ok {
+                if let Some(ability) = crate::backed::denies_an_ability(sentence) {
+                    ok = false;
+                    self.denied = Some(ability);
+                }
+            }
+            if ok && !self.known.is_empty() && crate::backed::invents_someone(sentence, &self.known) {
+                ok = false;
+                self.invented = true;
+            }
             if first && self.regenerate_on_a_repeat && self.filter.first_repeated {
                 self.repeated = true;
             }

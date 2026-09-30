@@ -576,6 +576,11 @@ impl<'a> Daemon<'a> {
             }
         }
         line.push_str(&format!(" model={model_ms}ms/{} call(s) delivering={speaking_ms}ms", calls.len()));
+        // When the first sentence went to be spoken, counted from when the
+        // model was asked (30 Sep 2026): the target is under 3 s.
+        if let Some(ms) = self.first_words_ms.take() {
+            line.push_str(&format!(" first_words={ms}ms"));
+        }
         // What the model server itself counted for the last call: a whole
         // prompt read again (a cache miss) reads very differently from a
         // long reply (29 Sep 2026).

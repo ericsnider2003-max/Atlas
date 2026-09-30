@@ -416,6 +416,48 @@ pub fn clean_summary(summary: &str, replies: &[&str]) -> String {
     kept.join(joiner)
 }
 
+/// The lines of a summary that bear on what was just said: those sharing a
+/// word that says something (`router::content_words`, stemmed) with it,
+/// best first, at most `most`, each cut to a line (30 Sep 2026).
+///
+/// The whole summary used to go in front of every turn. Eric's held fifteen
+/// lines of a confused evening -- "'Freaky man' unconfirmed", "User tone:
+/// persistent, playful, possibly surreal" -- and a 4B model brought the
+/// freaky man back into answers about his camera and his research. Older
+/// talk that bears on this still comes back; the rest stays folded.
+pub fn summary_bearing_on(summary: &str, said: &str, most: usize) -> Vec<String> {
+    let want: std::collections::BTreeSet<String> =
+        crate::stemmer::stems_of(&crate::router::content_words(said).join(" ")).into_iter().filter(|w| w.len() > 2).collect();
+    if want.is_empty() || most == 0 {
+        return Vec::new();
+    }
+    let pieces: Vec<String> = if summary.lines().filter(|l| !l.trim().is_empty()).count() > 1 {
+        summary.lines().map(str::to_string).collect()
+    } else {
+        crate::repeating::sentences(summary)
+    };
+    let mut scored: Vec<(usize, usize, String)> = pieces
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, l)| {
+            let l = l.trim().trim_start_matches(['-', '*', ' ']).trim().to_string();
+            let has: std::collections::BTreeSet<String> = crate::stemmer::stems_of(&l.to_lowercase()).into_iter().collect();
+            let shared: Vec<&String> = want.intersection(&has).collect();
+            // One short, common word ("see", "use") is not enough: "can you
+            // see me" brought back "I built you to see this freaky man".
+            let n = shared.len();
+            let bears = n >= 2 || shared.iter().any(|w| w.chars().count() >= 5);
+            (bears && !l.is_empty()).then_some((n, i, l))
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    scored
+        .into_iter()
+        .take(most)
+        .map(|(_, _, l)| crate::router::one_line(&l, 150))
+        .collect()
+}
+
 /// One line of a summary that isn't a note about the user (`clean_summary`).
 fn is_summary_noise(line: &str, replies: &[&str]) -> bool {
     let l = crate::repeating::words(line).join(" ");

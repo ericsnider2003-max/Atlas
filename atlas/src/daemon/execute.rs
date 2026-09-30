@@ -1223,13 +1223,18 @@ impl<'a> Daemon<'a> {
                         None => "Nothing's blocked.".into(),
                     }
                 } else {
-                    // "can you read my email?" — match it to a capability.
-                    match crate::capability::all()
-                        .into_iter()
-                        .find(|c| w.contains(c.id) || c.what.split(' ').any(|word| word.len() > 4 && w.contains(word)))
-                    {
-                        Some(c) => crate::capability::can(c.id).map(|(_, why)| why).unwrap_or_default(),
-                        None => "I don't have anything for that.".into(),
+                    // "can you read my email?", "can you see me" -- the
+                    // ability searched for in the catalogue, with its state
+                    // on this machine and what turns it on (30 Sep 2026: it
+                    // matched the first entry sharing a long word, and said
+                    // "I don't have anything for that" otherwise).
+                    let research = self.tools_cfg().research.enabled;
+                    match crate::capability::answer_can(what, research) {
+                        Some(a) => a,
+                        None => format!(
+                            "Nothing I can do is about \u{201c}{}\u{201d}, as far as my own list goes. Ask what I can do for the list.",
+                            what.trim()
+                        ),
                     }
                 }
             }

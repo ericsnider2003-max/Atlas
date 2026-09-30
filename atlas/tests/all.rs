@@ -878,3 +878,7 @@ mod one_evening_on_the_laptop;
 mod the_name_and_the_request_in_one_breath;
 #[path = "every_screen_is_seen.rs"]
 mod every_screen_is_seen;
+#[path = "the_right_tools_for_the_sentence.rs"]
+mod the_right_tools_for_the_sentence;
+#[path = "finishing_what_it_starts.rs"]
+mod finishing_what_it_starts;

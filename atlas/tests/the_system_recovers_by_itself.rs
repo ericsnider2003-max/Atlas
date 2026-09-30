@@ -756,12 +756,14 @@ fn getting_on_with_the_research_is_recognised() {
 #[test]
 fn atlas_knows_who_it_is_and_what_its_job_is() {
     let p = atlas::persona::Persona::default();
+    // 30 Sep 2026 (the prompt diet): the same statements in fewer words, and
+    // "assistant and friend" (Eric: "an assistant that is also a friend").
     for prompt in [p.character(), p.system_prompt()] {
-        assert!(prompt.contains("personal assistant of the person who owns this computer"), "{prompt}");
-        assert!(prompt.contains("Your job is to take things off their plate"));
-        assert!(prompt.contains("research a topic on the web"));
-        assert!(prompt.contains("You want to get better at this job"));
-        assert!(prompt.contains("that you can't do research"));
+        assert!(prompt.contains("personal assistant and friend of the person who owns this computer"), "{prompt}");
+        assert!(prompt.contains("Your job: take things off their plate"));
+        assert!(prompt.contains("research the web"));
+        assert!(prompt.contains("about getting better"));
+        assert!(prompt.contains("can't do research"));
     }
     // Still says to call the tools (the second scan's check).
     assert!(p.character().contains("call the tool"));

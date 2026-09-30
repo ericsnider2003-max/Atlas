@@ -61,6 +61,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | check with you before acting on a guess at what you meant, and ask which one when it could be two things | working | `understood` `whichone` | ready | ready | ready | ready | ready | ready |
 | take an answer to its questions however you can give it -- a word, a typed yes, a key -- when speaking isn't an option | working | `answering` | ready | ready | ready | ready | ready | ready |
 | be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying "tone it down" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else | working | `wit` `talkback` | ready | ready | ready | ready | ready | ready |
+| never say it's on something unless it really started it | working | `backed` | ready | ready | ready | ready | ready | ready |
 
 ## Your windows
 
@@ -206,6 +207,9 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen | working | `decide` `otherside` | ready | ready | ready | ready | ready | ready |
 | weigh something that might be worth doing on five counts, and say which ones it can't judge yet | working | `opportunity` | ready | ready | ready | ready | ready | ready |
 | walk you through a colour grade in the fixed order a colourist uses | working | `grading` | ready | ready | ready | ready | ready | ready |
+| offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one | built, never run for real | `router` | ready | ready | ready | ready | ready | ready |
+| work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on | built, never run for real | `taskloop` | ready | ready | ready | ready | ready | ready |
+| do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on | built, never run for real | `streams` | ready | ready | ready | ready | ready | ready |
 
 ## Looking after itself
 
@@ -350,4 +354,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-231 things, across 388 of 423 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+235 things, across 392 of 427 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

@@ -1505,13 +1505,6 @@ impl ToolBook {
         self.get(name).is_some_and(|e| e.exposure != Exposure::Never)
     }
 
-    /// Only the commands a sentence reads like, best first, at most `more`
-    /// (no core ones): for a turn that also offers other programs' tools
-    /// (`mcp::merge`).
-    pub fn retrieved_for(&self, said: &str, more: usize) -> Vec<serde_json::Value> {
-        self.index.search(said, more).into_iter().filter_map(|(id, _)| self.entries.get(id as usize).map(|e| e.spec())).collect()
-    }
-
     /// The tools for one sentence: every core tool, always in the same
     /// order, then up to `more` others the sentence reads like.
     pub fn for_sentence(&self, said: &str, more: usize) -> Vec<serde_json::Value> {
