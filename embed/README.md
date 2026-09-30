@@ -34,6 +34,17 @@ dist/embed-linux-x86_64      Linux build, same source
   that last step is yours, and it is one command:
   `echo hello | embed.exe --model ... --vocab ...` printing 384 numbers.
 
+## Resident mode (30 Sep 2026)
+
+`embed --lines` stays running: one text per line in, one vector per line
+out, the model loaded once. About 12 ms a sentence here, against ~0.26 s
+for a one-shot call (almost all of which is loading). Atlas uses it to choose
+tools by meaning on every spoken sentence (`atlas/src/meaningroute.rs`).
+
+Atlas can now also run the same model inside itself (`meaningnative.rs`),
+so on a machine set up with `atlas get understanding` this program isn't
+needed at all; it stays as the reference and for other installs.
+
 ## Installing on the Atlas machine
 
 1. Download the model per `models/GET_THE_MODEL.md` and CHECK THE HASH.

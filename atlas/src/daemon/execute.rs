@@ -69,6 +69,13 @@ impl<'a> Daemon<'a> {
         if let Some(question) = self.resolve_subject(intent) {
             return question;
         }
+        // Counted against the ability that does it (`used`), so "never used"
+        // on the Improvements page is something measured.
+        let t = crate::store::now();
+        if self.used.record(kind_of(intent), t) && t.saturating_sub(self.used_saved) >= 60 {
+            self.used_saved = t;
+            let _ = self.store.save(crate::used::KEY, &self.used);
+        }
         let said = self.execute_inner(intent);
         // Say how sure it is, where being wrong would matter. Answers that
         // are just Atlas reporting its own state don't need it.

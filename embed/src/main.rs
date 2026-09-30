@@ -16,6 +16,15 @@
 //!
 //! Usage:
 //!   echo "my car is a corolla" | embed --model models/all-MiniLM-L6-v2.onnx --vocab models/vocab.txt
+//!
+//! Resident (`--lines`, 30 Sep 2026): stays running, one text per line in,
+//! one vector per line out, the model loaded once. Loading is ~0.25 s of the
+//! ~0.26 s a one-shot call takes, which is too slow for choosing tools on
+//! every spoken sentence; resident, a sentence takes a few milliseconds.
+//! Texts are padded to a few fixed lengths under the attention mask, so at
+//! most four compiled copies of the model are ever made, and the pooled
+//! vector is the same as the one-shot one (the pads are masked out of both
+//! the attention and the mean).
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -29,11 +38,13 @@ const UNK: &str = "[UNK]";
 fn main() {
     let mut model_path = String::from("models/all-MiniLM-L6-v2.onnx");
     let mut vocab_path = String::from("models/vocab.txt");
+    let mut lines = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--model" => model_path = args.next().unwrap_or_default(),
             "--vocab" => vocab_path = args.next().unwrap_or_default(),
+            "--lines" => lines = true,
             "--help" | "-h" => {
                 eprintln!("text on stdin -> 384 numbers on stdout");
                 eprintln!("usage: embed [--model <onnx>] [--vocab <vocab.txt>]");
@@ -44,6 +55,10 @@ fn main() {
                 std::process::exit(2);
             }
         }
+    }
+
+    if lines {
+        return resident(&model_path, &vocab_path);
     }
 
     let mut text = String::new();
@@ -71,6 +86,88 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// A compiled model, as tract hands it back.
+type Runnable = std::sync::Arc<TypedRunnableModel>;
+
+/// Lengths a text is padded to in `--lines` mode.
+const BUCKETS: [usize; 4] = [16, 32, 64, 128];
+
+/// `--lines`: one vector per input line until stdin closes. A line that
+/// can't be embedded prints `!` and the reason, so the caller never waits
+/// on an answer that isn't coming.
+fn resident(model_path: &str, vocab_path: &str) {
+    use std::io::{BufRead, Write};
+    let vocab = match load_vocab(vocab_path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("could not read the vocab at {vocab_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let proto = match tract_onnx::onnx().model_for_path(model_path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("the model at {model_path} could not load: {e}");
+            std::process::exit(1);
+        }
+    };
+    let mut compiled: HashMap<usize, Runnable> = HashMap::new();
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    for line in std::io::stdin().lock().lines() {
+        let Ok(line) = line else { break };
+        let mut ids = tokenize(&line, &vocab);
+        ids.truncate(*BUCKETS.last().unwrap());
+        let len = BUCKETS.iter().copied().find(|b| *b >= ids.len()).unwrap_or(*BUCKETS.last().unwrap());
+        let answer = (|| -> TractResult<Vec<f32>> {
+            if !compiled.contains_key(&len) {
+                let m = shaped(proto.clone(), len)?;
+                compiled.insert(len, m);
+            }
+            pooled(compiled.get(&len).unwrap(), &ids, len)
+        })();
+        let _ = match answer {
+            Ok(v) => writeln!(out, "{}", v.iter().map(|x| format!("{x:.6}")).collect::<Vec<_>>().join(" ")),
+            Err(e) => writeln!(out, "! {e}"),
+        };
+        let _ = out.flush();
+    }
+}
+
+fn shaped(model: InferenceModel, n: usize) -> TractResult<Runnable> {
+    model
+        .with_input_fact(0, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)))?
+        .with_input_fact(1, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)))?
+        .with_input_fact(2, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)))?
+        .into_optimized()?
+        .into_runnable()
+}
+
+/// Run a compiled model over `ids` padded to `n`, pooling only the real
+/// tokens.
+fn pooled(model: &Runnable, ids: &[i64], n: usize) -> TractResult<Vec<f32>> {
+    let real = ids.len().min(n);
+    let mut padded = ids[..real].to_vec();
+    padded.resize(n, 0);
+    let mut mask = vec![1i64; real];
+    mask.resize(n, 0);
+    let out = model.run(tvec!(
+        Tensor::from(tract_ndarray::Array2::from_shape_vec((1, n), padded)?).into(),
+        Tensor::from(tract_ndarray::Array2::from_shape_vec((1, n), mask)?).into(),
+        Tensor::from(tract_ndarray::Array2::<i64>::zeros((1, n))).into(),
+    ))?;
+    let hidden = out[0].to_plain_array_view::<f32>()?;
+    let width = hidden.shape()[2];
+    let mut v = vec![0.0f32; width];
+    for t in 0..real {
+        for d in 0..width {
+            v[d] += hidden[[0, t, d]];
+        }
+    }
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
+    Ok(v.into_iter().map(|x| x / norm).collect())
 }
 
 fn load_vocab(path: &str) -> std::io::Result<HashMap<String, i64>> {

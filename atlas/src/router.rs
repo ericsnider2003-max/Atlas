@@ -167,12 +167,36 @@ fn compounds(text: &str) -> String {
 pub struct Router {
     entries: Vec<ToolEntry>,
     index: crate::bm25::Index,
+    /// Lines of meaning, each with the entry it belongs to: what
+    /// `meaningroute` embeds. Several per tool (what it does, and each thing
+    /// people say for it), and a sentence is scored against the closest.
+    texts: Vec<String>,
+    owner: Vec<usize>,
 }
+
+/// A cosine at or over this, between a sentence and a tool's line, offers
+/// the tool even when the two share no words. Set from Eric's requests and
+/// their paraphrases with the real encoder (all-MiniLM-L6-v2): every
+/// paraphrase's right tool cleared it and his small talk did not
+/// (`tests/meaning_picks_the_tool.rs`).
+pub const MEANING_FLOOR: f32 = 0.5;
+
+/// A tool picked by meaning must be this close to the best one by meaning.
+pub const MEANING_NEAR: f32 = 0.06;
+
+/// Over this, meaning is sure enough to come before a word match.
+pub const MEANING_SURE: f32 = 0.62;
+
+/// Under this, a word match is dropped: the words matched, the meaning
+/// doesn't.
+pub const MEANING_FAR: f32 = 0.3;
 
 impl Router {
     pub fn new(book: &ToolBook) -> Router {
         let catalogue = crate::capability::all();
         let mut entries: Vec<ToolEntry> = Vec::new();
+        let mut texts: Vec<String> = Vec::new();
+        let mut owner: Vec<usize> = Vec::new();
         let mut index = crate::bm25::Index::default();
         for e in book.entries() {
             if e.exposure == Exposure::Never || e.name == META_TOOL {
@@ -197,9 +221,42 @@ impl Router {
                 }
             }
             index.add(entries.len() as u64, &compounds(&title.to_lowercase()), &compounds(&body.to_lowercase()));
+            for line in meaning_lines(e) {
+                texts.push(line);
+                owner.push(entries.len());
+            }
             entries.push(e.clone());
         }
-        Router { entries, index }
+        Router { entries, index, texts, owner }
+    }
+
+    /// Every line of meaning, for the encoder; `meaning_of` takes their
+    /// vectors back in this order.
+    pub fn texts(&self) -> &[String] {
+        &self.texts
+    }
+
+    /// Which tool (by `names` position) each line of `texts` belongs to.
+    pub fn meaning_owners(&self) -> &[usize] {
+        &self.owner
+    }
+
+    /// The tool names.
+    pub fn names(&self) -> Vec<String> {
+        self.entries.iter().map(|e| e.name.clone()).collect()
+    }
+
+    /// Each tool's likeness to the sentence: the closest of its lines.
+    /// Empty when the vectors don't line up with `texts`.
+    pub fn meaning_of(&self, q: &[f32], lines: &[Vec<f32>]) -> Vec<f32> {
+        if lines.len() != self.texts.len() {
+            return Vec::new();
+        }
+        let mut best = vec![0.0f32; self.entries.len()];
+        for (v, &i) in lines.iter().zip(self.meaning_owners()) {
+            best[i] = best[i].max(cosine(q, v));
+        }
+        best
     }
 
     /// The tools this sentence reads like, best first, with their scores:
@@ -232,6 +289,68 @@ impl Router {
         out
     }
 
+    /// `shortlist`, with meaning as well as words when there is an encoder
+    /// (30 Sep 2026: "the router matches words only" was on the open list).
+    ///
+    /// `meaning` is the sentence's vector and every tool's, in `texts`
+    /// order. Words still lead: whatever BM25 picks stays, in its order.
+    /// Meaning adds the tools a sentence means without saying ("I can't
+    /// find that document from the accountant" is `find_file`), up to `k`,
+    /// each over `MEANING_FLOOR` and within `MEANING_NEAR` of the best by
+    /// meaning. Small talk gets nothing from meaning either.
+    pub fn shortlist_meaning(&self, said: &str, k: usize, meaning: Option<(&[f32], &[Vec<f32>])>) -> Vec<(&ToolEntry, f64)> {
+        let words = self.shortlist(said, k);
+        let Some((q, lines)) = meaning else { return words };
+        if q.is_empty() || small_talk(said) || request_words(said).is_empty() {
+            return words;
+        }
+        let like = self.meaning_of(q, lines);
+        if like.is_empty() {
+            return words;
+        }
+        let mut by: Vec<(usize, f32)> = like.iter().copied().enumerate().collect();
+        by.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let best = by.first().map(|b| b.1).unwrap_or(0.0);
+        let meant: Vec<(usize, f32)> =
+            by.into_iter().take_while(|(_, c)| *c >= MEANING_FLOOR && *c >= best - MEANING_NEAR).collect();
+        // A tool both the words and the meaning point at goes first; then
+        // the one a starting phrase named; then what the meaning is sure of;
+        // then the rest of the words' picks, and the rest of the meaning's.
+        let at = |name: &str| self.entries.iter().position(|e| e.name == name);
+        let mut order: Vec<(usize, f64)> = Vec::new();
+        let add = |i: usize, s: f64, order: &mut Vec<(usize, f64)>| {
+            if order.len() < k && !order.iter().any(|(o, _)| *o == i) {
+                order.push((i, s));
+            }
+        };
+        for (e, s) in &words {
+            if let Some(i) = at(&e.name) {
+                if *s == f64::MAX || like[i] >= MEANING_FLOOR {
+                    add(i, *s, &mut order);
+                }
+            }
+        }
+        for (i, c) in meant.iter().filter(|(_, c)| *c >= MEANING_SURE) {
+            add(*i, *c as f64, &mut order);
+        }
+        // A word match the meaning says is far off is how "the thing the
+        // accountant sent" got `create_account`: dropped.
+        for (e, s) in &words {
+            if let Some(i) = at(&e.name) {
+                // Only a weak word match: a strong one ("research ways to
+                // improve language models") is kept whatever the meaning
+                // says, because a topic-heavy sentence's meaning is its topic.
+                if like[i] >= MEANING_FAR || *s >= FLOOR * 2.0 {
+                    add(i, *s, &mut order);
+                }
+            }
+        }
+        for (i, c) in &meant {
+            add(*i, *c as f64, &mut order);
+        }
+        order.into_iter().map(|(i, s)| (&self.entries[i], s)).collect()
+    }
+
     /// The names only.
     pub fn names_for(&self, said: &str, k: usize) -> Vec<String> {
         self.shortlist(said, k).into_iter().map(|(e, _)| e.name.clone()).collect()
@@ -241,7 +360,12 @@ impl Router {
     /// is something they have been asking for lately ("that's it", "do it
     /// now"), the tools for that instead.
     pub fn for_turn(&self, said: &str, goal: Option<&str>, k: usize) -> Vec<&ToolEntry> {
-        let mut picked: Vec<&ToolEntry> = self.shortlist(said, k).into_iter().map(|(e, _)| e).collect();
+        self.for_turn_meaning(said, goal, k, None)
+    }
+
+    /// `for_turn` with meaning (`shortlist_meaning`).
+    pub fn for_turn_meaning(&self, said: &str, goal: Option<&str>, k: usize, meaning: Option<(&[f32], &[Vec<f32>])>) -> Vec<&ToolEntry> {
+        let mut picked: Vec<&ToolEntry> = self.shortlist_meaning(said, k, meaning).into_iter().map(|(e, _)| e).collect();
         // Only for a sentence with next to nothing of its own ("that's it",
         // "do it now"): "tell me about octopuses" is its own subject.
         // Never for small talk: "hey, how's it going" has no words of its own
@@ -253,6 +377,72 @@ impl Router {
             }
         }
         picked
+    }
+}
+
+/// Whole sentences people say for a tool, for meaning only (BM25 has the
+/// words already). Written for the tools Eric uses most, in his way of
+/// asking; not the sentences the test checks, so the test isn't marking its
+/// own homework.
+const SAID_FOR: &[(&str, &str)] = &[
+    ("research", "look into this for me and tell me what you find"),
+    ("research", "find out everything you can about a topic"),
+    ("research", "can you read up on how something works"),
+    ("find_file", "where did I save that document"),
+    ("find_file", "I lost a file somewhere on my computer"),
+    ("find_file", "track down the spreadsheet someone sent me"),
+    ("mail", "have I got any new emails"),
+    ("mail", "did anyone write to me"),
+    ("agenda", "what does my day look like"),
+    ("agenda", "am I busy this afternoon"),
+    ("schedule", "book me in for lunch with sam next tuesday"),
+    ("capture", "remember that the car needs an oil change"),
+    ("capture", "make a note of this for later"),
+    ("machine_health", "why is my laptop so slow right now"),
+    ("machine_health", "is something hogging the processor"),
+    ("self_check", "are you working properly"),
+    ("self_check", "check yourself for problems"),
+    ("tidy_desktop", "clean up all the icons on my desktop"),
+    ("view_display", "what's on my screen right now"),
+    ("whats_there", "who's in the room with me"),
+    ("open_app", "start spotify for me"),
+    ("use_mic", "listen through the other microphone"),
+    ("finish_setup", "what's left to install before you're ready"),
+];
+
+/// A tool's lines of meaning: the first sentence of what it does, each
+/// phrase people say for it, and the everyday words for it.
+fn meaning_lines(e: &ToolEntry) -> Vec<String> {
+    let mut out = vec![one_line(&e.describe, 200)];
+    for p in e.phrases.iter().take(24) {
+        let p = p.trim();
+        if p.split_whitespace().count() >= 2 && !out.iter().any(|o| o.eq_ignore_ascii_case(p)) {
+            out.push(p.to_string());
+        }
+    }
+    for (name, said) in SAID_FOR {
+        if *name == e.name {
+            out.push(said.to_string());
+        }
+    }
+    out
+}
+
+/// Cosine of two vectors; 0 when either is empty or they differ in length.
+pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let (mut ab, mut aa, mut bb) = (0.0f32, 0.0f32, 0.0f32);
+    for (x, y) in a.iter().zip(b) {
+        ab += x * y;
+        aa += x * x;
+        bb += y * y;
+    }
+    if aa == 0.0 || bb == 0.0 {
+        0.0
+    } else {
+        ab / (aa.sqrt() * bb.sqrt())
     }
 }
 

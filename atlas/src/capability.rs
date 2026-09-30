@@ -431,7 +431,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "revise", what: "turn a correction you give it into a change to what it keeps, so you don't have to make it twice", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["revise"] },
         Capability { id: "hollow", what: "notice when its own answer says nothing -- a zero it never measured, a sentence about nothing -- and say so", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["hollow"] },
         Capability { id: "hollowcode", what: "read code for the hollow kind -- compiles, passes, does nothing -- and for dependencies that don't exist", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["hollowcode"] },
-        Capability { id: "selfaudit", what: "look at its own record and say what it should fix about itself, and what it's missing on this machine", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["selfaudit", "signals", "wants"] },
+        Capability { id: "selfaudit", what: "look at its own record and say what it should fix about itself, and what it's missing on this machine", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["selfaudit", "signals", "wants", "used"] },
         Capability { id: "integrations", what: "keep working with the network unplugged, know which of its connections are working right now, and say which one broke", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["integrations", "connectivity"] },
         Capability { id: "health", what: "watch the machine -- a filling disk, memory running short, a backup that stopped, a battery going", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Background], modules: &["health"] },
         Capability { id: "lanes", what: "be busy without making you wait -- work that needs your windows waits for a gap, and a long job says how it's going", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Background], modules: &["lanes", "channel"] },
@@ -492,7 +492,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "wit", what: "be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying \"tone it down\" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else", area: Speaking, state: Working, needs: None, offline: true, added: 41, runs: &[Needs::JustThinking], modules: &["wit", "talkback"] },
         // 30 Sep 2026: Eric's "doesn't know what it's supposed to be doing ...
         // can't use multiple streams of thought ... not completing a task".
-        Capability { id: "router", what: "offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["router"] },
+        Capability { id: "router", what: "offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["router", "meaningroute", "meaningnative"] },
         Capability { id: "taskloop", what: "work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["taskloop"] },
         Capability { id: "streams", what: "do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["streams"] },
         Capability { id: "backed", what: "never say it's on something unless it really started it", area: Speaking, state: Working, needs: None, offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["backed"] },
@@ -1526,7 +1526,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 427 -> 430 on merging with r8-brain (router, taskloop, backed, streams).
 // 430 -> 431 (30 Sep 2026): `deepbrain` (the deep model beside the talking
 // one -- part of `reason`).
-pub const MODULES_IN_TREE: usize = 431;
+// 431 -> 434 (30 Sep 2026): `meaningroute` and `meaningnative` (tools by
+// meaning, part of `router`), and `used` (what gets used, part of
+// `selfaudit`).
+pub const MODULES_IN_TREE: usize = 434;
 
 /// Every module no capability claims, and why it is not one.
 ///

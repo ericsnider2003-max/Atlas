@@ -961,9 +961,16 @@ impl<'a> Daemon<'a> {
         let goal = self.thread.current_goal_where(|_| true);
         let apps: Vec<String> = self.cfg.apps.apps.keys().cloned().collect();
         let apps_note = (!apps.is_empty()).then(|| format!("One of: {}.", apps.join(", ")));
+        // Meaning as well as words, when the encoder is running and quick
+        // enough (`meaningroute`); words alone otherwise.
+        let q = self.meaning_route.as_ref().and_then(|m| m.sentence(said));
+        let meaning = match (&q, self.meaning_route.as_ref().and_then(|m| m.tools())) {
+            (Some(q), Some(t)) => Some((q.as_slice(), t)),
+            _ => None,
+        };
         let picked: Vec<serde_json::Value> = self
             .router
-            .for_turn(said, goal.as_deref(), crate::router::SHORTLIST)
+            .for_turn_meaning(said, goal.as_deref(), crate::router::SHORTLIST, meaning)
             .into_iter()
             .map(|e| {
                 let note = matches!(e.name.as_str(), "open_app" | "close_app" | "focus_app").then(|| apps_note.as_deref()).flatten();

@@ -696,10 +696,7 @@ impl Daemon<'_> {
                 let recs = self.recommendations_shown(cfg.most_at_once);
                 // Ways Atlas can get better on the hardware he already has.
                 // `improve` listed them and nothing ever asked.
-                let free: Vec<String> = crate::improve::automatic()
-                    .into_iter()
-                    .map(|m| format!("{} — {}", m.what, m.worth))
-                    .collect();
+                let free = self.free_wins();
                 hub::recommendations_page(&recs, None, &free)
             }
             Page::Status => {
@@ -3030,6 +3027,10 @@ impl Daemon<'_> {
         let Some(r) = which.and_then(|w| recs.iter().find(|r| r.symptom == w.trim()).cloned()) else {
             return "That idea has changed since the page was drawn. Here's the list as it stands now.".into();
         };
+        // Abilities never asked for: "have a go" is how to ask, not code work.
+        if r.where_ == crate::signals::UNUSED && !drop {
+            return self.how_to_ask_for(&self.used.never_used(crate::store::now()));
+        }
         if drop {
             let mut dropped: Vec<String> = self.store.load(RECS_DROPPED);
             dropped.push(r.symptom.clone());
@@ -3053,6 +3054,31 @@ impl Daemon<'_> {
         let session = crate::selfwork::Session::from_recommendation(&r, 0);
         self.selfwork = Some(session);
         self.work_on_myself(&r.symptom)
+    }
+
+    /// How to ask for each of these abilities: what it does, and something
+    /// to say for it, from the request table.
+    fn how_to_ask_for(&self, abilities: &[String]) -> String {
+        let book = crate::intent::ToolBook::new(&self.cfg.commands);
+        let caps = crate::capability::all();
+        let mut lines = Vec::new();
+        for a in abilities.iter().take(6) {
+            let Some(c) = caps.iter().find(|c| c.id == a) else { continue };
+            let kinds: Vec<&str> = crate::used::FOR_KIND.iter().filter(|(_, x)| x == a).map(|(k, _)| *k).collect();
+            let say = book
+                .entries()
+                .iter()
+                .find(|e| kinds.contains(&e.name.as_str()))
+                .and_then(|e| e.phrases.iter().find(|p| p.split_whitespace().count() >= 2).cloned());
+            lines.push(match say {
+                Some(p) => format!("{} -- try \u{201c}{}\u{201d}.", sentence(c.what).trim_end_matches('.'), p),
+                None => sentence(c.what),
+            });
+        }
+        if lines.is_empty() {
+            return "You've tried everything there's a way to ask for.".into();
+        }
+        format!("A few things I can do that you haven't asked for yet: {}", lines.join(" "))
     }
 
     /// Keep or bin something a friend handed you (the Documents page).
@@ -3649,7 +3675,8 @@ impl Daemon<'_> {
             // The two models: which one talks, and fetching them (`deepbrain`).
             "/hub/brains" => {
                 let said = self.brains_button(&what);
-                hub::back_with(Page::Connections.href(), "", &said)
+                let back = if field_of(f, "from").as_deref() == Some("ideas") { Page::Recommendations } else { Page::Connections };
+                hub::back_with(back.href(), "", &said)
             }
             // Another program's tools, on or off (`mcp`). Not while handed
             // over: they act as you.

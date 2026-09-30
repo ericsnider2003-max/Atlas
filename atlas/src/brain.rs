@@ -1590,6 +1590,17 @@ impl SpeechGate {
                     self.denied = Some(ability);
                 }
             }
+            // A denial by meaning, for the ways of saying it the list doesn't
+            // have (`backed::check_meaning`, when the encoder runs).
+            if ok {
+                match crate::backed::check_meaning(sentence) {
+                    crate::backed::Meant::Denial(ability) => {
+                        ok = false;
+                        self.denied = Some(ability);
+                    }
+                    crate::backed::Meant::Neither => {}
+                }
+            }
             if ok && !self.known.is_empty() && crate::backed::invents_someone(sentence, &self.known) {
                 ok = false;
                 self.invented = true;

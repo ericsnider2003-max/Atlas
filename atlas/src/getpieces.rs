@@ -460,6 +460,32 @@ pub fn photos() -> Vec<Piece> {
     ]
 }
 
+/// What lets Atlas understand what you mean, not only the words you used
+/// (30 Sep 2026): the meaning model, run inside Atlas (`meaningnative`), and
+/// its word list. Both Hugging Face's own files from the model's page,
+/// hash-checked; 90 MB together. Tools are then chosen by meaning as well as
+/// words, and search by meaning needs no separate program.
+pub fn understanding() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the meaning model",
+            for_what: "understanding what you mean, not only the words you used",
+            url: "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+            sha256: "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452",
+            bytes: 90_405_214,
+            lands: Lands::File("models/understanding/all-MiniLM-L6-v2.onnx"),
+        },
+        Piece {
+            name: "its word list",
+            for_what: "understanding what you mean, not only the words you used",
+            url: "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt",
+            sha256: "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
+            bytes: 231_508,
+            lands: Lands::File("models/understanding/vocab.txt"),
+        },
+    ]
+}
+
 /// A set by the word you'd type after `atlas get`: nothing for the voice
 /// pieces, `seeing`, `pictures`, `photos`, or `tor`.
 pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
@@ -469,6 +495,7 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("pictures") => Some(("what Atlas needs to read charts and screens (about 3 GB)", pictures())),
         Some("tor" | "friends") => Some(("Tor, so friends can reach your Atlas from anywhere", tor())),
         Some("photos" | "photo") => Some(("the cut-out models Atlas needs to blur or remove a photo's background", photos())),
+        Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,
     }

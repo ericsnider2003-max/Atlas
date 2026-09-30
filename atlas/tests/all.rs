@@ -892,3 +892,9 @@ mod a_real_model_answers_him;
 mod a_normal_voice_is_heard;
 #[path = "atlas_looks_when_you_ask.rs"]
 mod atlas_looks_when_you_ask;
+#[path = "meaning_picks_the_tool.rs"]
+mod meaning_picks_the_tool;
+#[path = "meaning_checks_the_reply.rs"]
+mod meaning_checks_the_reply;
+#[path = "what_gets_used_is_counted.rs"]
+mod what_gets_used_is_counted;

@@ -207,7 +207,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen | working | `decide` `otherside` | ready | ready | ready | ready | ready | ready |
 | weigh something that might be worth doing on five counts, and say which ones it can't judge yet | working | `opportunity` | ready | ready | ready | ready | ready | ready |
 | walk you through a colour grade in the fixed order a colourist uses | working | `grading` | ready | ready | ready | ready | ready | ready |
-| offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one | built, never run for real | `router` | ready | ready | ready | ready | ready | ready |
+| offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one | built, never run for real | `router` `meaningroute` `meaningnative` | ready | ready | ready | ready | ready | ready |
 | work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on | built, never run for real | `taskloop` | ready | ready | ready | ready | ready | ready |
 | do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on | built, never run for real | `streams` | ready | ready | ready | ready | ready | ready |
 
@@ -239,7 +239,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | tell you what it's working on right now, show how it got to an answer, and say why it did what it did | working | `mind` `why` | ready | ready | ready | ready | ready | ready |
 | keep each turn's timing and a record of every model call -- what was asked, how long it took -- and say which part was slow | working | `trace` `timing` | ready | ready | ready | catch | would | catch |
 | notice when its own answer says nothing -- a zero it never measured, a sentence about nothing -- and say so | working | `hollow` | ready | ready | ready | ready | ready | ready |
-| look at its own record and say what it should fix about itself, and what it's missing on this machine | working | `selfaudit` `signals` `wants` | ready | ready | ready | ready | ready | ready |
+| look at its own record and say what it should fix about itself, and what it's missing on this machine | working | `selfaudit` `signals` `wants` `used` | ready | ready | ready | ready | ready | ready |
 | keep working with the network unplugged, know which of its connections are working right now, and say which one broke | working | `integrations` `connectivity` | ready | ready | ready | ready | ready | ready |
 | watch the machine -- a filling disk, memory running short, a backup that stopped, a battery going | built, never run for real | `health` | ready | would | would | catch | would | **no** |
 | be busy without making you wait -- work that needs your windows waits for a gap, and a long job says how it's going | built, never run for real | `lanes` `channel` | ready | would | would | catch | would | **no** |
@@ -354,4 +354,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-235 things, across 396 of 431 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+235 things, across 399 of 434 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

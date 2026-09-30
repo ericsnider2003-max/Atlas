@@ -177,6 +177,7 @@ impl<'a> Daemon<'a> {
         // above deliberately does not.
         if !self.attention.is_paused() {
             self.embed_backlog();
+            self.start_meaning_route();
         }
 
         // The exit statuses of the processes nobody waits for -- a panel, an

@@ -186,3 +186,85 @@ pub fn ability_asked_about(said: &str) -> &'static str {
         ""
     }
 }
+
+/// Sentences that say work started or was done. Measured, not used for the
+/// meaning check: with this small encoder a claim ("I've kicked that off",
+/// 0.41) sits no closer to these than an ordinary offer does ("I can help
+/// with that", 0.51), so claims stay with the phrase list alone and the
+/// tool-call check behind it (30 Sep 2026,
+/// `tests/meaning_checks_the_reply.rs`).
+pub const CLAIM_EXAMPLES: &[&str] = &[
+    "I'm on it.",
+    "I've started working on that.",
+    "I'm already working on it right now.",
+    "I checked, and here is what I found.",
+    "Done, I've taken care of it.",
+    "I'll report back when I'm finished.",
+    "I turned that setting on for you.",
+    "I'm looking at you through your camera.",
+];
+
+/// Sentences that deny an ability, with the ability, for the meaning check.
+pub const DENIAL_EXAMPLES: &[(&str, &str)] = &[
+    ("I don't have a camera, so I can't see you.", "camera"),
+    ("I'm unable to see you.", "camera"),
+    ("I can't browse the internet.", "research"),
+    ("I don't have the ability to search the web.", "research"),
+    ("I can't see your screen.", "screen"),
+    ("I can't get at the files on your computer.", "files"),
+    ("I'm not allowed to do that.", ""),
+];
+
+/// Over this likeness to a denial example, a sentence is held as a denial.
+/// Set with the real encoder (`tests/meaning_checks_the_reply.rs`): the
+/// denials no list has scored 0.73 to 0.77; the closest ordinary reply ("I
+/// can look through your camera if you'd like") 0.66.
+pub const DENIAL_LIKE: f32 = 0.70;
+
+/// What the meaning check found in a sentence.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Meant {
+    Denial(&'static str),
+    Neither,
+}
+
+/// Each example's vector, made once the encoder runs.
+pub struct Examples {
+    pub denials: Vec<(Vec<f32>, &'static str)>,
+}
+
+/// The denial list's second net (30 Sep 2026: "model-checked replies instead
+/// of phrase lists" was on the open list). A model call per sentence would
+/// add seconds to every reply; the meaning encoder adds about fifteen
+/// milliseconds, and catches the ways of saying it no list has.
+pub fn meant(v: &[f32], ex: &Examples) -> Meant {
+    let (deny, topic) = ex
+        .denials
+        .iter()
+        .map(|(d, t)| (crate::router::cosine(v, d), *t))
+        .fold((0.0f32, ""), |a, b| if b.0 > a.0 { b } else { a });
+    if deny >= DENIAL_LIKE {
+        Meant::Denial(topic)
+    } else {
+        Meant::Neither
+    }
+}
+
+/// Something that can say what a sentence means (`meaningroute::Route`),
+/// installed once the encoder runs. Process-wide because the speech gate
+/// sits deep in `brain`, far from the daemon that owns the encoder.
+pub trait MeaningCheck: Send + Sync {
+    fn check(&self, sentence: &str) -> Meant;
+}
+
+static CHECKER: std::sync::OnceLock<Box<dyn MeaningCheck>> = std::sync::OnceLock::new();
+
+/// Install the meaning check. The first one stays.
+pub fn install(c: Box<dyn MeaningCheck>) {
+    let _ = CHECKER.set(c);
+}
+
+/// What the meaning check says of a sentence; `Neither` with none installed.
+pub fn check_meaning(sentence: &str) -> Meant {
+    CHECKER.get().map(|c| c.check(sentence)).unwrap_or(Meant::Neither)
+}

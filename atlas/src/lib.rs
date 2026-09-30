@@ -79,6 +79,10 @@ pub mod quickinput;
 pub mod reach;
 pub mod reclaim;
 pub mod meaning;
+pub mod meaningroute;
+pub mod used;
+#[cfg(feature = "onnx")]
+pub mod meaningnative;
 pub mod recall;
 pub mod recovery;
 pub mod reference;

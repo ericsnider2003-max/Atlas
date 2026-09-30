@@ -1011,6 +1011,15 @@ pub struct Daemon<'a> {
     last_spoke_at: u64,
     /// The few of them a sentence needs (`router`, 30 Sep 2026).
     router: crate::router::Router,
+    /// The meaning encoder, resident, and every tool's vector (`meaningroute`).
+    /// Started once from the tick when an encoder is installed.
+    meaning_route: Option<crate::meaningroute::Route>,
+    meaning_route_tried: bool,
+    /// Which abilities requests have used (`used`), and when it was last saved.
+    pub(crate) used: crate::used::Used,
+    used_saved: u64,
+    /// The meaning model was asked for: start the encoder once it lands.
+    meaning_route_retry: bool,
     /// The parts of the last request of several parts, and where each
     /// stands (`streams`), for "what are you working on".
     streams: Vec<crate::streams::Stream>,
@@ -1707,6 +1716,11 @@ impl<'a> Daemon<'a> {
             pending_stamp: None,
             last_spoke_at: 0,
             router: crate::router::Router::new(&crate::intent::ToolBook::new(&cfg.commands)),
+            meaning_route: None,
+            meaning_route_tried: false,
+            used: store_for_load.load(crate::used::KEY),
+            used_saved: 0,
+            meaning_route_retry: false,
             streams: Vec::new(),
             first_words_ms: std::cell::Cell::new(None),
             by_chat: false,

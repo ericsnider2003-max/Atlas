@@ -2122,13 +2122,12 @@ impl<'a> Daemon<'a> {
     /// producing them. A self-audit with an empty input list reports that
     /// everything is fine, which is the most misleading possible answer.
     pub fn refresh_signals(&mut self) {
-        // Nothing records which capabilities a turn used, so there is no
-        // "never used" list to give. This was every capability marked
-        // working -- persona, calendar, thread among them -- shown on the
-        // Improvements page as "nothing has ever called" them, with a "Have a
-        // go" that could never be done (29 Sep 2026). Empty until use is
-        // actually recorded; `signals::from_unused` then says nothing.
-        let never_used: Vec<String> = Vec::new();
+        // What requests have actually used (`used`, 30 Sep 2026). Only
+        // abilities there's a way to ask for, and only after two weeks of
+        // counting: before that it's empty and `from_unused` says nothing
+        // (29 Sep: every working ability was listed as never called, with a
+        // "Have a go" that could never be done).
+        let never_used = self.used.never_used(crate::store::now());
         let total = crate::capability::all().len() as u32;
         self.signals = crate::signals::gather(
             &self.history,

@@ -853,6 +853,9 @@ impl<'a> Daemon<'a> {
         if !cfg.semantic {
             return None;
         }
+        if let Some(v) = self.meaning_route.as_ref().and_then(|m| m.text(question)) {
+            return Some(v);
+        }
         let mcfg = self.meaning_cfg();
         let vars = self.tool_vars();
         if !crate::meaning::available(&mcfg, &vars) {
@@ -889,12 +892,39 @@ impl<'a> Daemon<'a> {
         if recent.is_empty() {
             return None;
         }
+        if let Some(v) = self.meaning_route.as_ref().and_then(|m| m.text(&recent.join("\n"))) {
+            return Some(v);
+        }
         let mcfg = self.meaning_cfg();
         let vars = self.tool_vars();
         if !crate::meaning::available(&mcfg, &vars) {
             return None;
         }
         crate::meaning::embed(&mcfg, &vars, &recent.join("\n")).ok()
+    }
+
+    /// Start the resident encoder once, if one is installed: tool choice by
+    /// meaning, and recall without starting the encoder per question.
+    pub(super) fn start_meaning_route(&mut self) {
+        if self.meaning_route.is_some() {
+            return;
+        }
+        // Tried once already: again only after the meaning model was asked
+        // for and has now landed.
+        if self.meaning_route_tried {
+            let landed = crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &self.store.install_root()));
+            if !(self.meaning_route_retry && landed) {
+                return;
+            }
+            self.meaning_route_retry = false;
+        }
+        self.meaning_route_tried = true;
+        let (mcfg, vars) = (self.meaning_cfg(), self.tool_vars());
+        let root = self.store.install_root();
+        self.meaning_route = crate::meaningroute::Route::start(&mcfg, &vars, Some(&root), self.router.texts().to_vec());
+        if self.meaning_route.is_some() {
+            self.log.info("meaning: the encoder is running; tools are chosen by meaning as well as words");
+        }
     }
 
     fn meaning_cfg(&self) -> crate::meaning::MeaningConfig {
@@ -1576,7 +1606,72 @@ impl<'a> Daemon<'a> {
             "faster" => self.choose_talk_model(false),
             "get-better" => self.get_model_piece(crate::getpieces::better_talk_model(), "the better model"),
             "get-deep" => self.get_model_piece(crate::getpieces::deep_model(), "the deep brain"),
+            "get-understanding" => self.get_understanding(),
             _ => "That button isn't wired to anything, so nothing changed.".into(),
+        }
+    }
+
+    /// The Ideas page's free wins, each with whether it's on here and, when
+    /// it isn't, the button that does it.
+    pub(crate) fn free_wins(&self) -> Vec<crate::hub::FreeWin> {
+        use crate::improve::Gain;
+        let root = self.store.install_root();
+        let deep_here = crate::getpieces::have(&crate::getpieces::deep_model(), &root) || self.deep.is_set_up();
+        let understanding = self.understanding_here();
+        crate::improve::automatic()
+            .into_iter()
+            .map(|m| {
+                let (here, get) = match m.gain {
+                    Gain::Precomputed if !understanding => (
+                        "Not here yet: it needs the meaning model.".to_string(),
+                        Some(("Get the meaning model (91 MB)".to_string(), "get-understanding".to_string())),
+                    ),
+                    Gain::WarmModel if self.llm.is_none() => ("Not here yet: no model is set up.".into(), None),
+                    Gain::RightSizedModel if !deep_here => (
+                        "Half here: the talking model is, the deep one isn't.".into(),
+                        Some(("Get the deep model".into(), "get-deep".into())),
+                    ),
+                    _ => ("On here.".into(), None),
+                };
+                crate::hub::FreeWin { what: m.what, worth: m.worth.to_string(), here, get }
+            })
+            .collect()
+    }
+
+    /// Can this Atlas understand meaning: the model inside Atlas, or a
+    /// configured encoder program?
+    pub(crate) fn understanding_here(&self) -> bool {
+        let root = self.store.install_root();
+        crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &root))
+            || crate::meaning::available(&self.meaning_cfg(), &self.tool_vars())
+    }
+
+    /// Fetch the meaning model and its word list on the crew (`atlas get
+    /// understanding` from a button). The tick starts the encoder once
+    /// they're here.
+    pub(crate) fn get_understanding(&mut self) -> String {
+        if self.handover().stance.handed_over() {
+            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+        }
+        if self.understanding_here() {
+            return "The meaning model is already here.".into();
+        }
+        let root = self.store.install_root();
+        let pieces = crate::getpieces::understanding();
+        let mb: u64 = pieces.iter().map(|p| p.megabytes()).sum();
+        let work: crew::Work = Box::new(move |_ctl| {
+            for p in &pieces {
+                if !crate::getpieces::have(p, &root) {
+                    crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                }
+            }
+            Ok("The meaning model is here and checked. I'll understand what you mean, not only the words, from now on.".into())
+        });
+        if self.hand_off("model-piece", crate::store::now(), work, None, SpeakPolicy::Always) {
+            self.meaning_route_retry = true;
+            format!("Getting the meaning model ({mb} MB) -- I'll say when it's ready.")
+        } else {
+            "I've too much going on to start that download now. Try again in a minute.".into()
         }
     }
 

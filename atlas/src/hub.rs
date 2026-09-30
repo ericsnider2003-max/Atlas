@@ -1593,8 +1593,10 @@ pub fn looking_back_page(day: &crate::workspace_view::Day, label: &str) -> Strin
 pub fn recommendations_page(
     recs: &[crate::selfaudit::Recommendation],
     granted: Option<&str>,
-    // Ways Atlas can get better on the hardware already here.
-    free_wins: &[String],
+    // Ways Atlas can get better on the hardware already here: each with
+    // whether it's on here, and the button that turns it on when it isn't
+    // (30 Sep 2026: they were a list you could only read).
+    free_wins: &[FreeWin],
 ) -> String {
     let mut body = String::new();
 
@@ -1612,7 +1614,6 @@ pub fn recommendations_page(
 
     if recs.is_empty() {
         body.push_str("<p class=note>Nothing I'd change.</p>");
-        return shell_at(Some(Page::Recommendations), "Ideas", &body);
     }
 
     for r in recs.iter() {
@@ -1650,11 +1651,34 @@ pub fn recommendations_page(
     // Ways to get better on the hardware already here. `improve` listed these
     // and nothing ever asked it.
     if !free_wins.is_empty() {
-        body.push_str("<h2>Free wins</h2>");
-        body.push_str(&lines(free_wins));
+        body.push_str("<h2>Free wins</h2><ul class=tight>");
+        for w in free_wins {
+            let act = match &w.get {
+                Some((label, value)) => format!(
+                    " <form class=inline method=post action=/hub/brains><input type=hidden name=from value=ideas>\
+                     <button name=what value='{}'>{}</button></form>",
+                    esc(value),
+                    esc(label)
+                ),
+                None => String::new(),
+            };
+            body.push_str(&format!("<li><b>{}</b> {} <span class=note>{}</span>{act}</li>", esc(&w.what), esc(&w.worth), esc(&w.here)));
+        }
+        body.push_str("</ul>");
     }
 
     shell_at(Some(Page::Recommendations), "Ideas", &body)
+}
+
+/// One free win on the Ideas page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FreeWin {
+    pub what: String,
+    pub worth: String,
+    /// Whether it's working here, in a few words.
+    pub here: String,
+    /// The button that turns it on, when it isn't: (label, `/hub/brains` value).
+    pub get: Option<(String, String)>,
 }
 
 /// Which switch in the hub turns on which registered capability, as
