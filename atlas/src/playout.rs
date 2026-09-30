@@ -156,15 +156,14 @@ pub fn speaker_now(cfg: &crate::audio::AudioConfig) -> Option<String> {
     pick
 }
 
-/// Play a WAV's bytes through `device` (by name; the default when `None` or
+/// Play a decoded WAV (`parse_wav`) through `device` (by name; the default when `None` or
 /// not found), until it ends or `stop()` says to. `Err` means nothing was
 /// played and the caller should use `ffplay`.
 #[cfg(windows)]
-pub fn play(bytes: &[u8], device: Option<&str>, stop: &dyn Fn() -> bool) -> Result<(), String> {
+pub fn play(wav: &Wav, device: Option<&str>, stop: &dyn Fn() -> bool) -> Result<(), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
-    let wav = parse_wav(bytes)?;
     let host = cpal::default_host();
     let named = device.and_then(|want| {
         host.output_devices().ok()?.find(|d| d.name().is_ok_and(|n| n == want))
@@ -172,7 +171,7 @@ pub fn play(bytes: &[u8], device: Option<&str>, stop: &dyn Fn() -> bool) -> Resu
     let dev = named.or_else(|| host.default_output_device()).ok_or("there's no speaker to play through")?;
     let config = dev.default_output_config().map_err(|e| format!("the speaker won't say how it plays: {e}"))?;
     let (rate, channels) = (config.sample_rate().0, config.channels());
-    let samples: Arc<Vec<f32>> = Arc::new(fit_to_speaker(&wav, rate, channels));
+    let samples: Arc<Vec<f32>> = Arc::new(fit_to_speaker(wav, rate, channels));
     let pos = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicBool::new(false));
     let err = {
@@ -243,7 +242,7 @@ pub fn play(bytes: &[u8], device: Option<&str>, stop: &dyn Fn() -> bool) -> Resu
 }
 
 #[cfg(not(windows))]
-pub fn play(_bytes: &[u8], _device: Option<&str>, _stop: &dyn Fn() -> bool) -> Result<(), String> {
+pub fn play(_wav: &Wav, _device: Option<&str>, _stop: &dyn Fn() -> bool) -> Result<(), String> {
     Err("played by ffplay on this platform".into())
 }
 

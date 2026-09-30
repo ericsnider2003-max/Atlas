@@ -997,7 +997,8 @@ impl<'a> Voice<'a> {
         if cfg!(windows) && crate::playout::plays_inside(&self.cfg.play.command) {
             if let Some(bytes) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
                 let speaker = crate::playout::speaker_now(&self.cfg.audio);
-                match crate::playout::play(&bytes, speaker.as_deref(), stop) {
+                let played = crate::playout::parse_wav(&bytes).and_then(|wav| crate::playout::play(&wav, speaker.as_deref(), stop));
+                match played {
                     Ok(()) => return Ok(if stop() { None } else { Some(String::new()) }),
                     Err(why) => {
                         if let Some(note) = crate::playout::note_once(&why) {
