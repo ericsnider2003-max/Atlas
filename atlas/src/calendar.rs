@@ -1433,8 +1433,12 @@ mod tests {
         assert!(c.due_reminders(start - 3600).is_empty());
         // Ten minutes before (inside the 15-minute lead): due.
         assert_eq!(c.due_reminders(start - 600).len(), 1);
-        // After it's started: not due.
-        assert!(c.due_reminders(start + 60).is_empty());
+        // Just after it started: still due, late (29 Sep 2026: a laptop
+        // asleep across the lead window never said it at all; the daemon
+        // says "started a minute ago" and the `reminded` set says it once).
+        assert_eq!(c.due_reminders(start + 60).len(), 1);
+        // Once the late window is over: not due.
+        assert!(c.due_reminders(start + Calendar::REMIND_LATE_SECS).is_empty());
         // An event with no reminder set never comes due.
         let mut c2 = Calendar::default();
         c2.add("no reminder", w, None, THU);

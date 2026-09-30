@@ -170,7 +170,7 @@ impl Persona {
     /// it liked how it was. None of that is Atlas. This says whose it is,
     /// what its job is, what it can do, and how it stands towards getting
     /// better, so there is nothing left to make up.
-    pub fn who_and_what(&self) -> String {
+    fn who_and_what(&self) -> String {
         format!(
             "You are {name}: the personal assistant of the person who owns this computer, built for \
              them and run on their own machines -- this computer, and their phone and iPad through it. \

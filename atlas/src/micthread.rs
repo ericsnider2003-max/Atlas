@@ -990,7 +990,7 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 let with_name = work.take_said_with_wake();
                 // A sentence already finished in the clip ("Atlas, can you see
                 // me?") is answered now, not after waiting on a silence.
-                let said = if with_name.as_deref().is_some_and(sentence_finished) {
+                let said = if with_name.as_deref().is_some_and(|w| sentence_finished(w)) {
                     with_wake_word(with_name, Ok(String::new()))
                 } else {
                     with_wake_word(with_name, work.listen().map_err(|e| e.to_string()))
