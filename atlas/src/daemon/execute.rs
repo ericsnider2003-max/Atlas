@@ -355,7 +355,8 @@ impl<'a> Daemon<'a> {
             Intent::Research(topic) => self.research(topic),
             Intent::McpTool(p) => self.use_mcp_tool(p),
             Intent::ViewDisplay => self.look_closer(Capture::Screen),
-            Intent::CaptureWebcam => self.look_closer(Capture::Camera),
+            // Asked once, said as it happens, frame deleted (`daemon::camera`).
+            Intent::CaptureWebcam => self.look_at_you(),
             Intent::Gestures(on) => self.watch_hands(*on, crate::store::now()),
             Intent::WhatsThere => self.whats_there(),
             Intent::WhatsThis => self.whats_this(),

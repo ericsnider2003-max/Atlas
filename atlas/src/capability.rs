@@ -336,7 +336,7 @@ pub fn all() -> Vec<Capability> {
         // because nothing here has yet run on Eric's machine, and saying
         // otherwise is the one kind of drift that costs you the ability to
         // tell.
-        Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames"] },
+        Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames", "camera_ask"] },
         Capability { id: "callnotes", what: "notice a call, note your side, record the others only after they say yes, and write up who said what", area: Hearing, state: Untested, needs: Some("a call on this laptop"), offline: true, added: 31, runs: &[Needs::Audio], modules: &["callnotes", "callrec", "callwatch", "consent"] },
         Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
@@ -417,7 +417,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "thread", what: "carry one conversation on for good -- no session to start, the older part folded into a summary that keeps what mattered", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["thread"] },
         Capability { id: "understood", what: "check with you before acting on a guess at what you meant, and ask which one when it could be two things", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["understood", "whichone"] },
         Capability { id: "answering", what: "take an answer to its questions however you can give it -- a word, a typed yes, a key -- when speaking isn't an option", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["answering"] },
-        Capability { id: "audio", what: "pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing", area: Hearing, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["audio", "playout"] },
+        Capability { id: "audio", what: "pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing", area: Hearing, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["audio", "playout", "leveller", "miclevel"] },
         Capability { id: "addressing", what: "tell whether what it heard was meant for it -- a \"stop\" to it stops it, a voice on your call doesn't", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["addressing"] },
         Capability { id: "references", what: "work out what \"it\", \"that\" and \"this one\" mean from what just happened -- \"move it to the other screen\"", area: Windows, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["references"] },
         Capability { id: "clipboard", what: "explain or answer about whatever you copied -- and when nothing is copied, work out what \"this\" is from what you were looking at", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::ReadScreen], modules: &["clipboard", "subject"] },
@@ -1520,7 +1520,11 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 421 -> 423 (30 Sep, merging the other chat's 29 Sep work): `playout` (the
 // voice played inside Atlas, through the speaker it chose -- part of `audio`)
 // and `winpark` (plumbing).
-pub const MODULES_IN_TREE: usize = 427;
+// 423 -> 426 (30 Sep 2026): `leveller` and `miclevel` (a quiet voice heard
+// without shouting -- part of `audio`) and `camera_ask` ("can you see me?" --
+// part of `vision`).
+// 427 -> 430 on merging with r8-brain (router, taskloop, backed, streams).
+pub const MODULES_IN_TREE: usize = 430;
 
 /// Every module no capability claims, and why it is not one.
 ///

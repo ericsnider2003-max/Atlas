@@ -362,6 +362,16 @@ pub trait Platform {
         let _ = combo;
         Err(crate::error::AtlasError::Platform("key presses are not supported here".into()))
     }
+    /// Take `delete` characters back from where you're typing and type
+    /// `text` in their place (`astype`'s fix of the word just finished). On
+    /// Windows it is one burst that none of your own keys can land in the
+    /// middle of; elsewhere, backspaces and then the text.
+    fn replace_typed(&self, delete: usize, text: &str) -> Result<()> {
+        for _ in 0..delete {
+            self.press("backspace")?;
+        }
+        self.type_text(text)
+    }
     /// A handle to just the pointer parts, safe to hand to another thread.
     ///
     /// Hand tracking runs on its own thread and must not borrow this one —

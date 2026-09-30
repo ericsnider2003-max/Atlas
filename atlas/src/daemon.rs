@@ -59,6 +59,7 @@ mod errands;
 mod helping;
 mod messages;
 mod hands;
+mod camera;
 mod away;
 mod tick;
 mod inbox;
@@ -2454,6 +2455,9 @@ fn app_action_of(i: &Intent) -> Option<(String, String)> {
         Intent::OpenApp(a) => Some((a.clone(), "open".into())),
         Intent::CloseApp(a) => Some((a.clone(), "close".into())),
         Intent::FocusApp(a) => Some((a.clone(), "focus".into())),
+        // "Allow the camera?" -- a yes is kept as the camera's grant
+        // (`daemon::camera`, 30 Sep 2026).
+        Intent::CaptureWebcam => Some((camera::CAMERA.into(), "look".into())),
         _ => None,
     }
 }

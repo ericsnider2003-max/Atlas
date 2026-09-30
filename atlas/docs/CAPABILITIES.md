@@ -41,7 +41,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | hold a key in any window to talk; a quick tap still reaches the app | built, never run for real | `hotkey` `input` | ready | would | would | would | would | would |
 | notice a call, note your side, record the others only after they say yes, and write up who said what | built, never run for real | `callnotes` `callrec` `callwatch` `consent` | ready | would | would | would | would | would |
 | hold a key anywhere in Windows to talk, or press one to type, alongside the wake word | built, never run for real | `hotkeys` `typebox` `quickinput` | ready | would | would | would | would | would |
-| pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` `playout` | ready | would | would | would | would | would |
+| pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` `playout` `leveller` `miclevel` | ready | would | would | would | would | would |
 | tell whether what it heard was meant for it -- a "stop" to it stops it, a voice on your call doesn't | waiting on whisper | `addressing` | ready | would | would | would | would | would |
 
 ## Talking
@@ -256,7 +256,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | read text off an image with an outside program | waiting on tesseract, which nothing fetches | `ocr` | ready | catch | catch | **no** | catch | **no** |
 | read the words on your screen | built, never run for real | `words` | ready | catch | catch | **no** | catch | **no** |
 | notice what window you're in | built, never run for real | `watch` `watching` | ready | catch | catch | **no** | catch | **no** |
-| name what's in front of the camera, and tell faces apart | built, never run for real | `vision` `frames` | ready | catch | ready | would | would | catch |
+| name what's in front of the camera, and tell faces apart | built, never run for real | `vision` `frames` `camera_ask` | ready | catch | ready | would | would | catch |
 | say what a chart, your screen or a photo shows, with a model on this laptop | built, never run for real | `picture_talk` | ready | ready | ready | catch | would | catch |
 | follow your hand and move things with it | built, never run for real | `handloop` `handtrack` `handshape` `frames` | ready | catch | ready | would | would | catch |
 | copy the text off the window in front, read on this machine by Windows' own recognizer, and warn you if it holds something secret | built, never run for real | `screentext` | ready | catch | catch | **no** | catch | **no** |

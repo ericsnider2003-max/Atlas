@@ -160,6 +160,14 @@ pub struct Hearing {
     /// 2026): kept to while it is plugged in, whatever the scores say.
     #[serde(default)]
     pub chosen: Option<String>,
+    /// How far your voice stands above the room on each microphone, in dB,
+    /// from what you actually said on it (`leveller`, 30 Sep 2026). What a
+    /// microphone is judged by when it's known: `measured_db` is a second of
+    /// an empty room, and ranking by it put the noisiest microphone first
+    /// and a webcam mic set low -- which heard Eric 25 dB over its room --
+    /// last, as "silent".
+    #[serde(default)]
+    pub snr: Vec<(String, f32)>,
 }
 
 impl Hearing {
@@ -171,6 +179,48 @@ impl Hearing {
 
     pub fn save_to(&self, store: &crate::store::Store) -> crate::error::Result<()> {
         store.save("hearing", self)
+    }
+
+    /// Take in what the leveller has heard of your voice on each microphone.
+    pub fn learn_levels(&mut self, lev: &crate::leveller::Leveller) {
+        for c in &self.candidates {
+            if let Some(db) = lev.snr_db(&c.name) {
+                self.snr.retain(|(n, _)| *n != c.name);
+                self.snr.push((c.name.clone(), db));
+            }
+        }
+    }
+
+    /// Your voice over the room on `name`, when it's been heard.
+    pub fn snr_of(&self, name: &str) -> Option<f32> {
+        self.snr.iter().find(|(n, _)| n == name).map(|(_, db)| *db)
+    }
+
+    /// Does this microphone hear you? By your voice over its room when that
+    /// is known; by a second of the room otherwise.
+    fn hears(&self, c: &Candidate, cfg: &HearingConfig) -> bool {
+        match self.snr_of(&c.name) {
+            Some(snr) => snr >= crate::leveller::MIN_SNR_DB,
+            None => c.hears_you(cfg.floor_db),
+        }
+    }
+
+    /// How much to trust it: your voice over its room (0 dB .. 30 dB onto
+    /// 0..1) when known, with its record of turns understood.
+    fn rank(&self, c: &Candidate, cfg: &HearingConfig) -> f32 {
+        match self.snr_of(&c.name) {
+            Some(snr) => {
+                let attempts = c.good_turns + c.bad_turns;
+                let reliability = if attempts == 0 { 0.5 } else { c.good_turns as f32 / attempts as f32 };
+                (snr / 30.0).clamp(0.0, 1.0) * 0.6 + reliability * 0.4
+            }
+            None => c.score(cfg.floor_db),
+        }
+    }
+
+    /// Known to hear you, whatever a second of the room read.
+    fn heard_you_on(&self, name: &str) -> bool {
+        self.snr_of(name).is_some_and(|snr| snr >= crate::leveller::MIN_SNR_DB)
     }
 
     /// Keep to this microphone from now on (`pick_microphone`).
@@ -224,10 +274,8 @@ impl Hearing {
     fn best_desk(&self, cfg: &HearingConfig) -> Option<&Candidate> {
         self.candidates
             .iter()
-            .filter(|c| !c.bluetooth && c.hears_you(cfg.floor_db))
-            .max_by(|a, b| {
-                a.score(cfg.floor_db).partial_cmp(&b.score(cfg.floor_db)).unwrap_or(std::cmp::Ordering::Equal)
-            })
+            .filter(|c| !c.bluetooth && self.hears(c, cfg))
+            .max_by(|a, b| self.rank(a, cfg).partial_cmp(&self.rank(b, cfg)).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// The loudest desk microphone that gives any real sound at all, when
@@ -238,7 +286,7 @@ impl Hearing {
         let level = |c: &Candidate| c.measured_db.unwrap_or(SILENCE_DB + 1.0);
         self.candidates
             .iter()
-            .filter(|c| !c.bluetooth && c.measured_db.is_none_or(|db| db > SILENCE_DB))
+            .filter(|c| !c.bluetooth && (c.measured_db.is_none_or(|db| db > SILENCE_DB) || self.heard_you_on(&c.name)))
             .max_by(|a, b| level(a).partial_cmp(&level(b)).unwrap_or(std::cmp::Ordering::Equal))
     }
 
@@ -247,7 +295,7 @@ impl Hearing {
     /// counts as able.
     fn can_hear_through(&self, name: &str) -> bool {
         match self.candidates.iter().find(|c| c.name == name) {
-            Some(c) => c.measured_db.is_none_or(|db| db > SILENCE_DB),
+            Some(c) => c.measured_db.is_none_or(|db| db > SILENCE_DB) || self.heard_you_on(name),
             None => true,
         }
     }
@@ -402,7 +450,7 @@ impl Hearing {
                 self.candidates
                     .iter()
                     .find(|c| c.name == *name)
-                    .map(|c| c.score(cfg.floor_db))
+                    .map(|c| self.rank(c, cfg))
                     .unwrap_or(0.0)
             };
             if score_of(new) - score_of(cur) < cfg.switch_margin {
@@ -446,7 +494,7 @@ impl Hearing {
     pub fn deaf_devices(&self, cfg: &HearingConfig) -> Vec<&Candidate> {
         self.candidates
             .iter()
-            .filter(|c| c.measured_db.is_some() && !c.hears_you(cfg.floor_db))
+            .filter(|c| c.measured_db.is_some() && !self.hears(c, cfg))
             .collect()
     }
 }

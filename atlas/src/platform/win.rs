@@ -288,6 +288,25 @@ impl Platform for WindowsPlatform {
         send_groups(&[inputs])
     }
 
+    /// The backspaces as one `SendInput` burst -- Windows never puts your own
+    /// keys in the middle of one call, and a run of the same key can't come
+    /// out garbled the way a burst of different characters does in Notepad
+    /// (`send_groups_now`) -- then the text, typed as usual (30 Sep 2026,
+    /// `astype`: a backspace at a time, 25 ms apart, left room for your next
+    /// key to land in the middle of Atlas's fix).
+    fn replace_typed(&self, delete: usize, text: &str) -> Result<()> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::*;
+        if delete > 0 {
+            let key = |up: bool| INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_BACK, wScan: 0, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, time: 0, dwExtraInfo: 0 } },
+            };
+            let burst: Vec<INPUT> = (0..delete).flat_map(|_| [key(false), key(true)]).collect();
+            send_groups(&[burst])?;
+        }
+        self.type_text(text)
+    }
+
     /// A window's accessibility tree, through UI Automation: what a screen
     /// reader hears. Capped in depth and size so a huge page can't stall
     /// Atlas.

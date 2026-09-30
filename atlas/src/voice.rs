@@ -619,20 +619,25 @@ impl<'a> Voice<'a> {
     }
 
     /// Speech-to-text for the clip at `{in_wav}`, only when someone is
-    /// speaking in it (`audio::check_speech`): silence is "" without asking
-    /// whisper, quiet speech is turned up first, and what whisper writes for
+    /// speaking in it (`audio::check_speech`, by way of `leveller::prepare`):
+    /// silence is "" without asking whisper, speech is levelled to where
+    /// whisper hears it best, and what whisper writes for
     /// a quiet room ("you", "Thanks for watching") is dropped
     /// (`not_really_said`). 29 Sep 2026.
     fn transcribe_heard(&self, vars: &Vars) -> Result<String> {
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         if let Ok(bytes) = std::fs::read(&in_wav) {
             if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
-                match crate::audio::check_speech(&samples, rate) {
-                    crate::audio::SpeechCheck::Silence => return Ok(String::new()),
-                    crate::audio::SpeechCheck::Quiet(gain) => {
-                        let _ = std::fs::write(&in_wav, crate::audio::wav_bytes(&crate::audio::turned_up(&samples, gain), rate));
+                // Judged against the room and levelled by your usual voice on
+                // this microphone (`leveller`, 30 Sep 2026: "I have to yell").
+                let mic = microphone_now(self.cfg).0;
+                match crate::leveller::prepare(&samples, rate, &mic) {
+                    None => return Ok(String::new()),
+                    Some(ready) => {
+                        if ready != samples {
+                            let _ = std::fs::write(&in_wav, crate::audio::wav_bytes(&ready, rate));
+                        }
                     }
-                    crate::audio::SpeechCheck::Speech => {}
                 }
             }
         }

@@ -159,6 +159,8 @@ impl<'a> Daemon<'a> {
         };
         let store = crate::roots::store();
         let mut hearing = crate::hearing::Hearing::load_from(&store);
+        hearing.observe_devices(devices);
+        hearing.learn_levels(&crate::leveller::remembered());
         let laptop_active = self.plat.built_in_screen_on().unwrap_or(true);
         let Some(p) = crate::hearing::pick_microphone(devices, &mut hearing, &tc, &w, laptop_active, t) else { return };
         let _ = hearing.save_to(&store);

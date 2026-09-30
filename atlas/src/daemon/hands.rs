@@ -312,7 +312,7 @@ impl<'a> Daemon<'a> {
     /// picture arrives in the form the models want.
     ///
     /// The camera is closed on the way out of this function, every time.
-    fn one_frame(&mut self) -> std::result::Result<(Vec<u8>, usize, usize), String> {
+    pub(super) fn one_frame(&mut self) -> std::result::Result<(Vec<u8>, usize, usize), String> {
         let tools = self.tools_cfg();
         let capture = tools
             .capture_webcam
@@ -360,7 +360,7 @@ impl<'a> Daemon<'a> {
     }
 
     /// Open the seeing models, if they are not open already.
-    fn start_looking(&mut self) -> &mut crate::vision::Looking {
+    pub(super) fn start_looking(&mut self) -> &mut crate::vision::Looking {
         if self.looking.is_none() {
             let models = std::path::Path::new(&self.tools_cfg().models.dir).to_path_buf();
             self.looking = Some(crate::vision::Looking::open(&models));
@@ -486,7 +486,11 @@ impl<'a> Daemon<'a> {
             }
             return format!("I can't read it right now: {why}");
         }
-        let question = crate::picture_talk::question_for(&self.last_said);
+        // The camera is asked about you, not about a screen (30 Sep 2026).
+        let question = match what {
+            Capture::Camera => crate::camera_ask::question(&self.last_said),
+            Capture::Screen => crate::picture_talk::question_for(&self.last_said),
+        };
         let shot_again = shot.clone();
         // The model takes a while on a laptop, so it's a crew errand: Atlas
         // keeps listening, "stop" reaches it, and the answer is said when
@@ -510,6 +514,10 @@ impl<'a> Daemon<'a> {
             serde_json::to_string(&o).map_err(|e| e.to_string())
         });
         if self.hand_off("pictures", t, work, Some(word.to_string()), SpeakPolicy::Always) {
+            if matches!(what, Capture::Camera) {
+                // Said as it happens: the camera is never on unannounced.
+                return format!("{} — I'll tell you what I see in a moment.", crate::camera_ask::LOOKING);
+            }
             format!("Looking at {label} — I'll tell you in a moment.")
         } else {
             self.helpers.finished(name);
@@ -982,6 +990,13 @@ impl<'a> Daemon<'a> {
     /// "What do you see?"
     pub(super) fn whats_there(&mut self) -> String {
         let cfg = self.tools_cfg().vision.clone();
+        // You asked. The "Recognising things" switch is for looking on
+        // Atlas's own initiative; asked, it looks the way "can you see me"
+        // does -- asked once, said, frame deleted (30 Sep 2026: it answered
+        // "seeing is switched off").
+        if !cfg.enabled {
+            return self.look_at_you();
+        }
         let sight = self.see();
         if let Some(scene) = sight.scene() {
             // A look that half-worked says which half. Reporting only what was
@@ -1002,10 +1017,10 @@ impl<'a> Daemon<'a> {
     /// and had no idea which of it was meant.
     pub(super) fn whats_this(&mut self) -> String {
         let cfg = self.tools_cfg().vision.clone();
+        // Asked, so looked -- through the camera path (`look_at_you`), not
+        // refused over a switch meant for looking unasked (30 Sep 2026).
         if !cfg.enabled {
-            return "Seeing is switched off — turn on Recognising things in settings and \
-                    I'll pick this up."
-                .into();
+            return self.look_at_you();
         }
         let (frame, w, h) = match self.one_frame() {
             Ok(f) => f,

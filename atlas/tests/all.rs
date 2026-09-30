@@ -884,3 +884,7 @@ mod the_right_tools_for_the_sentence;
 mod finishing_what_it_starts;
 #[path = "a_real_model_answers_him.rs"]
 mod a_real_model_answers_him;
+#[path = "a_normal_voice_is_heard.rs"]
+mod a_normal_voice_is_heard;
+#[path = "atlas_looks_when_you_ask.rs"]
+mod atlas_looks_when_you_ask;
