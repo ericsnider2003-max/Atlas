@@ -1581,10 +1581,14 @@ impl<'a> Daemon<'a> {
         // Answering, reading and conversation are exempt: "what did I do
         // tonight" is a question, not an instruction to wait, and parking it
         // would make Atlas mute on the word.
+        // Nor a question about the night: "what did you do overnight" was
+        // parked until you were out of the way (the capability sweep, 30 Sep
+        // 2026).
         if !matches!(
             intent,
-            Intent::Unknown(_) | Intent::Ask(_) | Intent::Say(_) | Intent::Why(_)
-        ) {
+            Intent::Unknown(_) | Intent::Ask(_) | Intent::Say(_) | Intent::Why(_) | Intent::Overnight | Intent::Recap
+        ) && !asks_about_what_happened(said)
+        {
             if let Some(blocker) = crate::backlog::asked_to_wait(said) {
                 let id = self.backlog.record(said, blocker, _t);
                 let _ = self.backlog.save(&self.store);
@@ -1741,8 +1745,20 @@ impl<'a> Daemon<'a> {
                         s if s.trim().is_empty() => format!("Just to check -- {}.", intent.plain()),
                         s => s,
                     };
-                    let q = match cat {
-                        crate::categories::Category::LocalOperational | crate::categories::Category::LocalCreative => {
+                    // A message goes out as you, and pairing links two Atlases:
+                    // neither signs you up to anyone's terms, which is what the
+                    // agreement line said for both (the capability sweep, 30
+                    // Sep 2026). And one that names nothing asks what first.
+                    let q = match (&intent, cat) {
+                        (Intent::CreateAccount(w) | Intent::SignIn(w), _) if w.trim().is_empty() => {
+                            return "Which site?".into();
+                        }
+                        (Intent::Message(_), _) => format!("{} -- it goes out as you. Go ahead?", capital_first(&say.trim_end_matches('.').replace("Just to check -- ", ""))),
+                        (Intent::Pair(_) | Intent::AcceptPairing(_), _) => format!(
+                            "{} -- that Atlas and this one could then reach each other. Go ahead?",
+                            capital_first(&say.trim_end_matches('.').replace("Just to check -- ", ""))
+                        ),
+                        (_, crate::categories::Category::LocalOperational | crate::categories::Category::LocalCreative) => {
                             format!("{say} Go ahead?")
                         }
                         _ => crate::categories::consent_line(cat, say.trim_end_matches('.')),
@@ -2127,7 +2143,7 @@ impl<'a> Daemon<'a> {
         // counting: before that it's empty and `from_unused` says nothing
         // (29 Sep: every working ability was listed as never called, with a
         // "Have a go" that could never be done).
-        let never_used = self.used.never_used(crate::store::now());
+        let never_used = self.used.unasked(crate::store::now());
         let total = crate::capability::all().len() as u32;
         self.signals = crate::signals::gather(
             &self.history,
@@ -2669,4 +2685,23 @@ impl<'a> Daemon<'a> {
         }
         answer
     }
+}
+
+/// The first letter a capital.
+fn capital_first(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+/// "What did you do overnight?", "how was tonight's backup?": asking about
+/// something, not asking for it later. "Can you back up tonight?" is a
+/// request, and still waits.
+fn asks_about_what_happened(said: &str) -> bool {
+    const ASKING: &[&str] = &["what", "what's", "whats", "who", "why", "how", "where", "which", "did", "was", "were", "is", "are", "has", "have"];
+    let first = said.split_whitespace().next().unwrap_or("").to_lowercase();
+    let first = first.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
+    ASKING.contains(&first)
 }

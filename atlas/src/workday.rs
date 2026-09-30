@@ -494,6 +494,13 @@ impl Daemon<'_> {
                 None => "I don't have a closure in the next year on file.".into(),
             };
         }
+        // "Is the market open?" answered first, then the day's calendar
+        // (the capability sweep, 30 Sep 2026: it gave only tomorrow's data).
+        if low.contains("open") || low.contains("closed") {
+            let now = crate::marketdays::open_now(t as i64);
+            let lines = crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone());
+            return if lines.is_empty() { now } else { format!("{now} {}", lines.join(" ")) };
+        }
         let lines = crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone());
         if lines.is_empty() {
             "Nothing on the market's calendar today or tomorrow: ordinary sessions.".into()

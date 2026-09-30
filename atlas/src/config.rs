@@ -284,7 +284,7 @@ fn load_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
         let msg = source.to_string();
         if msg.contains("hexadecimal") || msg.contains("unknown escape") {
             return AtlasError::Config(format!(
-                "{}: a Windows path in quotes needs forward slashes.                  Write \"C:/Users/you/Documents\", not \"C:\\Users\\you\\Documents\". ({msg})",
+                "{}: a Windows path in quotes needs forward slashes. Write \"C:/Users/you/Documents\", not \"C:\\Users\\you\\Documents\". ({msg})",
                 path.display()
             ));
         }

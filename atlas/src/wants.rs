@@ -289,7 +289,9 @@ pub fn recommend(obs: &Observations, m: &Machine) -> Vec<Recommendation> {
         out.push(Recommendation {
             id: format!("install-{t}"),
             want: format!("{t} installed"),
-            because: format!("{t} is named in my config but isn't there"),
+            // Led by words, not a file name: capitalised, a file name reads
+            // as "Hand_presence.onnx" (the capability sweep, 30 Sep 2026).
+            because: format!("the file {t} is named in my config but isn't there"),
             benefit: "everything depending on it is unavailable until then".into(),
             cost: Cost::Free,
             possible_here: true,

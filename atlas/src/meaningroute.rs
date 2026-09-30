@@ -199,12 +199,3 @@ impl crate::backed::MeaningCheck for Checks {
         }
     }
 }
-
-/// The reply check's likeness, for calibrating: `(best claim, best denial)`.
-pub fn likeness(route: &Route, sentence: &str) -> Option<(f32, f32)> {
-    let v = route.text(sentence)?;
-    let ex: Vec<Vec<f32>> = crate::backed::CLAIM_EXAMPLES.iter().filter_map(|x| route.text(x)).collect();
-    let dx: Vec<Vec<f32>> = crate::backed::DENIAL_EXAMPLES.iter().filter_map(|(x, _)| route.text(x)).collect();
-    let best = |all: &[Vec<f32>]| all.iter().map(|c| crate::router::cosine(&v, c)).fold(0.0f32, f32::max);
-    Some((best(&ex), best(&dx)))
-}

@@ -168,7 +168,7 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 label: format!("app '{name}'"),
                 ok: false,
                 detail: format!(
-                    "not at {configured}, and nothing matching '{name}' under {} search roots.                      If it's on your taskbar: right-click the icon, right-click its name,                      Properties, and send me the Target field.",
+                    "not at {configured}, and nothing matching '{name}' under {} search roots. If it's on your taskbar: right-click the icon, right-click its name, Properties, and send me the Target field.",
                     roots.len()
                 ),
             }),

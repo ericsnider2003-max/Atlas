@@ -188,7 +188,7 @@ impl Used {
 
     /// Abilities that are working, can be asked for, and haven't been in
     /// all the time counted. Empty until `JUDGED_AFTER_DAYS` have passed.
-    pub fn never_used(&self, t: u64) -> Vec<String> {
+    pub fn unasked(&self, t: u64) -> Vec<String> {
         if self.since == 0 || t.saturating_sub(self.since) < JUDGED_AFTER_DAYS * 86_400 {
             return Vec::new();
         }
@@ -223,7 +223,7 @@ mod tests {
     fn nothing_is_unused_on_the_first_morning() {
         let mut u = Used::default();
         u.record("agenda", 1_000);
-        assert!(u.never_used(1_000 + 86_400).is_empty());
+        assert!(u.unasked(1_000 + 86_400).is_empty());
     }
 
     #[test]

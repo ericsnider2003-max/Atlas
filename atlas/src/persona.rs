@@ -352,6 +352,12 @@ impl Persona {
         if said.len() > 48 || said.contains('\n') {
             return said.to_string();
         }
+        // Nor a question, a "no", or an error: "Shutting down. Go ahead?
+        // now." and "Wasn't paused now." came out of the capability sweep
+        // (30 Sep 2026). "Now" and "for you" dress a thing done.
+        if !done_something(said) {
+            return said.to_string();
+        }
 
         let body = said.trim_end_matches(['.', '!']);
         let dressed = match self.tone {
@@ -508,11 +514,29 @@ pub fn trim_to_sentences(text: &str, max: usize) -> String {
     if max == 0 {
         return text.to_string();
     }
+    // A sentence ends at a stop followed by a space or the end (or a closing
+    // quote or bracket, then those): "trip.mp4", "3.5 GB" and "e.g." inside
+    // a sentence aren't ends (the capability sweep, 30 Sep 2026: a reply
+    // naming "C:\clips\trip.mp4" was cut off at "trip.").
+    let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
     let mut n = 0;
-    for c in text.chars() {
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
         out.push(c);
+        i += 1;
         if matches!(c, '.' | '!' | '?') {
+            let mut j = i;
+            while j < chars.len() && matches!(chars[j], '"' | '\u{201d}' | '\'' | '\u{2019}' | ')' | ']') {
+                j += 1;
+            }
+            if j < chars.len() && !chars[j].is_whitespace() {
+                continue;
+            }
+            // The closing quote or bracket belongs to the sentence.
+            out.extend(&chars[i..j]);
+            i = j;
             n += 1;
             if n >= max {
                 break;
@@ -603,4 +627,15 @@ pub fn asks_for_more(said: &str) -> bool {
         "summarise", "summarize", "go on", "keep going", "keep talking", "long",
     ];
     MORE.iter().any(|m| t.contains(&format!(" {m} ")))
+}
+
+/// Does this short reply say something was done, rather than ask, refuse
+/// or report there was nothing to do?
+fn done_something(said: &str) -> bool {
+    let l = said.to_lowercase();
+    if said.contains('?') || said.contains(':') {
+        return false;
+    }
+    let no = ["n't", "nothing", "no ", "not ", "never", "none", "cannot", "unable", "sorry"];
+    !no.iter().any(|w| l.contains(w)) && !l.starts_with("no")
 }

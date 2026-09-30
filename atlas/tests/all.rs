@@ -902,3 +902,5 @@ mod what_gets_used_is_counted;
 mod talking_does_not_hold_the_loop;
 #[path = "a_quiet_tick_is_quick.rs"]
 mod a_quiet_tick_is_quick;
+#[path = "every_ability_answers.rs"]
+mod every_ability_answers;

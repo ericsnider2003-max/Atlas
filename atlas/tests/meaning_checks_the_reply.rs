@@ -10,6 +10,15 @@
 
 use atlas::backed::{self, Meant};
 
+/// `(best claim, best denial)` likeness of a sentence to the examples.
+fn likeness(route: &atlas::meaningroute::Route, sentence: &str) -> Option<(f32, f32)> {
+    let v = route.text(sentence)?;
+    let ex: Vec<Vec<f32>> = backed::CLAIM_EXAMPLES.iter().filter_map(|x| route.text(x)).collect();
+    let dx: Vec<Vec<f32>> = backed::DENIAL_EXAMPLES.iter().filter_map(|(x, _)| route.text(x)).collect();
+    let best = |all: &[Vec<f32>]| all.iter().map(|c| atlas::router::cosine(&v, c)).fold(0.0f32, f32::max);
+    Some((best(&ex), best(&dx)))
+}
+
 #[test]
 fn nothing_is_held_with_no_encoder() {
     // No encoder in this process unless the real one was started.
@@ -70,19 +79,19 @@ fn with_the_real_encoder() {
     let route = atlas::meaningroute::Route::start(&cfg, &atlas::tools::Vars::new(), None, vec!["x".into()]).unwrap();
     let mut bad = Vec::new();
     for s in CLAIMS {
-        let (c, d) = atlas::meaningroute::likeness(&route, s).unwrap();
+        let (c, d) = likeness(&route, s).unwrap();
         eprintln!("claim  {c:.3} {d:.3}  {s}");
         let _ = (c, d); // measured only: see `backed::CLAIM_EXAMPLES`
     }
     for s in DENIALS {
-        let (c, d) = atlas::meaningroute::likeness(&route, s).unwrap();
+        let (c, d) = likeness(&route, s).unwrap();
         eprintln!("denial {c:.3} {d:.3}  {s}");
         if d < backed::DENIAL_LIKE {
             bad.push(format!("missed denial: {s}"));
         }
     }
     for s in FINE {
-        let (c, d) = atlas::meaningroute::likeness(&route, s).unwrap();
+        let (c, d) = likeness(&route, s).unwrap();
         eprintln!("fine   {c:.3} {d:.3}  {s}");
         let _ = c;
         if d >= backed::DENIAL_LIKE {

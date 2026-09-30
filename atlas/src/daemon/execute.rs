@@ -784,7 +784,16 @@ impl<'a> Daemon<'a> {
                         .unwrap_or(d.original);
                     format!("Put {name} back.")
                 }
-                    Err(e) => format!("{e}"),
+                    // The reason in words, not "platform: there's nothing
+                    // to undo" (the capability sweep, 30 Sep 2026).
+                    Err(crate::error::AtlasError::Platform(why)) => {
+                        let mut c = why.chars();
+                        match c.next() {
+                            Some(f) => format!("{}{}.", f.to_uppercase(), c.as_str().trim_end_matches('.')),
+                            None => "There's nothing to undo.".into(),
+                        }
+                    }
+                    Err(e) => format!("I couldn't undo that: {e}."),
                 },
                 other => crate::undo::say(&other),
                 }
@@ -1024,7 +1033,10 @@ impl<'a> Daemon<'a> {
                 } else if w.contains("setting") || w.contains("hub") || w.contains("control") {
                     crate::panel::Panel::Controls
                 } else {
-                    return format!("I don't have a {w} to show you.");
+                    // "I don't have a the budget" (the capability sweep): the
+                    // thing named as it was said, and what can be shown.
+                    let w = w.trim_start_matches("the ").trim_start_matches("my ").trim_start_matches("a ");
+                    return format!("I don't have {w} to put up -- I can show what's outstanding, what I'm working on, or the settings.");
                 };
                 let monitors = self.plat.monitors().unwrap_or_default();
                 match crate::panel::place(panel, &monitors, &self.panel_cfg()) {
@@ -1078,9 +1090,12 @@ impl<'a> Daemon<'a> {
                 }
             }
             Intent::Dismiss => {
+                // Taken away without a word -- unless there was nothing up,
+                // when silence reads as not having heard (the sweep).
+                let was_up = self.wants_panel.is_some() || self.pending_panel.is_some();
                 self.wants_panel = None;
                 self.pending_panel = None;
-                String::new()
+                if was_up { String::new() } else { "There's nothing up to put away.".into() }
             }
             // What works on whatever this is running on. Asked before
             // handing it to someone, and the honest answer differs enough by
@@ -1632,6 +1647,11 @@ impl<'a> Daemon<'a> {
 
             // Opening the vault. Nothing that needs a secret works until this
             // has happened, and it re-locks itself.
+            // Asked with nothing after it: how to, not "that's short enough to
+            // be guessable" about an empty passphrase (the capability sweep).
+            Intent::Unlock(phrase) if phrase.trim().is_empty() => {
+                "Say \u{201c}unlock\u{201d} and your passphrase -- or open it on the Accounts page, where nothing is said out loud.".into()
+            }
             Intent::Unlock(phrase) => {
                 let now = clock();
                 match self.vault.open(phrase, now, &self.tools_cfg().vault) {
@@ -1656,7 +1676,13 @@ impl<'a> Daemon<'a> {
                             format!("Open.{sign_in}")
                         }
                     }
-                    Err(why) => why,
+                    Err(why) => {
+                        let mut c = why.chars();
+                        match c.next() {
+                            Some(f) => format!("{}{}.", f.to_uppercase(), c.as_str().trim_end_matches('.')),
+                            None => why,
+                        }
+                    }
                 }
             }
 

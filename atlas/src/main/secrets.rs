@@ -184,12 +184,12 @@ pub(super) fn run_vault(args: &[String]) {
                 // ago and never made a recovery key.
                 if vault.has_a_recovery_key() {
                     println!(
-                        "There's a recovery key for it — the one you wrote down.                          `atlas vault recovery` makes a new one and retires that one."
+                        "There's a recovery key for it — the one you wrote down. `atlas vault recovery` makes a new one and retires that one."
                     );
                 } else {
                     println!();
                     println!(
-                        "There is NO recovery key. If the passphrase goes, so does                          everything in here — and a handover could never be taken back."
+                        "There is NO recovery key. If the passphrase goes, so does everything in here — and a handover could never be taken back."
                     );
                     println!("  `atlas vault recovery` makes one. It takes ten seconds.");
                     println!();
@@ -317,7 +317,7 @@ pub(super) fn run_vault(args: &[String]) {
         Some("recovery") | Some("recovery-key") | Some("newkey") => {
             if !vault.has_a_passphrase() {
                 println!(
-                    "There's no passphrase on this vault yet, so there's nothing to                      make a second way into. `atlas vault passphrase` first."
+                    "There's no passphrase on this vault yet, so there's nothing to make a second way into. `atlas vault passphrase` first."
                 );
                 return;
             }
@@ -347,10 +347,10 @@ pub(super) fn run_vault(args: &[String]) {
         Some("recover") | Some("forgot") | Some("use-recovery") => {
             if !vault.has_a_recovery_key() {
                 println!(
-                    "There's no recovery key on this vault. One is made when you set                      the passphrase, or with `atlas vault recovery`."
+                    "There's no recovery key on this vault. One is made when you set the passphrase, or with `atlas vault recovery`."
                 );
                 println!(
-                    "Without one and without the passphrase, what's in the vault cannot                      be recovered -- not by me and not by anyone. That is what the                      encryption is."
+                    "Without one and without the passphrase, what's in the vault cannot be recovered -- not by me and not by anyone. That is what the encryption is."
                 );
                 return;
             }
@@ -380,7 +380,7 @@ pub(super) fn run_vault(args: &[String]) {
             println!("Set a new passphrase now. The old one is gone either way.");
             let Some(new) = ask_quietly("New passphrase: ") else {
                 println!(
-                    "Nothing typed. The vault is shut again and the recovery key still                      works -- but the passphrase is still gone, so do this again when                      you can."
+                    "Nothing typed. The vault is shut again and the recovery key still works -- but the passphrase is still gone, so do this again when you can."
                 );
                 vault.lock();
                 return;
@@ -401,7 +401,7 @@ pub(super) fn run_vault(args: &[String]) {
                         println!("Set. Everything in the vault is still there.");
                         println!();
                         println!(
-                            "That recovery key still works. `atlas vault recovery`                              replaces it with a new one if you would rather the used                              one stopped working."
+                            "That recovery key still works. `atlas vault recovery` replaces it with a new one if you would rather the used one stopped working."
                         );
                     }
                 }

@@ -1091,7 +1091,14 @@ impl<'a> Daemon<'a> {
             return Some(reply);
         }
         let may_ask = self.tools_ref().map(|t| t.wanted.ask_when_unclear).unwrap_or(true);
-        if reading.wanted == crate::wanted::Wanted::Unclear && may_ask {
+        // Not for a command Atlas couldn't carry out: "close the quarterly
+        // budget" starts the way a command does, and isn't something to think
+        // through together or be listened to about (the capability sweep, 30
+        // Sep 2026: every short unknown command got this question when the
+        // model was down).
+        let a_command = self.router.shortlist(raw, 1).first().map(|(_, s)| *s == f64::MAX).unwrap_or(false);
+        let about_you = !a_command;
+        if reading.wanted == crate::wanted::Wanted::Unclear && may_ask && about_you {
             self.pending_wanted = Some(raw.to_string());
             let q = crate::wanted::ask_which().to_string();
             self.session.ask(&q);
@@ -1640,7 +1647,7 @@ impl<'a> Daemon<'a> {
 
     /// Can this Atlas understand meaning: the model inside Atlas, or a
     /// configured encoder program?
-    pub(crate) fn understanding_here(&self) -> bool {
+    fn understanding_here(&self) -> bool {
         let root = self.store.install_root();
         crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &root))
             || crate::meaning::available(&self.meaning_cfg(), &self.tool_vars())
@@ -1649,7 +1656,7 @@ impl<'a> Daemon<'a> {
     /// Fetch the meaning model and its word list on the crew (`atlas get
     /// understanding` from a button). The tick starts the encoder once
     /// they're here.
-    pub(crate) fn get_understanding(&mut self) -> String {
+    fn get_understanding(&mut self) -> String {
         if self.handover().stance.handed_over() {
             return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
         }

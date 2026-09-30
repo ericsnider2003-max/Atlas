@@ -1218,7 +1218,7 @@ impl<'a> Daemon<'a> {
     pub(super) fn tidy_desktop(&mut self) -> String {
         let sys = self.tools_cfg().system.clone();
         if !sys.enabled {
-            return "Moving your files is switched off -- turn on System changes in Settings and ask me again.                     I'd only move loose files into folders, never delete anything."
+            return "Moving your files is switched off -- turn on System changes in Settings and ask me again. I'd only move loose files into folders, never delete anything."
                 .into();
         }
         let Some(home) = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")) else {

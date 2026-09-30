@@ -21,9 +21,9 @@ fn every_request_kind_in_the_table_is_a_real_one() {
 fn a_fresh_count_calls_nothing_unused() {
     let mut u = atlas::used::Used::default();
     u.record("agenda", 1_000);
-    assert!(u.never_used(1_000).is_empty());
+    assert!(u.unasked(1_000).is_empty());
     let later = 1_000 + atlas::used::JUDGED_AFTER_DAYS * 86_400 + 1;
-    let unused = u.never_used(later);
+    let unused = u.unasked(later);
     assert!(!unused.contains(&"calendar".to_string()));
     // Only abilities there's a way to ask for are ever named.
     for a in &unused {

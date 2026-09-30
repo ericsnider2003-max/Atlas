@@ -3029,7 +3029,7 @@ impl Daemon<'_> {
         };
         // Abilities never asked for: "have a go" is how to ask, not code work.
         if r.where_ == crate::signals::UNUSED && !drop {
-            return self.how_to_ask_for(&self.used.never_used(crate::store::now()));
+            return self.how_to_ask_for(&self.used.unasked(crate::store::now()));
         }
         if drop {
             let mut dropped: Vec<String> = self.store.load(RECS_DROPPED);

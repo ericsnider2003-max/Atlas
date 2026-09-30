@@ -129,6 +129,50 @@ pub fn day(y: i32, m: u32, d: u32) -> Day {
     Day::Open
 }
 
+/// Is the New York stock market open at `now`, in a sentence: open until
+/// when, or closed and why, and when it opens next. Regular hours, 9:30 am
+/// to 4:00 pm New York (1:00 pm on an early-close day).
+pub fn open_now(now: i64) -> String {
+    let zone = ny();
+    let local = now + zone.offset_at(now);
+    let (y, m, d) = crate::hubpages::ymd(local.div_euclid(86_400));
+    let mins = (local.rem_euclid(86_400) / 60) as u32;
+    let (open, close) = (9 * 60 + 30, 16 * 60);
+    let today = day(y as i32, m, d);
+    let close_today = match today {
+        Day::EarlyClose(_) => 13 * 60,
+        _ => close,
+    };
+    let at = |mm: u32| {
+        let (h, mi) = (mm / 60, mm % 60);
+        let (h12, ap) = if h >= 12 { (if h > 12 { h - 12 } else { h }, "pm") } else { (h, "am") };
+        if mi == 0 { format!("{h12} {ap}") } else { format!("{h12}:{mi:02} {ap}") }
+    };
+    match today {
+        Day::Open | Day::EarlyClose(_) if mins >= open && mins < close_today => {
+            format!("Yes -- US markets are open until {} New York time.", at(close_today))
+        }
+        Day::Open | Day::EarlyClose(_) if mins < open => format!("Not yet -- US markets open at 9:30 am New York time, in {} minutes.", open - mins),
+        _ => {
+            let why = match today {
+                Day::Weekend => "it's the weekend".to_string(),
+                Day::Closed(name) => format!("they're closed for {name}"),
+                _ => "they've closed for the day".to_string(),
+            };
+            // The next open day.
+            let mut days = local.div_euclid(86_400);
+            let next = loop {
+                days += 1;
+                let (yy, mm, dd) = crate::hubpages::ymd(days);
+                if matches!(day(yy as i32, mm, dd), Day::Open | Day::EarlyClose(_)) {
+                    break (yy, mm, dd);
+                }
+            };
+            format!("No -- {why}. They open next on {}-{:02}-{:02} at 9:30 am New York time.", next.0, next.1, next.2)
+        }
+    }
+}
+
 /// CPI release dates, 8:30 am New York: hand-entered, with an expiry.
 const CPI: &[(i32, u32, u32)] = &[
     (2026, 1, 13), (2026, 2, 13), (2026, 3, 11), (2026, 4, 10), (2026, 5, 12), (2026, 6, 10),
@@ -266,5 +310,28 @@ mod tests {
     fn a_saturday_new_year_is_not_moved_back() {
         assert!(!holidays(2028).iter().any(|(_, n)| *n == "New Year's Day"));
         assert_eq!(day(2027, 12, 31), Day::Open);
+    }
+}
+
+#[cfg(test)]
+mod open_now_tests {
+    use super::*;
+
+    #[test]
+    fn open_closed_and_the_weekend() {
+        // Wed 30 Sep 2026, 14:00 UTC = 10:00 New York (EDT): open.
+        let wed_10am = days_from_civil(2026, 9, 30) * 86_400 + 14 * 3600;
+        assert!(open_now(wed_10am).starts_with("Yes"), "{}", open_now(wed_10am));
+        // 23:00 UTC = 7 pm New York: closed, opens Thursday.
+        let wed_7pm = days_from_civil(2026, 9, 30) * 86_400 + 23 * 3600;
+        let s = open_now(wed_7pm);
+        assert!(s.starts_with("No") && s.contains("2026-10-01"), "{s}");
+        // Saturday 3 Oct: the weekend, opens Monday 5 Oct.
+        let sat = days_from_civil(2026, 10, 3) * 86_400 + 15 * 3600;
+        let s = open_now(sat);
+        assert!(s.contains("weekend") && s.contains("2026-10-05"), "{s}");
+        // Before the bell.
+        let early = days_from_civil(2026, 9, 30) * 86_400 + 12 * 3600;
+        assert!(open_now(early).starts_with("Not yet"), "{}", open_now(early));
     }
 }

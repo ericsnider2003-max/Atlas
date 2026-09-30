@@ -83,13 +83,13 @@ pub fn bind_address(reachable_from: &str) -> std::result::Result<std::net::IpAdd
                 || o[0] == 127;
             if v4.is_unspecified() {
                 return Err(
-                    "0.0.0.0 means every network this machine is on, including whatever wifi                      you are on next week. Give the one address you reach it by."
+                    "0.0.0.0 means every network this machine is on, including whatever wifi you are on next week. Give the one address you reach it by."
                         .into(),
                 );
             }
             if !private {
                 return Err(format!(
-                    "`{want}` is a public address. This is a personal assistant with your                      notes in it; put it on your own network or a VPN and give me that                      address instead."
+                    "`{want}` is a public address. This is a personal assistant with your notes in it; put it on your own network or a VPN and give me that address instead."
                 ));
             }
             Ok(addr)
@@ -103,7 +103,7 @@ pub fn bind_address(reachable_from: &str) -> std::result::Result<std::net::IpAdd
             let private = (s & 0xfe00) == 0xfc00 || (s & 0xffc0) == 0xfe80 || v6.is_loopback();
             if !private {
                 return Err(format!(
-                    "`{want}` is a public address. Put it on your own network or a VPN and                      give me that address instead."
+                    "`{want}` is a public address. Put it on your own network or a VPN and give me that address instead."
                 ));
             }
             Ok(addr)
