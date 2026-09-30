@@ -304,6 +304,22 @@ impl Reply {
     fn too_big() -> Reply {
         Reply { status: 413, body: "{\"error\":\"body too large\"}".into(), ..Reply::default() }
     }
+    /// Too much sent from the phone or another program, said so a person can
+    /// act on it (30 Sep 2026: a file shared from the phone that was over the
+    /// limit came back as `body too large`, with no limit named).
+    fn too_big_for(cap: usize) -> Reply {
+        let mb = (cap as f64 / (1024.0 * 1024.0)).max(0.1);
+        Reply {
+            status: 413,
+            body: serde_json::json!({
+                "error": "body too large",
+                "message": format!("That's more than Atlas takes at once (the limit is {mb:.0} MB). Nothing was kept -- send something smaller."),
+                "limit_bytes": cap,
+            })
+            .to_string(),
+            ..Reply::default()
+        }
+    }
     /// Too much sent from a hub form, for a person: what happened and the way
     /// back to the page it came from (27 Sep 2026: a pasted page on Give got
     /// `{"error":"body too large"}` and nothing else).
@@ -1678,6 +1694,7 @@ impl Server {
         // it is a ceiling rather than a target — a browser on the same
         // machine finishes in single-digit milliseconds.
         const DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+        const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
         // The header block's ceiling, enforced DURING the read.
         //
         // The old code checked `head.len() > 8192` after `read_line`
@@ -1832,8 +1849,13 @@ impl Server {
         let len = content_length(&head);
         let cap = body_cap(&req, self.max_body, self.max_upload);
         if len > cap {
-            let too_big = if req.path.starts_with("/hub") { Reply::too_big_page(&req.path) } else { Reply::too_big() };
+            let too_big = if req.path.starts_with("/hub") { Reply::too_big_page(&req.path) } else { Reply::too_big_for(cap) };
             if req.path.starts_with("/hub") {
+                // 30 Sep 2026: the drain had the request's own five seconds,
+                // so a big file over Wi-Fi was still arriving when it stopped
+                // and the browser showed a reset instead of this page. The
+                // drain gets its own half-minute, still bounded.
+                let drain_until = std::time::Instant::now() + DRAIN_DEADLINE;
                 // Read what the browser is still sending before answering, up
                 // to the upload cap and the deadline: closing on unread bytes
                 // resets the connection, and the browser then shows its own
@@ -1841,7 +1863,7 @@ impl Server {
                 let mut left = len.min(self.max_upload) as u64;
                 let mut sink = [0u8; 16 * 1024];
                 reader.get_mut().allow_body(0);
-                while left > 0 && started.elapsed() < DEADLINE {
+                while left > 0 && std::time::Instant::now() < drain_until {
                     match reader.by_ref().take(left.min(sink.len() as u64)).read(&mut sink) {
                         Ok(0) | Err(_) => break,
                         Ok(n) => left -= n as u64,

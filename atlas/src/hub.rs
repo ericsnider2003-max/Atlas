@@ -1052,6 +1052,10 @@ pub fn manifest(token: &str) -> String {
 /// `tests/the_hub_works_offline.rs` holds them to.
 ///
 /// A fragment with no `</head>` is left alone.
+///
+/// 30 Sep 2026: it also keeps a slider's `<output>` saying the slider's value
+/// as it moves -- it showed the saved value, and dragging changed nothing on
+/// screen until Save.
 pub fn with_app_head(page: String, token: &str) -> String {
     let Some(at) = page.find("</head>") else { return page };
     let t = esc(token);
@@ -1064,7 +1068,10 @@ pub fn with_app_head(page: String, token: &str) -> String {
          <meta name=apple-mobile-web-app-title content=Atlas>\
          <link rel=apple-touch-icon href=\"/hub/apple-touch-icon.png\">\
          <script>if('serviceWorker' in navigator)\
-         navigator.serviceWorker.register('{SERVICE_WORKER_PATH}',{{scope:'/hub'}})</script>"
+         navigator.serviceWorker.register('{SERVICE_WORKER_PATH}',{{scope:'/hub'}});\
+         document.addEventListener('input',function(e){{var t=e.target;if(!t||t.type!=='range'||!t.id)return;\
+         var o=document.querySelector('output[for=\"'+t.id+'\"]');if(!o)return;\
+         o.textContent=(Number(t.step)<1?Number(t.value).toFixed(2):t.value)+(o.getAttribute('data-unit')||'')}})</script>"
     );
     format!("{}{tags}{}", &page[..at], &page[at..])
 }
@@ -1076,8 +1083,11 @@ pub fn with_app_head(page: String, token: &str) -> String {
 /// not cache workspace state", and a service worker's cache would ignore the
 /// pages' `no-store`. When the laptop can't be reached, it shows one sentence
 /// saying where Atlas is, which reloads itself every thirty seconds so the app
-/// comes back on its own. A form post is never touched.
-pub const SERVICE_WORKER: &str = r#"const OFFLINE="<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Atlas — can't reach Atlas</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#ffffff;color:#37352f;font:17px/1.5 system-ui,sans-serif}p{max-width:22em;padding:0 24px}button{font:inherit;padding:12px 20px;min-height:44px;border-radius:10px;border:0;background:#b26206;color:#fff}</style></head><body><main><p role=status>I can't reach Atlas from here right now. This page comes back by itself when it can.</p><p><button onclick='location.reload()'>Try again</button></p></main><script>addEventListener('online',function(){location.reload()})</script></body></html>";
+/// comes back on its own (30 Sep 2026: the thirty seconds were promised here
+/// and only the `online` event was listened for; and a laptop whose Atlas is
+/// down answers through Tailscale with a 502, which now counts as away too).
+/// A form post is never touched.
+pub const SERVICE_WORKER: &str = r#"const OFFLINE="<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Atlas — can't reach Atlas</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#ffffff;color:#37352f;font:17px/1.5 system-ui,sans-serif}p{max-width:22em;padding:0 24px}button{font:inherit;padding:12px 20px;min-height:44px;border-radius:10px;border:0;background:#b26206;color:#fff}</style></head><body><main><p role=status>I can't reach Atlas from here right now. This page comes back by itself when it can.</p><p><button onclick='location.reload()'>Try again</button></p></main><script>addEventListener('online',function(){location.reload()});setTimeout(function(){location.reload()},30000)</script></body></html>";
 function underHub(u){return u.origin===location.origin&&(u.pathname==='/hub'||u.pathname.startsWith('/hub/'));}
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
@@ -1085,7 +1095,8 @@ self.addEventListener('fetch',e=>{
   const r=e.request;
   if(r.method!=='GET'||r.mode!=='navigate')return;
   if(!underHub(new URL(r.url)))return;
-  e.respondWith(fetch(r).catch(()=>new Response(OFFLINE,{headers:{'Content-Type':'text/html; charset=utf-8'}})));
+  const off=()=>new Response(OFFLINE,{headers:{'Content-Type':'text/html; charset=utf-8'}});
+  e.respondWith(fetch(r).then(x=>(x.status>=502&&x.status<=504)?off():x).catch(off));
 });
 "#;
 
@@ -3625,6 +3636,11 @@ pub struct NowView {
     pub working: bool,
     /// Also running, in the background.
     pub background: Vec<String>,
+    /// Notes kept for you because they couldn't reach you when they came
+    /// (the notification outbox): their titles, oldest first. 30 Sep 2026:
+    /// they were only said when you came back, and nothing on the hub showed
+    /// they were waiting.
+    pub held: Vec<String>,
 }
 
 /// A number that changes when anything the Now page shows changes: what a
@@ -3668,6 +3684,19 @@ pub fn now_page(v: &NowView) -> String {
         String::new()
     } else {
         format!("<div class=box><div class=lab>Also running</div><p>{}</p></div>", esc(&v.background.join(" · ")))
+    };
+    let background = if v.held.is_empty() {
+        background
+    } else {
+        let n = v.held.len();
+        let items: String = v.held.iter().map(|t| format!("<li>{}</li>", esc(t))).collect();
+        format!(
+            "{background}<div class=box><div class=lab>Kept for you</div><p>{n} note{} that couldn't reach you when {} came. \
+             I'll tell you {} when you're next back at the computer.</p><ul>{items}</ul></div>",
+            if n == 1 { "" } else { "s" },
+            if n == 1 { "it" } else { "they" },
+            if n == 1 { "it" } else { "them" },
+        )
     };
     body.push_str(&format!(
         "<div class=nowgrid><div class=stream id=detailed data-live=now data-v='{version}'>\
@@ -4053,7 +4082,7 @@ pub fn sync_page_with(
     );
     let invite = "<p class=what>Press this, and I'll put an invitation in your sync folder and show \
          you a ten-character code. Type that code on the other machine, in its own copy of this page, \
-         and it joins, and the key comes with it. The invitation clears itself after three minutes \
+         and it joins, and the key comes with it. The invitation clears itself after fifteen minutes \
          whether it is used or not, and nothing in the folder says whose it is or what is in it.</p>\
          <form method=post action=/hub/sync style=\"margin-top:12px\">\
            <input type=hidden name=what value=pair>\

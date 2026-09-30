@@ -1030,10 +1030,10 @@ pub(super) fn run_household(args: &[String]) {
                     &short,
                     phrase.as_deref(),
                     now,
-                    180,
+                    atlas::household::INVITE_WAIT_SECS,
                 ) {
                     Ok(_) => {
-                        println!("On {}, within 3 minutes:", device.trim());
+                        println!("On {}, within 15 minutes:", device.trim());
                         println!();
                         println!("    atlas household join {short} \"{}\"", device.trim());
                         println!();
@@ -1097,14 +1097,15 @@ pub(super) fn run_household(args: &[String]) {
                                 &code,
                                 &phrase,
                                 now,
-                                pairing.valid_secs,
+                                atlas::sync::HANDOFF_WAIT_SECS,
                             )
                             .map_err(|e| e)
                         }) {
                             Ok(_) => println!(
                                 "\nI've left the key for it in your sync folder, sealed under \
-                                 that code. It'll pick it up when it joins, and the file goes \
-                                 either way once the three minutes are up."
+                                 that code. It'll pick it up when it joins (give your cloud \
+                                 folder a few minutes to carry it), and the file goes either \
+                                 way after fifteen minutes."
                             ),
                             Err(why) => println!("\n(I couldn't leave the key for it: {why})"),
                         }

@@ -122,9 +122,17 @@ fn one_that_needs_a_restart_is_kept_and_says_so() {
     let mut d = Daemon::new(&cfg, &p, None, store("restart"), Proactive::new(ProactiveConfig::default()))
         .watch_settings(dir.clone());
 
+    // 30 Sep 2026: was `wake.enabled`, which now applies live; the voice is
+    // still one that waits for a restart.
+    change(&dir, "voice.enabled", "on");
+    let said = d.pick_up_settings();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].ends_with("will be on when I next start."), "{said:?}");
+    // And the wake word, switched on, is on now -- said as such.
     change(&dir, "wake.enabled", "on");
     let said = d.pick_up_settings();
-    assert_eq!(said, vec!["Wake word will be on when I next start.".to_string()]);
+    assert_eq!(said, vec!["Wake word is now on.".to_string()]);
+    assert!(d.wake_on(), "the switch didn't reach the running Atlas");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -197,7 +205,11 @@ fn every_setting_that_waits_for_a_restart_is_a_real_setting() {
     for key in settings::NEEDS_A_RESTART {
         assert!(all.get(key).is_some(), "{key} is listed as needing a restart and isn't a setting");
     }
-    assert!(settings::needs_a_restart("wake.enabled"));
+    // 30 Sep 2026: was `wake.enabled`, which is switched live
+    // (`pick_up_settings` -> `tiers.set_wake`, and the microphone's thread
+    // now obeys that switch); the phrase is what the listener keeps.
+    assert!(settings::needs_a_restart("wake.phrase"));
+    assert!(!settings::needs_a_restart("wake.enabled"));
     assert!(!settings::needs_a_restart("research.enabled"));
 }
 
@@ -209,8 +221,9 @@ fn the_settings_window_says_when_a_change_takes_hold() {
         "Web research is now on. Atlas picks it up straight away."
     );
     assert_eq!(
-        when_it_applies("wake.enabled", "Wake word is now on"),
-        "Wake word is now on. That one takes effect when Atlas restarts."
+        // 30 Sep 2026: `wake.enabled` applies live now; the phrase waits.
+        when_it_applies("wake.phrase", "Wake phrase is now hey atlas"),
+        "Wake phrase is now hey atlas. That one takes effect when Atlas restarts."
     );
 }
 

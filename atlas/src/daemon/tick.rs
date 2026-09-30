@@ -124,8 +124,10 @@ impl<'a> Daemon<'a> {
         // Your settings, if you changed one while Atlas was running. Before
         // the pause check, like the heartbeat: switching something off is
         // exactly what you might do while Atlas is paused. Logged, not
-        // spoken — whoever changed it has just seen the change.
-        let _ = self.pick_up_settings();
+        // spoken — whoever changed it has just seen the change. A file that
+        // wouldn't read is different (30 Sep 2026: it was dropped here, so
+        // every choice seemed to revert with no word why): that is said.
+        out.extend(self.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")));
 
         // Calls: notice one starting or ending, and hand back finished notes.
         out.extend(self.call_notes_tick(t));
@@ -985,8 +987,14 @@ impl<'a> Daemon<'a> {
                         // proving the test fails. Landing still waits for
                         // your OK (`selfgrant`).
                         if let Some(thought) = u.thought {
+                            // `Session::new` holds the goal as the symptom
+                            // already, so the first answer is the cause. 30
+                            // Sep 2026: the symptom was given again first
+                            // here -- the fault fixed on the Improvements
+                            // page on 29 Sep -- so every weekly look made
+                            // the symptom its own cause and was refused.
                             let mut session = crate::selfwork::Session::new(&goal, 0);
-                            for answer in [&thought.symptom, &thought.cause, &thought.where_, &thought.proof] {
+                            for answer in [&thought.cause, &thought.where_, &thought.proof] {
                                 let _ = session.diagnosing.answer(answer);
                             }
                             self.selfwork = Some(session);
@@ -1613,6 +1621,23 @@ impl<'a> Daemon<'a> {
                 &bytes,
                 std::time::Duration::from_secs(4),
             ) {
+                // 30 Sep 2026: a reply that isn't this Atlas's (a refusal, a
+                // wrong key, another Atlas) was still announced as "Synced".
+                // (Empty is a peer with nothing to hand back.)
+                Ok(reply)
+                    if !reply.is_empty()
+                        && !std::str::from_utf8(&reply)
+                        .ok()
+                        .and_then(|t| crate::sync::read_bundle(t, key).ok())
+                        .is_some_and(|b| {
+                            crate::sync::can_open(&b).is_ok()
+                                && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok()
+                        }) =>
+                {
+                    lines.push(format!(
+                        "{name} answered but didn't take the sync — it may belong to a different Atlas or hold an older key."
+                    ));
+                }
                 Ok(reply) => {
                     let (t, cl, sk) = self.take_in_wire(&reply, cfg, key, now);
                     let took = if t > 0 { format!(", took in {t}") } else { String::new() };
@@ -1794,7 +1819,7 @@ impl<'a> Daemon<'a> {
         }
 
         // Anything left from a pairing that was started and never finished.
-        // The window is three minutes and a taken handoff deletes itself, so
+        // The window is fifteen minutes and a taken handoff deletes itself, so
         // this is only for the abandoned case -- which is exactly the one
         // nobody would think to tidy up.
         let swept = crate::sync::sweep_handoffs(dir, now)

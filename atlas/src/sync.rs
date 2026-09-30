@@ -1059,6 +1059,14 @@ pub fn made_one(setup: &KeySetup) -> String {
 
 pub const HANDOFF_CONTEXT: &[u8] = b"atlas-sync-key-handoff-v1";
 
+/// How long the sealed key waits in the shared folder (30 Sep 2026: was the
+/// pairing code's three minutes). The code still has to be typed within
+/// three minutes; but the file travels by OneDrive or Dropbox, which can take
+/// several minutes to show up on the other machine, and a handoff that
+/// expired in transit left the new device paired and unable to read a thing.
+/// Still sealed under the code by Argon2id; still deleted once taken.
+pub const HANDOFF_WAIT_SECS: u64 = 900;
+
 /// The key, on its way to a device that has just been paired.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KeyHandoff {
@@ -1184,7 +1192,7 @@ pub fn take_handoff(
 
 /// Clear away any handoff whose window has closed.
 ///
-/// Called on every sync pass. The window is three minutes and the file is
+/// Called on every sync pass. The window is `HANDOFF_WAIT_SECS` and the file is
 /// deleted when it is taken, so this is for the pairing that was started and
 /// never finished -- which is exactly the one nobody would remember to clean
 /// up.

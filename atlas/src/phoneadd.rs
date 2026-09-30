@@ -203,6 +203,8 @@ pub enum Enrol {
     Profile,
     Reply,
     Done,
+    /// The profile's reply had no device ID in it.
+    DidntTake,
     NotFound,
 }
 
@@ -214,6 +216,7 @@ pub fn route_enrol(method: &str, path: &str, token: &str) -> Enrol {
         ("GET", "/atlas.mobileconfig") => Enrol::Profile,
         ("POST", "/device") => Enrol::Reply,
         ("GET", "/done") => Enrol::Done,
+        ("GET", "/didnt-take") => Enrol::DidntTake,
         _ => Enrol::NotFound,
     }
 }
@@ -314,8 +317,10 @@ fn answer_enrol(mut s: TcpStream, token: &str, base: &str, challenge: &str, uuid
             }
             heard = device_from_reply(&body, challenge);
             // Apple's flow: a 301 tells Safari where to go once the profile
-            // has done its job.
-            ("301 Moved Permanently", "text/plain", format!("Location: {here}/done\r\n"), Vec::new())
+            // has done its job -- to "Done" only when the reply carried an
+            // ID (30 Sep 2026: the done page claimed success either way).
+            let next = if heard.is_some() { "done" } else { "didnt-take" };
+            ("301 Moved Permanently", "text/plain", format!("Location: {here}/{next}\r\n"), Vec::new())
         }
         Enrol::Done => (
             "200 OK",
@@ -325,6 +330,20 @@ fn answer_enrol(mut s: TcpStream, token: &str, base: &str, challenge: &str, uuid
                 "Done",
                 "<p>Your Atlas has this device's ID. You can remove the profile in Settings → General → VPN &amp; Device Management; \
                  it has nothing left to do.</p><p>Go back to your computer: Atlas says there when the app is ready for this device.</p>",
+            )
+            .into_bytes(),
+        ),
+        Enrol::DidntTake => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            String::new(),
+            phone_page(
+                "That didn't take",
+                &format!(
+                    "<p>The profile answered, but without this device's ID, so nothing was added. \
+                     Remove the profile in Settings → General → VPN &amp; Device Management, then \
+                     <a href='{here}/'>try again</a>.</p>"
+                ),
             )
             .into_bytes(),
         ),

@@ -733,8 +733,13 @@ pub fn update_tick(
     if let Some(news) = take_news(store) {
         return Ticked::Say(news);
     }
+    // 30 Sep 2026: the flag cleared (or `restarted` marked) is what stops
+    // the next start restarting again; a save that failed restarted Atlas
+    // every time it came up. No save, no restart -- it's said instead.
     if store.load::<bool>(RESTART) {
-        let _ = store.save(RESTART, &false);
+        if let Err(e) = store.save(RESTART, &false) {
+            return Ticked::Say(format!("I need to restart to finish going back a version, but couldn't note that I had ({e}), so I'd restart over and over. Restart me yourself when it suits."));
+        }
         return Ticked::Restart("Restarting to finish going back a version.".into());
     }
     if let Some(mut p) = pending(store) {
@@ -743,7 +748,9 @@ pub fn update_tick(
         }
         if !p.restarted {
             p.restarted = true;
-            let _ = store.save(PENDING, &p);
+            if let Err(e) = store.save(PENDING, &p) {
+                return Ticked::Say(format!("Atlas {} is ready, but I couldn't note that I'm restarting for it ({e}), so I'd restart over and over. Restart me yourself when it suits.", p.version));
+            }
             return Ticked::Restart(format!("Restarting to install Atlas {}.", p.version));
         }
         // Restarted once and still the old build: it didn't go in. Why is in

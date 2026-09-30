@@ -2390,7 +2390,9 @@ impl<'a> Daemon<'a> {
                 // Half-written or hand-broken: keep running on what we have,
                 // look again next tick, and say why once.
                 self.settings_watch = Some((dir, now));
-                return vec![format!("I couldn't read my changed settings, so I'm keeping the ones I had: {e}")];
+                let line = format!("I couldn't read my changed settings, so I'm keeping the ones I had: {e}");
+                self.log.warn(&line);
+                return vec![line];
             }
         };
         self.settings_watch = Some((dir.clone(), now));

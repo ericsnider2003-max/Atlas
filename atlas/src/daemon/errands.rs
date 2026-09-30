@@ -901,7 +901,13 @@ impl<'a> Daemon<'a> {
             // must now happen here, back on the tick thread, once the
             // crew errand that used to do this work synchronously has
             // actually finished.
-            if link.label == "research" {
+            // 30 Sep 2026: stopped research counts as `ok` (you stopped it;
+            // nothing failed), and so "stopped before finishing" was kept as
+            // what Atlas had learned about the topic -- in the library and
+            // the fact book. Stopped research learns nothing and blames
+            // nothing.
+            let stopped = matches!(news.ending, crew::Ending::Stopped);
+            if link.label == "research" && !stopped {
                 let now = crate::store::now();
                 // Seconds, not milliseconds -- `News::started`/`finished`
                 // are on the same clock every other long-running job in

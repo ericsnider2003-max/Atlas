@@ -175,7 +175,10 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
 /// it isn't, so each one was checked against where it is read.
 pub const NEEDS_A_RESTART: &[&str] = &[
     "voice.enabled",
-    "wake.enabled",
+    // 30 Sep 2026: `wake.enabled` was listed here though `pick_up_settings`
+    // switches the wake word on and off at once; the phrase is the part the
+    // listener keeps from the start.
+    "wake.phrase",
     "quick_input.enabled",
     // The keys are handed to Windows once, when Atlas starts.
     "quick_input.hotkey",

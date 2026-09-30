@@ -616,8 +616,17 @@ impl<'a> Voice<'a> {
 
     /// The microphone's work for its own thread (`micthread`): an owned copy
     /// of the settings, and this voice's timings shared.
+    ///
+    /// The thread's own switch (`MicThread::set_wake`) is what says whether
+    /// the wake word is listened for, so its copy is marked on (30 Sep 2026:
+    /// the copy kept `wake.enabled` from the start, so switching the wake
+    /// word on while Atlas ran armed a loop that never heard anything).
     pub fn mic_work(&self) -> VoiceWork {
-        VoiceWork { cfg: self.cfg.clone(), last_listen: self.last_listen.clone(), watch: None, said_with_wake: None }
+        let mut cfg = self.cfg.clone();
+        if let Some(w) = cfg.wake.as_mut() {
+            w.enabled = true;
+        }
+        VoiceWork { cfg, last_listen: self.last_listen.clone(), watch: None, said_with_wake: None }
     }
 
     /// Speech-to-text for the clip at `{in_wav}`, only when someone is

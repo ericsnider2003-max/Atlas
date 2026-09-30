@@ -207,6 +207,21 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
             atlas::notifyicon::tray_hub_note((port != configured_port).then(|| {
                 format!("Hub on port {port} (its usual {configured_port} is taken)")
             }));
+            // The phone's link follows the hub to its new port (30 Sep 2026:
+            // it kept pointing at the taken one, so the phone reached nothing).
+            // Only when there is a link to keep, and off the hub's thread.
+            let had_link: String = atlas::roots::store().load(atlas::phonelink::LINK_KEY);
+            if port != configured_port && !had_link.trim().is_empty() {
+                let token = t.clone();
+                let _ = std::thread::Builder::new().name("atlas-phone-link".into()).spawn(move || {
+                    let outcome = atlas::phonelink::publish(port, &token, &atlas::phonelink::tailscale_tool(), &atlas::tools::Vars::new());
+                    if let atlas::phonelink::Serve::Published { url } = &outcome {
+                        if let Err(e) = atlas::roots::store().save(atlas::phonelink::LINK_KEY, url) {
+                            eprintln!("atlas: the phone's link moved to {url}, but I couldn't save it ({e})");
+                        }
+                    }
+                });
+            }
         });
         // Its own threads read the connections; the loop answers
         // (`server::HubDoor`).

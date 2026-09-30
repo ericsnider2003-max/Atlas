@@ -364,10 +364,10 @@ impl Daemon<'_> {
                                 &code,
                                 phrase.as_deref(),
                                 now,
-                                180,
+                                crate::household::INVITE_WAIT_SECS,
                             ) {
                                 Ok(_) => format!(
-                                    "Type this on the other machine within three minutes: \
+                                    "Type this on the other machine within fifteen minutes: \
                                      {code}{}",
                                     if phrase.is_some() {
                                         " — the household key goes with it."
@@ -1973,6 +1973,7 @@ impl Daemon<'_> {
         let off = crate::localclock::offset_secs();
         let paused = self.attention.is_paused();
         let background: Vec<String> = self.mind.background().iter().map(|w| sentence(&w.asked)).collect();
+        let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
         let Some(w) = self.mind.focus() else {
             let title = if paused { "Paused." } else { "Waiting for you." };
             return hub::NowView {
@@ -1989,6 +1990,7 @@ impl Daemon<'_> {
                 paused,
                 working: false,
                 background,
+                held,
             };
         };
         let mut steps: Vec<(hub::Step, String)> = Vec::new();
@@ -2033,6 +2035,7 @@ impl Daemon<'_> {
             paused,
             working: !paused,
             background,
+            held,
         }
     }
 

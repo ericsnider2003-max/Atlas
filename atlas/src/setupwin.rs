@@ -451,6 +451,12 @@ fn phone_section(place: &Place) -> Phone {
 /// desktop window (the GUI-free core) can still name one.
 pub use crate::firstlaunch::First;
 
+/// A window height that fits a screen `screen` tall: at most nine tenths of
+/// it (room for the taskbar and title bar), never under the window's least.
+fn fit_height(want: f32, screen: f32) -> f32 {
+    want.min(screen * 0.9).max(480.0)
+}
+
 /// Open the window. Blocks until it's closed.
 pub fn run(place: Place, first: First) -> Result<(), String> {
     let progress = Arc::new(Mutex::new(Progress::new()));
@@ -488,6 +494,7 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
         note: None,
         voice: crate::speaking::Watch::new(place_data),
         feedback: FeedbackForm::default(),
+        fitted: false,
     };
     eframe::run_native("atlas-home", opts, Box::new(|_cc| Ok(Box::new(app)))).map_err(|e| e.to_string())
 }
@@ -536,6 +543,8 @@ struct App {
     voice: crate::speaking::Watch,
     /// "Report a problem with Atlas".
     feedback: FeedbackForm,
+    /// Whether the opening size has been checked against the screen.
+    fitted: bool,
 }
 
 impl eframe::App for App {
@@ -572,11 +581,24 @@ impl eframe::App for App {
         // The hub is laid out for a wide window (the command deck: Right now
         // beside your cards). The setup window is narrow, so the Hub page
         // widens it — within the screen — and leaving puts it back.
+        // 30 Sep 2026: the window opens 860 tall, which on a laptop screen
+        // at 150% scaling runs past the taskbar with the buttons under it.
+        // Once the screen is known, the window is brought within it.
+        if !self.fitted {
+            let (now, screen) = ctx.input(|i| (i.screen_rect().size(), i.viewport().monitor_size));
+            if let Some(room) = screen.filter(|r| r.y > 0.0) {
+                self.fitted = true;
+                let fits = fit_height(now.y, room.y);
+                if fits + 1.0 < now.y {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(now.x, fits)));
+                }
+            }
+        }
         if self.view == View::Hub && !self.hub_sized {
             self.hub_sized = true;
             let (now, screen) = ctx.input(|i| (i.screen_rect().size(), i.viewport().monitor_size));
             let room = screen.unwrap_or(egui::vec2(1440.0, 900.0));
-            let want = egui::vec2(1240.0f32.min(room.x * 0.92), now.y.max(860.0f32.min(room.y * 0.9)));
+            let want = egui::vec2(1240.0f32.min(room.x * 0.92), fit_height(now.y.max(860.0), room.y));
             if now.x + 40.0 < want.x {
                 self.size_before_hub = Some(now);
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
