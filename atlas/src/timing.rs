@@ -283,3 +283,63 @@ impl Recent {
         })
     }
 }
+
+/// Where one pass of the tick spent its time, by named part (30 Sep 2026).
+///
+/// The laptop's log said "tick took 1777ms" and nothing about which part:
+/// every slow tick now names its three slowest parts, so the next look at a
+/// log says where the time goes instead of guessing.
+#[derive(Debug)]
+pub struct Laps {
+    last: std::time::Instant,
+    parts: Vec<(&'static str, u32)>,
+}
+
+impl Default for Laps {
+    fn default() -> Self {
+        Laps::start()
+    }
+}
+
+impl Laps {
+    pub fn start() -> Laps {
+        Laps { last: std::time::Instant::now(), parts: Vec::new() }
+    }
+
+    /// The part just finished, by name.
+    pub fn mark(&mut self, name: &'static str) {
+        let now = std::time::Instant::now();
+        let ms = now.duration_since(self.last).as_millis().min(u32::MAX as u128) as u32;
+        self.last = now;
+        match self.parts.iter_mut().find(|(n, _)| *n == name) {
+            Some(p) => p.1 = p.1.saturating_add(ms),
+            None => self.parts.push((name, ms)),
+        }
+    }
+
+    /// The slowest `n` parts, slowest first, that took any time at all.
+    pub fn slowest(&self, n: usize) -> Vec<(&'static str, u32)> {
+        let mut p: Vec<(&'static str, u32)> = self.parts.iter().copied().filter(|(_, ms)| *ms > 0).collect();
+        p.sort_by(|a, b| b.1.cmp(&a.1));
+        p.truncate(n);
+        p
+    }
+
+    /// "work_for_you 900ms, observe 400ms, health 120ms".
+    pub fn plain(&self, n: usize) -> String {
+        self.slowest(n).iter().map(|(name, ms)| format!("{name} {ms}ms")).collect::<Vec<_>>().join(", ")
+    }
+}
+
+#[cfg(test)]
+mod laps_tests {
+    use super::*;
+
+    #[test]
+    fn the_slowest_parts_are_named_slowest_first() {
+        let mut l = Laps { last: std::time::Instant::now(), parts: vec![] };
+        l.parts = vec![("a", 5), ("b", 50), ("c", 0), ("d", 20)];
+        assert_eq!(l.slowest(2), vec![("b", 50), ("d", 20)]);
+        assert_eq!(l.plain(5), "b 50ms, d 20ms, a 5ms");
+    }
+}

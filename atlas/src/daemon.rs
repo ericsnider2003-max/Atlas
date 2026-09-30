@@ -469,6 +469,11 @@ pub struct Daemon<'a> {
     /// turn the whole index into text after every turn -- 30 MB for 68,000
     /// files -- only for the store to find the bytes unchanged.
     index_on_disk: Option<(usize, u64)>,
+    /// The file index being written on its own thread, and what it was
+    /// when the copy was taken.
+    index_saving: Option<((usize, u64), std::thread::JoinHandle<crate::error::Result<()>>)>,
+    /// This save is the tick's sweep: the index may be written behind it.
+    index_behind: bool,
     /// The index as it is read from disk at start, off this thread
     /// (`index::Loading`, 28 Sep 2026). `settle_index` takes it in.
     index_load: crate::index::Loading,
@@ -1015,6 +1020,8 @@ pub struct Daemon<'a> {
     /// Started once from the tick when an encoder is installed.
     meaning_route: Option<crate::meaningroute::Route>,
     meaning_route_tried: bool,
+    /// Where the last tick spent its time (`timing::Laps`).
+    tick_laps: crate::timing::Laps,
     /// Which abilities requests have used (`used`), and when it was last saved.
     pub(crate) used: crate::used::Used,
     used_saved: u64,
@@ -1506,6 +1513,8 @@ impl<'a> Daemon<'a> {
             // "(0, 0)": the empty index isn't written over the one on disk
             // while that one is still being read.
             index_on_disk: Some(index.written_as()),
+            index_saving: None,
+            index_behind: false,
             index,
             index_load,
             awareness: Awareness::default(),
@@ -1718,6 +1727,7 @@ impl<'a> Daemon<'a> {
             router: crate::router::Router::new(&crate::intent::ToolBook::new(&cfg.commands)),
             meaning_route: None,
             meaning_route_tried: false,
+            tick_laps: crate::timing::Laps::start(),
             used: store_for_load.load(crate::used::KEY),
             used_saved: 0,
             meaning_route_retry: false,

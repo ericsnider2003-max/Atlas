@@ -898,3 +898,7 @@ mod meaning_picks_the_tool;
 mod meaning_checks_the_reply;
 #[path = "what_gets_used_is_counted.rs"]
 mod what_gets_used_is_counted;
+#[path = "talking_does_not_hold_the_loop.rs"]
+mod talking_does_not_hold_the_loop;
+#[path = "a_quiet_tick_is_quick.rs"]
+mod a_quiet_tick_is_quick;

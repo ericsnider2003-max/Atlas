@@ -311,9 +311,9 @@ impl eframe::App for App {
                 }
             } else {
                 // Hidden and settled, and still being woken: at most a few
-                // times a second (`winpark::IDLE_NAP`), the way eframe itself
+                // times a second (`winpark::OVERLAY_NAP`), the way eframe itself
                 // naps a minimized window.
-                std::thread::sleep(crate::winpark::IDLE_NAP);
+                std::thread::sleep(crate::winpark::OVERLAY_NAP);
             }
             return;
         }

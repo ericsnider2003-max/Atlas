@@ -1518,6 +1518,9 @@ impl VoiceWork {
 }
 
 impl crate::micthread::MicWork for VoiceWork {
+    fn listen_while(&mut self, held: &dyn Fn() -> bool) -> Result<Option<String>> {
+        self.voice().listen_while_held(held)
+    }
     fn wake_once(&mut self, stop: &dyn Fn() -> bool) -> Result<bool> {
         let heard = self.voice().wake_heard_until(stop)?;
         self.said_with_wake = heard.clone().filter(|w| !w.trim().is_empty());

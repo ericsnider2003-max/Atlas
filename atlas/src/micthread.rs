@@ -65,6 +65,10 @@ pub enum Heard {
     /// What was said in the open floor after a reply (`MicThread::follow_up`,
     /// by its number): words, silence (`None`), or why it couldn't be heard.
     FollowUp(u64, std::result::Result<Option<String>, String>),
+    /// What was said while the talk key was held, and for how long it was
+    /// held (30 Sep 2026: recorded here, not on the loop, so the hub and
+    /// everything else keep going while you talk).
+    Talk(std::result::Result<Option<String>, String>, f32),
     /// Your name and nothing after it, even after a moment's wait (29 Sep
     /// 2026). The loop answers "Yes?" and listens for the rest.
     Named,
@@ -99,6 +103,12 @@ pub trait MicWork: Send {
     fn open_stream(&mut self) -> Option<Box<dyn MicStream>>;
     /// Words for audio already recorded.
     fn transcribe(&mut self, samples: &[i16]) -> Result<String>;
+    /// Recording while the talk key is held, as words. `Ok(None)`: a tap,
+    /// or nothing said. The default listens once, for stand-ins.
+    fn listen_while(&mut self, held: &dyn Fn() -> bool) -> Result<Option<String>> {
+        let _ = held;
+        self.listen().map(Some)
+    }
     /// The open floor after a reply: up to `secs` of recording, as words.
     /// `Ok(None)` is silence. `stop` turning true (paused, Atlas closing,
     /// the loop no longer waiting) means give up now and return `Ok(None)`.
@@ -739,6 +749,8 @@ struct Shared {
     /// Recordings that gave sound: proof the microphone works, so a wake
     /// word dropped for push-to-talk can come back (`MicThread::probe`).
     heard_audio: std::sync::atomic::AtomicU64,
+    /// The talk key is down: record while this says it's held.
+    talk: Mutex<Option<Arc<dyn Fn() -> bool + Send + Sync>>>,
     /// The loop asks whether the microphone works now (push-to-talk after
     /// the wake word failed): one short recording, when nothing else is.
     probe: AtomicBool,
@@ -874,6 +886,14 @@ impl MicThread {
         }
         id
     }
+    /// The talk key went down: record on this thread while `held` says so,
+    /// and hand back `Heard::Talk`. The wake word gives way at once.
+    pub fn talk(&self, held: Arc<dyn Fn() -> bool + Send + Sync>) {
+        if let Ok(mut t) = self.shared.talk.lock() {
+            *t = Some(held);
+        }
+        self.shared.busy.store(true, Ordering::SeqCst);
+    }
     /// The loop has stopped waiting: stop the recording now.
     pub fn cancel_follow_up(&self) {
         if let Ok(mut f) = self.shared.follow.lock() {
@@ -1006,6 +1026,22 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
         }
         if let Some(l) = s.seed.lock().ok().and_then(|mut l| l.take()) {
             gate.seed(&l);
+        }
+        // The talk key first: you're holding it now.
+        if let Some(held) = s.talk.lock().ok().and_then(|mut t| t.take()) {
+            let started = Instant::now();
+            let stop_s = s.clone();
+            let still = move || held() && !stop_s.stop.load(Ordering::SeqCst);
+            s.recording.store(true, Ordering::SeqCst);
+            let got = work.listen_while(&still).map_err(|e| e.to_string());
+            s.recording.store(false, Ordering::SeqCst);
+            if matches!(got, Ok(Some(_))) {
+                s.heard_audio.fetch_add(1, Ordering::SeqCst);
+            }
+            if tx.send(Heard::Talk(got, started.elapsed().as_secs_f32())).is_err() {
+                return;
+            }
+            continue;
         }
         // The open floor after a reply comes first: the loop is waiting on it.
         if let Some((id, secs)) = s.follow.lock().ok().and_then(|mut f| f.take()) {

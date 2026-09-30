@@ -31,6 +31,8 @@ impl<'a> Daemon<'a> {
     /// Work Atlas does without being asked. Returns anything worth saying.
     pub fn tick(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
+        // Where this pass spends its time, named in the log when it's slow.
+        self.tick_laps = crate::timing::Laps::start();
         if let Some(line) = self.model_warmed.lock().ok().and_then(|mut w| w.take()) {
             self.log.info(&line);
         }
@@ -39,14 +41,17 @@ impl<'a> Daemon<'a> {
         // finished on a later tick, so the loop -- and the hub -- never waits
         // on the model.
         self.talk_queue_turns(t);
+        self.tick_laps.mark("talk queue");
         // The deep model: started for background work waiting on it,
         // stopped once idle (`deepbrain`).
         self.keep_deep_brain();
+        self.tick_laps.mark("deep model");
         // A request of several steps: the steps it asks for carried out, and
         // each one said as it finishes (`work_through`). Up here, before the
         // returns a pause or a quiet mode take below: a pause is when it
         // must be told to hold, and "stop everything" when it must end.
         out.extend(self.take_task_loop_news(t));
+        self.tick_laps.mark("task loop");
         // A question left standing is stamped here, so its age is known.
         self.expire_stale_question(t);
 
@@ -113,6 +118,7 @@ impl<'a> Daemon<'a> {
 
         // Locked, or the screens off, is not asleep (H13a): the work carries
         // on, and the change is logged rather than treated as a night.
+        self.tick_laps.mark("heartbeat");
         self.note_running_state();
         // Mishearing you often enough to say so (H5), once.
         if let Some(line) = self.heard_note.take() {
@@ -124,15 +130,18 @@ impl<'a> Daemon<'a> {
         // named (`resume`).
         out.extend(self.pick_up_after_restart(t));
         self.keep_window_jobs();
+        self.tick_laps.mark("after a restart");
 
         // Your settings, if you changed one while Atlas was running. Before
         // the pause check, like the heartbeat: switching something off is
         // exactly what you might do while Atlas is paused. Logged, not
         // spoken — whoever changed it has just seen the change.
         let _ = self.pick_up_settings();
+        self.tick_laps.mark("settings");
 
         // Calls: notice one starting or ending, and hand back finished notes.
         out.extend(self.call_notes_tick(t));
+        self.tick_laps.mark("calls");
         // A window being worked for you.
         // (Windows being worked for you go further down, once Atlas knows
         // whether you're at the keyboard.)
@@ -168,7 +177,9 @@ impl<'a> Daemon<'a> {
         // so a phone coming onto the wifi is caught up at once, not only when
         // this device happens to run its own sync pass. Passive receive, so it
         // runs regardless of pause, like the housekeeping above.
+        self.tick_laps.mark("helpers");
         out.extend(self.serve_direct_sync(t));
+        self.tick_laps.mark("direct sync");
 
         // Meaning vectors for notes that don't have one yet, a couple per
         // tick. Housekeeping, so it sits with the other housekeeping — but
@@ -213,14 +224,17 @@ impl<'a> Daemon<'a> {
         // the idle timeout rather than inventing a lock event. When the screen
         // state is plumbed through, it passes here and the second clause of
         // `should_lock` starts firing on its own.
+        self.tick_laps.mark("meaning and reaping");
         let vault_cfg = self.tools_cfg().vault.clone();
         if self.vault.should_lock(t, false, &vault_cfg) {
             self.vault.lock();
             self.log.info("Re-locked the vault after it sat open past its idle limit.");
         }
 
+        self.tick_laps.mark("vault");
         let signals = self.observe(t);
         self.note_work(&signals, t);
+        self.tick_laps.mark("observing");
 
         // Windows being worked for you. Typing waits for a gap in yours
         // (`lanes`): reading and deciding go on meanwhile.
@@ -237,6 +251,7 @@ impl<'a> Daemon<'a> {
         // failure as a camera left watching an empty room, and `idle_stop_secs`
         // exists precisely so it cannot happen. `idle_check` only fires once,
         // since it flips the state that lets it fire.
+        self.tick_laps.mark("window jobs");
         let dcfg = self.dictate_cfg();
         if let Some(d) = self.dictation.as_mut() {
             if d.idle_check(&dcfg, t) {
@@ -365,6 +380,7 @@ impl<'a> Daemon<'a> {
         // answer is in (`Unknown`, a moment after start) nothing here is
         // decided: no post is sent, and the board isn't told the connection
         // failed.
+        self.tick_laps.mark("dictation and flows");
         let reach = self.connectivity.status_now(t);
         let known = reach != Reach::Unknown;
         let online = reach == Reach::Online;
@@ -413,6 +429,7 @@ impl<'a> Daemon<'a> {
         // Background work goes immediately; anything needing the screen waits
         // for a gap. This is what makes "Atlas is busy" stop meaning "you are
         // waiting".
+        self.tick_laps.mark("connectivity");
         let lanes = self.lane_cfg();
         for id in self.queue.ready_with(&signals, &lanes, t, self.connectivity.cached()) {
             let Some(task) = self.queue.tasks.iter().find(|x| x.id == id).cloned() else { continue };
@@ -470,6 +487,7 @@ impl<'a> Daemon<'a> {
         //
         // A notice waits for a quiet moment; something urgent doesn't. Either
         // way one thing at a time, and not again for a week.
+        self.tick_laps.mark("queued work and backlog");
         let hcfg = self.health_cfg();
         let findings = assess_machine(&self.readings(), &hcfg);
         self.health.reconcile(&findings);
@@ -527,6 +545,7 @@ impl<'a> Daemon<'a> {
         //
         // Hourly. The plan made on the day Chrome had forty tabs open is not
         // the one to keep forever; `fit::worth_replanning` is what decides.
+        self.tick_laps.mark("machine health");
         let fit_cfg = self.tools_cfg().fit.clone();
         if fit_cfg.replan_on_change && t.saturating_sub(self.fit_measured.1) >= 3600 {
             let now_m = crate::fit::measure();
@@ -574,6 +593,7 @@ impl<'a> Daemon<'a> {
         // client that signed out in March looked fine until someone noticed
         // their phone hadn't seen anything since. Said once per finding, and
         // `Trouble::fix` says what to do about it.
+        self.tick_laps.mark("fit, updates, panels");
         let sync_cfg = self.tools_cfg().sync.clone();
         let cloud_cfg = self.tools_cfg().cloud.clone();
         let every = cloud_cfg.check_every_hours.max(1) as u64 * 3600;
@@ -607,6 +627,7 @@ impl<'a> Daemon<'a> {
         // watch. The rules come from settings and are re-read each tick, so
         // editing one takes effect without a restart; what they remember
         // (pending "for" timers, last firing) is kept apart and survives one.
+        self.tick_laps.mark("sync");
         let specs = self.tools_cfg().automations.clone();
         if !specs.is_empty() {
             let rules: Vec<crate::automation::Automation> =
@@ -692,10 +713,12 @@ impl<'a> Daemon<'a> {
         // --- Round 11's tools: key chords, clipboard history, feeds read in
         // the background, meeting prep and the trading check-in. Each costs
         // nothing unless it's switched on and has something to do.
+        self.tick_laps.mark("automations");
         let may_speak = self.proactive.may_interrupt(&signals, t);
         let paused = self.attention.is_paused();
         let online = self.connectivity.cached() == Reach::Online;
         out.extend(self.workday_tick(t, may_speak, paused, online));
+        self.tick_laps.mark("workday");
 
         // --- Calendar reminders coming due ---
         // An event with a reminder lead-time gets spoken once as its start
@@ -1398,7 +1421,11 @@ impl<'a> Daemon<'a> {
     /// did (a turn saves at its own call sites).
     pub fn persist_after(&mut self, t: u64, spoke: bool) {
         if spoke || self.last_persist == 0 || t.saturating_sub(self.last_persist) >= PERSIST_SWEEP_SECS {
+            // The sweep writes the file index behind the loop; everything
+            // else that saves (a turn, stopping) writes it there and then.
+            self.index_behind = true;
             self.persist();
+            self.index_behind = false;
             self.last_persist = t.max(1);
         }
     }

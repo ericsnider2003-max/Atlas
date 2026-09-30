@@ -66,8 +66,45 @@ impl<'a> Daemon<'a> {
         note(&mut failed, "proposals", self.store.save("proposals", &self.proposals));
         note(&mut failed, "memory", self.memory.save(&self.store));
         note(&mut failed, "scheduler", self.scheduler.save(&self.store));
-        // Only when it changed (`index_on_disk`).
-        if self.index_on_disk != Some(self.index.written_as()) {
+        // Only when it changed (`index_on_disk`), and written on a thread of
+        // its own (30 Sep 2026): the whole file index is turned into text and
+        // written, which on a real disk of files took the loop -- the hub, the
+        // talk key -- half a second or more every half hour, once each walk
+        // of your folders came in. The copy is made here; the writing isn't.
+        // How the last write went is taken on the next pass.
+        if let Some(h) = self.index_saving.take_if(|h| h.1.is_finished()) {
+            match h.1.join() {
+                Ok(Ok(())) => self.index_on_disk = Some(h.0),
+                Ok(Err(e)) => note(&mut failed, "index", Err(e)),
+                Err(_) => note(&mut failed, "index", Err(crate::error::AtlasError::Platform("writing the file index stopped unexpectedly".into()))),
+            }
+        }
+        // Anything but the sweep: wait for a write still going, so what's on
+        // disk is what's here when this returns (a turn, stopping, a test).
+        if !self.index_behind {
+            if let Some(h) = self.index_saving.take() {
+                if let Ok(Ok(())) = h.1.join() {
+                    self.index_on_disk = Some(h.0);
+                }
+            }
+        }
+        if self.index_behind && self.index_saving.is_none() && self.index_on_disk != Some(self.index.written_as()) {
+            let snapshot = self.index.clone();
+            let store = self.store.clone();
+            let mark = snapshot.written_as();
+            match std::thread::Builder::new().name("atlas-index-save".into()).spawn(move || snapshot.save(&store)) {
+                Ok(h) => self.index_saving = Some((mark, h)),
+                // No thread to be had: written here, as it always was.
+                Err(_) => {
+                    let r = self.index.save(&self.store);
+                    if r.is_ok() {
+                        self.index_on_disk = Some(self.index.written_as());
+                    }
+                    note(&mut failed, "index", r);
+                }
+            }
+        }
+        if !self.index_behind && self.index_on_disk != Some(self.index.written_as()) {
             let r = self.index.save(&self.store);
             if r.is_ok() {
                 self.index_on_disk = Some(self.index.written_as());
@@ -295,7 +332,10 @@ impl<'a> Daemon<'a> {
             // written down, so where the time goes can be seen.
             let tick_ms = tick_started.elapsed().as_millis() as u64;
             if tick_ms >= SLOW_TICK_MS {
-                self.log.info(&format!("timing: tick took {tick_ms}ms"));
+                // Which parts took it, so the next look at a log says where
+                // the time went (30 Sep 2026: the laptop's said only "1777ms").
+                self.tick_laps.mark("the rest");
+                self.log.info(&format!("timing: tick took {tick_ms}ms ({})", self.tick_laps.plain(3)));
             }
             // A tick that ran long (a render, a sweep) is Atlas busy, not
             // you gone: the next break check measures from when it finished.
@@ -339,6 +379,16 @@ impl<'a> Daemon<'a> {
             if let Some(ev) = self.hotkeys.as_ref().and_then(|h| h.poll()) {
                 self.log.info(&format!("key: {}", ev.plain()));
                 match ev {
+                    // With the microphone on its own thread, the recording
+                    // is done there and the loop carries on -- the hub, the
+                    // typing box, everything -- while you talk; the words
+                    // come back as `Heard::Talk` (30 Sep 2026: this held the
+                    // loop for the whole recording and its transcription).
+                    crate::hotkeys::Pressed::TalkStart if self.mic.is_some() => {
+                        if let (Some(m), Some(h)) = (self.mic.as_ref(), self.hotkeys.as_ref()) {
+                            m.talk(h.held_fn());
+                        }
+                    }
                     crate::hotkeys::Pressed::TalkStart => {
                         // The wake word's recorder lets go of the microphone
                         // while the key is held.
@@ -859,6 +909,30 @@ impl<'a> Daemon<'a> {
                 self.degrade(mouth);
             }
             crate::micthread::Heard::FollowUp(..) => {}
+            // The talk key, recorded on the microphone's thread.
+            crate::micthread::Heard::Talk(got, held_secs) => {
+                self.mic_busy(false);
+                match got {
+                    Ok(Some(said)) => {
+                        if let Some(m) = self.tiers.heard_you() {
+                            self.log.info(&m);
+                        }
+                        self.heard_through_this_ear(&said);
+                        self.converse(&said, ears, mouth, clock);
+                    }
+                    // A tap is not a question; a key held a second or more
+                    // with no words is said, not swallowed.
+                    Ok(None) if held_secs >= 1.0 => {
+                        self.log.info(&format!("push-to-talk: no words in {held_secs:.1}s of recording"));
+                        self.say(mouth, "I didn't catch anything that time. Hold the key while you talk, and I'll listen until you let go.");
+                    }
+                    Ok(None) => {}
+                    Err(why) => {
+                        self.log.info(&format!("push-to-talk: {why}"));
+                        self.say(mouth, &format!("I couldn't listen just then: {why}"));
+                    }
+                }
+            }
         }
         if let Some(m) = self.mic.as_ref() {
             m.rearm();

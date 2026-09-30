@@ -16,7 +16,15 @@
 /// How long a hidden, settled helper window's loop naps each time it is
 /// woken anyway (29 Sep 2026: measured on Eric's laptop, each hidden helper
 /// was woken continuously and held a third of a core).
-pub const IDLE_NAP: std::time::Duration = std::time::Duration::from_millis(200);
+///
+/// 200 ms left the two helpers at about 4.5% of the CPU between them with
+/// nothing on screen (29 Sep 2026). The typing box is shown from its own
+/// thread (`typebox::show_now`), so its nap delays nothing: a second.
+pub const IDLE_NAP: std::time::Duration = std::time::Duration::from_millis(1000);
+
+/// The overlay's nap: it is woken to appear when Atlas starts to speak, so
+/// it naps shorter than the typing box, at most this late to appear.
+pub const OVERLAY_NAP: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// The native window handle of an eframe window (its creation context or
 /// frame), or 0 when there isn't one.
