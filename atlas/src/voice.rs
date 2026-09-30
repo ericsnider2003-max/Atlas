@@ -610,13 +610,36 @@ impl<'a> Voice<'a> {
         VoiceWork { cfg: self.cfg.clone(), last_listen: self.last_listen.clone(), watch: None }
     }
 
+    /// Speech-to-text for the clip at `{in_wav}`, only when someone is
+    /// speaking in it (`audio::check_speech`): silence is "" without asking
+    /// whisper, quiet speech is turned up first, and what whisper writes for
+    /// a quiet room ("you", "Thanks for watching") is dropped
+    /// (`not_really_said`). 29 Sep 2026.
+    fn transcribe_heard(&self, vars: &Vars) -> Result<String> {
+        let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
+        if let Ok(bytes) = std::fs::read(&in_wav) {
+            if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
+                match crate::audio::check_speech(&samples, rate) {
+                    crate::audio::SpeechCheck::Silence => return Ok(String::new()),
+                    crate::audio::SpeechCheck::Quiet(gain) => {
+                        let _ = std::fs::write(&in_wav, crate::audio::wav_bytes(&crate::audio::turned_up(&samples, gain), rate));
+                    }
+                    crate::audio::SpeechCheck::Speech => {}
+                }
+            }
+        }
+        let raw = self.cfg.stt.run(vars, None)?;
+        let text = clean_transcript(&raw);
+        Ok(if not_really_said(&text) { String::new() } else { text })
+    }
+
     /// Words for audio already recorded: written where speech-to-text reads
     /// and transcribed. Used for what you said over Atlas while it spoke.
     fn transcribe_samples(&self, samples: &[i16]) -> Result<String> {
         let vars = self.vars()?;
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         std::fs::write(&in_wav, crate::audio::wav_bytes(samples, RECORD_RATE_HZ))?;
-        let raw = self.cfg.stt.run(&vars, None)?;
+        let raw = self.transcribe_heard(&vars)?;
         Ok(clean_transcript(&raw))
     }
 
@@ -784,7 +807,7 @@ impl<'a> Voice<'a> {
 
         let recorded = started.elapsed().as_millis();
         let t1 = std::time::Instant::now();
-        let raw = self.cfg.stt.run(&vars, None)?;
+        let raw = self.transcribe_heard(&vars)?;
         self.last_listen.store(
             pack(recorded, t1.elapsed().as_millis()),
             std::sync::atomic::Ordering::Relaxed,
@@ -854,7 +877,7 @@ impl<'a> Voice<'a> {
         std::fs::write(&in_wav, crate::audio::wav_bytes(&kept, rate))?;
         let recorded = started.elapsed().as_millis();
         let t1 = std::time::Instant::now();
-        let raw = self.cfg.stt.run(&vars, None)?;
+        let raw = self.transcribe_heard(&vars)?;
         self.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
         let text = clean_transcript(&raw);
         Ok((!text.is_empty()).then_some(text))
@@ -886,7 +909,7 @@ impl<'a> Voice<'a> {
         self.cfg.record.run(&vars, None)?;
         let recorded = t0.elapsed().as_millis();
         let t1 = std::time::Instant::now();
-        let raw = self.cfg.stt.run(&vars, None)?;
+        let raw = self.transcribe_heard(&vars)?;
         self.last_listen.store(
             pack(recorded, t1.elapsed().as_millis()),
             std::sync::atomic::Ordering::Relaxed,
@@ -915,7 +938,7 @@ impl<'a> Voice<'a> {
         }
         let recorded = t0.elapsed().as_millis();
         let t1 = std::time::Instant::now();
-        let raw = self.cfg.stt.run(&vars, None)?;
+        let raw = self.transcribe_heard(&vars)?;
         self.last_listen.store(
             pack(recorded, t1.elapsed().as_millis()),
             std::sync::atomic::Ordering::Relaxed,
@@ -965,6 +988,28 @@ impl<'a> Voice<'a> {
         self.speak_with_piper(text)
     }
 
+    /// Play `{out_wav}`: inside Atlas, through the speaker `audio::choose`
+    /// picked (`playout`, 29 Sep 2026), when the player is the shipped
+    /// `ffplay`; the configured player when that can't, or when you named
+    /// another. `Ok(None)` when it was stopped (you cut in).
+    fn play_out(&self, vars: &Vars) -> Result<Option<String>> {
+        let stop = &crate::micthread::playback_cut;
+        if cfg!(windows) && crate::playout::plays_inside(&self.cfg.play.command) {
+            if let Some(bytes) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
+                let speaker = crate::playout::speaker_now(&self.cfg.audio);
+                match crate::playout::play(&bytes, speaker.as_deref(), stop) {
+                    Ok(()) => return Ok(if stop() { None } else { Some(String::new()) }),
+                    Err(why) => {
+                        if let Some(note) = crate::playout::note_once(&why) {
+                            println!("{note}");
+                        }
+                    }
+                }
+            }
+        }
+        self.cfg.play.run_stoppable(vars, None, stop)
+    }
+
     /// The configured speech command (piper), for the whole of `text`.
     fn speak_with_piper(&self, text: &str) -> Result<()> {
         let vars = self.speech_command_vars()?;
@@ -997,7 +1042,7 @@ impl<'a> Voice<'a> {
         let played = if crate::micthread::playback_cut() {
             Ok(None)
         } else {
-            self.cfg.play.run_stoppable(&vars, None, &crate::micthread::playback_cut)
+            self.play_out(&vars)
         };
         crate::speaking::end(&data);
         played?;
@@ -1150,7 +1195,7 @@ impl<'a> Voice<'a> {
                 crate::speaking::end(&data);
                 break;
             }
-            let played = self.cfg.play.run_stoppable(&vars, None, &crate::micthread::playback_cut);
+            let played = self.play_out(&vars);
             play_ms += t1.elapsed().as_millis();
             crate::speaking::end(&data);
             if let Err(e) = played {
@@ -1252,7 +1297,7 @@ impl<'a> Voice<'a> {
                 .cfg
                 .record
                 .run(&vars, None)
-                .and_then(|_| self.cfg.stt.run(&vars, None));
+                .and_then(|_| self.transcribe_heard(&vars));
 
             match heard {
                 Ok(raw) => {
@@ -1312,7 +1357,7 @@ impl<'a> Voice<'a> {
             let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
             return Ok(crate::wakeword::heard(&samples, rate, &model));
         }
-        let raw = self.cfg.stt.run(&vars, None)?;
+        let raw = self.transcribe_heard(&vars)?;
         Ok(loose(&clean_transcript(&raw)).contains(&loose(&wake.phrase)))
     }
 }
@@ -1334,6 +1379,44 @@ pub fn loose(s: &str) -> String {
 
 /// Whisper emits bracketed timestamps and blank-audio markers. Strip them,
 /// or "[BLANK_AUDIO]" gets parsed as a command.
+/// What whisper writes for a quiet room, not for anything said: a whole
+/// transcript that is only one of these is dropped. "Thank you" alone is not
+/// here -- people say it -- but it only reaches whisper at all when the clip
+/// held speech (`audio::check_speech`).
+pub const WHISPER_SILENCE: &[&str] = &[
+    "you",
+    "thanks for watching",
+    "thank you for watching",
+    "thanks for watching bye",
+    "please subscribe",
+    "subscribe",
+    "like and subscribe",
+    "bye",
+    "bye bye",
+    "the end",
+    "so",
+    "uh",
+    "um",
+    "hmm",
+    "mm",
+    "oh",
+    "music",
+    "applause",
+    "silence",
+    "blank audio",
+];
+
+/// Is `text` only something whisper writes for silence?
+pub fn not_really_said(text: &str) -> bool {
+    let plain: String = text
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c.is_whitespace() || c == '\'' { c } else { ' ' })
+        .collect();
+    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    plain.is_empty() || WHISPER_SILENCE.contains(&plain.as_str())
+}
+
 pub fn clean_transcript(raw: &str) -> String {
     let mut out = String::new();
     let mut depth = 0i32;

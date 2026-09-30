@@ -69,10 +69,16 @@ impl Thread {
         if let Some(a) = &about {
             self.current_topic = Some(a.clone());
         }
+        // Kept without the sentences it copied from the last few replies
+        // (29 Sep 2026: every reply ended "What's your next move? A joke? A
+        // memory? ... Either way, I'm tuned in.", and each copy in the
+        // conversation taught the model to write it again).
+        let earlier: Vec<&str> = self.recent.iter().rev().take(REPEAT_LOOKBACK).map(|e| e.reply.as_str()).collect();
+        let kept = without_repeated_sentences(reply, &earlier);
         self.recent.push(Exchange {
             at: t,
             said: said.to_string(),
-            reply: reply.to_string(),
+            reply: if kept.trim().is_empty() { reply.to_string() } else { kept },
             about,
         });
         self.last_active = t;
@@ -231,13 +237,32 @@ impl Thread {
         if !self.summary.trim().is_empty() {
             out.push(Msg::system(format!("Earlier: {}", self.summary.trim())));
         }
+        let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
         for (i, e) in self.recent.iter().enumerate() {
             // An exchange with nothing said on either side is no turn at all.
             if self.folded + i < from || e.said.trim().is_empty() || e.reply.trim().is_empty() {
                 continue;
             }
+            // What whisper writes for a quiet room was never said (29 Sep 2026).
+            if crate::voice::not_really_said(&e.said) {
+                continue;
+            }
+            // (Sentences copied from earlier replies are taken out when a reply
+            // is kept -- `append` -- not here: rewriting an earlier reply
+            // because of a later one changes the start of every prompt after
+            // it, and the model server then reads the whole conversation again
+            // instead of reusing what it read last turn.)
+            let reply = e.reply.clone();
+            // An answer given again later is kept only there: a small model
+            // shown the same reply several times copies it for everything
+            // after (29 Sep 2026: "I'm here -- and I'm listening. What's on
+            // your mind?" to every question, including "why can't you hear
+            // me").
+            if self.recent[i + 1..].iter().any(|later| same(&later.reply, &e.reply)) {
+                continue;
+            }
             out.push(Msg::user(e.said.clone()));
-            out.push(Msg::assistant(e.reply.clone()));
+            out.push(Msg::assistant(reply));
         }
         out
     }
@@ -371,4 +396,38 @@ pub fn plain_fold(earlier: &str, exchanges: &[Exchange]) -> String {
         out.push_str(&format!("Talked about {}.", topics.join(", ")));
     }
     with_the_important_kept(&out, exchanges, earlier)
+}
+
+/// How many earlier replies a new one is checked against for copied sentences.
+pub const REPEAT_LOOKBACK: usize = 4;
+
+/// The sentences of `text`, each with its closing mark.
+fn reply_sentences(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let chars: Vec<char> = text.chars().collect();
+    for (i, c) in chars.iter().enumerate() {
+        cur.push(*c);
+        let ends = matches!(c, '.' | '!' | '?') && chars.get(i + 1).is_none_or(|n| n.is_whitespace());
+        if ends {
+            if !cur.trim().is_empty() {
+                out.push(cur.trim().to_string());
+            }
+            cur.clear();
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur.trim().to_string());
+    }
+    out
+}
+
+/// `reply` without any sentence (of five letters or more) that one of
+/// `others` also has. Short ones ("Sure.", "Done.") are kept: they repeat
+/// because they're right, not because they were copied.
+pub fn without_repeated_sentences(reply: &str, others: &[&str]) -> String {
+    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let seen: std::collections::HashSet<String> =
+        others.iter().flat_map(|o| reply_sentences(o)).map(|s| norm(&s)).filter(|n| n.len() >= 5).collect();
+    reply_sentences(reply).into_iter().filter(|s| !seen.contains(&norm(s))).collect::<Vec<_>>().join(" ")
 }

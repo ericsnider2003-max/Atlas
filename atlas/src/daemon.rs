@@ -8062,7 +8062,10 @@ impl<'a> Daemon<'a> {
         // (1) Relative: "in 20 minutes", "in 2 hours".
         if let Some(secs) = relative_secs(&low) {
             let text = reminder_text(said);
-            let id = self.scheduler.in_secs(&format!("reminder Reminder: {text}"), secs);
+            // From the turn's own moment, like every other time here (it read
+            // the wall clock itself, so a turn's "in 2 minutes" and its tick
+            // disagreed whenever they weren't the same clock).
+            let id = self.scheduler.at(&format!("reminder Reminder: {text}"), now + secs);
             let _ = self.scheduler.save(&self.store);
             return Some(format!(
                 "Right — in {}, I'll remind you to {text}. (#{id})",
@@ -11039,7 +11042,10 @@ impl<'a> Daemon<'a> {
             let ok = !result.starts_with("error");
             self.journal.record_at(Act::Scheduled, &job.command, ok, t);
             self.scheduler.complete(id, t, &result, ok);
-            if call != Decision::AutoProceed || !ok {
+            // A reminder is its words: said whenever it fires (29 Sep 2026: it
+            // runs as "say this", which proceeds by itself, so a reminder
+            // that went fine was never said, printed or logged).
+            if call != Decision::AutoProceed || !ok || matches!(intent, Intent::Say(_)) {
                 out.push(result);
             }
         }
@@ -11417,14 +11423,19 @@ impl<'a> Daemon<'a> {
         // comes within that lead. Repeating events expand, so a daily standup
         // reminds each day; the `reminded` set (id, occurrence start) keeps any
         // one occurrence from firing twice.
-        self.reminded.retain(|(_, start)| *start > t);
+        // Kept until the late window is over too, so a late reminder is
+        // said once, not every tick.
+        self.reminded.retain(|(_, start)| *start + crate::calendar::Calendar::REMIND_LATE_SECS > t);
         for occ in self.calendar.due_reminders(t) {
             let key = (occ.id, occ.start);
             if self.reminded.contains(&key) {
                 continue;
             }
             let mins_away = occ.start.saturating_sub(t) / 60;
-            let when = if mins_away >= 60 {
+            let when = if occ.start < t {
+                let ago = (t - occ.start) / 60;
+                if ago <= 1 { "just started".to_string() } else { format!("started {ago} minutes ago") }
+            } else if mins_away >= 60 {
                 format!("in {} hour{}", mins_away / 60, if mins_away / 60 == 1 { "" } else { "s" })
             } else if mins_away <= 1 {
                 "in a moment".to_string()
@@ -17861,7 +17872,14 @@ impl<'a> Daemon<'a> {
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
         match crate::audio::probe_devices(&ffmpeg) {
-            Ok(list) => self.audio_devices = Some(list),
+            // With the speakers too, where the listing names none (Windows):
+            // a notice then knows it is going into your headphones (29 Sep 2026).
+            Ok(mut list) => {
+                if !list.iter().any(|d| d.kind == crate::audio::Kind::Output) {
+                    list.extend(crate::playout::output_devices());
+                }
+                self.audio_devices = Some(list);
+            }
             Err(e) => {
                 self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
                 self.audio_devices_retry_at = now + 300;
@@ -22056,15 +22074,32 @@ impl<'a> Daemon<'a> {
     /// The reply is over, as far as it got.
     fn stop_saying(&mut self, s: crate::speakthread::Saying, mouth: &dyn Mouth) -> crate::speech::Delivery {
         let said = s.finish();
+        let over_it = said.words.clone();
         if let Some(w) = said.words {
             self.cut_in_by_voice = Some(w);
         }
         let d = said.delivery;
         if d.was_interrupted() {
+            // Cut by a sound that wasn't words -- a cough, a door, Atlas's own
+            // voice coming back -- is no reason to stop: the rest is said
+            // (29 Sep 2026: "Paused." and then nothing, over and over).
+            if over_it.as_deref().is_some_and(|w| crate::voice::not_really_said(w)) {
+                self.cut_in_by_voice = None;
+                self.unsaid = None;
+                let rest = d.remaining_text();
+                if !rest.trim().is_empty() {
+                    self.log.info("cut in by a sound, not words: carrying on");
+                    self.say(mouth, &rest);
+                }
+                return d;
+            }
             // Park what was not said, so "carry on" can finish it.
             self.unsaid = Some(d.remaining_text());
+            // Words said over it are answered next, straight away: no
+            // "Paused." in front of the answer. A stop still says so.
+            let answering_you = over_it.as_deref().is_some_and(|w| !w.trim().is_empty());
             let ack = crate::speech::acknowledge(&d);
-            if !ack.is_empty() {
+            if !ack.is_empty() && (!answering_you || ack == "Stopped.") {
                 self.say(mouth, &ack);
             }
         } else {

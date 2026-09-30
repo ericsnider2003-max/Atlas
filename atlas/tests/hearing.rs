@@ -149,7 +149,15 @@ fn losing_the_current_microphone_switches_immediately() {
     ];
     h.observe_devices(&webcam_unplugged);
     let c = h.decide(&at_desk(), &cfg(), 1);
-    assert!(matches!(c.ear, Ear::Headset(_)), "got {:?}", c.ear);
+    // 29 Sep 2026: it switches at once -- to the laptop's own mic, not the
+    // headset. A faint start-up level no longer stands in for "the lid is
+    // shut": that guess put Eric on his AirPods' microphone (call-quality
+    // sound for everything) with the lid open and the laptop mic working.
+    // The lid is read from Windows now, and a shut lid takes the laptop mic
+    // out before this is asked (`hearing::pick_microphone`; tested in
+    // the_system_recovers_by_itself::at_the_desk_the_laptop_mic_beats_the_airpods_mic).
+    assert_eq!(c.ear, Ear::Desk("Microphone Array (Realtek(R) Audio)".into()), "got {:?}", c.ear);
+    assert!(!c.costs_quality);
 }
 
 #[test]

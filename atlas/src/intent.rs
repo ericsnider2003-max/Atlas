@@ -806,6 +806,12 @@ impl Parser {
         if input.contains(crate::friends::PREFIX) || crate::friends::read_spoken(input).is_some() {
             return (Intent::Friend(input.trim().to_string()), Some("friend".into()));
         }
+        // Asked for a report on itself, inside a longer sentence (29 Sep 2026:
+        // "Can you do some work and generate a report on yourself?" went to
+        // the model, which said it can't): the self-check.
+        if asks_for_a_self_report(input) {
+            return (Intent::SelfCheck, Some("self_check".into()));
+        }
         // A follow-up to a list just shown ("open 2"), or a sentence one of
         // round 11's tools reads whole ("keep in touch with Priya every
         // month"). Strict shapes only; anything else carries on below.
@@ -1512,4 +1518,26 @@ fn command_by_name(name: &str, arg: String, raw: &str) -> Option<Intent> {
         Intent::Unknown(_) => None,
         i => Some(i),
     }
+}
+
+/// Does this sentence ask for a report on Atlas itself, or what's left to
+/// set up? Narrow on purpose: only these shapes, anywhere in the sentence.
+fn asks_for_a_self_report(said: &str) -> bool {
+    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' }).collect();
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    [
+        "report on yourself",
+        "report on your self",
+        "report about yourself",
+        "status report",
+        "self report",
+        "diagnostic report",
+        "what still needs to be set up",
+        "what still needs setting up",
+        "what still needs set up",
+        "what needs to be set up",
+        "whats left to set up",
+    ]
+    .iter()
+    .any(|p| t.contains(p))
 }

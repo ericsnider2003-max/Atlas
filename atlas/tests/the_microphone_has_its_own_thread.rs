@@ -529,8 +529,12 @@ fn speaking_over_a_reply_stops_it_and_what_you_said_is_answered_next() {
     let said = mouth.said.lock().unwrap().clone();
     assert!(said.first().is_some_and(|(_, cut)| *cut), "the first line wasn't cut off: {said:?}");
     assert_eq!(st.transcribed.load(Ordering::SeqCst), 1, "what you said over it wasn't taken");
-    // The room, the first reply, and the answer to what you said.
-    assert!(st.streams.load(Ordering::SeqCst) >= 3, "no second reply was spoken (the cut-in wasn't answered): {said:?}");
+    // The first reply, then the answer to what you said. (29 Sep 2026: the
+    // "Paused." said in between -- and the microphone watch it opened, which
+    // this used to count as a third stream -- is gone when there are words to
+    // answer: Eric heard "Paused." before every answer.)
+    assert!(said.len() >= 2, "no second reply was spoken (the cut-in wasn't answered): {said:?}");
+    assert!(!said.iter().any(|(l, _)| l == "Paused."), "\"Paused.\" was said before the answer: {said:?}");
     assert!(said.iter().skip(1).any(|(_, cut)| !cut), "the answer to what you said was cut too: {said:?}");
     assert!(!st.recording.load(Ordering::SeqCst) || st.attempts.load(Ordering::SeqCst) > 0);
     let _ = d.shut_down();

@@ -5,7 +5,7 @@
 //! testable without sleeping.
 
 use crate::error::Result;
-use crate::store::{now, Store};
+use crate::store::Store;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,7 +42,15 @@ pub struct Job {
     /// fires — which is the point of scheduling something in the first place.
     #[serde(default)]
     pub approved: bool,
+    /// Runs in a row that failed. A repeating job is tried again at its next
+    /// time; only `FAILS_BEFORE_STOPPING` in a row stop it.
+    #[serde(default)]
+    pub fails_in_a_row: u32,
 }
+
+/// Failed runs in a row after which a repeating job stops (29 Sep 2026: one
+/// failure stopped it for good, and nothing said so).
+pub const FAILS_BEFORE_STOPPING: u32 = 3;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scheduler {
@@ -60,10 +68,6 @@ impl Scheduler {
 
     pub fn at(&mut self, command: &str, due: u64) -> u64 {
         self.push(command, due, None)
-    }
-
-    pub fn in_secs(&mut self, command: &str, secs: u64) -> u64 {
-        self.push(command, now() + secs, None)
     }
 
     pub fn every(&mut self, command: &str, secs: u64, first_due: u64) -> u64 {
@@ -106,6 +110,7 @@ impl Scheduler {
             last_result: None,
             runs: 0,
             approved: false,
+            fails_in_a_row: 0,
         });
         id
     }
@@ -127,15 +132,17 @@ impl Scheduler {
         if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
             j.runs += 1;
             j.last_result = Some(result.to_string());
+            j.fails_in_a_row = if ok { 0 } else { j.fails_in_a_row + 1 };
+            let keep_going = ok || j.fails_in_a_row < FAILS_BEFORE_STOPPING;
             let next_on = j.on.as_deref().and_then(|on| next_on(on, j.due.max(t)));
             match (j.every, next_on) {
-                (Some(every), _) if ok => {
+                (Some(every), _) if keep_going => {
                     j.due = t + every;
                     j.state = JobState::Pending;
                 }
                 // A calendar-shaped job runs again at its next slot; one whose
                 // rule has run out (COUNT, UNTIL) is done.
-                (None, Some(next)) if ok => {
+                (None, Some(next)) if keep_going => {
                     j.due = next;
                     j.state = JobState::Pending;
                 }

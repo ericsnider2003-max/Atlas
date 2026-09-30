@@ -154,6 +154,8 @@ pub mod hollow;
 pub mod hollowcode;
 pub mod revise;
 pub mod onlyone;
+pub mod playout;
+pub mod winpark;
 pub mod unwaited;
 pub mod gaze;
 pub mod goal;

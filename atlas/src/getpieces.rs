@@ -821,5 +821,8 @@ pub fn use_own_tools(root: &Path) {
 /// Here rather than in `setupwin`, which is desktop-only, because the running
 /// Atlas answers "what's missing from setup" on every build.
 pub fn setup_pieces() -> Vec<Piece> {
-    catalogue().into_iter().chain(pictures()).chain(tor()).collect()
+    // The Kokoro voice too (29 Sep 2026: Eric, "Atlas sounds like a robot" --
+    // piper was the only voice setup fetched, and Kokoro, which Atlas already
+    // speaks with when it's there, was an extra nobody knew to ask for).
+    catalogue().into_iter().chain(crate::kokoro::pieces()).chain(pictures()).chain(tor()).collect()
 }

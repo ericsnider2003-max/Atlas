@@ -777,6 +777,9 @@ impl Calendar {
         }
     }
 
+    /// How long after an event started its reminder is still said.
+    pub const REMIND_LATE_SECS: u64 = 15 * 60;
+
     /// The occurrences whose reminder is due right now — start is still ahead
     /// but within its lead time. Repeating events are expanded, so a daily
     /// standup reminds each day. The caller tracks which it has already spoken
@@ -785,13 +788,18 @@ impl Calendar {
         // A reminder fires while now is in [start - lead, start). The largest
         // lead we support is a day, so a day-and-change window covers every one
         // without scanning further than it must.
+        //
+        // And for `REMIND_LATE_SECS` after it started (29 Sep 2026): a laptop
+        // asleep through the whole lead time, or Atlas paused, used to drop
+        // the reminder altogether; now it is said late ("started 4 minutes
+        // ago") rather than not at all.
         let window_end = now + 26 * 3600;
-        self.occurrences_between(now, window_end)
+        self.occurrences_between(now.saturating_sub(Self::REMIND_LATE_SECS), window_end)
             .into_iter()
             .filter(|e| {
                 let Some(mins) = e.remind_before_mins else { return false };
                 let lead = mins as u64 * 60;
-                e.start > now && e.start.saturating_sub(lead) <= now
+                e.start + Self::REMIND_LATE_SECS > now && e.start.saturating_sub(lead) <= now
             })
             .collect()
     }
