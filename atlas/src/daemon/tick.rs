@@ -312,7 +312,10 @@ impl<'a> Daemon<'a> {
             let ok = !result.starts_with("error");
             self.journal.record_at(Act::Scheduled, &job.command, ok, t);
             self.scheduler.complete(id, t, &result, ok);
-            if call != Decision::AutoProceed || !ok {
+            // A reminder is its words: said whenever it fires (29 Sep 2026: it
+            // runs as "say this", which proceeds by itself, so a reminder
+            // that went fine was never said, printed or logged).
+            if call != Decision::AutoProceed || !ok || matches!(intent, Intent::Say(_)) {
                 out.push(result);
             }
         }
@@ -690,14 +693,19 @@ impl<'a> Daemon<'a> {
         // comes within that lead. Repeating events expand, so a daily standup
         // reminds each day; the `reminded` set (id, occurrence start) keeps any
         // one occurrence from firing twice.
-        self.reminded.retain(|(_, start)| *start > t);
+        // Kept until the late window is over too, so a late reminder is
+        // said once, not every tick.
+        self.reminded.retain(|(_, start)| *start + crate::calendar::Calendar::REMIND_LATE_SECS > t);
         for occ in self.calendar.due_reminders(t) {
             let key = (occ.id, occ.start);
             if self.reminded.contains(&key) {
                 continue;
             }
             let mins_away = occ.start.saturating_sub(t) / 60;
-            let when = if mins_away >= 60 {
+            let when = if occ.start < t {
+                let ago = (t - occ.start) / 60;
+                if ago <= 1 { "just started".to_string() } else { format!("started {ago} minutes ago") }
+            } else if mins_away >= 60 {
                 format!("in {} hour{}", mins_away / 60, if mins_away / 60 == 1 { "" } else { "s" })
             } else if mins_away <= 1 {
                 "in a moment".to_string()
@@ -1282,12 +1290,14 @@ impl<'a> Daemon<'a> {
         // than a routine status update, so it goes to the log rather than
         // interrupting you as a nudge -- once each time it changes, not on
         // every tick.
-        if let Some(m) = self.tier_mix.worth_saying() {
-            if !self.connections_logged.contains(&m) {
-                self.log.info(&m);
-            }
-            self.connections_logged.push(m);
+        // Its own record (29 Sep 2026): it shared `connections_logged`,
+        // which the connection lines above replace every tick, so it was
+        // logged every two seconds for as long as it held.
+        let mix_line = self.tier_mix.worth_saying();
+        if mix_line.is_some() && mix_line != self.tier_mix_logged {
+            self.log.info(mix_line.as_deref().unwrap_or_default());
         }
+        self.tier_mix_logged = mix_line;
         let nudge = if self.proactive.may_interrupt(&signals, t) {
             self.nudger.consider(t, hour, signals.dwell_secs, signals.idle_secs)
         } else {

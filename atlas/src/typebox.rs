@@ -84,6 +84,8 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
         "atlas-typebox",
         opts,
         Box::new(move |cc| {
+            // The window by its handle, from eframe (`winpark`).
+            let hwnd = crate::winpark::handle_of(cc);
             let (tx, rx) = std::sync::mpsc::channel::<Option<isize>>();
             if standby {
                 let ctx = cc.egui_ctx.clone();
@@ -96,7 +98,7 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
                             // window's own loop to wake: on the laptop the
                             // first words typed went to the app underneath.
                             let was_in = front_window();
-                            show_now();
+                            show_now(hwnd);
                             if tx.send(was_in).is_err() {
                                 break;
                             }
@@ -107,7 +109,7 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
                     std::process::exit(0);
                 });
             }
-            Ok(Box::new(Box_ { q, frames: if standby { u32::MAX } else { 0 }, standby, wake: rx, was_in: front_window() }))
+            Ok(Box::new(Box_ { q, frames: if standby { u32::MAX } else { 0 }, hidden_told: 0, standby, wake: rx, was_in: front_window(), hwnd }))
         }),
     )
     .map_err(|e| e.to_string())
@@ -118,6 +120,10 @@ struct Box_ {
     q: QuickInput,
     /// Frames since it was shown; `u32::MAX` while it waits hidden.
     frames: u32,
+    /// Its native window, from eframe (`winpark::handle_of`).
+    hwnd: isize,
+    /// Frames told "stay hidden" since it was last put away.
+    hidden_told: u8,
     standby: bool,
     wake: std::sync::mpsc::Receiver<Option<isize>>,
     /// The window you were in, given back when the box goes (Windows
@@ -134,6 +140,7 @@ impl eframe::App for Box_ {
         if let Ok(was_in) = self.wake.try_recv() {
             self.q.hotkey(None, crate::store::now());
             self.frames = 0;
+            self.hidden_told = 0;
             self.was_in = was_in;
         }
         if self.frames == u32::MAX {
@@ -141,11 +148,31 @@ impl eframe::App for Box_ {
             // every time, and painted clear: on Windows the window came up
             // anyway after its first frame, and a frame that paints nothing
             // is a black bar across the screen (Eric, 27 Sep 2026).
-            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            // For a few frames only: each command wakes the window again,
+            // and told every frame the hidden box spun a core (29 Sep 2026).
             eframe::egui::CentralPanel::default()
                 .frame(eframe::egui::Frame::none().fill(crate::look_paint::colourway().raised))
                 .show(ctx, |_| {});
-            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+            // Nothing more asked of the loop once it's told: the "show" line
+            // wakes it (see `run`), and a hidden window asking to be drawn
+            // again every half second kept eframe's loop spinning -- a core
+            // at 75% for a box nobody could see (29 Sep 2026).
+            if self.hidden_told < crate::overlaywin::HIDE_FRAMES {
+                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                self.hidden_told += 1;
+                if self.hidden_told < crate::overlaywin::HIDE_FRAMES {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                } else {
+                    // Parked: eframe stops waiting for a paint Windows never
+                    // sends a hidden window (`winpark`).
+                    crate::winpark::park(self.hwnd);
+                }
+            } else {
+                // Hidden and settled, still woken: a few times a second at
+                // most (`winpark::IDLE_NAP`). The key shows the box from its
+                // own thread (`show_now`), so the nap doesn't delay that.
+                std::thread::sleep(crate::winpark::IDLE_NAP);
+            }
             return;
         }
         // Shown, sized and brought to the front on the first frames. Windows
@@ -302,18 +329,18 @@ fn give_back(to: Option<isize>) {
     let _ = to;
 }
 
-/// Show the box and give it the keyboard, found by its title.
+/// Show the box and give it the keyboard (its window by handle).
 #[cfg_attr(not(feature = "desktop-ui"), allow(dead_code))]
-fn show_now() {
+fn show_now(hwnd: isize) {
+    crate::winpark::unpark(hwnd);
     #[cfg(windows)]
     unsafe {
-        use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_SHOW};
-        let title: Vec<u16> = TITLE.encode_utf16().chain(std::iter::once(0)).collect();
-        if let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) {
-            if !h.0.is_null() {
-                let _ = ShowWindow(h, SW_SHOW);
-                let _ = SetForegroundWindow(h);
-            }
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow, SW_SHOW};
+        if hwnd != 0 {
+            let h = HWND(hwnd as *mut core::ffi::c_void);
+            let _ = ShowWindow(h, SW_SHOW);
+            let _ = SetForegroundWindow(h);
         }
     }
 }

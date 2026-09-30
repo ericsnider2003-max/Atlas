@@ -213,6 +213,22 @@ pub enum Step {
 }
 
 impl Session {
+    /// A session for one of Atlas's own ideas (the Improvements page's "Have
+    /// a go"), with its diagnosis already given.
+    ///
+    /// `new` holds the symptom already, so the first answer is the cause.
+    /// 29 Sep 2026: the hub handed it the symptom again first, which made the
+    /// symptom the cause, and every idea was refused as "the cause is a
+    /// restatement of the symptom".
+    pub fn from_recommendation(r: &crate::selfaudit::Recommendation, tests_before: usize) -> Session {
+        let thought = crate::selfaudit::as_thought(r);
+        let mut session = Session::new(&thought.symptom, tests_before);
+        for answer in [&thought.cause, &thought.where_, &thought.proof] {
+            let _ = session.diagnosing.answer(answer);
+        }
+        session
+    }
+
     pub fn new(goal: &str, tests_before: usize) -> Session {
         Session {
             work: crate::pipeline::Work::new(goal),

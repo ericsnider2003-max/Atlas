@@ -66,6 +66,11 @@ pub trait MicWork: Send {
     fn wake_once(&mut self, stop: &dyn Fn() -> bool) -> Result<bool>;
     /// What you say after the wake word, as words.
     fn listen(&mut self) -> Result<String>;
+    /// Words heard in the same clip as the wake word, after it ("Atlas, can
+    /// you see me?" said in one breath), taken once. `None` by default.
+    fn take_said_with_wake(&mut self) -> Option<String> {
+        None
+    }
     /// The microphone as a stream of 16 kHz samples, for watching while
     /// Atlas speaks. `None` when this machine can't stream the microphone
     /// (no device named for it).
@@ -982,7 +987,14 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 failures = 0;
                 s.taken.store(true, Ordering::SeqCst);
                 s.recording.store(true, Ordering::SeqCst);
-                let said = work.listen().map_err(|e| e.to_string());
+                let with_name = work.take_said_with_wake();
+                // A sentence already finished in the clip ("Atlas, can you see
+                // me?") is answered now, not after waiting on a silence.
+                let said = if with_name.as_deref().is_some_and(sentence_finished) {
+                    with_wake_word(with_name, Ok(String::new()))
+                } else {
+                    with_wake_word(with_name, work.listen().map_err(|e| e.to_string()))
+                };
                 s.recording.store(false, Ordering::SeqCst);
                 if tx.send(Heard::Wake(said)).is_err() {
                     return;
@@ -1004,6 +1016,30 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 }
             }
         }
+    }
+}
+
+/// Does this end like a whole sentence (whisper punctuates what it hears)?
+pub fn sentence_finished(words: &str) -> bool {
+    let t = words.trim();
+    t.split_whitespace().count() >= 2 && t.ends_with(['.', '?', '!'])
+}
+
+/// What was said with the name, joined to what the listen after it heard.
+///
+/// 29 Sep 2026: the words in the wake word's own clip were thrown away and a
+/// fresh recording started once whisper had found the name -- by then "Atlas,
+/// can you see me?" was over, and Atlas said "I heard my name but nothing
+/// after it" five times in an evening. Now those words are the start of what
+/// you said; a listen that hears nothing more leaves them as the whole of it.
+pub fn with_wake_word(with_name: Option<String>, then: std::result::Result<String, String>) -> std::result::Result<String, String> {
+    let first = with_name.map(|w| w.trim().to_string()).filter(|w| !w.is_empty());
+    match (first, then) {
+        (None, then) => then,
+        (Some(w), Ok(more)) if !more.trim().is_empty() => Ok(format!("{w} {}", more.trim())),
+        (Some(w), Ok(_)) => Ok(w),
+        (Some(w), Err(why)) if why.contains(crate::voice::HEARD_NOTHING) => Ok(w),
+        (Some(_), Err(why)) => Err(why),
     }
 }
 

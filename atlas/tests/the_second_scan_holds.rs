@@ -1049,3 +1049,19 @@ fn the_friends_door_opens_once_its_port_is_free() {
     d.open_signal_door_again(161);
     assert!(TcpStream::connect(("127.0.0.1", port)).is_ok(), "the door never opened once the port was free");
 }
+
+#[test]
+fn a_reminder_that_fires_is_said() {
+    // 29 Sep 2026: a fired reminder runs as "say this", which proceeds by
+    // itself, and the tick only passed on what needed approval or failed --
+    // so every reminder that worked was never said.
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, story_or_islands(), "reminder-said");
+    let set = d.turn("remind me in 2 minutes to stretch", 1_000);
+    assert!(set.to_lowercase().contains("set") || set.to_lowercase().contains("remind"), "{set}");
+    let mut heard = Vec::new();
+    for t in [1_060, 1_130, 1_200] {
+        heard.extend(d.tick(t));
+    }
+    assert!(heard.iter().any(|l| l.to_lowercase().contains("stretch")), "the reminder fired and wasn't said: {heard:?}");
+}

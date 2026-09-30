@@ -417,7 +417,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "thread", what: "carry one conversation on for good -- no session to start, the older part folded into a summary that keeps what mattered", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["thread"] },
         Capability { id: "understood", what: "check with you before acting on a guess at what you meant, and ask which one when it could be two things", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["understood", "whichone"] },
         Capability { id: "answering", what: "take an answer to its questions however you can give it -- a word, a typed yes, a key -- when speaking isn't an option", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["answering"] },
-        Capability { id: "audio", what: "pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing", area: Hearing, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["audio"] },
+        Capability { id: "audio", what: "pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing", area: Hearing, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["audio", "playout"] },
         Capability { id: "addressing", what: "tell whether what it heard was meant for it -- a \"stop\" to it stops it, a voice on your call doesn't", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["addressing"] },
         Capability { id: "references", what: "work out what \"it\", \"that\" and \"this one\" mean from what just happened -- \"move it to the other screen\"", area: Windows, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["references"] },
         Capability { id: "clipboard", what: "explain or answer about whatever you copied -- and when nothing is copied, work out what \"this\" is from what you were looking at", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::ReadScreen], modules: &["clipboard", "subject"] },
@@ -1334,7 +1334,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 410 -> 413 (29 Sep): `photo`, `straighten` and `cutout` (photo editing).
 // 413 -> 414 (29 Sep): `social` (its `src/social/*.rs` fold into it).
 // 414 -> 418 (29 Sep): `hunt`, `hunting` (opportunity hunting), `wit`, `talkback`.
-pub const MODULES_IN_TREE: usize = 418;
+// 418 -> 420 (29 Sep): `playout` (the voice played inside Atlas, through
+// the speaker it chose -- part of `audio`) and `winpark` (plumbing).
+pub const MODULES_IN_TREE: usize = 420;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1353,6 +1355,7 @@ pub const MODULES_IN_TREE: usize = 418;
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
+    ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),
     ("backends", "picks which mechanism touches a window per request; the window capabilities are what it serves"),
     ("bars", "the price-bar type and the view that cannot see the future, which every market reading is built on"),
     ("checkup", "the fast on-device self-check doctor and setup run, not something you ask for by itself"),

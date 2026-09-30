@@ -105,6 +105,36 @@ impl Referents {
     }
 }
 
+/// Is a command's argument a stand-in for something said earlier ("it",
+/// "that one", "those files") rather than a subject of its own?
+///
+/// 29 Sep 2026: "Research ways to improve in house language models ...
+/// allowing it to do better ... put it into a document" was answered "About
+/// what?" -- every "it" in a long request counted as a pronoun needing a
+/// referent, and with none to hand the whole request became a question. A
+/// pronoun stands in for the argument when it leads it or the argument is
+/// no more than a few words; inside a sentence of its own it is grammar.
+pub fn argument_leans_on_earlier(arg: &str) -> bool {
+    let w = words(arg);
+    match w.first() {
+        None => false,
+        Some(first) if PRONOUNS.contains(&first.as_str()) => true,
+        Some(_) => w.len() <= 3 && w.iter().any(|x| PRONOUNS.contains(&x.as_str())),
+    }
+}
+
+/// Is this asking to start (or get on with) research already asked for --
+/// "start that research", "do the research I asked for", "get started on
+/// the research" -- rather than naming a topic?
+pub fn starts_the_research(said: &str) -> bool {
+    let t = format!(" {} ", words(said).join(" "));
+    let about_research = [" research ", " the research ", " that research ", " researching "].iter().any(|w| t.contains(w));
+    let get_going = [" start", " do the ", " do that ", " get started", " begin", " go ahead", " kick off", " get on with", " carry on with"]
+        .iter()
+        .any(|w| t.contains(w));
+    about_research && get_going
+}
+
 /// Does this text lean on something said earlier?
 pub fn has_pronoun(text: &str) -> bool {
     words(text).iter().any(|w| PRONOUNS.contains(&w.as_str()))

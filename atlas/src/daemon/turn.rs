@@ -489,6 +489,28 @@ impl<'a> Daemon<'a> {
             }
         }
 
+        // "Start that research", "do the research I asked for": the research
+        // asked for last, run now -- not a chat about research (29 Sep 2026:
+        // three of these went to the model, which said "I'm already on it"
+        // and started nothing). With nothing asked yet, it says how to ask.
+        let research_again;
+        let said = if matches!(self.parser.parse(said), Intent::Unknown(_)) && crate::references::starts_the_research(said) {
+            match self.referents.last_topic.clone() {
+                Some(topic) => {
+                    research_again = format!("research {topic}");
+                    research_again.as_str()
+                }
+                None => {
+                    let reply = "I haven't been given a topic yet. Say \"research\" and then what to look into, and I'll start on it.".to_string();
+                    self.thread.append(said, &reply, None, t);
+                    self.persist();
+                    return reply;
+                }
+            }
+        } else {
+            said
+        };
+
         // "close it" -> "close chrome", or a question if there is no referent.
         //
         // Only when the phrase alone doesn't already say what to do. "undo
@@ -500,7 +522,7 @@ impl<'a> Daemon<'a> {
         let parsed = self.parser.parse(said);
         let already_clear = !matches!(parsed, Intent::Unknown(_))
             && !argument_of(&parsed)
-                .map(|a| crate::references::has_pronoun(&a))
+                .map(|a| crate::references::argument_leans_on_earlier(&a))
                 .unwrap_or(false);
         // An answer to a question Atlas asked in its own words ("change it
         // to …", a decision's next move) is that answer, pronouns and all.
@@ -1698,6 +1720,12 @@ impl<'a> Daemon<'a> {
         if let Some(app) = crate::session::app_of(&intent) {
             self.referents.last_app = Some(app);
         }
+        // And what "that research" means.
+        if let Intent::Research(topic) = &intent {
+            if !topic.trim().is_empty() {
+                self.referents.last_topic = Some(topic.clone());
+            }
+        }
 
         // Anything blocked goes on the outstanding list rather than evaporating.
         // Asked through `connectivity::allows`, the predicate written to answer
@@ -2023,11 +2051,13 @@ impl<'a> Daemon<'a> {
     /// producing them. A self-audit with an empty input list reports that
     /// everything is fine, which is the most misleading possible answer.
     pub fn refresh_signals(&mut self) {
-        let never_used: Vec<String> = crate::capability::all()
-            .into_iter()
-            .filter(|c| c.state == crate::capability::State::Working)
-            .map(|c| c.id.to_string())
-            .collect();
+        // Nothing records which capabilities a turn used, so there is no
+        // "never used" list to give. This was every capability marked
+        // working -- persona, calendar, thread among them -- shown on the
+        // Improvements page as "nothing has ever called" them, with a "Have a
+        // go" that could never be done (29 Sep 2026). Empty until use is
+        // actually recorded; `signals::from_unused` then says nothing.
+        let never_used: Vec<String> = Vec::new();
         let total = crate::capability::all().len() as u32;
         self.signals = crate::signals::gather(
             &self.history,
