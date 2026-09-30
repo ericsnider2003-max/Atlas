@@ -298,6 +298,8 @@ pub mod nearby;
 pub mod metrics;
 pub mod mind;
 pub mod models;
+/// Two brains: the talking model and a deeper one for background work (30 Sep 2026).
+pub mod deepbrain;
 pub mod modes;
 pub mod scheduler;
 pub mod selfaudit;

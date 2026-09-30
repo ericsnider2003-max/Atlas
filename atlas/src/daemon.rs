@@ -942,6 +942,16 @@ pub struct Daemon<'a> {
     /// loop -- the hub, the ticks -- carries on while the model thinks
     /// (27 Sep 2026: the whole hub hung for as long as a Talk reply took).
     pending_turn: Option<PendingTurn>,
+    /// The deep model for background work, beside the talking one
+    /// (`deepbrain`, 30 Sep 2026): started when such work comes, stopped
+    /// when idle, giving way to every turn.
+    pub(crate) deep: crate::deepbrain::DeepBrain,
+    /// When to look for the deep model's file again.
+    deep_look_at: u64,
+    /// `models.talk` as last followed (`follow_the_talk_setting`), and the
+    /// model the talking server was started on.
+    talk_setting_seen: Option<String>,
+    model_running_id: Option<String>,
     /// The last id given to a `pending_turn`, so a caller can tell the turn
     /// it started from one that was already waiting (28 Sep 2026: a voice
     /// turn took over a Talk page turn still thinking).
@@ -1668,6 +1678,10 @@ impl<'a> Daemon<'a> {
             audio_tools_missing: false,
             talk_queue: Vec::new(),
             pending_turn: None,
+            deep: crate::deepbrain::DeepBrain::none(),
+            deep_look_at: 0,
+            talk_setting_seen: None,
+            model_running_id: None,
             pending_seq: 0,
             also_asked: Vec::new(),
             rephrase_ok: false,

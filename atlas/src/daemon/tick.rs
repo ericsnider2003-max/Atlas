@@ -39,6 +39,9 @@ impl<'a> Daemon<'a> {
         // finished on a later tick, so the loop -- and the hub -- never waits
         // on the model.
         self.talk_queue_turns(t);
+        // The deep model: started for background work waiting on it,
+        // stopped once idle (`deepbrain`).
+        self.keep_deep_brain();
         // A question left standing is stamped here, so its age is known.
         self.expire_stale_question(t);
 

@@ -1068,6 +1068,24 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         group: "What it may touch".into(),
     });
 
+    // Which model talks with you (30 Sep 2026, `deepbrain`): switched live --
+    // the talking model's server is started again on the other one.
+    items.push(Setting {
+        key: "models.talk".into(),
+        name: "Better answers".into(),
+        what: "Which model talks with you: faster (Qwen3-VL 4B) or better (Qwen3.5 4B, more natural replies).                Pictures are read by the Qwen3-VL model either way."
+            .into(),
+        cost: "Better reads a prompt at about half the speed: 2 to 5 seconds a reply on Eric's laptop where faster                takes 1 to 3. The same memory. Better needs its 2.8 GB file (the Connections page fetches it)."
+            .into(),
+        value: Value::Choice {
+            value: if crate::models::talks_better(&t.models) { "better".into() } else { "faster".into() },
+            options: vec!["faster".into(), "better".into()],
+        },
+        default: Value::Choice { value: "faster".into(), options: vec!["faster".into(), "better".into()] },
+        weight: Weight::Resource,
+        group: "How it talks back".into(),
+    });
+
     items.push(Setting {
         key: "crew.keep_free_mb".into(),
         name: "Memory kept free".into(),

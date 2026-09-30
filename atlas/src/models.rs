@@ -108,6 +108,26 @@ pub struct ModelsConfig {
     /// so the server's own defaults -- no penalty for repeating at all --
     /// never apply.
     pub sampling: Sampling,
+    /// The model you talk with (30 Sep 2026, `deepbrain`): `faster` (the
+    /// shipped Qwen3-VL 4B -- also the default, empty), `better` (Qwen3.5
+    /// 4B: more natural replies, about half as quick to read a prompt,
+    /// measured on Eric's laptop), or a model's file name in `dir`. The
+    /// hub's "Better answers" and "use the better model" set it.
+    pub talk: String,
+    /// The model for work nobody is waiting on word by word -- research,
+    /// drafts, summaries, the night's work, a request of several steps --
+    /// run as a second server beside the talking one, started when such
+    /// work comes and stopped when it has been idle (`deepbrain`). Empty:
+    /// Qwen3.5 9B (`deepbrain::DEEP_DEFAULT`) when its file is in `dir`;
+    /// `off`: none, and that work shares the talking model's other slot as
+    /// before; or a model's file name.
+    pub deep: String,
+    /// The deep model's server port. 0: the talking model's port plus one.
+    pub deep_port: u16,
+    /// How long the deep model stays loaded with nothing to do, in seconds.
+    pub deep_idle_secs: u64,
+    /// The deep model's context, in tokens.
+    pub deep_context: u64,
 }
 
 /// How the model picks its next word, sent with every request (29 Sep 2026).
@@ -224,8 +244,29 @@ impl Default for ModelsConfig {
             draft: String::new(),
             speculate: "off".into(),
             sampling: Sampling::default(),
+            talk: String::new(),
+            deep: String::new(),
+            deep_port: 0,
+            deep_idle_secs: 300,
+            deep_context: 8192,
         }
     }
+}
+
+/// The talking model's file name for `models.talk`: `better` and `faster`
+/// named, anything else taken as a file name; `None` for empty (30 Sep 2026).
+pub fn talk_id(cfg: &ModelsConfig) -> Option<String> {
+    match cfg.talk.trim() {
+        "" => None,
+        w if w.eq_ignore_ascii_case("better") => Some(crate::deepbrain::BETTER_TALK.to_string()),
+        w if w.eq_ignore_ascii_case("faster") => Some(crate::deepbrain::FASTER_TALK.to_string()),
+        id => Some(id.trim_end_matches(".gguf").to_string()),
+    }
+}
+
+/// Is the better talking model the one asked for?
+pub fn talks_better(cfg: &ModelsConfig) -> bool {
+    talk_id(cfg).as_deref() == Some(crate::deepbrain::BETTER_TALK)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -329,6 +370,9 @@ impl Registry {
     }
 
     pub fn choose<'a>(&'a self, cfg: &ModelsConfig) -> Option<&'a Model> {
+        if let Some(m) = self.talking_named(cfg) {
+            return Some(m);
+        }
         if !cfg.prefer.is_empty() {
             if let Some(m) = self.get(&cfg.prefer) {
                 return Some(m);
@@ -636,6 +680,22 @@ pub fn launch(
     gpu_layers: u32,
     vars: &Vars,
 ) -> Result<std::process::Child> {
+    let child = launch_logging(model, cfg, gpu_layers, vars, "model-server.log")?;
+    LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
+    Ok(child)
+}
+
+/// `launch`, with the server's messages in `data/logs/<log>`, and without
+/// marking the talking model's server as just started -- what the deep
+/// model's server is started with (`deepbrain`), so a question to the
+/// talking model never waits on the other one loading.
+pub fn launch_logging(
+    model: &Model,
+    cfg: &ModelsConfig,
+    gpu_layers: u32,
+    vars: &Vars,
+    log: &str,
+) -> Result<std::process::Child> {
     let tool = server_tool(cfg)
         .ok_or_else(|| AtlasError::Config("no llama-server configured in models.server".into()))?;
     let (cmd, mut args) = tool.resolved(vars);
@@ -660,19 +720,18 @@ pub fn launch(
         // What it says goes to data/logs/model-server.log (29 Sep 2026): a
         // server that died loading its model (a bad file, not enough
         // graphics memory) left no reason anywhere.
-        .stderr(model_server_log())
+        .stderr(model_server_log(log))
         .spawn()
         .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))?;
-    LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
 }
 
 /// Where the model server's own messages go: `data/logs/model-server.log`,
 /// started afresh each launch. Nowhere, when that can't be opened.
-fn model_server_log() -> std::process::Stdio {
+fn model_server_log(name: &str) -> std::process::Stdio {
     let dir = crate::roots::data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
-    match std::fs::File::create(dir.join("model-server.log")) {
+    match std::fs::File::create(dir.join(name)) {
         Ok(f) => std::process::Stdio::from(f),
         Err(_) => std::process::Stdio::null(),
     }
@@ -850,6 +909,20 @@ pub fn pick<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Mach
     })
 }
 
+impl Registry {
+    /// The model `models.talk` names, when its file is here.
+    ///
+    /// `faster` -- the shipped default -- doesn't override a model named in
+    /// `prefer`; `better` and a file name do.
+    fn talking_named(&self, cfg: &ModelsConfig) -> Option<&Model> {
+        let id = talk_id(cfg)?;
+        if id == crate::deepbrain::FASTER_TALK && !cfg.prefer.trim().is_empty() {
+            return None;
+        }
+        self.get(&id)
+    }
+}
+
 /// The best model that fits a budget worked out from the machine.
 ///
 /// `choose` sizes against the config alone and stays for callers that have no
@@ -868,8 +941,19 @@ impl Registry {
     /// (`prefer`) still gets exactly that one, and `talk_ceiling_b: 0` gives
     /// the old behaviour.
     pub fn choose_for<'a>(&'a self, cfg: &ModelsConfig, budget: u64) -> Option<&'a Model> {
+        if let Some(m) = self.talking_named(cfg) {
+            return Some(m);
+        }
         if !cfg.prefer.is_empty() {
             if let Some(m) = self.get(&cfg.prefer) {
+                return Some(m);
+            }
+        }
+        // Nothing named: the shipped talking model when it's here (30 Sep
+        // 2026) -- a bigger one dropped in the folder, the deep model
+        // included, never takes over talking by being bigger.
+        if cfg.prefer.is_empty() {
+            if let Some(m) = self.get(crate::deepbrain::FASTER_TALK).filter(|m| estimate_memory(m, cfg.context) <= budget) {
                 return Some(m);
             }
         }
@@ -1080,6 +1164,22 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
     }
 }
 
+/// A one-prompt call to a model whose template thinks out loud unless told
+/// not to (30 Sep 2026): Qwen3.5 4B and 9B's own template -- read out of the
+/// published GGUF files -- starts every answer with `<think>` unless
+/// `enable_thinking` is false, and false writes an empty thought instead.
+/// The chat path sends that switch (`chat_body`); `/completion` takes a
+/// prompt written here, so the empty thought is written here. A template
+/// with no such switch (the shipped Qwen3-VL Instruct's) is left alone.
+pub fn no_thinking_prompt(prompt: String, chat_template: Option<&str>) -> String {
+    let switch = chat_template.is_some_and(|t| t.contains("enable_thinking"));
+    if switch && prompt.ends_with("<|im_start|>assistant\n") {
+        prompt + "<think>\n\n</think>\n\n"
+    } else {
+        prompt
+    }
+}
+
 /// The model connection Atlas would build for itself, given a chosen model.
 ///
 /// This is the piece that makes "no Ollama in the path" true rather than
@@ -1094,7 +1194,7 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
 /// substitute, exactly as a hand-written config would.
 pub fn llm_config_for(model: &Model, cfg: &ModelsConfig, http: &ExternalTool) -> crate::brain::LlmConfig {
     let template = Template::detect(model.chat_template.as_deref(), &model.id);
-    let prompt = template.render("{system}", "{user}");
+    let prompt = no_thinking_prompt(template.render("{system}", "{user}"), model.chat_template.as_deref());
     let body = completion_body(&prompt, template, 512, &cfg.sampling);
 
     let mut tool = http.clone();

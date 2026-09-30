@@ -266,7 +266,17 @@ impl Gguf {
             return 0;
         };
         let kv_heads = self.head_count_kv().unwrap_or(heads).max(1);
-        let head_dim = embed / heads.max(1);
+        let head_dim = self.arch_key("attention.key_length").unwrap_or(embed / heads.max(1));
+        // A hybrid model (Qwen3.5: `full_attention_interval` 4) keeps a
+        // growing cache only in its attention layers, one in every
+        // `interval`; the rest hold a small fixed state (30 Sep 2026: the 9B
+        // was sized as if all 33 of its layers cached, a gigabyte too many
+        // at 8,192 tokens, which decides whether it may start beside the
+        // talking model).
+        let layers = match self.arch_key("full_attention_interval") {
+            Some(n) if n > 1 => layers.div_ceil(n),
+            _ => layers,
+        };
         // key + value, 2 bytes each at f16
         2 * 2 * layers * kv_heads * head_dim * context
     }

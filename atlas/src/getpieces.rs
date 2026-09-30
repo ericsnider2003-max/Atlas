@@ -297,6 +297,99 @@ pub fn draft_model() -> Piece {
     }
 }
 
+/// "Better answers" (`models.talk: better`, `deepbrain`): Qwen3.5 4B at
+/// Q4_K_M, bartowski's quantisation of Qwen's own weights, pinned to that
+/// repository's commit. Size and SHA-256 are Hugging Face's LFS record of
+/// the file (30 Sep 2026), and the same as Eric's copy, hashed on his laptop.
+/// Its picture encoder (`mmproj-Qwen_Qwen3.5-4B-f16.gguf`, 672 MB) is not
+/// fetched: pictures stay with the Qwen3-VL model (`picture_talk`), because
+/// Qwen3.5's own template thinks out loud unless told not to, and the
+/// picture program isn't told.
+pub fn better_talk_model() -> Piece {
+    Piece {
+        name: "the better model",
+        for_what: "more natural answers",
+        url: "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve/4168f45a16a1290d65a4ec0fa312ae917a4c15d6/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+        sha256: "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+        bytes: 3_013_027_808,
+        lands: Lands::File("models/Qwen_Qwen3.5-4B-Q4_K_M.gguf"),
+    }
+}
+
+/// The shipped talking model, as `pictures` fetches it.
+pub fn faster_talk_model() -> Piece {
+    pictures().into_iter().find(|p| p.name == "the language model").expect("the pictures set has the language model")
+}
+
+/// The deep brain (`models.deep`, `deepbrain`): Qwen3.5 9B at IQ4_XS,
+/// bartowski's, pinned to that repository's commit. Size and SHA-256 as for
+/// `better_talk_model` (Hugging Face's LFS record, 30 Sep 2026; the same as
+/// Eric's copy).
+pub fn deep_model() -> Piece {
+    Piece {
+        name: "the deep brain",
+        for_what: "research, drafts and summaries written with more care",
+        url: "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/182be2fd6c7bc44887d88a91cb03ff009cc9f549/Qwen_Qwen3.5-9B-IQ4_XS.gguf",
+        sha256: "7d977cc96c2e08616016d967f232083e354691a8a16f345b26f7d782ee5c9601",
+        bytes: 5_501_202_464,
+        lands: Lands::File("models/Qwen_Qwen3.5-9B-IQ4_XS.gguf"),
+    }
+}
+
+/// A size as a button says it: "5.1 GB" (binary gigabytes, as Windows shows
+/// a file's size), or megabytes under one.
+pub fn gib_label(bytes: u64) -> String {
+    let gib = bytes as f64 / (1u64 << 30) as f64;
+    if gib >= 1.0 {
+        format!("{gib:.1} GB")
+    } else {
+        format!("{} MB", (bytes + (1 << 20) - 1) >> 20)
+    }
+}
+
+/// Where a model may already be on this computer besides the models folder:
+/// a `model-bench` folder in Atlas's folder or beside it (where Eric
+/// measured them, 30 Sep 2026).
+pub fn places_it_may_be(root: &Path) -> Vec<PathBuf> {
+    let mut out = vec![root.join("model-bench")];
+    if let Some(up) = root.parent() {
+        out.push(up.join("model-bench"));
+    }
+    out
+}
+
+/// A one-file piece already on this computer in one of `places`, with the
+/// right size and SHA-256: moved into place (copied, where it can't be
+/// moved). The folder it came from, or `None` when it isn't anywhere.
+pub fn take_in(p: &Piece, root: &Path, places: &[PathBuf]) -> Result<Option<PathBuf>, String> {
+    let Lands::File(rel) = &p.lands else { return Ok(None) };
+    let Some(file) = Path::new(rel).file_name() else { return Ok(None) };
+    let dest = root.join(rel);
+    for place in places {
+        let found = place.join(file);
+        if found == dest || std::fs::metadata(&found).map(|m| m.len()).ok() != Some(p.bytes) {
+            continue;
+        }
+        let got = crate::digest::sha256_file_hex(&found).map_err(|e| format!("I couldn't read {}: {e}", found.display()))?;
+        if !got.eq_ignore_ascii_case(p.sha256) {
+            continue;
+        }
+        if let Some(d) = dest.parent() {
+            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(&found, &dest)
+            .or_else(|_| {
+                let beside = dest.with_extension("incoming");
+                std::fs::copy(&found, &beside).and_then(|_| std::fs::rename(&beside, &dest)).inspect_err(|_| {
+                    let _ = std::fs::remove_file(&beside);
+                })
+            })
+            .map_err(|e| format!("I couldn't put {} in place: {e}", p.name))?;
+        return Ok(Some(place.clone()));
+    }
+    Ok(None)
+}
+
 /// Tor, for reaching friends from anywhere (`onion`): the Tor Project's own
 /// "expert bundle" -- `tor` and the pluggable transports (`lyrebird`, for the
 /// bridges a network that blocks Tor needs, with their `pt_config.json`).

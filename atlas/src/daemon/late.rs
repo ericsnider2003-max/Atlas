@@ -500,7 +500,7 @@ impl<'a> Daemon<'a> {
         else {
             return "There's no build I gave up on to keep at.".into();
         };
-        let Some(llm) = self.llm.clone() else {
+        let Some(llm) = self.background_llm() else {
             return "I'd need a model to keep drafting, and none is configured.".into();
         };
         let limits = self.tools_cfg().long_jobs.clone();
@@ -1858,7 +1858,8 @@ impl<'a> Daemon<'a> {
             let old: Vec<crate::thread::Exchange> = self.thread.foldable(&cfg).to_vec();
             let n = old.len();
             let earlier = self.thread.summary.clone();
-            match self.llm.clone() {
+            // The running summary is background work: the deep model's.
+            match self.background_llm() {
                 Some(llm) => {
                     let input = self.thread.fold_input(&cfg);
                     let work: crew::Work = Box::new(move |_ctl| {

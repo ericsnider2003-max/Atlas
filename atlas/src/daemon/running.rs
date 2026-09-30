@@ -521,6 +521,7 @@ impl<'a> Daemon<'a> {
             // started once the first check answers, not at the first thing
             // you say (29 Sep 2026).
             self.keep_model_server_waiting(clock(), std::time::Duration::ZERO, false);
+            self.keep_deep_brain();
             self.look_again_at_audio(ears, clock());
             self.look_again_at_the_microphone(clock());
             self.back_to_the_wake_word(mouth, clock());

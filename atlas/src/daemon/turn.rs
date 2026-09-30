@@ -416,6 +416,15 @@ impl<'a> Daemon<'a> {
             return reply;
         }
 
+        // "Use the better model" / "use the faster model" (30 Sep 2026,
+        // `deepbrain`): which model talks with you.
+        if let Some(better) = crate::deepbrain::asks_for_talk_model(said) {
+            let reply = self.choose_talk_model(better);
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
+
         // A named mode wins before anything else parses it as a command.
         if let Some(m) = self.modes.match_trigger(said).map(|m| m.name.clone()) {
             if self.modes.active().map(|a| a.name != m).unwrap_or(true) {
@@ -1338,6 +1347,7 @@ impl<'a> Daemon<'a> {
                         p.clear();
                     }
                     let mut also = Vec::new();
+                    let _talking = self.talking_guard();
                     let d = Brain { llm: &*llm, fallback: &self.parser, voice: Some((&persona, register)) }.converse_noting(
                         &turn,
                         &mut |piece| {

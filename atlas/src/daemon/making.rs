@@ -72,7 +72,8 @@ impl<'a> Daemon<'a> {
         let worker = self.cloudflare_worker();
         let gen_llm: std::sync::Arc<dyn crate::brain::Llm> = match &worker {
             Some((w, _)) => w.clone(),
-            None => match self.llm.clone() {
+            // Drafting code is background work (`deepbrain`).
+            None => match self.background_llm() {
                 Some(l) => l,
                 None => {
                     return "I can write code, but I need a model to draft it and I haven't got \
@@ -231,7 +232,8 @@ impl<'a> Daemon<'a> {
         let worker = self.cloudflare_worker();
         let gen_llm: std::sync::Arc<dyn crate::brain::Llm> = match &worker {
             Some((w, _)) => w.clone(),
-            None => match self.llm.clone() {
+            // Drafting code is background work (`deepbrain`).
+            None => match self.background_llm() {
                 Some(l) => l,
                 None => return "I can do that, but I need a model to build it and none is configured.".into(),
             },

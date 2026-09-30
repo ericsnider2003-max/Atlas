@@ -220,6 +220,7 @@ impl<'a> Daemon<'a> {
         }
         let asked = turns.iter().filter(|x| x.is_some()).count();
         let started = std::time::Instant::now();
+        let talking = self.talking_guard();
         let decided: Vec<Option<brain::Decision>> = {
             let parser = &self.parser;
             let turns = &turns;
@@ -230,6 +231,7 @@ impl<'a> Daemon<'a> {
                 Some(brain.converse(turn, &mut |_| true))
             })
         };
+        drop(talking);
         self.log.info(&format!(
             "worked {} parts side by side ({} asked of the model at once) in {}ms",
             parts.len(),

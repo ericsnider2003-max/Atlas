@@ -404,7 +404,10 @@ impl<'a> Daemon<'a> {
         let by_chat = llm.native_chat();
         let msgs = turn.messages();
         let kept_llm = llm.clone();
+        // A turn is being answered: the deep model gives way until it is.
+        let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
+            let _talking = talking;
             let brain = Brain { llm: &*llm, fallback: &parser, voice: Some((&persona, register)) };
             let mut sentences = brain::Sentences::default();
             let mut also = Vec::new();
@@ -466,7 +469,9 @@ impl<'a> Daemon<'a> {
         )));
         let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false };
         let llm = p.llm.clone();
+        let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
+            let _talking = talking;
             let mut sentences = brain::Sentences::default();
             let r = llm.chat(&req, &mut |piece| {
                 if let Ok(mut pp) = partial.lock() {

@@ -685,15 +685,11 @@ impl Daemon<'_> {
                 let day = crate::workspace_view::day_of(&self.workspace, now);
                 hub::looking_back_page(&day, "Today")
             }
-            Page::Connections => {
-                let page = hub::list_page_at(
-                    Some(Page::Connections),
-                    "Connections",
-                    "Whether the things I rely on are answering.",
-                    &self.connection_lines(now),
-                );
-                with_block(page, &phone_model_block(None))
-            }
+            // One page, with or without a notice (30 Sep 2026: opened
+            // plainly, it showed neither the other programs' tools, the
+            // helper model nor the two models -- only the page a button
+            // came back to did).
+            Page::Connections => self.hub_page_q(Page::Connections, ""),
             Page::Recommendations => {
                 self.refresh_signals();
                 let cfg = self.tools_cfg().self_audit.clone();
@@ -2719,6 +2715,7 @@ impl Daemon<'_> {
                 );
                 let page = with_block(page, &phone_model_block(said.as_deref()));
                 let page = with_block(page, &self.mcp_block());
+                let page = with_block(page, &self.brains_block());
                 with_block(page, &self.draft_block())
             }
             Page::Updates => {
@@ -3647,6 +3644,11 @@ impl Daemon<'_> {
             }
             "/hub/draftmodel" => {
                 let said = if what == "get" { self.get_draft_model() } else { "That button isn't wired to anything, so nothing changed.".into() };
+                hub::back_with(Page::Connections.href(), "", &said)
+            }
+            // The two models: which one talks, and fetching them (`deepbrain`).
+            "/hub/brains" => {
+                let said = self.brains_button(&what);
                 hub::back_with(Page::Connections.href(), "", &said)
             }
             // Another program's tools, on or off (`mcp`). Not while handed

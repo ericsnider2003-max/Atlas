@@ -573,7 +573,8 @@ impl<'a> Daemon<'a> {
         if let Some(done) = said.to_transcribe {
             let tools = self.tools_cfg();
             let notes_dir = self.notes_dir();
-            let llm = self.llm.clone();
+            // The call's summary is background work (`deepbrain`).
+            let llm = self.background_llm();
             let mut vars = tools.vars.clone();
             self.add_language_vars(&mut vars);
             match tools.stt_timed.clone() {
