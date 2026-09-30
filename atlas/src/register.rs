@@ -24,6 +24,23 @@ pub enum Register {
     Rough,
 }
 
+/// How many sentences a spoken conversational answer stops at, unless you
+/// asked for something long (`asks_for_length`).
+pub const CHAT_SENTENCES: usize = 4;
+
+/// Did they ask for something that runs long -- a story, a poem, a list,
+/// detail, steps?
+pub fn asks_for_length(said: &str) -> bool {
+    let t = format!(" {} ", said.to_lowercase());
+    [
+        " story", " poem", " song", " list", " detail", " explain", " steps", " step by step", " walk me through",
+        " tell me about", " tell me more", " in depth", " everything", " ideas", " options", " examples", " compare",
+        " summar", " write ", " draft ",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+}
+
 impl Register {
     /// Sentences before it should stop.
     pub fn length(&self) -> usize {

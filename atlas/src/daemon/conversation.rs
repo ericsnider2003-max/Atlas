@@ -256,8 +256,15 @@ impl<'a> Daemon<'a> {
             // count: a story or a poem runs past eight sentences, and was cut
             // off mid-line at two (27 Sep 2026). A task still stops at its
             // count.
-            max_sentences: Some(if register == crate::register::Register::Chatting {
+            // 30 Sep 2026, measured on the laptop (`atlas talk-bench`): left
+            // to their token budget, every model answered small talk in five
+            // to seven sentences, 8-26 s each, and the longer ones were where
+            // they made things up. Talk stops at a spoken length unless you
+            // asked for something long (`asks_for_length`).
+            max_sentences: Some(if register == crate::register::Register::Chatting && crate::register::asks_for_length(said) {
                 SAFETY_SENTENCES
+            } else if register == crate::register::Register::Chatting {
+                crate::register::CHAT_SENTENCES
             } else {
                 persona.max_spoken_sentences.max(1)
             }),

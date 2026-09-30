@@ -305,7 +305,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "timebox", what: "stop before you have to ask what's taking so long", area: Thinking, state: Working, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["timebox"] },
         Capability { id: "chain", what: "do something that crosses several apps", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 19, runs: &[Needs::ActInApps], modules: &["chain"] },
         Capability { id: "person", what: "learn how you work", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["person"] },
-        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models"] },
+        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "freeonline"] },
 
         Capability { id: "selfwork", what: "change its own code and test it", area: Itself, state: Off, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["selfwork", "pipeline", "sandbox", "mend", "selfgrant"] },
         Capability { id: "plainchange", what: "explain a change it staged as behaviour, not code — what will now happen and what it no longer promises, read from the tests it adds and drops", area: Itself, state: Untested, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["plainchange"] },
@@ -1336,7 +1336,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 414 -> 418 (29 Sep): `hunt`, `hunting` (opportunity hunting), `wit`, `talkback`.
 // 418 -> 420 (29 Sep): `playout` (the voice played inside Atlas, through
 // the speaker it chose -- part of `audio`) and `winpark` (plumbing).
-pub const MODULES_IN_TREE: usize = 420;
+// 420 -> 422 (30 Sep): `freeonline` (the free online models, second to the
+// one on this machine -- part of `reason`) and `talkbench` (Atlas's own
+// conversation, timed against a model).
+pub const MODULES_IN_TREE: usize = 422;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1356,6 +1359,7 @@ pub const MODULES_IN_TREE: usize = 420;
 pub const PLUMBING: &[(&str, &str)] = &[
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
     ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),
+    ("talkbench", "times Atlas's own conversation against a model (`atlas talk-bench`), for choosing which model this machine runs"),
     ("backends", "picks which mechanism touches a window per request; the window capabilities are what it serves"),
     ("bars", "the price-bar type and the view that cannot see the future, which every market reading is built on"),
     ("checkup", "the fast on-device self-check doctor and setup run, not something you ask for by itself"),

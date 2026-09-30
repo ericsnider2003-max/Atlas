@@ -83,6 +83,8 @@ pub mod recall;
 pub mod recovery;
 pub mod reference;
 pub mod references;
+pub mod talkbench;
+pub mod freeonline;
 pub mod register;
 pub mod rehearse;
 pub mod presence;

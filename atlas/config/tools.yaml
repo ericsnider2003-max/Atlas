@@ -472,6 +472,12 @@ models:
   # is named above. A quick answer beats the biggest model the memory allows;
   # 0 = no ceiling, the largest that fits.
   talk_ceiling_b: 5
+  # Offline first, online second: when the model on this machine can't
+  # answer (or there isn't one), ask a free online model that needs no
+  # account or key (`freeonline.rs`: Kilo, Pollinations, OVHcloud). Keys,
+  # card numbers, emails and phone numbers are swapped for placeholders
+  # before anything leaves. false = never send a prompt online.
+  online_second: true
   # Layers on the graphics: auto, off, or a number. auto puts them all on the
   # graphics when the downloaded llama.cpp is a graphics (Vulkan) build.
   gpu_layers: auto
