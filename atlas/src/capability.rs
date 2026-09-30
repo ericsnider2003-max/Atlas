@@ -305,7 +305,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "timebox", what: "stop before you have to ask what's taking so long", area: Thinking, state: Working, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["timebox"] },
         Capability { id: "chain", what: "do something that crosses several apps", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 19, runs: &[Needs::ActInApps], modules: &["chain"] },
         Capability { id: "person", what: "learn how you work", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["person"] },
-        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models"] },
+        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain"] },
 
         Capability { id: "selfwork", what: "change its own code and test it", area: Itself, state: Off, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["selfwork", "pipeline", "sandbox", "mend", "selfgrant"] },
         Capability { id: "plainchange", what: "explain a change it staged as behaviour, not code — what will now happen and what it no longer promises, read from the tests it adds and drops", area: Itself, state: Untested, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["plainchange"] },
@@ -1524,7 +1524,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // without shouting -- part of `audio`) and `camera_ask` ("can you see me?" --
 // part of `vision`).
 // 427 -> 430 on merging with r8-brain (router, taskloop, backed, streams).
-pub const MODULES_IN_TREE: usize = 430;
+// 430 -> 431 (30 Sep 2026): `deepbrain` (the deep model beside the talking
+// one -- part of `reason`).
+pub const MODULES_IN_TREE: usize = 431;
 
 /// Every module no capability claims, and why it is not one.
 ///
