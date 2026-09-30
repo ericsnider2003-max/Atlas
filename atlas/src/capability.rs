@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -1349,7 +1349,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 413 -> 414 (29 Sep): `social` (its `src/social/*.rs` fold into it).
 // 414 -> 418 (29 Sep): `hunt`, `hunting` (opportunity hunting), `wit`, `talkback`.
 // 418 -> 420 (29 Sep): `doing`, `repeating` (Eric's evening on the laptop; plumbing).
-pub const MODULES_IN_TREE: usize = 420;
+// 420 -> 421 (29 Sep): `utterance` (the wake word and the request in one breath; claimed by `wake`).
+pub const MODULES_IN_TREE: usize = 421;
 
 /// Every module no capability claims, and why it is not one.
 ///

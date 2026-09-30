@@ -264,6 +264,9 @@ pub const THE_OWNERS_OWN: &[&str] = &[
     // Your files, and your other machines.
     "files",
     "sync",
+    // Filing the desktop's loose files into folders moves the owner's files
+    // (29 Sep 2026, decided when the guard caught it undecided).
+    "tidy_desktop",
 ];
 
 impl Role {

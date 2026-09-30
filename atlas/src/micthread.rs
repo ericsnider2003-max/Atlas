@@ -12,6 +12,16 @@
 //! what you say next and sends both at once, so the loop only stops for the
 //! turn itself.
 //!
+//! **The name and the request in one breath** (29 Sep 2026). Where the name
+//! is heard by speech-to-text (no wake-word program of its own), the
+//! microphone is one running stream, cut where you pause (`utterance`): the
+//! request is what you said after the name in the same breath, a long one is
+//! recorded until you stop, and the name on its own waits a moment for the
+//! rest before `Heard::Named` asks the loop to say "Yes?". Until then the
+//! words the name was found in were thrown away and a second recording
+//! started -- after you had already asked -- and Atlas said "I heard my name
+//! but nothing after it".
+//!
 //! **Cutting in by voice** (`barge_in` in settings, off by default). While
 //! Atlas is speaking a reply, this thread can watch the microphone for your
 //! voice: sustained speech (300 ms by default) stops the playback and what
@@ -55,6 +65,18 @@ pub enum Heard {
     /// What was said in the open floor after a reply (`MicThread::follow_up`,
     /// by its number): words, silence (`None`), or why it couldn't be heard.
     FollowUp(u64, std::result::Result<Option<String>, String>),
+    /// Your name and nothing after it, even after a moment's wait (29 Sep
+    /// 2026). The loop answers "Yes?" and listens for the rest.
+    Named,
+}
+
+/// Whether a stretch of audio holds the wake word (`MicWork::name_in`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum NameCheck {
+    /// The name, and the words said after it (empty: nothing after it).
+    Named(String),
+    /// Not the name: all the words heard.
+    NotNamed(String),
 }
 
 /// What the thread does with the microphone. `Voice` in the running Atlas;
@@ -82,6 +104,27 @@ pub trait MicWork: Send {
     fn playing_level(&mut self) -> Option<f32> {
         None
     }
+    /// Can the wake word be listened for on the microphone's stream -- the
+    /// name found in what you said, and the request taken from the same
+    /// breath (`utterance::wait_for_name`) -- rather than with `wake_once`
+    /// and a second recording? False for a wake-word program of its own,
+    /// which gives no words, and for stand-ins that don't say.
+    fn hears_name_in_audio(&self) -> bool {
+        false
+    }
+    /// Is the wake word in this audio, and what was said after it?
+    fn name_in(&mut self, samples: &[i16]) -> Result<NameCheck> {
+        self.transcribe(samples).map(NameCheck::NotNamed)
+    }
+    /// When you've stopped talking: `endpoint` in settings.
+    fn endpointing(&self) -> crate::endpoint::EndpointConfig {
+        crate::endpoint::EndpointConfig::default()
+    }
+    /// How much of a long stretch of speech is looked through for the name
+    /// at once (`wake.clip_seconds`).
+    fn clip_secs(&self) -> u32 {
+        3
+    }
     /// Where the Silero model would be.
     fn models_dir(&self) -> PathBuf {
         crate::roots::models_dir()
@@ -92,6 +135,11 @@ pub trait MicWork: Send {
 pub trait MicStream: Send {
     /// The next `n` samples; `None` when the recorder has stopped.
     fn read(&mut self, n: usize) -> Option<Vec<i16>>;
+    /// Why it stopped, when the recorder said (a microphone that couldn't
+    /// be opened). Asked after `read` gives `None`.
+    fn why_stopped(&mut self) -> Option<String> {
+        None
+    }
 }
 
 /// Cutting in by voice: settings.
@@ -113,6 +161,22 @@ pub struct BargeInConfig {
     /// The Silero VAD model, in the models folder. Optional: without it
     /// Atlas's own detector is used.
     pub model: String,
+    /// Cutting in by voice while you're listening through a headset, even
+    /// with `enabled` off (29 Sep 2026). A headset's microphone doesn't hear
+    /// Atlas's own voice, so the echo that makes cutting in unreliable on
+    /// speakers isn't there. On speakers it stays as `enabled` says.
+    pub headset: bool,
+}
+
+impl BargeInConfig {
+    /// What's in force for this microphone: `headset` turns it on for one.
+    pub fn for_microphone(&self, mic_name: &str) -> BargeInConfig {
+        let mut c = self.clone();
+        if !c.enabled && c.headset && crate::hearing::is_headset(mic_name) {
+            c.enabled = true;
+        }
+        c
+    }
 }
 
 impl Default for BargeInConfig {
@@ -124,6 +188,7 @@ impl Default for BargeInConfig {
             margin_db: 5.0,
             echo_db: 3.0,
             model: SILERO_FILE.into(),
+            headset: true,
         }
     }
 }
@@ -666,6 +731,12 @@ struct Shared {
     seed: Mutex<Option<Learned>>,
     /// What has been learned and not yet taken by the loop to keep.
     learned: Mutex<Option<Learned>>,
+    /// Recordings that gave sound: proof the microphone works, so a wake
+    /// word dropped for push-to-talk can come back (`MicThread::probe`).
+    heard_audio: std::sync::atomic::AtomicU64,
+    /// The loop asks whether the microphone works now (push-to-talk after
+    /// the wake word failed): one short recording, when nothing else is.
+    probe: AtomicBool,
 }
 
 impl Shared {
@@ -817,6 +888,19 @@ impl MicThread {
     pub fn take_new_learned(&self) -> Option<Learned> {
         self.shared.learned.lock().ok().and_then(|mut l| l.take())
     }
+    /// How many recordings have given sound since the thread started. Goes
+    /// up while the microphone works; stays put while it doesn't.
+    pub fn audio_heard(&self) -> u64 {
+        self.shared.heard_audio.load(Ordering::SeqCst)
+    }
+    /// Try the microphone once, when it isn't otherwise in use: a third of
+    /// a second of recording, counted in `audio_heard` if it gave sound.
+    /// For coming back from push-to-talk once the microphone works again
+    /// (29 Sep 2026: Atlas switched to push-to-talk when the microphone
+    /// failed and never switched back).
+    pub fn probe(&self) {
+        self.shared.probe.store(true, Ordering::SeqCst);
+    }
 }
 
 impl Drop for MicThread {
@@ -925,6 +1009,9 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             s.recording.store(true, Ordering::SeqCst);
             let got = work.follow_up(secs, &stop).map_err(|e| e.to_string());
             s.recording.store(false, Ordering::SeqCst);
+            if got.is_ok() {
+                s.heard_audio.fetch_add(1, Ordering::SeqCst);
+            }
             if tx.send(Heard::FollowUp(id, got)).is_err() {
                 return;
             }
@@ -969,8 +1056,45 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
         }
         let armed = s.wake.load(Ordering::SeqCst) && !s.busy.load(Ordering::SeqCst) && !s.taken.load(Ordering::SeqCst);
         if !armed {
+            // Asked whether the microphone works now: push-to-talk after
+            // the wake word failed, waiting to come back (`probe`).
+            if s.probe.swap(false, Ordering::SeqCst) && !s.busy.load(Ordering::SeqCst) {
+                probe_once(&s, &mut *work);
+            }
             idle(30);
             continue;
+        }
+        // The name heard in what you said, on one running stream, and the
+        // request taken from the same breath (29 Sep 2026). A recorder that
+        // can't stream falls through to the clip-at-a-time way below.
+        if work.hears_name_in_audio() {
+            match wake_on_stream(&s, &mut *work) {
+                StreamWake::Heard(h) => {
+                    failures = 0;
+                    s.taken.store(true, Ordering::SeqCst);
+                    if tx.send(h).is_err() {
+                        return;
+                    }
+                    continue;
+                }
+                StreamWake::Ended => {
+                    failures = 0;
+                    continue;
+                }
+                StreamWake::Failed(e) => {
+                    failures += 1;
+                    if tx.send(Heard::Trouble(e)).is_err() {
+                        return;
+                    }
+                    let pause = (200u64 * u64::from(failures)).min(2_000);
+                    let until = Instant::now() + Duration::from_millis(pause);
+                    while Instant::now() < until && !s.wake_should_stop() {
+                        idle(20);
+                    }
+                    continue;
+                }
+                StreamWake::NoStream => {}
+            }
         }
         let stop_s = s.clone();
         let stop = move || stop_s.wake_should_stop();
@@ -980,6 +1104,7 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
         match got {
             Ok(true) if !s.wake_should_stop() => {
                 failures = 0;
+                s.heard_audio.fetch_add(1, Ordering::SeqCst);
                 s.taken.store(true, Ordering::SeqCst);
                 s.recording.store(true, Ordering::SeqCst);
                 let said = work.listen().map_err(|e| e.to_string());
@@ -988,7 +1113,10 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                     return;
                 }
             }
-            Ok(_) => failures = 0,
+            Ok(_) => {
+                failures = 0;
+                s.heard_audio.fetch_add(1, Ordering::SeqCst);
+            }
             Err(e) => {
                 failures += 1;
                 if tx.send(Heard::Trouble(e.to_string())).is_err() {
@@ -1004,6 +1132,61 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 }
             }
         }
+    }
+}
+
+/// How listening for the name on a stream ended.
+enum StreamWake {
+    Heard(Heard),
+    /// Stopped (paused, a turn elsewhere) or the recorder ran its course.
+    Ended,
+    /// No sound at all: why.
+    Failed(String),
+    /// This recorder can't stream.
+    NoStream,
+}
+
+/// Listen for the name on one running stream (`utterance::wait_for_name`).
+fn wake_on_stream(s: &Arc<Shared>, work: &mut dyn MicWork) -> StreamWake {
+    let Some(raw) = work.open_stream() else { return StreamWake::NoStream };
+    // Read on a thread of its own: while the first seconds of a long request
+    // are being transcribed, the rest of it keeps arriving.
+    let mut stream = crate::utterance::pumped(raw);
+    s.recording.store(true, Ordering::SeqCst);
+    let cfg = work.endpointing();
+    let clip = work.clip_secs();
+    let stop_s = s.clone();
+    let stop = move || stop_s.wake_should_stop();
+    let count_s = s.clone();
+    let heard = move || {
+        count_s.heard_audio.fetch_add(1, Ordering::SeqCst);
+    };
+    let got = crate::utterance::wait_for_name(&mut stream, work, &cfg, clip, &stop, &heard);
+    drop(stream);
+    s.recording.store(false, Ordering::SeqCst);
+    match got {
+        Ok(Some(crate::utterance::Woke::Request(r))) => StreamWake::Heard(Heard::Wake(Ok(r))),
+        Ok(Some(crate::utterance::Woke::NameOnly)) => StreamWake::Heard(Heard::Named),
+        Ok(None) => StreamWake::Ended,
+        Err(e) => StreamWake::Failed(e),
+    }
+}
+
+/// A third of a second from the microphone, to see whether it works.
+fn probe_once(s: &Shared, work: &mut dyn MicWork) {
+    let Some(mut stream) = work.open_stream() else { return };
+    s.recording.store(true, Ordering::SeqCst);
+    let mut n = 0;
+    while n < ROOM_WINDOWS && !s.stop.load(Ordering::SeqCst) && !s.paused.load(Ordering::SeqCst) && !s.busy.load(Ordering::SeqCst) {
+        if stream.read(WINDOW).is_none() {
+            break;
+        }
+        n += 1;
+    }
+    drop(stream);
+    s.recording.store(false, Ordering::SeqCst);
+    if n > 0 {
+        s.heard_audio.fetch_add(1, Ordering::SeqCst);
     }
 }
 

@@ -316,6 +316,9 @@ const ORDINARY: &[&str] = &[
     "focus_app",
     "set_mode",
     "machine_health",
+    // Which microphone to listen through (29 Sep 2026): whoever is at the
+    // laptop has to be heard, and it is picked again by kind at any time.
+    "use_mic",
     // A self-check reports whether the core works on this machine and a count
     // of what's ready -- a health check, the same shape as "machine_health"
     // beside it, welcome to whoever is holding the laptop.

@@ -161,6 +161,11 @@ pub enum RoleMatch {
     Rightmost,
     /// Any remaining monitor.
     Any,
+    /// The laptop's own screen (29 Sep 2026). Where that can't be told (a
+    /// desktop, or a platform that doesn't say), the primary display, as the
+    /// "laptop" role always matched before; with the lid shut, nothing, and
+    /// the role falls back.
+    Builtin,
 }
 
 #[derive(Debug, Clone, Deserialize)]

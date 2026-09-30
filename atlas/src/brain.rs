@@ -684,7 +684,23 @@ pub fn context(cfg: &Config, plat: &dyn Platform) -> String {
     match plat.monitors() {
         Ok(m) => {
             s.push_str(&format!("Displays: {}\n", m.len()));
-            let roles = crate::layout::resolve_roles(&cfg.layouts, &m);
+            // Every screen, by the name you'd use (29 Sep 2026): only the
+            // roles were listed, so a third monitor no role claimed was never
+            // mentioned and Atlas described two screens as the whole desk.
+            let built_in = plat.built_in_monitor();
+            let active = plat.active_monitor();
+            for mon in &m {
+                s.push_str(&format!(
+                    "  screen: {} = {}x{} at x={}{}{}\n",
+                    crate::platform::describe_screen(&m, mon.id, built_in),
+                    mon.width,
+                    mon.height,
+                    mon.x,
+                    if mon.primary { " (primary)" } else { "" },
+                    if Some(mon.id) == active { " (the window in front is here)" } else { "" }
+                ));
+            }
+            let roles = crate::layout::resolve_roles_with(&cfg.layouts, &m, built_in);
             for (role, mon) in &roles {
                 s.push_str(&format!(
                     "  role '{role}' = {}x{} at x={}{}\n",

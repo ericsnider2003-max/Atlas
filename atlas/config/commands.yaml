@@ -17,7 +17,13 @@ commands:
     phrases: ["view my display", "look at my screen", "view display",
               "what's on my screen", "whats on my screen", "what is on my screen",
               "what does this chart show", "what does this graph show",
-              "read this chart", "explain this chart", "read this graph"]
+              "read this chart", "explain this chart", "read this graph",
+              # Which screen (29 Sep 2026): the one you're working on unless
+              # you say -- "all my screens", or one by name.
+              "look at all my screens", "look at both my screens", "look at my monitors",
+              "look at all my monitors", "what's on all my screens", "whats on all my screens",
+              "look at every screen", "look at my laptop screen", "look at my left screen",
+              "look at my right screen", "look at my middle screen"]
 
   - intent: research
     describe: "Look a topic up on the web and write a note about it. arg: the topic."

@@ -921,6 +921,11 @@ pub struct Daemon<'a> {
     /// When to list the sound devices again and see whether a different
     /// microphone should be recorded from (29 Sep 2026).
     mic_look_at: u64,
+    /// Push-to-talk because the microphone failed: how many recordings had
+    /// given sound when it dropped (`back_to_the_wake_word`).
+    mic_heard_before_ptt: Option<u64>,
+    /// When to try the microphone again, while that lasts.
+    mic_probe_at: u64,
     /// That listing, running off the loop.
     mic_listing: Option<std::sync::mpsc::Receiver<std::result::Result<Vec<crate::audio::Device>, String>>>,
     /// The voice tools weren't there at start (not a failing microphone).
@@ -1645,6 +1650,8 @@ impl<'a> Daemon<'a> {
             model_look_at: 0,
             audio_look_at: 0,
             mic_look_at: crate::store::now() + MIC_LOOK_EVERY_SECS,
+            mic_heard_before_ptt: None,
+            mic_probe_at: 0,
             mic_listing: None,
             audio_tools_missing: false,
             talk_queue: Vec::new(),
@@ -3834,6 +3841,12 @@ pub fn what_this_machine_cant_do(limits: Vec<String>, pictures: Option<std::resu
 
 /// How often the microphones are listed again.
 pub const MIC_LOOK_EVERY_SECS: u64 = 180;
+
+/// Push-to-talk after the microphone failed: how often it is tried again.
+pub const MIC_PROBE_EVERY_SECS: u64 = 20;
+
+/// Your name on its own: how long Atlas waits for the rest after "Yes?".
+pub const NAME_ALONE_WAIT_SECS: u32 = 8;
 
 /// What to say when a fresh pick differs from the microphone in use; `None`
 /// when it is the same one.

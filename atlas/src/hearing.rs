@@ -415,6 +415,13 @@ impl Hearing {
     }
 }
 
+/// Is this microphone part of something worn -- AirPods, a headset, a
+/// Bluetooth hands-free link -- rather than on the desk?
+pub fn is_headset(name: &str) -> bool {
+    let n = name.to_lowercase();
+    ["headset", "headphone", "hands-free", "handsfree", "airpods", "buds", "earbuds"].iter().any(|k| n.contains(k))
+}
+
 /// "Microphone (HD Pro Webcam C920)" -> "the webcam".
 pub fn short(name: &str) -> String {
     let n = name.to_lowercase();

@@ -225,7 +225,15 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // 28 Sep 2026: called bare inside its own module by `start_once`, the
     // phone's one way to start its hub; `server::HubDoor` also has a `serve`.
     "mobile::serve",
+    // 29 Sep 2026: which screen, in words and in pixels -- `platform/mod.rs`
+    // again (see `mod::virtual_key` below), called as
+    // `crate::platform::describe_screen` / `screens_asked_for` /
+    // `monitor_under` (daemon, brain) and `super::builtin_among` (win).
+    "mod::builtin_among",
+    "mod::describe_screen",
     "mod::here",
+    "mod::monitor_under",
+    "mod::screens_asked_for",
     // --- 26 Sep (round 11) -------------------------------------------------
     // `platform::virtual_key` lives in `platform/mod.rs`, which this scan
     // names `mod`; its callers write `crate::platform::virtual_key` (chords)

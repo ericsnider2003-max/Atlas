@@ -8,7 +8,7 @@
 
 use crate::config::Config;
 use crate::error::{AtlasError, Result};
-use crate::layout::{monitor_for_role, resolve_roles, to_pixels};
+use crate::layout::{monitor_for_role, to_pixels};
 use crate::platform::Platform;
 
 /// How long a whole bring-up may take, however many apps are in it.
@@ -106,7 +106,7 @@ pub fn workspace_on_within(
     if monitors.is_empty() {
         return Err(AtlasError::Platform("no monitors detected".into()));
     }
-    let roles = resolve_roles(&cfg.layouts, &monitors);
+    let roles = crate::layout::resolve_roles_with(&cfg.layouts, &monitors, plat.built_in_monitor());
     let mut report = Report::default();
 
     let deadline = std::time::Instant::now() + budget;
@@ -240,7 +240,7 @@ fn place_one(
 /// `apps.yaml`.
 pub fn open_app(cfg: &Config, plat: &dyn Platform, name: &str) -> Result<()> {
     let monitors = plat.monitors()?;
-    let roles = resolve_roles(&cfg.layouts, &monitors);
+    let roles = crate::layout::resolve_roles_with(&cfg.layouts, &monitors, plat.built_in_monitor());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(BRINGUP_BUDGET_SECS);
     place_one(cfg, plat, &roles, name, deadline)
 }

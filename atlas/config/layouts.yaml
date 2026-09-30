@@ -1,15 +1,18 @@
 # Logical monitor roles. Resolved at runtime by geometry, in this order.
 # Earlier roles claim monitors first; each monitor is claimed once.
 # This is why unplugging a display degrades instead of breaking.
+# The laptop's own screen first (29 Sep 2026): it used to be "primary",
+# claimed last, so with an external monitor set as primary the laptop's
+# screen was named "main" or "side", or -- the third of three -- nothing.
 roles:
+  - name: laptop
+    match: builtin
   - name: main
     match: rightmost
     fallback_to: laptop
   - name: side
     match: leftmost
     fallback_to: laptop
-  - name: laptop
-    match: primary
 
 # Fractional rects inside a monitor's work area (taskbar excluded).
 layouts:

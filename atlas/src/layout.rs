@@ -12,6 +12,15 @@ use std::collections::BTreeMap;
 pub type RoleMap = BTreeMap<String, Monitor>;
 
 pub fn resolve_roles(cfg: &LayoutsConfig, monitors: &[Monitor]) -> RoleMap {
+    resolve_roles_with(cfg, monitors, None)
+}
+
+/// `resolve_roles`, knowing which monitor is the laptop's own screen
+/// (`Platform::built_in_monitor`), so `match: builtin` claims it. Before
+/// (until 29 Sep 2026) "laptop" meant the primary display, and with an
+/// external monitor set as primary the laptop's own screen was called
+/// "main" or "side" -- or, the third of three, nothing at all.
+pub fn resolve_roles_with(cfg: &LayoutsConfig, monitors: &[Monitor], built_in: Option<u32>) -> RoleMap {
     let mut unclaimed: Vec<Monitor> = monitors.to_vec();
     let mut map = RoleMap::new();
 
@@ -25,6 +34,10 @@ pub fn resolve_roles(cfg: &LayoutsConfig, monitors: &[Monitor]) -> RoleMap {
             Leftmost => min_index(&unclaimed, |m| m.x),
             Rightmost => max_index(&unclaimed, |m| m.x),
             Any => Some(0),
+            Builtin => match built_in {
+                Some(id) => unclaimed.iter().position(|m| m.id == id),
+                None => unclaimed.iter().position(|m| m.primary),
+            },
         };
         if let Some(i) = idx {
             map.insert(role.name.clone(), unclaimed.remove(i));

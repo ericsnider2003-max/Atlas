@@ -28,27 +28,110 @@ const MONITORINFOF_PRIMARY: u32 = 1;
 
 pub struct WindowsPlatform;
 
-struct MonAcc(Vec<Monitor>);
+/// Real pixels on every monitor, for the whole process: per-monitor DPI
+/// awareness (v2), set once, first thing (`main`, and `platform::here`).
+///
+/// **Why (Eric, 29 Sep 2026: "I think Atlas is only seeing one of my
+/// monitors").** Atlas never declared itself DPI-aware -- no manifest entry,
+/// no call. Windows then *virtualises* every coordinate it hands Atlas to
+/// the primary monitor's scale: on a laptop at 150% or 200% beside monitors
+/// at 100%, `EnumDisplayMonitors`, `GetWindowRect` and a copy from the
+/// screen's DC all come back scaled, so a capture of a window's rectangle
+/// grabbed the wrong part of the desktop -- part of the right window, part of
+/// another, or part of the wrong monitor -- and whatever was read was from
+/// there. Per-monitor aware, every rectangle is in real pixels on every
+/// monitor, whatever each one's scale. The hub's window library (tao/wry)
+/// asks for the same awareness when it starts, so nothing else changes.
+pub fn become_dpi_aware() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| unsafe {
+        use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+        // Refused when the awareness was already set (by a manifest, or by
+        // a window library first) -- which is as good.
+        if SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).is_err() {
+            // Before Windows 10 1703: system-wide awareness at least.
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetProcessDPIAware();
+        }
+    });
+}
+
+/// One monitor as Windows describes it.
+#[derive(Clone)]
+struct WinMon {
+    id: u32,
+    /// Where windows go: the taskbar left out.
+    work: RECT,
+    /// The whole screen.
+    full: RECT,
+    primary: bool,
+    /// "\\.\DISPLAY1": how the display settings name it.
+    device: String,
+}
+
+struct MonAcc(Vec<WinMon>);
 
 unsafe extern "system" fn mon_cb(h: HMONITOR, _: HDC, _: *mut RECT, lp: LPARAM) -> BOOL {
+    use windows::Win32::Graphics::Gdi::MONITORINFOEXW;
     let acc = &mut *(lp.0 as *mut MonAcc);
-    let mut info = MONITORINFO {
-        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-        ..Default::default()
-    };
-    if GetMonitorInfoW(h, &mut info).as_bool() {
-        // Work area, not full bounds — excludes the taskbar.
-        let r = info.rcWork;
-        acc.0.push(Monitor {
-            id: h.0 as u32,
-            x: r.left,
-            y: r.top,
-            width: r.right - r.left,
-            height: r.bottom - r.top,
-            primary: info.dwFlags & MONITORINFOF_PRIMARY != 0,
+    let mut info = MONITORINFOEXW::default();
+    info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+    if GetMonitorInfoW(h, &mut info as *mut MONITORINFOEXW as *mut MONITORINFO).as_bool() {
+        let end = info.szDevice.iter().position(|c| *c == 0).unwrap_or(info.szDevice.len());
+        acc.0.push(WinMon {
+            id: h.0 as usize as u32,
+            work: info.monitorInfo.rcWork,
+            full: info.monitorInfo.rcMonitor,
+            primary: info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0,
+            device: String::from_utf16_lossy(&info.szDevice[..end]),
         });
     }
     TRUE
+}
+
+/// Every monitor, in real pixels (`become_dpi_aware`).
+fn all_monitors() -> Vec<WinMon> {
+    become_dpi_aware();
+    let mut acc = MonAcc(Vec::new());
+    unsafe {
+        let _ = EnumDisplayMonitors(None, None, Some(mon_cb), LPARAM(&mut acc as *mut MonAcc as isize));
+    }
+    acc.0
+}
+
+/// A rectangle of the screen as it looks now, copied in-process: red, green,
+/// blue, top row first.
+unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
+    use windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, SRCCOPY,
+    };
+    let (w, h) = ((r.right - r.left).clamp(1, 16384), (r.bottom - r.top).clamp(1, 16384));
+    let screen = GetDC(None);
+    let mem = CreateCompatibleDC(screen);
+    let bmp = CreateCompatibleBitmap(screen, w, h);
+    let old = SelectObject(mem, bmp);
+    let copied = BitBlt(mem, 0, 0, w, h, screen, r.left, r.top, SRCCOPY | CAPTUREBLT).is_ok();
+    let mut info = BITMAPINFO::default();
+    info.bmiHeader = BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: w,
+        biHeight: -h, // top row first
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB.0,
+        ..Default::default()
+    };
+    let mut bgra = vec![0u8; (w as usize) * (h as usize) * 4];
+    let lines = if copied { GetDIBits(mem, bmp, 0, h as u32, Some(bgra.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS) } else { 0 };
+    SelectObject(mem, old);
+    let _ = DeleteObject(bmp);
+    let _ = DeleteDC(mem);
+    ReleaseDC(None, screen);
+    if lines == 0 {
+        return None;
+    }
+    let rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+    Some((w as u32, h as u32, rgb))
 }
 
 struct WinAcc {
@@ -369,16 +452,94 @@ impl Platform for WindowsPlatform {
     }
 
     fn monitors(&self) -> Result<Vec<Monitor>> {
-        let mut acc = MonAcc(Vec::new());
+        // Work area, not full bounds -- excludes the taskbar.
+        Ok(all_monitors()
+            .into_iter()
+            .map(|m| Monitor {
+                id: m.id,
+                x: m.work.left,
+                y: m.work.top,
+                width: m.work.right - m.work.left,
+                height: m.work.bottom - m.work.top,
+                primary: m.primary,
+            })
+            .collect())
+    }
+
+    fn monitor_bounds(&self, monitor: u32) -> Option<PixelRect> {
+        all_monitors().into_iter().find(|m| m.id == monitor).map(|m| PixelRect {
+            x: m.full.left,
+            y: m.full.top,
+            width: m.full.right - m.full.left,
+            height: m.full.bottom - m.full.top,
+        })
+    }
+
+    fn grab_screen(&self, monitor: u32) -> Result<Option<super::Grab>> {
+        let Some(m) = all_monitors().into_iter().find(|m| m.id == monitor) else { return Ok(None) };
+        Ok(unsafe { grab_rect(m.full) }.map(|(width, height, rgb)| super::Grab { width, height, rgb, title: String::new() }))
+    }
+
+    fn active_monitor(&self) -> Option<u32> {
+        use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        become_dpi_aware();
         unsafe {
-            let _ = EnumDisplayMonitors(
-                None,
-                None,
-                Some(mon_cb),
-                LPARAM(&mut acc as *mut MonAcc as isize),
-            );
+            let hwnd = GetForegroundWindow();
+            if hwnd.0.is_null() {
+                return None;
+            }
+            let h = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            (!h.0.is_null()).then(|| h.0 as usize as u32)
         }
-        Ok(acc.0)
+    }
+
+    /// The monitor showing the laptop's own panel: the display path whose
+    /// output is internal, matched to a monitor by the name the display
+    /// settings give its source ("\\.\DISPLAY1").
+    fn built_in_monitor(&self) -> Option<u32> {
+        use windows::Win32::Devices::Display::{
+            DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig, DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+            DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO,
+            DISPLAYCONFIG_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+        };
+        let names: Vec<String> = unsafe {
+            let (mut np, mut nm) = (0u32, 0u32);
+            if GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut np, &mut nm).is_err() {
+                return None;
+            }
+            let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); np as usize];
+            let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); nm as usize];
+            if QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &mut np, paths.as_mut_ptr(), &mut nm, modes.as_mut_ptr(), None).is_err() {
+                return None;
+            }
+            paths.truncate(np as usize);
+            paths
+                .iter()
+                .filter(|p| {
+                    let t = p.targetInfo.outputTechnology;
+                    t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL
+                        || t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED
+                        || t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED
+                })
+                .filter_map(|p| {
+                    let mut src = DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
+                    src.header = DISPLAYCONFIG_DEVICE_INFO_HEADER {
+                        r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+                        size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
+                        adapterId: p.sourceInfo.adapterId,
+                        id: p.sourceInfo.id,
+                    };
+                    if DisplayConfigGetDeviceInfo(&mut src.header) != 0 {
+                        return None;
+                    }
+                    let end = src.viewGdiDeviceName.iter().position(|c| *c == 0).unwrap_or(32);
+                    Some(String::from_utf16_lossy(&src.viewGdiDeviceName[..end]))
+                })
+                .collect()
+        };
+        super::builtin_among(&all_monitors().iter().map(|m| (m.id, m.device.clone())).collect::<Vec<_>>(), &names)
     }
 
     fn launch(&self, spec: &AppSpec) -> Result<()> {
@@ -550,11 +711,8 @@ impl Platform for WindowsPlatform {
     }
 
     fn grab_window(&self) -> Result<Option<super::Grab>> {
-        use windows::Win32::Graphics::Gdi::{
-            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC,
-            SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
-        };
         use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
+        become_dpi_aware();
         unsafe {
             let hwnd = GetForegroundWindow();
             if hwnd.0.is_null() {
@@ -564,42 +722,12 @@ impl Platform for WindowsPlatform {
             if GetWindowRect(hwnd, &mut r).is_err() {
                 return Ok(None);
             }
-            let (w, h) = ((r.right - r.left).clamp(1, 8192), (r.bottom - r.top).clamp(1, 8192));
             let mut tbuf = [0u16; 512];
             let n = GetWindowTextW(hwnd, &mut tbuf);
             let title = String::from_utf16_lossy(&tbuf[..n as usize]);
             // From the screen, over the window's rectangle: what you see,
             // which is what you meant.
-            let screen = GetDC(None);
-            let mem = CreateCompatibleDC(screen);
-            let bmp = CreateCompatibleBitmap(screen, w, h);
-            let old = SelectObject(mem, bmp);
-            let copied = BitBlt(mem, 0, 0, w, h, screen, r.left, r.top, SRCCOPY).is_ok();
-            let mut info = BITMAPINFO::default();
-            info.bmiHeader = BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: w,
-                biHeight: -h, // top row first
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            };
-            let mut bgra = vec![0u8; (w * h * 4) as usize];
-            let lines = if copied {
-                GetDIBits(mem, bmp, 0, h as u32, Some(bgra.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS)
-            } else {
-                0
-            };
-            SelectObject(mem, old);
-            let _ = DeleteObject(bmp);
-            let _ = DeleteDC(mem);
-            ReleaseDC(None, screen);
-            if lines == 0 {
-                return Ok(None);
-            }
-            let rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
-            Ok(Some(super::Grab { width: w as u32, height: h as u32, rgb, title }))
+            Ok(grab_rect(r).map(|(width, height, rgb)| super::Grab { width, height, rgb, title }))
         }
     }
 

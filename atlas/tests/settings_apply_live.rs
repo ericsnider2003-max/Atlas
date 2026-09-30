@@ -122,9 +122,11 @@ fn one_that_needs_a_restart_is_kept_and_says_so() {
     let mut d = Daemon::new(&cfg, &p, None, store("restart"), Proactive::new(ProactiveConfig::default()))
         .watch_settings(dir.clone());
 
-    change(&dir, "wake.enabled", "on");
+    // 29 Sep 2026: the wake word ships on now (hands-free by default), so
+    // the change that needs a restart is turning it off.
+    change(&dir, "wake.enabled", "off");
     let said = d.pick_up_settings();
-    assert_eq!(said, vec!["Wake word will be on when I next start.".to_string()]);
+    assert_eq!(said, vec!["Wake word will be off when I next start.".to_string()]);
     let _ = fs::remove_dir_all(&dir);
 }
 

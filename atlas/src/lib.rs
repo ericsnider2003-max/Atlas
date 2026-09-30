@@ -391,6 +391,7 @@ pub mod mfcc;
 pub mod gmm;
 pub mod wakeword;
 pub mod micthread;
+pub mod utterance;
 pub mod speakthread;
 pub mod vadcal;
 pub mod hotkey;

@@ -172,6 +172,9 @@ windows = { version = "0.58", features = [
     # Is the laptop's own screen on (the lid open)? Windows' display paths
     # name the built-in panel as an internal output (29 Sep 2026).
     "Win32_Devices_Display",
+    # Real pixels on every monitor: per-monitor DPI awareness (29 Sep 2026,
+    # "only seeing one of my monitors" -- platform::win::become_dpi_aware).
+    "Win32_UI_HiDpi",
 ] }
 
 # The consolidated suite: one binary, one link of the crate.

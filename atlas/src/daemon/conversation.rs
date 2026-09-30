@@ -996,26 +996,107 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// The screens a request means (`platform::screens_asked_for`), each
+    /// captured by the platform itself with the name you'd use for it: the
+    /// one with the window you're in, the one you named, or every one.
+    /// `None` where the platform can't capture a screen.
+    pub(super) fn screens_asked(&self) -> Option<Vec<(String, crate::platform::Grab)>> {
+        let monitors = self.plat.monitors().ok()?;
+        if monitors.is_empty() {
+            return None;
+        }
+        let built_in = self.plat.built_in_monitor();
+        let one = |id: u32| {
+            self.plat.grab_screen(id).ok().flatten().map(|g| (crate::platform::describe_screen(&monitors, id, built_in), g))
+        };
+        let ids: Vec<u32> = match crate::platform::screens_asked_for(&self.last_said, &monitors, built_in) {
+            crate::platform::ScreenPick::All => monitors.iter().map(|m| m.id).collect(),
+            crate::platform::ScreenPick::This(id) => vec![id],
+            crate::platform::ScreenPick::Active => {
+                // Where the platform can't say which monitor the window in
+                // front is on, it's found from where the window is.
+                let id = self
+                    .plat
+                    .active_monitor()
+                    .or_else(|| {
+                        let win = self.plat.active_window_id().ok().flatten()?;
+                        let r = self.plat.rect_of(win).ok()?;
+                        crate::platform::monitor_under(&monitors, r)
+                    })
+                    .filter(|id| monitors.iter().any(|m| m.id == *id))
+                    .or_else(|| monitors.iter().find(|m| m.primary).map(|m| m.id))
+                    .unwrap_or(monitors[0].id);
+                vec![id]
+            }
+        };
+        let got: Vec<(String, crate::platform::Grab)> = ids.into_iter().filter_map(one).collect();
+        (!got.is_empty()).then_some(got)
+    }
+
+    /// One picture for the picture reader: the screen asked about, or --
+    /// asked about all of them -- every screen put together as they sit.
+    pub(super) fn screen_picture(&self) -> Option<(String, crate::platform::Grab)> {
+        let monitors = self.plat.monitors().ok()?;
+        let built_in = self.plat.built_in_monitor();
+        if monitors.len() > 1
+            && crate::platform::screens_asked_for(&self.last_said, &monitors, built_in) == crate::platform::ScreenPick::All
+        {
+            let all = self.plat.grab_all_screens().ok().flatten()?;
+            return Some((format!("all {} of your screens", monitors.len()), all));
+        }
+        self.screens_asked()?.into_iter().next()
+    }
+
     /// "Look at my screen" without the picture reader: the words on the
-    /// window in front, read by the operating system's own recognizer
+    /// screen you're working on (or every screen, asked about all of them),
+    /// read by the operating system's own recognizer
     /// (`Platform::recognise_text`, Windows.Media.Ocr), answered by the text
     /// model on the crew. `None` where there's no recognizer or no words, so
     /// the caller says what it said before.
+    ///
+    /// Until 29 Sep 2026 it read only the window in front, so with three
+    /// screens Atlas saw one window of one of them ("I think Atlas is only
+    /// seeing one of my monitors"). Now it reads the whole screen, says which
+    /// one, and reads each screen when asked about all of them. Where the
+    /// platform can't capture a screen, the window in front, as before.
     pub(super) fn screen_words_instead(&mut self) -> Option<String> {
-        let grab = self.plat.grab_window().ok().flatten()?;
-        let raw = self.plat.recognise_text(&grab).ok().flatten()?;
-        let text = crate::screentext::tidy_lines(&raw);
-        if !crate::screentext::plausible(&text) {
+        let front = self.plat.active_window().ok().flatten().map(|w| w.title).unwrap_or_default();
+        let mut parts: Vec<(String, String)> = Vec::new();
+        match self.screens_asked() {
+            Some(screens) => {
+                for (named, grab) in screens {
+                    let Some(raw) = self.plat.recognise_text(&grab).ok().flatten() else { continue };
+                    let text = crate::screentext::tidy_lines(&raw);
+                    if crate::screentext::plausible(&text) {
+                        parts.push((named, text));
+                    }
+                }
+            }
+            None => {
+                let grab = self.plat.grab_window().ok().flatten()?;
+                let raw = self.plat.recognise_text(&grab).ok().flatten()?;
+                let text = crate::screentext::tidy_lines(&raw);
+                if crate::screentext::plausible(&text) {
+                    let from = if grab.title.trim().is_empty() {
+                        "the window in front".to_string()
+                    } else {
+                        format!("the window \u{201c}{}\u{201d}", grab.title.trim())
+                    };
+                    parts.push((from, text));
+                }
+            }
+        }
+        if parts.is_empty() {
             return None;
         }
-        let title = grab.title.clone();
+        let (from, text) = crate::screentext::screens_read(&parts, &front);
         let Some(llm) = self.llm.clone() else {
-            return Some(format!("{} {}", crate::screentext::WORDS_ONLY, crate::screentext::said_without_a_model(&text, &title)));
+            return Some(format!("{} {}", crate::screentext::WORDS_ONLY, crate::screentext::said_without_a_model(&text, &from)));
         };
-        let (system, user) = crate::screentext::question_prompt(&self.last_said, &title, &text);
+        let (system, user) = crate::screentext::question_prompt(&self.last_said, &from, &text);
         let work: crew::Work = Box::new(move |_ctl| {
             let answer = llm.complete(&system, &user).map_err(|e| e.to_string())?;
-            let answer = crate::brain::spoken_text(&answer).unwrap_or_else(|| crate::screentext::said_without_a_model(&text, &title));
+            let answer = crate::brain::spoken_text(&answer).unwrap_or_else(|| crate::screentext::said_without_a_model(&text, &from));
             Ok(format!("{} {answer}", crate::screentext::WORDS_ONLY))
         });
         if self.hand_off("screen-words", crate::store::now(), work, None, SpeakPolicy::Always) {

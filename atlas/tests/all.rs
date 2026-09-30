@@ -874,3 +874,7 @@ mod the_overlay_covers_only_its_words;
 mod the_system_recovers_by_itself;
 #[path = "one_evening_on_the_laptop.rs"]
 mod one_evening_on_the_laptop;
+#[path = "the_name_and_the_request_in_one_breath.rs"]
+mod the_name_and_the_request_in_one_breath;
+#[path = "every_screen_is_seen.rs"]
+mod every_screen_is_seen;

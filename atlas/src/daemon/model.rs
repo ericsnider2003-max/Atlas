@@ -165,6 +165,9 @@ impl<'a> Daemon<'a> {
         let (now_name, now_device) = crate::voice::microphone_now(&tc);
         if let Some(line) = microphone_change(&now_name, &now_device, &p) {
             crate::voice::set_microphone(&p.name, &p.device);
+            // A different microphone: if the last one failed the wake word,
+            // try this one now rather than at the next turn of the clock.
+            self.mic_probe_at = 0;
             self.log.info(&line);
             self.heard_note = Some(line);
         }

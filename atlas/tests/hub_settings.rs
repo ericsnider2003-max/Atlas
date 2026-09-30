@@ -85,6 +85,13 @@ fn the_permissions_page_gathers_everything_consequential() {
 /// was always there, finally shows up.
 const DELIBERATELY_DIFFERENT: &[(&str, &str)] = &[
     (
+        "wake.enabled",
+        "on in the shipped file from 29 Sep 2026 (Eric: talk freely, push-to-talk only as the fallback). \
+         The name is listened for on the running microphone stream and speech-to-text runs only while \
+         someone is talking (`utterance`), not on every three seconds of silence as before. With no \
+         tools.yaml there is no wake configuration at all, so the struct default stays off.",
+    ),
+    (
         "editcraft.enabled",
         "on in the shipped file by Eric's ruling of 25 Sep 2026 (I: he makes video content). The struct \
          default stays off: an install with no tools.yaml gives no creator advice.",

@@ -128,6 +128,9 @@ pub struct Vad {
 /// Frames of room the detector listens to before it judges anything.
 const LEARN_FRAMES: usize = 30;
 
+/// Quieter than any microphone's own noise: digital silence (`frame_is_speech`).
+const DIGITAL_SILENCE_DB: f64 = -90.0;
+
 impl Vad {
     pub fn new(rate: u32) -> Vad {
         Vad::tuned(rate, VadParams::default())
@@ -149,6 +152,18 @@ impl Vad {
 
     fn frame_is_speech(&mut self, frame: &[i16]) -> Option<bool> {
         let (e, f, sfm) = features(frame, self.rate);
+        // Digital silence -- exact zeros, or all but -- is not the room.
+        // Microphones with the operating system's noise suppression on
+        // (Windows' Voice Clarity and Studio Effects, a muted webcam) send
+        // it between words, and learning the room from it put the floor at
+        // -120 dB, so the real room, when it came back, was 60 dB "above the
+        // room" and counted as speech until the recording's hard stop (29 Sep
+        // 2026: found cutting real speech -- espeak clips end in exact zeros
+        // -- into utterances that never ended). Not speech, and nothing
+        // learned from it.
+        if e < DIGITAL_SILENCE_DB {
+            return (self.learned >= LEARN_FRAMES).then_some(false);
+        }
         if self.learned < LEARN_FRAMES {
             self.floor_db = self.floor_db.min(e);
             self.floor_sfm = self.floor_sfm.min(sfm);

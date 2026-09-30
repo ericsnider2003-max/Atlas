@@ -414,15 +414,10 @@ impl<'a> Daemon<'a> {
             Capture::Screen => (tools.capture_screen.clone(), "screen"),
             Capture::Camera => (tools.capture_webcam.clone(), "webcam"),
         };
-        let Some(tool) = tool else {
-            return format!("There's no {word} capture set up on this machine.");
-        };
         let dir = std::path::PathBuf::from(&tools.work_dir);
         let _ = std::fs::create_dir_all(&dir);
         let t = crate::store::now();
         let shot = dir.join(format!("{word}_{t}.png"));
-        let mut vars = tools.vars.clone();
-        vars.insert("out_png".into(), shot.display().to_string());
         // A question about another app ("what does Slack say?") brings that
         // window forward for the picture and puts yours back afterwards
         // (Eric, G3) — but never while you're in the middle of something.
@@ -431,24 +426,49 @@ impl<'a> Daemon<'a> {
         } else {
             crate::probe::Target::Active
         };
-        if let crate::probe::Target::App(app) = &target {
-            if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
-                return format!(
-                    "You're in the middle of something, so I won't move your windows to look at {app}. \
-                     Ask again when you pause."
-                );
+        // The screen you're working on -- or every screen, or the one you
+        // named -- captured by Atlas itself, in real pixels (29 Sep 2026).
+        // The configured capture (ffmpeg's gdigrab of the whole desktop) is
+        // not DPI-aware: with the laptop's screen scaled and the monitors
+        // not, it cropped the desktop wrongly, and one picture of three
+        // screens shrunk for the reader left each too small to read.
+        let mut label = format!("your {word}");
+        let mut taken_here = false;
+        if matches!(what, Capture::Screen) && matches!(target, crate::probe::Target::Active) {
+            if let Some((named, grab)) = self.screen_picture() {
+                let rgba: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+                let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba { width: grab.width, height: grab.height, pixels: rgba });
+                if std::fs::write(&shot, png).is_ok() {
+                    label = named;
+                    taken_here = true;
+                }
             }
-            let shoot = || -> crate::error::Result<String> {
-                tool.run(&vars, None).map(|_| shot.display().to_string())
+        }
+        if !taken_here {
+            let Some(tool) = tool else {
+                return format!("There's no {word} capture set up on this machine.");
             };
-            if let Err(e) = self.probe.gather(self.cfg, self.plat, &shoot, &target) {
+            let mut vars = tools.vars.clone();
+            vars.insert("out_png".into(), shot.display().to_string());
+            if let crate::probe::Target::App(app) = &target {
+                if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
+                    return format!(
+                        "You're in the middle of something, so I won't move your windows to look at {app}. \
+                         Ask again when you pause."
+                    );
+                }
+                let shoot = || -> crate::error::Result<String> {
+                    tool.run(&vars, None).map(|_| shot.display().to_string())
+                };
+                if let Err(e) = self.probe.gather(self.cfg, self.plat, &shoot, &target) {
+                    let _ = std::fs::remove_file(&shot);
+                    return format!("I couldn't take the picture of {app}: {e}");
+                }
+            } else if let Err(e) = tool.run(&vars, None) {
+                // A capture that failed partway can leave a half-written file.
                 let _ = std::fs::remove_file(&shot);
-                return format!("I couldn't take the picture of {app}: {e}");
+                return format!("I couldn't take the picture: {e}");
             }
-        } else if let Err(e) = tool.run(&vars, None) {
-            // A capture that failed partway can leave a half-written file.
-            let _ = std::fs::remove_file(&shot);
-            return format!("I couldn't take the picture: {e}");
         }
         let small = crate::picture_talk::smaller(&shot);
         // About 3 GB while it runs, so the memory budget gets a say first,
@@ -490,7 +510,7 @@ impl<'a> Daemon<'a> {
             serde_json::to_string(&o).map_err(|e| e.to_string())
         });
         if self.hand_off("pictures", t, work, Some(word.to_string()), SpeakPolicy::Always) {
-            format!("Looking at your {word} — I'll tell you in a moment.")
+            format!("Looking at {label} — I'll tell you in a moment.")
         } else {
             self.helpers.finished(name);
             let _ = std::fs::remove_file(&shot_again);
