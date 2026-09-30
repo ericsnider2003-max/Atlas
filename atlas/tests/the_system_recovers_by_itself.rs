@@ -522,7 +522,9 @@ fn a_quiet_room_is_silence_and_whisper_is_not_asked() {
 #[test]
 fn what_whisper_writes_for_silence_is_not_a_turn() {
     use atlas::voice::not_really_said as ghost;
-    for s in ["you", "You.", " you ", "Thanks for watching!", "Thank you for watching.", "Bye.", "...", ""] {
+    // Not "Bye." (30 Sep 2026): it's how a conversation is ended, and a
+    // silent clip no longer reaches whisper at all (`check_speech`).
+    for s in ["you", "You.", " you ", "Thanks for watching!", "Thank you for watching.", "...", ""] {
         assert!(ghost(s), "{s:?} would be answered");
     }
     for s in ["Thank you.", "Why can you not hear me? What is the issue?", "Can you hear me?", "you there?", "Look at me."] {

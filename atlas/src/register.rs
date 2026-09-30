@@ -142,7 +142,13 @@ const TASK_VERBS: &[&str] = &[
 
 fn is_a_task(t: &str) -> bool {
     let first = t.split_whitespace().next().unwrap_or("");
-    if TASK_VERBS.contains(&first) {
+    // "find me a good book on options", "show me how margin works": asking to
+    // be told or shown something is a question, not a task (30 Sep 2026:
+    // those got two sentences and the shortest reply window).
+    let asks_to_be_shown = ["show me how", "show me what", "show me why", "find me a good", "find me some", "tell me"]
+        .iter()
+        .any(|p| t.starts_with(p));
+    if TASK_VERBS.contains(&first) && !asks_to_be_shown {
         return true;
     }
     // "can you open chrome" is a task wearing a question's clothes.
@@ -164,10 +170,11 @@ fn is_a_task(t: &str) -> bool {
 fn about_atlas(t: &str) -> bool {
     const SUBJECTS: &[&str] = &[
         "what do you do", "what can you do", "what are you", "who are you",
-        "how do you work", "what is this", "what's this thing", "whats this thing",
+        "how do you work", "what's this thing", "whats this thing",
         "are you recording", "are you listening", "what are you doing",
         "why did you", "how did you", "can you explain why", "what did you just",
-        "are you an ai", "what model", "how are you built", "what happens to",
+        "are you an ai", "what model", "how are you built", "what happens to what i say",
+        "what happens to my data", "what happens to my recordings",
         "where does that go", "do you store", "is that private",
     ];
     SUBJECTS.iter().any(|s| t.contains(s))
@@ -191,9 +198,15 @@ fn sounds_fed_up(t: &str) -> bool {
     const SIGNS: &[&str] = &[
         "that didn't work", "that didnt work", "still broken", "not working again", "wrong again", "failed again", "why isn't",
         "why isnt", "this is broken", "forget it", "useless", "for god's sake",
-        "for gods sake", "come on", "seriously", "not again", "you keep",
+        "for gods sake", "not again", "you keep",
     ];
-    SIGNS.iter().any(|s| t.contains(s))
+    // "Seriously" and "come on" said on their own or with a complaint are
+    // fed up; "seriously, what's the best broker?" is emphasis (30 Sep 2026:
+    // that got a three-sentence "no jokes" answer).
+    let alone = ["come on", "seriously", "oh come on", "seriously atlas", "come on atlas"].iter().any(|s| t.trim() == *s);
+    let with_complaint = (t.starts_with("come on") || t.starts_with("seriously"))
+        && ["wrong", "broken", "didn't", "didnt", "not what", "again", "stop"].iter().any(|w| t.contains(w));
+    alone || with_complaint || SIGNS.iter().any(|s| t.contains(s))
 }
 
 // ---------- calls ----------

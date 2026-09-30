@@ -1054,7 +1054,15 @@ impl<'a> Daemon<'a> {
         //
         // Unless one of round 11's tools just asked ("probably $7.75 -- keep
         // it?"): then the yes or no is its answer (`workday::read_first`).
-        if (is_yes(said) || is_no(said)) && !matches!(self.parser.parse_named(said).0, Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_)) {
+        // Unless Atlas's own last words asked something ("Want me to set a
+        // reminder?"): then the yes or no is an answer to that, and goes to
+        // the model with the question still in the conversation (30 Sep 2026:
+        // it was told "Nothing to confirm.").
+        let asked_last = self.thread.recent.last().is_some_and(|e| e.reply.trim_end().ends_with('?'));
+        if (is_yes(said) || is_no(said))
+            && !asked_last
+            && !matches!(self.parser.parse_named(said).0, Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_))
+        {
             return "Nothing to confirm.".into();
         }
 

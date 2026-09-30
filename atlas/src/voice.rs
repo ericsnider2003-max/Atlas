@@ -743,6 +743,16 @@ impl<'a> Voice<'a> {
         cfg: &crate::endpoint::EndpointConfig,
         device: &str,
     ) -> Result<Option<String>> {
+        self.stream_until_you_stop(cfg, device, &|| false)
+    }
+
+    /// `listen_until_you_stop`, given up the moment `stop()` says so.
+    fn stream_until_you_stop(
+        &self,
+        cfg: &crate::endpoint::EndpointConfig,
+        device: &str,
+        stop: &dyn Fn() -> bool,
+    ) -> Result<Option<String>> {
         use std::io::Read;
 
         if !cfg.enabled || device.trim().is_empty() {
@@ -785,6 +795,11 @@ impl<'a> Voice<'a> {
         let mut buf = vec![0u8; want * 2];
 
         loop {
+            if stop() {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(None);
+            }
             let n = match out.read(&mut buf) {
                 Ok(0) => break, // ffmpeg stopped on its own
                 Ok(n) => n,
@@ -951,6 +966,19 @@ impl<'a> Voice<'a> {
     /// `listen_for`, stopped part-way when `stop` says so (paused, Atlas
     /// closing): stopped reads as silence.
     fn listen_for_until(&self, secs: u32, stop: &dyn Fn() -> bool) -> Result<Option<String>> {
+        // Listening until you stop, not for a fixed stretch (30 Sep 2026):
+        // the window was a recording of `secs` seconds, transcribed only once
+        // it ended, so every reply without the wake word waited out the whole
+        // window -- six to twelve seconds of nothing -- and a reply started
+        // late in it was cut off mid-sentence. Now `secs` is how long to wait
+        // for you to START; once you do, it ends when you stop.
+        let device = microphone_now(self.cfg).1;
+        if self.cfg.endpoint.enabled && !device.trim().is_empty() {
+            let mut cfg = self.cfg.endpoint.clone();
+            cfg.no_speech_after_ms = u64::from(secs) * 1000;
+            cfg.hard_stop_ms = cfg.hard_stop_ms.max(u64::from(secs) * 1000 + 15_000);
+            return self.stream_until_you_stop(&cfg, &device, stop);
+        }
         let mut vars = self.vars()?;
         vars.insert("seconds".into(), secs.to_string());
         let t0 = std::time::Instant::now();
@@ -1554,7 +1582,6 @@ pub const WHISPER_SILENCE: &[&str] = &[
     "please subscribe",
     "subscribe",
     "like and subscribe",
-    "bye",
     "bye bye",
     "the end",
     "so",

@@ -647,7 +647,9 @@ commands:
   - intent: drop_task
     describe: "Take something off the user's list, or bring back something dropped. arg: the task."
     # Dropping a task and bringing it back (Eric, H8).
-    phrases: ["drop the task", "im not doing", "i'm not doing", "take off my list", "take it off my list", "bring back what i dropped", "bring back the task", "what did i drop", "what have i dropped", "pick back up", "pick up what i dropped", "un drop"]
+    # Not "i'm not doing" (30 Sep 2026): "I'm not doing the dishes tonight"
+    # dropped a task.
+    phrases: ["drop the task", "take off my list", "take it off my list", "bring back what i dropped", "bring back the task", "what did i drop", "what have i dropped", "pick back up", "pick up what i dropped", "un drop"]
     takes_argument: true
     argument_optional: true
     raw_argument: true
@@ -957,8 +959,11 @@ commands:
   # clipboard-summarise command) and bare "explain".
   - intent: explain_code
     describe: "Explain what a piece of code does. arg: which code."
-    phrases: ["explain the", "explain what", "explain code",
-              "what does this code do", "code explanation"]
+    # Not "explain the"/"explain what" (30 Sep 2026): "explain the yield
+    # curve" and "explain what a Roth IRA is" went to the code explainer.
+    phrases: ["explain code", "explain this code", "explain the code", "explain this function",
+              "explain the function", "explain this script", "what does this code do", "code explanation",
+              "explain the change", "explain the queued change", "explain what changed", "explain that change"]
     takes_argument: true
     argument_optional: false
     raw_argument: true

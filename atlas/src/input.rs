@@ -56,11 +56,32 @@ pub struct Tiers {
     /// push-to-talk: Atlas neither starts in the wake-word tier nor climbs
     /// back to it (`set_wake`).
     wake_on: bool,
+    /// When the last failure counted, and when the wake word was last
+    /// dropped (seconds): failures far apart don't add up, and a dropped wake
+    /// word is tried again on its own (30 Sep 2026: three hiccups across a
+    /// whole day turned it off, and it came back only after five
+    /// push-to-talk turns -- in practice, never).
+    last_failure_at: u64,
+    wake_dropped_at: Option<u64>,
 }
+
+/// Failures further apart than this don't add up to dropping a tier.
+pub const FAILURES_COUNT_WITHIN_SECS: u64 = 600;
+/// How long after dropping the wake word it is tried again by itself.
+pub const TRY_WAKE_AGAIN_AFTER_SECS: u64 = 120;
 
 impl Default for Tiers {
     fn default() -> Self {
-        Tiers { tier: Tier::Voice, failures: 0, patience: 3, recover_after: 5, successes: 0, wake_on: true }
+        Tiers {
+            tier: Tier::Voice,
+            failures: 0,
+            patience: 3,
+            recover_after: 5,
+            successes: 0,
+            wake_on: true,
+            last_failure_at: 0,
+            wake_dropped_at: None,
+        }
     }
 }
 
@@ -68,6 +89,15 @@ impl Tiers {
     /// Something went wrong on the current tier. Returns a message to announce
     /// if this caused a demotion.
     pub fn failed(&mut self) -> Option<String> {
+        self.failed_at(crate::store::now())
+    }
+
+    /// `failed`, at a given moment.
+    pub fn failed_at(&mut self, now: u64) -> Option<String> {
+        if now.saturating_sub(self.last_failure_at) > FAILURES_COUNT_WITHIN_SECS {
+            self.failures = 0;
+        }
+        self.last_failure_at = now;
         self.failures += 1;
         self.successes = 0;
         if self.failures < self.patience {
@@ -79,6 +109,9 @@ impl Tiers {
             Tier::PushToTalk => Tier::Typed,
             Tier::Typed => return None, // nowhere lower to go
         };
+        if next == Tier::PushToTalk {
+            self.wake_dropped_at = Some(now);
+        }
         self.tier = next;
         Some(format!("Switching to {}.", next.describe()))
     }
@@ -139,6 +172,22 @@ impl Tiers {
     }
 
     /// Audio is unusable outright — skip straight to typing.
+    /// The wake word, tried again by itself a while after failures dropped
+    /// it -- a microphone busy for a moment, a speech engine that crashed
+    /// once, recover without you pressing a key five times. `Some` when it
+    /// is back on.
+    pub fn try_the_wake_word_again(&mut self, now: u64) -> Option<String> {
+        let dropped = self.wake_dropped_at?;
+        if self.tier != Tier::PushToTalk || !self.wake_on || now.saturating_sub(dropped) < TRY_WAKE_AGAIN_AFTER_SECS {
+            return None;
+        }
+        self.wake_dropped_at = None;
+        self.failures = 0;
+        self.successes = 0;
+        self.tier = Tier::Voice;
+        Some(format!("Back to {}.", Tier::Voice.describe()))
+    }
+
     pub fn audio_unavailable(&mut self) -> Option<String> {
         if self.tier == Tier::Typed {
             return None;

@@ -817,6 +817,9 @@ impl<'a> Daemon<'a> {
     /// Public so the test can show a pass returns at once while the thread
     /// is mid-recording.
     pub fn listen_pass(&mut self, ears: &dyn Ears, mouth: &dyn Mouth, clock: &dyn Fn() -> u64) -> bool {
+        if let Some(back) = self.tiers.try_the_wake_word_again(clock()) {
+            self.log.info(&format!("trying the wake word again by itself: {back}"));
+        }
         self.ensure_mic(ears);
         self.steer_mic();
         let heard = self.mic_heard.take().or_else(|| self.mic.as_ref().and_then(|m| m.poll()));
@@ -835,8 +838,15 @@ impl<'a> Daemon<'a> {
             }
             // Your name, then nothing: answered, and not a failure.
             crate::micthread::Heard::Wake(Err(why)) if why.contains(crate::voice::HEARD_NOTHING) => {
-                self.log.info("heard my name, then nothing");
-                self.say(mouth, "I heard my name but nothing after it.");
+                // "Atlas…" and a pause is someone getting its attention, the
+                // way you'd say a person's name: answered "Yes?", then heard
+                // (30 Sep 2026: it said "I heard my name but nothing after it"
+                // and stopped listening).
+                self.log.info("heard my name, then nothing: asking");
+                self.say(mouth, "Yes?");
+                if let Some(said) = self.follow_up(ears, 8) {
+                    self.converse(&said, ears, mouth, clock);
+                }
             }
             crate::micthread::Heard::Wake(Err(why)) | crate::micthread::Heard::Trouble(why) => {
                 self.log.info(&format!("listening for the wake word: {why}"));
@@ -1204,6 +1214,13 @@ impl<'a> Daemon<'a> {
                 break;
             }
             match self.follow_up(ears, window) {
+                // "That's all", "bye", "thanks": said back briefly, and the
+                // floor closes.
+                Some(next) if crate::session::ends_the_conversation(&next) => {
+                    self.thread.append(&next, "Anytime.", None, clock());
+                    self.say(mouth, "Anytime.");
+                    break;
+                }
                 Some(next) => said = next,
                 None => break,
             }

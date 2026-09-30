@@ -114,11 +114,32 @@ impl Session {
 pub fn is_yes(s: &str) -> bool {
     let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
     let t = t.trim();
-    matches!(
+    if matches!(
         t,
         "y" | "yes" | "yeah" | "yep" | "yup" | "sure" | "ok" | "okay" | "do it"
             | "go ahead" | "confirm" | "confirmed" | "please do" | "affirmative"
-    )
+    ) {
+        return true;
+    }
+    // "Yes please", "yeah go for it", "sure, do it", "sounds good" (30 Sep
+    // 2026: only the bare words counted, so "yes please" threw the approval
+    // away and went on as a new request). Opening with a yes, short, and
+    // nothing in it that takes the yes back.
+    let words: Vec<&str> = t.split_whitespace().collect();
+    let opens = ["yes", "yeah", "yep", "yup", "sure", "ok", "okay", "absolutely", "definitely", "please"];
+    let phrases = ["go ahead", "do it", "go for it", "sounds good", "of course", "why not", "please do", "that works", "lets do it", "yes please"];
+    let opened = words.first().is_some_and(|w| opens.contains(w)) || phrases.iter().any(|p| t.starts_with(p));
+    let takes_it_back = words.iter().any(|w| matches!(*w, "no" | "not" | "dont" | "wait" | "but" | "actually" | "hold" | "stop" | "cancel" | "never"))
+        && !t.starts_with("why not");
+    // Nothing but more yes: "sure, what's the weather" is a new question,
+    // not an answer to "go ahead?".
+    const MORE_YES: &[&str] = &[
+        "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "go", "ahead", "do", "it", "for", "sounds", "good", "great",
+        "thanks", "thank", "you", "lets", "that", "works", "fine", "perfect", "atlas", "absolutely", "definitely", "of", "course",
+        "why", "not", "right", "correct", "exactly", "cool", "alright", "all", "send", "save", "book", "go", "on", "then",
+    ];
+    let only_yes = words.iter().all(|w| MORE_YES.contains(w));
+    opened && !takes_it_back && only_yes && words.len() <= 6
 }
 
 /// "Yes, and don't ask me that again." Strict the same way `is_yes` is: it
@@ -135,13 +156,42 @@ pub fn is_always(s: &str) -> bool {
 }
 
 /// Also strict. "Not now" is a no; a mumble is neither.
+/// "That's all", "bye", "thanks, that's it": the conversation is over, and
+/// the open floor after a reply closes (30 Sep 2026: "bye" was dropped as
+/// a speech-to-text ghost, and nothing ended the floor but silence).
+pub fn ends_the_conversation(s: &str) -> bool {
+    let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    let t = t.trim_start_matches("ok ").trim_start_matches("okay ").trim_start_matches("thanks ").trim_start_matches("thank you ").trim();
+    matches!(
+        t,
+        "bye" | "goodbye" | "bye bye" | "see you" | "later" | "thats all" | "thats it" | "thats everything" | "nothing"
+            | "nothing else" | "no thats it" | "no thats all" | "all done" | "im done" | "done" | "were done"
+            | "thanks" | "thank you" | "thanks atlas" | "thank you atlas" | "cheers" | "good night" | "goodnight"
+    )
+}
+
 pub fn is_no(s: &str) -> bool {
     let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
-    matches!(
-        t.trim(),
+    let t = t.trim();
+    if matches!(
+        t,
         "n" | "no" | "nope" | "nah" | "dont" | "do not" | "cancel" | "stop"
             | "not now" | "no thanks" | "leave it" | "never mind" | "negative"
-    )
+    ) {
+        return true;
+    }
+    // "No thanks, I'm good", "nah leave it", "not right now".
+    let words: Vec<&str> = t.split_whitespace().collect();
+    let opened = words.first().is_some_and(|w| matches!(*w, "no" | "nope" | "nah")) || ["not now", "not right now", "never mind", "leave it", "dont bother", "no need"].iter().any(|p| t.starts_with(p));
+    let turns_to_yes = words.iter().skip(1).any(|w| matches!(*w, "yes" | "yeah" | "go" | "do" | "sure"));
+    // Nothing but more no: "no more jokes" is a request, not an answer.
+    const MORE_NO: &[&str] = &[
+        "no", "nope", "nah", "thanks", "thank", "you", "im", "good", "fine", "leave", "it", "dont", "bother", "need", "not",
+        "now", "right", "atlas", "its", "ok", "okay", "all", "that", "never", "mind", "thats", "alright", "maybe", "later",
+    ];
+    let only_no = words.iter().all(|w| MORE_NO.contains(w));
+    opened && !turns_to_yes && only_no && words.len() <= 6
 }
 
 pub fn kind_of(i: &Intent) -> &'static str {

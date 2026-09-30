@@ -1,6 +1,6 @@
 //! The weather, answered (30 Sep 2026): Open-Meteo, free, no account.
 
-use atlas::weather::{about_the_weather as asked, fahrenheit, forecast_said as say, forecast_url, place_from_address, place_from_search, sky_words as described, Asked, Place};
+use atlas::weather::{about_the_weather as asked, fahrenheit, forecast_said, forecast_url, place_from_address, place_from_search, sky_words, Asked, Place};
 
 #[test]
 fn weather_questions_are_recognised_with_their_place_and_day() {
@@ -24,9 +24,9 @@ fn units_follow_the_country_unless_you_say() {
     let u = forecast_url(&p, true);
     assert!(u.starts_with("https://api.open-meteo.com/v1/forecast?latitude=39.9600&longitude=-83.0000"), "{u}");
     assert!(u.contains("temperature_unit=fahrenheit") && u.contains("wind_speed_unit=mph"));
-    assert_eq!(described(0), "clear");
-    assert_eq!(described(63), "rain");
-    assert_eq!(described(95), "thunderstorms");
+    assert_eq!(sky_words(0), "clear");
+    assert_eq!(sky_words(63), "rain");
+    assert_eq!(sky_words(95), "thunderstorms");
 }
 
 /// Open-Meteo's own answer shape (as returned on 30 Sep 2026).
@@ -36,12 +36,12 @@ const FORECAST: &str = r#"{"current":{"time":"2026-09-30T12:15","temperature_2m"
 #[test]
 fn the_forecast_is_said_plainly() {
     let p = Place { name: "Columbus".into(), lat: 39.96, lon: -83.0, country: "US".into() };
-    assert_eq!(say(&p, FORECAST, false, true).unwrap(), "In Columbus: 71°F and clear. Today's high 78, low 55.");
+    assert_eq!(forecast_said(&p, FORECAST, false, true).unwrap(), "In Columbus: 71°F and clear. Today's high 78, low 55.");
     assert_eq!(
-        say(&p, FORECAST, true, true).unwrap(),
+        forecast_said(&p, FORECAST, true, true).unwrap(),
         "Tomorrow in Columbus: rain, high 64°F, low 50°F. Rain likely (70% chance) -- take an umbrella."
     );
-    assert!(say(&p, "not json", false, true).is_none());
+    assert!(forecast_said(&p, "not json", false, true).is_none());
 }
 
 #[test]
