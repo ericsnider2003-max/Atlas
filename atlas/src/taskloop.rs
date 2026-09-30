@@ -70,6 +70,8 @@ pub enum Verdict {
     Started,
     /// Out of steps, or going round in a circle.
     OutOfSteps,
+    /// Stopped between steps ("stop everything", Atlas closing).
+    Stopped,
 }
 
 impl Verdict {
@@ -80,6 +82,7 @@ impl Verdict {
             Verdict::Blocked => "stopped to ask",
             Verdict::Started => "handed long work to the background",
             Verdict::OutOfSteps => "ran out of steps",
+            Verdict::Stopped => "was stopped",
         }
     }
 }
@@ -212,8 +215,32 @@ fn arg_of(call: &ToolCall) -> String {
     }
 }
 
-/// Run the loop: at most `max_steps` tool calls, each result fed back.
-pub fn run(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn Hands, max_steps: usize) -> Run {
+/// Who watches the loop from outside (30 Sep 2026): told each step as it
+/// finishes, so it can be said as it happens, and asked between steps
+/// whether to stop -- a pause holds there (`stop` waits) and a stop ends it.
+pub trait Watch {
+    /// Step `n` (from 1) of the plan is done.
+    fn step_done(&mut self, n: usize, of: usize, step: &Step);
+    /// Asked before each model call after the first: `Some(why)` stops the
+    /// loop there. A pause is held inside this call until it's lifted.
+    fn stop(&mut self) -> Option<String>;
+}
+
+/// Nobody watching: nothing said, never stopped.
+pub struct Unwatched;
+
+impl Watch for Unwatched {
+    fn step_done(&mut self, _: usize, _: usize, _: &Step) {}
+    fn stop(&mut self) -> Option<String> {
+        None
+    }
+}
+
+/// Run the loop: at most `max_steps` tool calls, each result fed back, each
+/// step told to `watch` as it finishes and a stop honoured between steps.
+/// (`run` until 30 Sep 2026, when the loop moved off the daemon's loop and
+/// began saying each step as it went.)
+pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn Hands, max_steps: usize, watch: &mut dyn Watch) -> Run {
     let mut messages: Vec<Msg> = turn.messages();
     if let Some(last) = messages.last_mut() {
         last.content = format!("{}\n\n{}", plan_line(plan), last.content);
@@ -221,7 +248,14 @@ pub fn run(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn Hands, m
     let mut steps: Vec<Step> = Vec::new();
     let mut verdict = Verdict::OutOfSteps;
     let mut answer = String::new();
-    for _ in 0..=max_steps {
+    for round in 0..=max_steps {
+        if round > 0 {
+            if let Some(why) = watch.stop() {
+                verdict = Verdict::Stopped;
+                answer = why;
+                break;
+            }
+        }
         let may_call = steps.len() < max_steps;
         let req = ChatRequest {
             messages: messages.clone(),
@@ -255,6 +289,9 @@ pub fn run(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn Hands, m
         }
         let outcome = hands.act(&call);
         steps.push(Step { tool: call.name.clone(), arg: arg_of(&call), outcome: outcome.clone() });
+        if let Some(step) = steps.last() {
+            watch.step_done(steps.len(), plan.len().max(steps.len()), step);
+        }
         match &outcome {
             Outcome::NeedsYou(_) => {
                 verdict = Verdict::Blocked;
@@ -305,6 +342,15 @@ fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> S
             } else {
                 let rest: Vec<&str> = rest.iter().map(|r| r.as_str()).collect();
                 format!("{last} When it's done: {}.", rest.join("; "))
+            }
+        }
+        Verdict::Stopped => {
+            let done: Vec<&str> = steps.iter().map(|s| s.outcome.text().trim()).filter(|t| !t.is_empty()).collect();
+            let why = answer.trim();
+            match (done.is_empty(), why.is_empty()) {
+                (true, _) => format!("Stopped before the first step. {why}").trim().to_string(),
+                (false, true) => format!("Stopped after step {}.", steps.len()),
+                (false, false) => format!("Stopped after step {}: {why}", steps.len()),
             }
         }
         Verdict::OutOfSteps => {

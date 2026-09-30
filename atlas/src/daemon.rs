@@ -948,6 +948,10 @@ pub struct Daemon<'a> {
     pub(crate) deep: crate::deepbrain::DeepBrain,
     /// When to look for the deep model's file again.
     deep_look_at: u64,
+    /// A request of several steps being worked through on a worker
+    /// (`tasks::work_through`, 30 Sep 2026): its steps are carried out and
+    /// said by the tick.
+    task_loop: Option<tasks::TaskLoop>,
     /// `models.talk` as last followed (`follow_the_talk_setting`), and the
     /// model the talking server was started on.
     talk_setting_seen: Option<String>,
@@ -1680,6 +1684,7 @@ impl<'a> Daemon<'a> {
             pending_turn: None,
             deep: crate::deepbrain::DeepBrain::none(),
             deep_look_at: 0,
+            task_loop: None,
             talk_setting_seen: None,
             model_running_id: None,
             pending_seq: 0,

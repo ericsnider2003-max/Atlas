@@ -220,6 +220,8 @@ impl<'a> Daemon<'a> {
                 // A model turn still thinking is stopped too: its answer
                 // would otherwise run its tool when it came back (28 Sep 2026).
                 self.drop_pending_turn(t, "Stopped before I answered -- nothing was done.");
+                // A request of several steps ends at its next step.
+                self.stop_task_loop();
                 let asked = self.crew.ask_everyone_to_stop();
                 let halted = self.attention.halt(t);
                 // `halt`'s own doc says "queues emptied, work abandoned" —
@@ -259,6 +261,8 @@ impl<'a> Daemon<'a> {
                     self.attention.suspend(id);
                 }
                 self.drop_pending_turn(t, "Paused before I answered -- nothing was done.");
+                // A request of several steps holds before its next step.
+                self.hold_task_loop(true);
                 // "Pause" is total: the errands hold too, at their safe
                 // points, and nothing they have done is lost.
                 let msg = self.attention.pause(self.current_work(), t);
@@ -1317,7 +1321,7 @@ impl<'a> Daemon<'a> {
                     turn.skip_phrases = beyond_the_notes;
                     self.by_chat = needs_model && llm.native_chat();
                     match several {
-                        Some(tasks::Several::SideBySide(parts)) => self.work_side_by_side(llm.clone(), parts, _t, register, &persona),
+                        Some(tasks::Several::SideBySide(parts)) => self.work_side_by_side(llm.clone(), said, parts, _t, register, &persona),
                         Some(tasks::Several::StepByStep) => self.work_through(llm.clone(), said, turn, _t),
                         None => {
                     // The Talk page and the voice loop don't wait here: the

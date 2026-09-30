@@ -42,6 +42,11 @@ impl<'a> Daemon<'a> {
         // The deep model: started for background work waiting on it,
         // stopped once idle (`deepbrain`).
         self.keep_deep_brain();
+        // A request of several steps: the steps it asks for carried out, and
+        // each one said as it finishes (`work_through`). Up here, before the
+        // returns a pause or a quiet mode take below: a pause is when it
+        // must be told to hold, and "stop everything" when it must end.
+        out.extend(self.take_task_loop_news(t));
         // A question left standing is stamped here, so its age is known.
         self.expire_stale_question(t);
 

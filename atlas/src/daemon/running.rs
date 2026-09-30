@@ -549,7 +549,9 @@ impl<'a> Daemon<'a> {
             // after one otherwise sat empty for up to two seconds. Only when
             // something could actually start — work blocked behind a render
             // is not a reason to spin.
-            let nap_ms = if self.crew.wants_attention() { CREW_NAP_MS } else { nap.min(MAX_SLEEP_SECS) * 1000 };
+            // And while a request of several steps is under way: its worker
+            // waits on the tick for each step (`take_task_loop_news`).
+            let nap_ms = if self.crew.wants_attention() || self.working_through_steps() { CREW_NAP_MS } else { nap.min(MAX_SLEEP_SECS) * 1000 };
             // Not asleep, though (27 Sep 2026): the nap is spent answering
             // the hub the moment a request arrives, and watching for typing,
             // which ends it. Two seconds with the hub unanswered and the

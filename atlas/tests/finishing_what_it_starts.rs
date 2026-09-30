@@ -296,7 +296,7 @@ fn the_loop_feeds_each_result_back_and_finishes() {
     };
     let said = "find the tax pdf and read me what it says about the deadline";
     let plan = atlas::taskloop::parts(said);
-    let run = atlas::taskloop::run(&*llm, &loop_turn(said), &plan, &mut hands, atlas::taskloop::MAX_STEPS);
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn(said), &plan, &mut hands, atlas::taskloop::MAX_STEPS, &mut atlas::taskloop::Unwatched);
     assert_eq!(run.verdict, Verdict::Finished);
     assert_eq!(hands.called, vec!["find_file", "read_document"]);
     assert_eq!(run.reply, "The deadline in tax-2025.pdf is April 15.");
@@ -313,7 +313,7 @@ fn the_loop_stops_to_ask_and_hands_long_work_to_the_background() {
     // Needs the person: the question is the reply.
     let llm = Scripted::new(vec![], vec![calls("message", "Maya: running late")], 0);
     let mut hands = ScriptedHands { outcomes: vec![("message", Outcome::NeedsYou("Message Maya \"running late\"? Go ahead?".into()))], called: vec![] };
-    let run = atlas::taskloop::run(&*llm, &loop_turn("tell Maya I'm running late and then open my calendar"), &["tell Maya I'm running late".into(), "open my calendar".into()], &mut hands, 4);
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("tell Maya I'm running late and then open my calendar"), &["tell Maya I'm running late".into(), "open my calendar".into()], &mut hands, 4, &mut atlas::taskloop::Unwatched);
     assert_eq!(run.verdict, Verdict::Blocked);
     assert!(run.reply.contains("Go ahead?"), "{}", run.reply);
 
@@ -321,7 +321,7 @@ fn the_loop_stops_to_ask_and_hands_long_work_to_the_background() {
     let llm = Scripted::new(vec![], vec![calls("research", "improving local models")], 0);
     let mut hands = ScriptedHands { outcomes: vec![("research", Outcome::Started("Researching improving local models.".into()))], called: vec![] };
     let plan = vec!["research improving local models".to_string(), "tell me what you find".to_string()];
-    let run = atlas::taskloop::run(&*llm, &loop_turn("research improving local models, tell me what you find"), &plan, &mut hands, 4);
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("research improving local models, tell me what you find"), &plan, &mut hands, 4, &mut atlas::taskloop::Unwatched);
     assert_eq!(run.verdict, Verdict::Started);
     assert!(run.reply.starts_with("Researching improving local models."), "{}", run.reply);
     assert!(run.reply.contains("When it's done: tell me what you find"), "{}", run.reply);
@@ -332,18 +332,37 @@ fn the_loop_stops_to_ask_and_hands_long_work_to_the_background() {
 fn the_loop_is_bounded_and_notices_going_round_in_a_circle() {
     let llm = Scripted::new(vec![], vec![calls("find_file", "x"), calls("find_file", "x")], 0);
     let mut hands = ScriptedHands { outcomes: vec![("find_file", Outcome::Done("Nothing called x.".into()))], called: vec![] };
-    let run = atlas::taskloop::run(&*llm, &loop_turn("find x and then open it"), &["find x".into(), "open it".into()], &mut hands, 4);
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("find x and then open it"), &["find x".into(), "open it".into()], &mut hands, 4, &mut atlas::taskloop::Unwatched);
     assert_eq!(run.verdict, Verdict::OutOfSteps);
     assert_eq!(hands.called.len(), 1, "the same call isn't made twice");
 
     let many: Vec<ChatReply> = (0..10).map(|i| calls("find_file", &format!("file {i}"))).collect();
     let llm = Scripted::new(vec![], many, 0);
     let mut hands = ScriptedHands { outcomes: vec![("find_file", Outcome::Done("Not that one.".into()))], called: vec![] };
-    let run = atlas::taskloop::run(&*llm, &loop_turn("find the right file and then open it"), &["find the right file".into(), "open it".into()], &mut hands, 3);
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("find the right file and then open it"), &["find the right file".into(), "open it".into()], &mut hands, 3, &mut atlas::taskloop::Unwatched);
     assert_eq!(hands.called.len(), 3, "at most the steps allowed");
     assert!(run.reply.contains("That's as far as I got in 3 steps"), "{}", run.reply);
     // The last request offered no tools: it could only answer.
     assert!(llm.requests().last().unwrap().tools.is_empty());
+}
+
+/// Tick until the request of several steps being worked through is done;
+/// every line the ticks said, in order, with when.
+fn tick_until_done(d: &mut Daemon, t: u64, secs: u64) -> Vec<(String, Instant)> {
+    let mut said = Vec::new();
+    let until = Instant::now() + Duration::from_secs(secs);
+    let mut t = t;
+    loop {
+        t += 1;
+        for line in d.tick(t) {
+            said.push((line, Instant::now()));
+        }
+        if !d.working_through_steps() || Instant::now() > until {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    said
 }
 
 #[test]
@@ -351,7 +370,15 @@ fn a_request_of_dependent_steps_is_worked_through_by_the_daemon() {
     let (c, p) = (cfg(), plat());
     let llm = Scripted::new(vec![("Tool find_file", says("I looked for the tax PDF; here's what came back."))], vec![calls("find_file", "tax pdf")], 0);
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("loop")), Proactive::new(ProactiveConfig::default()));
-    let reply = d.turn("find the tax pdf and read me what it says about the deadline", 1_790_740_000);
+    // 30 Sep 2026: the loop runs off the daemon's loop now. The turn says the
+    // plan at once; the steps and the answer come through the ticks.
+    let started = d.turn("find the tax pdf and read me what it says about the deadline", 1_790_740_000);
+    assert!(started.starts_with("Working through that in 2 steps: 1) find the tax pdf; 2) read me what it says"), "{started}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said.last().map(|(l, _)| l.clone()).unwrap_or_default();
+    assert!(said.iter().any(|(l, _)| l.starts_with("Step 1 of 2:")), "the step wasn't said: {said:?}");
+    // The conversation keeps the answer, not the plan.
+    assert_eq!(d.thread.recent.last().unwrap().reply, reply);
     let reqs = llm.requests();
     assert_eq!(reqs.len(), 2, "{reply}");
     assert!(reqs[0].messages.last().unwrap().content.contains("This takes more than one step"));
@@ -360,6 +387,170 @@ fn a_request_of_dependent_steps_is_worked_through_by_the_daemon() {
     let names: Vec<&str> = reqs[0].tools.iter().filter_map(|t| t["function"]["name"].as_str()).collect();
     assert!(names.contains(&"find_file") && names.contains(&"read_document"), "{names:?}");
     assert_eq!(reply, "I looked for the tax PDF; here's what came back.");
+}
+
+// ================= 3b. off the loop (30 Sep 2026) =================
+
+/// Four steps, each model call taking `ms`.
+fn four_steps(ms: u64) -> Arc<Scripted> {
+    Scripted::new(
+        vec![],
+        vec![
+            calls("find_file", "tax pdf"),
+            calls("find_file", "receipts"),
+            calls("find_file", "invoice"),
+            calls("find_file", "contract"),
+            says("I looked for all four; none of them is on this computer."),
+        ],
+        ms,
+    )
+}
+
+const FOUR: &str = "find the tax pdf, then find the receipts, then find the invoice, then find the contract and tell me what you found";
+
+#[test]
+fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
+    let (c, p) = (cfg(), plat());
+    let llm = four_steps(350);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("offloop")), Proactive::new(ProactiveConfig::default()));
+    let t0 = Instant::now();
+    let first = d.turn(FOUR, 1_790_740_000);
+    assert!(t0.elapsed() < Duration::from_millis(300), "the turn held the loop: {:?}", t0.elapsed());
+    assert!(first.starts_with("Working through that in"), "{first}");
+    assert!(d.working_through_steps());
+    // The hub, asked all the while: every page answered quickly.
+    let mut hub_times = Vec::new();
+    let mut said: Vec<(String, Instant)> = Vec::new();
+    let until = Instant::now() + Duration::from_secs(20);
+    let mut t = 1_790_740_000;
+    while d.working_through_steps() && Instant::now() < until {
+        let asked = Instant::now();
+        let page = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Now)).body;
+        hub_times.push(asked.elapsed());
+        assert!(page.contains("<main"), "the hub didn't answer");
+        t += 1;
+        for line in d.tick(t) {
+            said.push((line, Instant::now()));
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    assert!(!d.working_through_steps(), "the loop never finished");
+    assert!(hub_times.len() >= 10, "the hub was asked only {} times in ~1.7 s of model calls", hub_times.len());
+    let slowest = hub_times.iter().max().unwrap();
+    assert!(*slowest < Duration::from_millis(1_000), "a hub page waited {slowest:?}");
+    // Each step said as it happened, then the answer.
+    let steps: Vec<&(String, Instant)> = said.iter().filter(|(l, _)| l.starts_with("Step ")).collect();
+    assert_eq!(steps.len(), 4, "{said:?}");
+    assert!(steps[0].0.starts_with("Step 1 of"), "{said:?}");
+    let answer = said.last().unwrap();
+    assert!(answer.0.contains("none of them is on this computer"), "{said:?}");
+    // Spread out, not all at the end: the first step was said well before
+    // the answer came (three more model calls of 350 ms each).
+    assert!(answer.1.duration_since(steps[0].1) > Duration::from_millis(700), "the steps were said all at once");
+    assert_eq!(llm.requests().len(), 5);
+    // Beside the conversation, not in its slot.
+    assert!(llm.requests().iter().all(|r| r.aside), "the loop used the conversation's slot");
+}
+
+#[test]
+fn pause_holds_the_steps_and_resume_carries_them_on() {
+    let (c, p) = (cfg(), plat());
+    let llm = four_steps(150);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("pausesteps")), Proactive::new(ProactiveConfig::default()));
+    let mut t = 1_790_740_000;
+    let _ = d.turn(FOUR, t);
+    // Until the first step is said...
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut said = Vec::new();
+    while !said.iter().any(|l: &String| l.starts_with("Step 1")) && Instant::now() < until {
+        t += 1;
+        said.extend(d.tick(t));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(said.iter().any(|l| l.starts_with("Step 1")), "{said:?}");
+    // ...then pause: answered at once, and nothing more is done.
+    let asked = Instant::now();
+    let reply = d.turn("pause", t);
+    assert!(asked.elapsed() < Duration::from_millis(500), "pause waited for the steps");
+    assert!(reply.to_lowercase().contains("paus"), "{reply}");
+    // A step already asked of the model may finish; after that, nothing.
+    std::thread::sleep(Duration::from_millis(400));
+    for _ in 0..5 {
+        t += 1;
+        let _ = d.tick(t);
+    }
+    let held_at = llm.requests().len();
+    let mut while_paused = Vec::new();
+    for _ in 0..40 {
+        t += 1;
+        while_paused.extend(d.tick(t));
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(llm.requests().len(), held_at, "the model was asked while paused");
+    assert!(!while_paused.iter().any(|l| l.starts_with("Step ")), "a step was done while paused: {while_paused:?}");
+    assert!(d.working_through_steps(), "the pause ended the work instead of holding it");
+    // Resume: it carries on to the end.
+    let _ = d.turn("resume", t);
+    let rest = tick_until_done(&mut d, t, 20);
+    assert!(rest.last().map(|(l, _)| l.contains("none of them")).unwrap_or(false), "{rest:?}");
+    assert_eq!(llm.requests().len(), 5);
+}
+
+#[test]
+fn stop_everything_ends_the_steps_between_them() {
+    let (c, p) = (cfg(), plat());
+    let llm = four_steps(200);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("stopsteps")), Proactive::new(ProactiveConfig::default()));
+    let mut t = 1_790_740_000;
+    let _ = d.turn(FOUR, t);
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut said: Vec<String> = Vec::new();
+    while !said.iter().any(|l| l.starts_with("Step 1")) && Instant::now() < until {
+        t += 1;
+        said.extend(d.tick(t));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = d.turn("stop everything", t);
+    let rest = tick_until_done(&mut d, t, 10);
+    let last = rest.last().map(|(l, _)| l.clone()).unwrap_or_default();
+    assert!(last.contains("Stopped after step"), "{rest:?}");
+    assert!(llm.requests().len() < 5, "it carried on to the end");
+    assert!(!d.working_through_steps());
+}
+
+#[test]
+fn the_loop_tells_its_watcher_each_step_and_stops_when_asked() {
+    use atlas::taskloop::Step;
+    struct Collect(Vec<String>);
+    impl atlas::taskloop::Watch for Collect {
+        fn step_done(&mut self, n: usize, of: usize, step: &Step) {
+            self.0.push(format!("{n}/{of} {}", step.outcome.text()));
+        }
+        fn stop(&mut self) -> Option<String> {
+            None
+        }
+    }
+    let llm = Scripted::new(vec![], vec![calls("find_file", "tax pdf"), says("Done.")], 0);
+    let mut hands = ScriptedHands { outcomes: vec![("find_file", Outcome::Done("Found x.pdf in Documents.".into()))], called: vec![] };
+    let mut w = Collect(vec![]);
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("find the tax pdf and then open it"), &["find the tax pdf".into(), "open it".into()], &mut hands, 4, &mut w);
+    assert_eq!(run.verdict, Verdict::Finished);
+    assert_eq!(w.0, vec!["1/2 Found x.pdf in Documents.".to_string()]);
+    // Asked to stop between steps: it stops there, saying how far it got.
+    struct StopAfterOne;
+    impl atlas::taskloop::Watch for StopAfterOne {
+        fn step_done(&mut self, _: usize, _: usize, _: &Step) {}
+        fn stop(&mut self) -> Option<String> {
+            Some("you asked me to stop.".into())
+        }
+    }
+    let llm = Scripted::new(vec![], vec![calls("find_file", "tax pdf"), calls("find_file", "other")], 0);
+    let mut hands = ScriptedHands { outcomes: vec![("find_file", Outcome::Done("Found x.pdf.".into()))], called: vec![] };
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("find it and then find the other"), &["find it".into(), "find the other".into()], &mut hands, 4, &mut StopAfterOne);
+    assert_eq!(run.verdict, Verdict::Stopped);
+    assert_eq!(hands.called.len(), 1);
+    assert_eq!(run.reply, "Stopped after step 1: you asked me to stop.");
+    assert_eq!(llm.requests().len(), 1, "the model was asked again after the stop");
 }
 
 // ================= 4. several things at once =================
@@ -388,7 +579,13 @@ fn two_parts_are_worked_out_at_the_same_time_on_both_slots() {
     );
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("side")), Proactive::new(ProactiveConfig::default()));
     let started = Instant::now();
-    let reply = d.turn("write a haiku about rain and make up a name for my boat", 1_790_740_000);
+    // 30 Sep 2026: worked off the loop; the turn comes back at once and the
+    // answers come through the ticks, together.
+    let first = d.turn("write a haiku about rain and make up a name for my boat", 1_790_740_000);
+    assert!(started.elapsed() < Duration::from_millis(350), "the turn waited for the model: {:?}", started.elapsed());
+    assert_eq!(first, "Doing both at once: write a haiku about rain, and make up a name for my boat.");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said.last().map(|(l, _)| l.clone()).unwrap_or_default();
     let took = started.elapsed();
     let asked = llm.asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 2, "{reply}");

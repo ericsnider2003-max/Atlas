@@ -484,6 +484,7 @@ impl<'a> Daemon<'a> {
                     self.attention.suspend(id);
                 }
                 self.drop_pending_turn(crate::store::now(), "Paused before I answered -- nothing was done.");
+                self.hold_task_loop(true);
                 self.attention.pause(self.current_work(), crate::store::now())
             }
             Intent::Resume => {
