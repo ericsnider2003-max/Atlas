@@ -123,6 +123,8 @@ pub struct Segmenter {
     last_speech_end: usize,
     /// The words so far, when known: sets how long a pause ends it.
     hint: String,
+    /// The quietest window heard while the detector learns the room.
+    quietest: Option<f32>,
 }
 
 impl Segmenter {
@@ -139,15 +141,26 @@ impl Segmenter {
             speech_ms: 0,
             last_speech_end: 0,
             hint: String::new(),
+            quietest: None,
         }
     }
 
     /// Is this window a voice? The detector's verdict, moved either side of
-    /// the endpoint's line (`vad::level_for_endpoint`); while the detector is
-    /// still learning the room, the plain level against that line.
+    /// the endpoint's line (`vad::level_for_endpoint`). While the detector is
+    /// still learning the room (its first third of a second), a window
+    /// counts when it stands `vad_loud_db` above the quietest window heard so
+    /// far -- the room, measured the same way the detector will. It was the
+    /// plain level against the endpoint's fixed -38 dB (30 Sep 2026): a
+    /// normal voice on a microphone set low never reached it, and a loud fan
+    /// always did.
     fn is_speech(&mut self, w: &[i16]) -> bool {
         let db = crate::audio::level_db(w);
         let share = self.vad.window(w);
+        if share.is_none() {
+            let above_room = self.quietest.is_some_and(|q| f64::from(db - q) >= self.cfg.vad_loud_db);
+            self.quietest = Some(self.quietest.map_or(db, |q| q.min(db)));
+            return above_room;
+        }
         crate::vad::level_for_endpoint(db, share, self.cfg.silence_below_db) > self.cfg.silence_below_db
     }
 

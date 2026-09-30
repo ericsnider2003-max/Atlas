@@ -735,8 +735,17 @@ pub enum SpeechCheck {
 pub const MIN_SPEECH_MS: u32 = 250;
 /// Speech stands this far above the clip's own quiet parts.
 pub const SPEECH_OVER_ROOM_DB: f32 = 9.0;
-/// Below this nothing is speech, however quiet the room (a dead device).
-pub const QUIETEST_SPEECH_DB: f32 = -62.0;
+/// Below this nothing is speech, however quiet the room: just above the
+/// dither of a dead or muted device (about -90 dBFS), so zeros and stray
+/// clicks are never transcribed.
+///
+/// Was -62 (29 Sep 2026), and that line is why Eric had to shout (30 Sep
+/// 2026): his webcam microphone read -90 dB in a quiet room, so a normal
+/// voice on it at -68 dB, 22 dB clear of the room, was thrown away as
+/// silence (`tests/a_normal_voice_is_heard.rs`). Speech is told from the room by how far it stands above
+/// it (`SPEECH_OVER_ROOM_DB`), which is the test that holds on any
+/// microphone at any input level; this only guards the dead device.
+pub const QUIETEST_SPEECH_DB: f32 = -75.0;
 /// Speech whose loudest part is under this is turned up.
 pub const TURN_UP_BELOW_DB: f32 = -28.0;
 
@@ -759,8 +768,12 @@ pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
         return SpeechCheck::Silence;
     }
     if loudest < TURN_UP_BELOW_DB {
-        // Up to about -12 dBFS at its loudest, and never more than 30x.
-        let gain = 10f32.powf((-12.0 - loudest) / 20.0).clamp(1.0, 30.0);
+        // Up to about -12 dBFS at its loudest, never more than 100x
+        // (`leveller::MAX_GAIN_DB`), and never lifting the room past
+        // `leveller::NOISE_CEILING_DB`. Was capped at 30x, which left a voice
+        // at -65 dB still at -35 when whisper heard it (30 Sep 2026).
+        let up_db = (-12.0 - loudest).min(crate::leveller::NOISE_CEILING_DB - room).min(crate::leveller::MAX_GAIN_DB);
+        let gain = 10f32.powf(up_db / 20.0).max(1.0);
         return SpeechCheck::Quiet(gain);
     }
     SpeechCheck::Speech

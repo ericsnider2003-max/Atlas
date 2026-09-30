@@ -878,3 +878,5 @@ mod one_evening_on_the_laptop;
 mod the_name_and_the_request_in_one_breath;
 #[path = "every_screen_is_seen.rs"]
 mod every_screen_is_seen;
+#[path = "a_normal_voice_is_heard.rs"]
+mod a_normal_voice_is_heard;

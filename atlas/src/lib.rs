@@ -202,6 +202,11 @@ pub mod handoff;
 pub mod health;
 pub mod hlc;
 pub mod hearing;
+// A quiet voice heard without shouting: speech judged against the room and
+// levelled before speech-to-text; Windows' input level read and raised once
+// when it is set too low (30 Sep 2026).
+pub mod leveller;
+pub mod miclevel;
 pub mod goingaway;
 pub mod goodbye;
 pub mod grade;

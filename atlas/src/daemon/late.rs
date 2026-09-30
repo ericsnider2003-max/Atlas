@@ -1816,8 +1816,17 @@ impl<'a> Daemon<'a> {
         }
         let store = crate::roots::store();
         let mut h = crate::hearing::Hearing::load_from(&store);
-        h.record_turn(&crate::hearing::Ear::Desk(mic), understood);
+        h.record_turn(&crate::hearing::Ear::Desk(mic.clone()), understood);
         let _ = h.save_to(&store);
+        // A voice that only just gets through: said plainly, once a day, and
+        // Windows' input level raised once if it's what is low (30 Sep 2026:
+        // "I feel like I have to yell").
+        let mut changes: crate::miclevel::Changes = store.load(crate::miclevel::Changes::RECORD);
+        if let Some(line) = crate::miclevel::after_a_turn(&mic, &crate::leveller::remembered(), &mut changes, crate::store::now()) {
+            let _ = store.save(crate::miclevel::Changes::RECORD, &changes);
+            self.log.info(&line);
+            self.heard_note = Some(line);
+        }
     }
 
     /// Your edit of Atlas's words, learned from (H13g).

@@ -366,6 +366,9 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
             let hstore = atlas::roots::store();
             let mut hearing = atlas::hearing::Hearing::load_from(&hstore);
             hearing.observe_devices(&devices);
+            // What your voice has measured on each one, over its room
+            // (`leveller`): the better judge, once known (30 Sep 2026).
+            hearing.learn_levels(&atlas::leveller::remembered());
 
             if hearing.needs_calibration(&tc.hearing, atlas::store::now()) {
                 println!("Checking which microphone actually hears you...");
