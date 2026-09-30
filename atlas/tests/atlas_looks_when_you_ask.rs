@@ -151,6 +151,24 @@ fn what_am_i_holding_looks_rather_than_refusing() {
     assert_eq!(r, atlas::camera_ask::ALLOW);
 }
 
+/// "What do you see" (`whats_there`) is still the room question, driven
+/// through the daemon (30 Sep 2026, on merging r8-brain and r8-senses: the
+/// camera requests moved to `capture_webcam`, and this branch lost the only
+/// test that drove it). It looks the same way the camera command does --
+/// asking first -- rather than refusing.
+#[test]
+fn what_do_you_see_is_the_room_and_asks_before_looking() {
+    let dir = tmp("whats-there");
+    let c = config_with_a_camera(&dir);
+    let p = plat();
+    assert_eq!(parser().parse("what do you see"), Intent::WhatsThere);
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    let r = d.execute(&Intent::WhatsThere);
+    assert!(!r.contains("don't have a camera"), "{r}");
+    assert!(!r.to_lowercase().contains("not supposed to"), "{r}");
+    assert!(!r.trim().is_empty());
+}
+
 #[test]
 fn the_camera_is_the_one_pointed_at_you() {
     let cams = vec!["Integrated Camera".to_string(), "HD Pro Webcam C920".to_string(), "OBS Virtual Camera".to_string()];

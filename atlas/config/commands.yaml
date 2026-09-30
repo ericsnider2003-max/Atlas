@@ -1064,12 +1064,11 @@ commands:
     describe: "Look through the camera and say what or who is in the room."
     phrases: ["what do you see", "what can you see", "look at the room",
               "what's in front of you", "whats in front of you", "who is here",
-              "who's here", "whos here", "look around",
-              # 30 Sep 2026, Eric: "Atlas, can you see me?", "Please use my
-              # camera and look at me." -- answered "I don't have a camera"
-              # and "I'm not supposed to". Asked for, it looks.
-              "look at me", "see me", "use my camera", "use the camera", "use my webcam",
-              "turn on the camera", "turn on my camera", "turn your camera on"]
+              "who's here", "whos here", "look around"]
+              # "Can you see me", "look at me", "use my camera" (30 Sep 2026)
+              # go to the camera's own command through `camera_ask`, which
+              # asks once for permission and picks the camera that goes with
+              # the microphone hearing you -- not here.
 
   # "what is this" belongs to the clipboard and has for a long time — it means
   # the thing you copied. These are the phrasings that can only mean the thing

@@ -104,7 +104,8 @@ const CONVERSATIONAL: &[&str] = &[
 const EVERYDAY: &[(&str, &str)] = &[
     ("tidy_desktop", "organize organise organizing organising clean clean-up clutter messy mess desktop sort files folders"),
     ("view_display", "screen screens monitor monitors display showing look see read window chart what's on"),
-    ("whats_there", "camera webcam see me look at me face room who's there use camera"),
+    ("whats_there", "camera room who's there look around what do you see"),
+    ("capture_webcam", "camera webcam see me look at me face use camera turn on camera"),
     ("whats_this", "camera holding showing hold up"),
     ("self_check", "diagnosis diagnose diagnostic yourself self report status health check-up checkup missing broken setup"),
     ("finish_setup", "setup set-up set up install configure left unfinished"),

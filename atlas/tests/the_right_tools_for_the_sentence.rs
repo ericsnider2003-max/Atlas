@@ -262,11 +262,15 @@ fn a_normal_turn_is_under_nine_hundred_tokens_and_starts_the_same_every_time() {
         let all: String = r.messages.iter().map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n");
         assert!(!all.to_lowercase().contains("freaky"), "the old summary's freaky man came back for {said:?}");
     }
-    // The camera question is told what the catalogue says about the camera.
-    let (_, _, _, _, cam) = rows.iter().find(|r| r.0.contains("using my camera")).expect("the camera question reached the model");
-    let last = &cam.messages.last().unwrap().content;
-    assert!(last.contains("camera"), "{last}");
-    assert!(last.contains("never say you lack one"), "{last}");
+    // The camera question (30 Sep 2026, merged with r8-senses) no longer
+    // reaches the model at all: `camera_ask` sends it to the camera's own
+    // command. If it ever does reach the model again, it must be told what
+    // the catalogue says about the camera.
+    if let Some((_, _, _, _, cam)) = rows.iter().find(|r| r.0.contains("using my camera")) {
+        let last = &cam.messages.last().unwrap().content;
+        assert!(last.contains("camera"), "{last}");
+        assert!(last.contains("never say you lack one"), "{last}");
+    }
 }
 
 #[test]

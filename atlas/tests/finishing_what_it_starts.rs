@@ -116,10 +116,14 @@ fn can_you_see_me_looks_through_the_camera() {
     let p = atlas::intent::Parser::new(&c.commands);
     for s in ["Atlas, can you see me?", "Please use my camera and look at me.", "look at me", "use my webcam"] {
         let i = p.parse(s);
-        assert!(matches!(i, Intent::WhatsThere | Intent::Unknown(_)), "{s} -> {i:?}");
+        // 30 Sep 2026, merge with r8-senses: the camera's own command
+        // (`CaptureWebcam` -> `look_at_you`: ask once, pick the camera by
+        // the mic that hears him, describe, delete the frame) is where these
+        // go now, rather than the room-describing `WhatsThere`.
+        assert!(matches!(i, Intent::CaptureWebcam | Intent::WhatsThere | Intent::Unknown(_)), "{s} -> {i:?}");
     }
-    assert_eq!(p.parse("can you see me"), Intent::WhatsThere);
-    assert_eq!(p.parse("look at me"), Intent::WhatsThere);
+    assert_eq!(p.parse("can you see me"), Intent::CaptureWebcam);
+    assert_eq!(p.parse("look at me"), Intent::CaptureWebcam);
     // "Use my camera and look at me" is one thing said twice, not two tasks.
     let d_cfg = cfg();
     let pl = plat();
@@ -136,7 +140,10 @@ fn the_capabilities_tool_answers_what_the_model_asks_it() {
     let (c, p) = (cfg(), plat());
     let llm = Scripted::new(vec![], vec![calls("capabilities", "camera")], 0);
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("meta")), Proactive::new(ProactiveConfig::default()));
-    let reply = d.turn("are you using my camera right now?", 1_790_740_000);
+    // 30 Sep 2026: "are you using my camera" is now read as a request to look
+    // (r8-senses, `camera_ask`), so the model is asked here with a question
+    // the camera command doesn't take.
+    let reply = d.turn("do you have a camera you could use?", 1_790_740_000);
     assert!(reply.contains("camera"), "{reply}");
     assert!(!reply.contains("I don't have anything for that"), "{reply}");
     let r = &llm.requests()[0];
