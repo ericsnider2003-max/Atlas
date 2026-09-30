@@ -105,6 +105,191 @@ impl<'a> Daemon<'a> {
     /// stored command is `reminder Reminder: <text>`, which the tick re-parses
     /// to `Intent::Say` and simply speaks — so nothing here re-fires (the
     /// scheduler's own `every` handles recurrence).
+    /// What's already set: reminders listed, cancelled and snoozed, timers,
+    /// and events cancelled or moved (`keeping`). `None` when the sentence
+    /// isn't about any of that -- or names an event there isn't.
+    pub(super) fn keeping_track(&mut self, said: &str, t: u64) -> Option<String> {
+        use crate::keeping::{Ask, Which};
+        // The time for a reminder that was waiting for one.
+        if let Some(text) = self.reminder_waiting_for_a_time.take() {
+            let low = said.to_lowercase();
+            let timed = crate::keeping::duration_secs(&low).map(|_| format!("remind me in {} to {text}", low.trim_start_matches("in ").trim()))
+                .or_else(|| crate::when::parse(said, self.home_zone().to_local(t as i64).max(0) as u64).map(|_| format!("remind me {} to {text}", said.trim())));
+            if let Some(again) = timed {
+                return self.remind_help(&again, t);
+            }
+        }
+        let ask = crate::keeping::read(said)?;
+        let reminders = |s: &Self| -> Vec<crate::scheduler::Job> {
+            let mut v: Vec<crate::scheduler::Job> =
+                s.scheduler.active().into_iter().filter(|j| j.command.starts_with("reminder ")).cloned().collect();
+            v.sort_by_key(|j| j.due);
+            v
+        };
+        let words_of = |j: &crate::scheduler::Job| -> String {
+            let w = j.command.trim_start_matches("reminder ").trim_start_matches("Reminder:").trim();
+            // A timer is named by its length: "Your 10-minute timer is done." -> "the 10-minute timer".
+            match w.strip_prefix("Your ").and_then(|r| r.strip_suffix(" is done.")) {
+                Some(timer) => format!("the {timer}"),
+                None => w.to_string(),
+            }
+        };
+        let zone = self.home_zone();
+        let lnow = zone.to_local(t as i64).max(0) as u64;
+        let when_of = |due: u64| -> String {
+            let local = zone.to_local(due as i64).max(0) as u64;
+            if due.saturating_sub(t) < 3600 {
+                // Rounded up: 9 min 59 s is "in 10 minutes", as a person says it.
+                format!("in {}", say_duration((due.saturating_sub(t) + 59) / 60 * 60))
+            } else {
+                local_moment(local, lnow)
+            }
+        };
+        match ask {
+            Ask::ListReminders => {
+                let all = reminders(self);
+                if all.is_empty() {
+                    return Some("No reminders or timers set.".into());
+                }
+                let listed: Vec<String> = all.iter().take(8).map(|j| format!("{} {} (#{})", words_of(j), when_of(j.due), j.id)).collect();
+                let more = if all.len() > 8 { format!(", and {} more", all.len() - 8) } else { String::new() };
+                Some(format!("{}: {}{more}.", if all.len() == 1 { "One".to_string() } else { format!("{}", all.len()) }, listed.join("; ")))
+            }
+            Ask::CancelReminder(which) => {
+                let all = reminders(self);
+                if all.is_empty() {
+                    return Some("There are no reminders or timers set.".into());
+                }
+                let chosen: Vec<crate::scheduler::Job> = match &which {
+                    Which::All => all.clone(),
+                    Which::Number(n) => all.iter().filter(|j| j.id == *n).cloned().collect(),
+                    Which::About(words) => {
+                        let want: Vec<String> = words.split_whitespace().filter(|w| w.len() > 2).map(str::to_lowercase).collect();
+                        all.iter().filter(|j| {
+                            let text = words_of(j).to_lowercase();
+                            !want.is_empty() && want.iter().all(|w| text.contains(w.as_str()))
+                        }).cloned().collect()
+                    }
+                    Which::Last => {
+                        if all.len() == 1 {
+                            all.clone()
+                        } else {
+                            all.iter().filter(|j| Some(j.id) == self.last_reminder_set).cloned().collect()
+                        }
+                    }
+                };
+                match chosen.len() {
+                    0 if matches!(which, Which::Last) => Some(format!(
+                        "Which one? {}.",
+                        all.iter().take(6).map(|j| format!("{} {} (#{})", words_of(j), when_of(j.due), j.id)).collect::<Vec<_>>().join("; ")
+                    )),
+                    0 => Some("I can't find a reminder like that. Say \"what reminders do I have\" to hear them.".into()),
+                    n if n > 1 && !matches!(which, Which::All) => Some(format!(
+                        "That could be {n} of them: {}. Say the number.",
+                        chosen.iter().map(|j| format!("{} (#{})", words_of(j), j.id)).collect::<Vec<_>>().join("; ")
+                    )),
+                    _ => {
+                        for j in &chosen {
+                            self.scheduler.cancel(j.id);
+                        }
+                        let _ = self.scheduler.save(&self.store);
+                        Some(if chosen.len() == 1 {
+                            format!("Cancelled: {}.", words_of(&chosen[0]))
+                        } else {
+                            format!("Cancelled all {}.", chosen.len())
+                        })
+                    }
+                }
+            }
+            Ask::Timer(secs) => {
+                let id = self.scheduler.at(&format!("reminder Your {} timer is done.", say_duration(secs).replace(' ', "-").trim_end_matches('s')), t + secs);
+                self.last_reminder_set = Some(id);
+                let _ = self.scheduler.save(&self.store);
+                Some(format!("Timer set for {}. (#{id})", say_duration(secs)))
+            }
+            Ask::Snooze(secs) => {
+                let (command, _) = self.last_reminder_fired.clone()?;
+                let secs = secs.unwrap_or(crate::keeping::SNOOZE_SECS);
+                let id = self.scheduler.at(&command, t + secs);
+                self.last_reminder_set = Some(id);
+                let _ = self.scheduler.save(&self.store);
+                Some(format!("I'll say it again in {}.", say_duration(secs)))
+            }
+            Ask::CancelEvent(what) => {
+                let found = self.event_meant(&what, t)?;
+                let title = found.title.clone();
+                let when = found.say_when();
+                self.calendar.remove(found.id);
+                let _ = self.calendar.save(&self.store);
+                Some(format!("Taken off your calendar: {title}, {when}."))
+            }
+            Ask::MoveEvent { what, to } => {
+                let found = self.event_meant(&what, t)?;
+                let len = found.end.saturating_sub(found.start).max(60);
+                // A day and time ("Friday at 2"), or a time on the same day ("4pm").
+                let new_when = crate::calendar::resolve_when_in(&to, t, &zone).or_else(|| {
+                    let (hours, minute) = crate::keeping::clock_in(&to)?;
+                    let local = zone.to_local(found.start as i64).max(0) as u64;
+                    let day = local - local % 86_400;
+                    let hour = *hours.first()? as u64;
+                    let start = zone.to_utc((day + hour * 3600 + minute as u64 * 60) as i64).max(0) as u64;
+                    Some(crate::calendar::When { start, end: start + len, all_day: false })
+                })?;
+                let new_when = if new_when.all_day { new_when } else { crate::calendar::When { end: new_when.start + len, ..new_when } };
+                self.calendar.move_to(found.id, new_when);
+                let _ = self.calendar.save(&self.store);
+                let moved = self.calendar.event(found.id).map(|e| e.say_when()).unwrap_or_default();
+                Some(format!("Moved {} to {moved}.", found.title))
+            }
+        }
+    }
+
+    /// "What's the weather", "will it rain tomorrow", "weather in Chicago":
+    /// Open-Meteo, answered now (`weather`). Without the internet, said so
+    /// rather than guessed.
+    pub(super) fn weather_help(&mut self, said: &str) -> Option<String> {
+        let asked = crate::weather::about_the_weather(said)?;
+        if self.connectivity.cached() == Reach::Offline {
+            return Some("I can't check the weather without the internet, and I'd only be guessing.".into());
+        }
+        let cfg = self.tools_ref().map(|t| t.weather.clone()).unwrap_or_default();
+        Some(match crate::weather::answer(&cfg, &asked, self.weather_place.as_ref()) {
+            Ok((said, place)) => {
+                if asked.place.is_none() {
+                    self.weather_place = Some(place);
+                }
+                said
+            }
+            Err(why) => format!("I couldn't get the weather: {why}."),
+        })
+    }
+
+    /// The event these words mean, among the next two weeks' (and today's
+    /// earlier ones): by what it's called or when it is. One only.
+    fn event_meant(&self, what: &str, t: u64) -> Option<crate::calendar::Event> {
+        let zone = self.home_zone();
+        let from = t.saturating_sub(12 * 3600);
+        let mut found: Vec<crate::calendar::Event> = self
+            .calendar
+            .occurrences_between(from, t + 14 * 86_400)
+            .into_iter()
+            .filter(|e| crate::keeping::event_answers_to(&e.title, zone.to_local(e.start as i64).max(0) as u64, what))
+            .collect();
+        let today_or_tomorrow = what.contains("tomorrow") || what.contains("today");
+        if today_or_tomorrow {
+            let lnow = zone.to_local(t as i64).max(0) as u64;
+            let day = lnow - lnow % 86_400 + if what.contains("tomorrow") { 86_400 } else { 0 };
+            found.retain(|e| {
+                let l = zone.to_local(e.start as i64).max(0) as u64;
+                l >= day && l < day + 86_400
+            });
+        }
+        found.sort_by_key(|e| e.start);
+        found.dedup_by_key(|e| e.id);
+        // The soonest one it could be: "my 3pm" is the next 3pm.
+        found.into_iter().find(|e| e.end > t)
+    }
+
     pub(super) fn remind_help(&mut self, said: &str, t: u64) -> Option<String> {
         // "set a reminder for tomorrow at 9 to call mom" is the same request
         // as "remind me tomorrow at 9 to call mom". (It used to be a calendar
@@ -142,6 +327,7 @@ impl<'a> Daemon<'a> {
             // the wall clock itself, so a turn's "in 2 minutes" and its tick
             // disagreed whenever they weren't the same clock).
             let id = self.scheduler.at(&format!("reminder Reminder: {text}"), now + secs);
+            self.last_reminder_set = Some(id);
             let _ = self.scheduler.save(&self.store);
             return Some(format!(
                 "Right — in {}, I'll remind you to {text}. (#{id})",
@@ -231,9 +417,12 @@ impl<'a> Daemon<'a> {
             Err(None) => {}
         }
 
-        // (4) "remind me to X" with no time named: nothing to schedule, so say
-        // it now rather than turning it away.
-        Some(format!("Reminder: {}", reminder_text(said)))
+        // (4) "remind me to X" with no time named: asked when, and the next
+        // thing you say with a time in it sets it (30 Sep 2026: it said
+        // "Reminder: X" there and then, and set nothing).
+        let text = reminder_text(said);
+        self.reminder_waiting_for_a_time = Some(text.clone());
+        Some(format!("When should I remind you to {text}? In 20 minutes, at 6, tomorrow at 9 -- whenever."))
     }
 
     /// Eric states a want or floats an idea; Atlas takes it and weighs it as an

@@ -86,6 +86,8 @@ pub mod references;
 pub mod talkbench;
 pub mod freeonline;
 pub mod parakeet;
+pub mod keeping;
+pub mod weather;
 pub mod register;
 pub mod rehearse;
 pub mod presence;

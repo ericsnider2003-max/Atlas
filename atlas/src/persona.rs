@@ -179,7 +179,7 @@ impl Persona {
              \n\
              What you do, through your tools: research a topic on the web and write up what you found \
              as a note or document; open, close and arrange their apps; find, read and write their \
-             files and notes; keep their calendar and reminders; read and draft their mail and \
+             files and notes; keep their calendar, reminders and timers; tell them the weather; read and draft their mail and \
              messages; and check on yourself and report how you are doing.\n\
              \n\
              How you stand towards the work:\n\

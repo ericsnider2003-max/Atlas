@@ -76,6 +76,9 @@ pub struct ToolsConfig {
     pub crew: crate::crew::CrewConfig,
     #[serde(default)]
     pub research: crate::research::ResearchConfig,
+    /// The weather (`weather`): your town and units.
+    #[serde(default)]
+    pub weather: crate::weather::WeatherConfig,
     /// Online delegation to Cloudflare sub-agents, when the machine is
     /// online. Ships disabled and empty; offline crews never depend on it.
     pub cloudflare: crate::online::CloudflareConfig,

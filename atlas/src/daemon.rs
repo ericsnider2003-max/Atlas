@@ -771,6 +771,14 @@ pub struct Daemon<'a> {
     asks_quietly: Option<Box<dyn crate::typed::AsksQuietly>>,
     /// The passphrase-locked store. Sealed until you open it.
     pub vault: crate::vault::Vault,
+    /// The last reminder said when it came due, and when (`keeping`: "snooze").
+    pub last_reminder_fired: Option<(String, u64)>,
+    /// The last reminder or timer set ("cancel that reminder").
+    pub last_reminder_set: Option<u64>,
+    /// "Remind me to X" with no time: X, until you say when.
+    pub reminder_waiting_for_a_time: Option<String>,
+    /// The town the weather was last given for, kept for the session.
+    pub weather_place: Option<crate::weather::Place>,
     /// Where the vault is kept (`vault_home_for`).
     pub vault_home: crate::store::Store,
     /// How many times each undelivered message has been tried, and when.
@@ -1582,6 +1590,10 @@ impl<'a> Daemon<'a> {
             } else {
                 crate::vault::Vault::load(&store_for_vault)
             },
+            last_reminder_fired: None,
+            last_reminder_set: None,
+            reminder_waiting_for_a_time: None,
+            weather_place: None,
             vault_home: if keeps_the_install_vault(&store_for_vault) { crate::roots::install_state() } else { store_for_vault.clone() },
             chats: chats_at_start,
             tries: crate::courier::Tries::default(),

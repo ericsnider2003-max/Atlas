@@ -872,3 +872,7 @@ mod the_background_atlas_hears_you;
 mod the_overlay_covers_only_its_words;
 #[path = "the_system_recovers_by_itself.rs"]
 mod the_system_recovers_by_itself;
+#[path = "keeping_track.rs"]
+mod keeping_track;
+#[path = "weather_answered.rs"]
+mod weather_answered;

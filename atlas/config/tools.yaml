@@ -253,6 +253,14 @@ crew:
 
 # Research runs entirely in the BACKGROUND lane — a separate headless browser
 # process, never the Chrome window you are using. Start it and keep working.
+# The weather, from Open-Meteo (free, no account). place: your town, as you'd
+# say it ("Columbus, Ohio"); empty = the town your internet address is in,
+# which Atlas says back so a wrong guess is heard. units: auto (Fahrenheit in
+# the US), fahrenheit or celsius.
+weather:
+  place: ""
+  units: auto
+
 research:
   # On by default (Eric, 27 Sep 2026): when Atlas doesn't know, it looks it
   # up. That sends the question to a search engine; Settings turns it off.

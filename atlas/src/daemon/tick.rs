@@ -310,6 +310,9 @@ impl<'a> Daemon<'a> {
             }
             let result = self.execute(&intent);
             let ok = !result.starts_with("error");
+            if job.command.starts_with("reminder ") {
+                self.last_reminder_fired = Some((job.command.clone(), t));
+            }
             self.journal.record_at(Act::Scheduled, &job.command, ok, t);
             self.scheduler.complete(id, t, &result, ok);
             // A reminder is its words: said whenever it fires (29 Sep 2026: it

@@ -227,7 +227,8 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "animate", what: "draw a self-contained SVG animation from your description, check it renders and moves to the size and length you asked for, and iterate until it does", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::Background, Needs::JustThinking], modules: &["motion"] },
         Capability { id: "explain", what: "explain code in plain English — a recent build, a change waiting to be implemented, a file or a paste — at the depth you ask for, honest that it can't prove it's right", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["explain"] },
         Capability { id: "workshop", what: "keep a per-project queue of proposed changes you review and implement when ready", area: Files, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["workshop"] },
-        Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when"] },
+        Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when", "keeping"] },
+        Capability { id: "weather", what: "say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account)", area: Time, state: Untested, needs: None, offline: false, added: 42, runs: &[Needs::JustThinking], modules: &["weather"] },
         // 23 Sep 2026, the GitHub ports: an .ics invite from anyone, "the last
         // Friday of every month", a repeat that can be written to a file.
         Capability { id: "vformat", what: "read an .ics invite or calendar from anyone into yours, and write yours out as .ics", area: Time, state: Untested, needs: None, offline: true, added: 31, runs: &[Needs::Files], modules: &["vformat", "calendar"] },
@@ -1341,7 +1342,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // conversation, timed against a model).
 // 422 -> 423 (30 Sep): `parakeet` (hearing through sherpa-onnx's server
 // with NVIDIA's Parakeet model -- part of `wake`).
-pub const MODULES_IN_TREE: usize = 423;
+// 423 -> 424 (30 Sep): `keeping` (reminders listed, cancelled, snoozed;
+// timers; events cancelled and moved -- part of `calendar`).
+// 424 -> 425 (30 Sep): `weather` (Open-Meteo).
+pub const MODULES_IN_TREE: usize = 425;
 
 /// Every module no capability claims, and why it is not one.
 ///

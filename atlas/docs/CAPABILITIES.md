@@ -305,7 +305,8 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 |---|---|---|---|---|---|---|---|---|
 | keep where your time went — which app, for how long, your longest stretch of focus, and what you were in the middle of when you come back from a break — on this machine only | built, never run for real | `worklog` `awareness` | ready | catch | catch | **no** | catch | **no** |
 | read a time the way you'd say it — "in 20 minutes", "next Tuesday afternoon", "the 14th at noon", "Oct 3 from 2 to 4pm" — and ask when the words could mean two things | working | `when` `calendar` | ready | ready | ready | ready | ready | ready |
-| keep your own calendar, and tell you what's on | working | `calendar` `recur` `civil` `when` | ready | ready | ready | catch | would | catch |
+| keep your own calendar, and tell you what's on | working | `calendar` `recur` `civil` `when` `keeping` | ready | ready | ready | catch | would | catch |
+| say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account) | built, never run for real | `weather` | ready | ready | ready | ready | ready | ready |
 | read an .ics invite or calendar from anyone into yours, and write yours out as .ics | built, never run for real | `vformat` `calendar` | ready | ready | ready | catch | would | catch |
 | keep your tasks, and say which to do first and why | built, never run for real | `shared_task` `urgency` | ready | ready | ready | catch | would | catch |
 | keep time on your clock — "at 7" is 7 where you are, a weekly meeting stays at 9 through the clock change, and an invite from another time zone lands at the right hour | built, never run for real | `tz` `calendar` `vformat` `scheduler` | ready | ready | ready | ready | ready | ready |
@@ -350,4 +351,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-231 things, across 389 of 423 source files. The other 34 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+232 things, across 391 of 425 source files. The other 34 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

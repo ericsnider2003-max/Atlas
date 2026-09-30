@@ -563,7 +563,10 @@ impl<'a> Daemon<'a> {
         self.history.note(
             &format!("scheduled \"{title}\" for {whenn}"),
             "calendar",
-            crate::undo::Undo::You("say \"cancel\" that and I'll take it off".into()),
+            // What you'd actually say, and now there's something that hears
+            // it (`keeping`: 30 Sep 2026 -- this promised "cancel" and
+            // nothing could take an event off).
+            crate::undo::Undo::You(format!("say \"cancel {title}\" and I'll take it off")),
             false,
             now,
         );

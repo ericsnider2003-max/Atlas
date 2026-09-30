@@ -804,6 +804,20 @@ impl Calendar {
             .collect()
     }
 
+    /// Move one to a new time, keeping everything else about it. True if it
+    /// was there.
+    pub fn move_to(&mut self, id: u64, when: When) -> bool {
+        match self.events.iter_mut().find(|e| e.id == id) {
+            Some(e) => {
+                e.start = when.start;
+                e.end = when.end;
+                e.all_day = when.all_day;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Take one off. True if it was there.
     pub fn remove(&mut self, id: u64) -> bool {
         let before = self.events.len();
