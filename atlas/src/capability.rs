@@ -336,7 +336,7 @@ pub fn all() -> Vec<Capability> {
         // because nothing here has yet run on Eric's machine, and saying
         // otherwise is the one kind of drift that costs you the ability to
         // tell.
-        Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames"] },
+        Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames", "camera_ask"] },
         Capability { id: "callnotes", what: "notice a call, note your side, record the others only after they say yes, and write up who said what", area: Hearing, state: Untested, needs: Some("a call on this laptop"), offline: true, added: 31, runs: &[Needs::Audio], modules: &["callnotes", "callrec", "callwatch", "consent"] },
         Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
@@ -1353,7 +1353,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 421 -> 423 (30 Sep, merging the other chat's 29 Sep work): `playout` (the
 // voice played inside Atlas, through the speaker it chose -- part of `audio`)
 // and `winpark` (plumbing).
-pub const MODULES_IN_TREE: usize = 423;
+// 423 -> 426 (30 Sep 2026): `leveller` and `miclevel` (a quiet voice heard
+// without shouting -- part of `audio`) and `camera_ask` ("can you see me?" --
+// part of `vision`).
+pub const MODULES_IN_TREE: usize = 426;
 
 /// Every module no capability claims, and why it is not one.
 ///

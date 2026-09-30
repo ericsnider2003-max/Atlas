@@ -687,6 +687,40 @@ pub fn pick_camera(cameras: &[String], configured: &str) -> Option<String> {
         .map(|c| (*c).clone())
 }
 
+/// The camera to look through, knowing more about the desk: the lid (a
+/// laptop's own camera under a shut lid sees its keyboard) and the
+/// microphone Atlas hears you with (the webcam whose microphone hears you is
+/// the one pointed at you).
+///
+/// 30 Sep 2026: Eric's laptop is shut behind two monitors with a C920 on
+/// top, and `webcam_device` is the shipped "Integrated Camera". `pick_camera`
+/// keeps a configured camera the machine has, so a look would have opened
+/// the camera inside the shut lid -- a black frame. Order: the camera that
+/// matches the microphone in use; any real camera but a built-in one when the
+/// lid is shut; then `pick_camera`.
+pub fn pick_camera_for(cameras: &[String], configured: &str, microphone: &str, lid_open: bool) -> Option<String> {
+    let low = |c: &str| c.to_lowercase();
+    let builtin = |c: &str| ["integrated", "built-in", "internal", "front", "facetime", "user facing"].iter().any(|k| low(c).contains(k));
+    let virtual_cam = |c: &str| ["virtual", "obs", "snap camera", "droidcam", "nvidia broadcast"].iter().any(|v| low(c).contains(v));
+    let usable: Vec<&String> = cameras.iter().filter(|c| !virtual_cam(c) && (lid_open || !builtin(c))).collect();
+    // "Microphone (HD Pro Webcam C920)" -> the words inside the brackets
+    // that name the device, matched against each camera's name.
+    let mic = low(microphone);
+    let inside = mic.split_once('(').map(|(_, r)| r.trim_end_matches(')').to_string()).unwrap_or_default();
+    let tokens: Vec<&str> = inside.split_whitespace().filter(|w| w.len() >= 4 && !["microphone", "array", "audio", "webcam"].contains(w)).collect();
+    if !tokens.is_empty() {
+        if let Some(c) = usable.iter().find(|c| tokens.iter().all(|t| low(c).contains(t))) {
+            return Some((*c).clone());
+        }
+    }
+    if !lid_open {
+        if let Some(c) = usable.iter().find(|c| c.as_str() == configured).or_else(|| usable.first()) {
+            return Some((*c).clone());
+        }
+    }
+    pick_camera(cameras, configured)
+}
+
 /// The cameras this machine has (Windows' listing; empty elsewhere, where
 /// the camera is named differently and `webcam_device` stands).
 pub fn probe_cameras(ffmpeg_cmd: &str) -> Vec<String> {

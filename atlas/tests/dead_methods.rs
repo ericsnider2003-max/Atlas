@@ -154,12 +154,9 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // because "recall with no context" is the honest name for what they test.
     "facts::recall",
     "faithful::not_checked",
-    // `firewall::allowed` and `grants::allowed` added 28 Sep 2026. Neither
-    // had a real caller: the bare-name scan counted `ladder`'s own
-    // `Moved::allowed()` call in `atlas trade` as theirs. With `ladder.rs`
-    // out of personal Atlas the collision went and the truth showed. Both
-    // are proven by their tests; wiring them is its own decision.
-    "firewall::allowed",
+    // `firewall::allowed` and `grants::allowed` came off 30 Sep 2026: the
+    // camera's permission (`daemon::camera::camera_allowed`) calls
+    // `Verdict::allowed`, which the bare-name scan counts for both.
     "flow::optional",
     "flow::producing",
     "flow::retrying",
@@ -167,7 +164,6 @@ const TEST_ONLY_METHODS: &[&str] = &[
     "goal::machine_checks",
     "goal::runnable_unattended",
     "grade::clears",
-    "grants::allowed",
     "grants::message",
     "handshape::recognise",
     // `handshape::worked_out` and `hearing::record_turn` came off 26 Sep 2026

@@ -830,6 +830,13 @@ impl Parser {
         // Asked for a report on itself, inside a longer sentence (29 Sep 2026:
         // "Can you do some work and generate a report on yourself?" went to
         // the model, which said it can't): the self-check.
+        // Asked to be looked at, anywhere in the sentence (29 Sep 2026: "Are
+        // you using my camera? Can you see me?" and "Please use my camera and
+        // look at me" matched nothing, went to the model, and were told
+        // "I don't have a camera"): the camera (`camera_ask`).
+        if crate::camera_ask::asks_to_look(input) {
+            return (Intent::CaptureWebcam, Some("capture_webcam".into()));
+        }
         if asks_for_a_self_report(input) {
             return (Intent::SelfCheck, Some("self_check".into()));
         }

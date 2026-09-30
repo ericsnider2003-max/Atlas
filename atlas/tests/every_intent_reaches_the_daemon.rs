@@ -205,11 +205,9 @@ const NO_DAEMON_TEST: &[(&str, &str)] = &[
     // `capabilities` came off 21 Sep: `tests/what_works_offline.rs` now drives
     // `Intent::Capabilities` through the daemon (the offline-count wiring), so
     // the branch has a real end-to-end test.
-    (
-        "capture_webcam",
-        "needs a camera. Everything below the branch is `frames`/`gaze`, which \
-         are tested against fixtures; the branch itself cannot run headless.",
-    ),
+    // `capture_webcam` and `whats_this` came off 30 Sep 2026:
+    // `tests/atlas_looks_when_you_ask.rs` drives both through the daemon --
+    // asked once, a real frame off ffmpeg, nothing kept.
     (
         "gestures",
         "needs a hand in front of a camera. `handshape` has 55 tests of its \
@@ -256,13 +254,6 @@ const NO_DAEMON_TEST: &[(&str, &str)] = &[
         "whats_there",
         "describes what is on screen. `vision` and `words` have 39 and 38 \
          tests; the branch adds no decision.",
-    ),
-    (
-        "whats_this",
-        "the same as `whats_there`, scoped to one thing rather than the whole \
-         screen. `subject.rs` works out what 'this' refers to and is tested \
-         separately; a wrong answer is a wrong description said back to you \
-         about something you are looking at.",
     ),
     (
         "which_model",

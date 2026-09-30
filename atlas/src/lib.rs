@@ -313,6 +313,8 @@ pub mod overlaywin;
 pub mod next_up;
 pub mod phases;
 pub mod picture_talk;
+// "Can you see me?" read as a request to look through the camera (30 Sep 2026).
+pub mod camera_ask;
 pub mod callwatch;
 pub mod callrec;
 pub mod callnotes;

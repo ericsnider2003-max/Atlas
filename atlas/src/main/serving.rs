@@ -453,7 +453,11 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
     }
     // The camera this machine really has, not the shipped guess (29 Sep 2026).
     let configured = tc_owned.vars.get("webcam_device").cloned().unwrap_or_default();
-    if let Some(cam) = atlas::audio::pick_camera(&atlas::audio::probe_cameras("ffmpeg"), &configured) {
+    // The one pointed at you: matching the microphone that hears you, and
+    // never the one inside a shut lid (30 Sep 2026).
+    let mic_now = tc_owned.vars.get("mic_name").cloned().unwrap_or_default();
+    let lid_open = plat.built_in_screen_on().unwrap_or(true);
+    if let Some(cam) = atlas::audio::pick_camera_for(&atlas::audio::probe_cameras("ffmpeg"), &configured, &mic_now, lid_open) {
         if cam != configured {
             println!("Camera: \"{cam}\".");
             tc_owned.vars.insert("webcam_device".into(), cam);
