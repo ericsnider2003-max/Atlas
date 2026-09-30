@@ -112,6 +112,12 @@ impl<'a> Daemon<'a> {
         if let Some(line) = self.knew_once_help(question) {
             out.push(clip(&line, 200));
         }
+        // What you wrote down yourself (the notebook), not only the fact book
+        // and the research library (30 Sep 2026: captured notes never reached
+        // an answer).
+        for n in self.notebook.find(question, now).into_iter().take(2) {
+            out.push(clip(&format!("Your note: {}", n.text), 240));
+        }
         out.dedup();
         out
     }
@@ -1017,7 +1023,7 @@ impl<'a> Daemon<'a> {
             crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
             let path = root.join(piece.key_path());
             let dir = crate::roots::config_dir();
-            let mut prefs = crate::preferences::Preferences::load(&dir);
+            let mut prefs = crate::preferences::Preferences::load_checked(&dir).map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
             prefs.set("models.draft", &path.display().to_string());
             prefs.save(&dir).map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
             Ok("The helper model is here and checked. It's used from the next time I start.".into())

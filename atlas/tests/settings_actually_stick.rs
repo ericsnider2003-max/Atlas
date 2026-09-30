@@ -231,7 +231,9 @@ fn the_hub_writes_the_change_and_says_so_if_it_cannot() {
     let arm = main.find("Action::HubSet { key, value } =>").expect("settings-only mode no longer answers a setting");
     assert!(main[arm..arm + 600].contains(".set_and_keep("), "settings-only mode validates and writes nothing again");
     assert!(
-        body.contains("Preferences::load(") && body.contains("prefs.save("),
+        // `load_checked` since 30 Sep 2026: a file that won't read is refused,
+        // not loaded as empty and saved over.
+        (body.contains("Preferences::load(") || body.contains("Preferences::load_checked(")) && body.contains("prefs.save("),
         "the settings handler no longer writes anything down"
     );
     assert!(

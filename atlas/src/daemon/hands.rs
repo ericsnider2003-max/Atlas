@@ -1573,6 +1573,8 @@ impl<'a> Daemon<'a> {
                 // to avoid. The two routes disagreed on what private meant.
                 let (title, body) = note.shown();
                 self.log.info(&format!("{title}: {body}{through}"));
+                // Said on the next pass of the loop (`tick`), not only logged.
+                self.to_say_aloud.push(if title == "Atlas" { body.to_string() } else { format!("{title}: {body}") });
                 Sent::Spoken
             }
             Route::Notify => match crate::notify::show(&note, &cfg, &vars) {

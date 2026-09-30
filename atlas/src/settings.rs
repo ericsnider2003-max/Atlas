@@ -235,7 +235,13 @@ impl Settings {
         match self.set(key, raw) {
             Err(e) => e,
             Ok(confirmation) => {
-                let mut prefs = crate::preferences::Preferences::load(dir);
+                // Checked, not defaulted (30 Sep 2026): a settings file that
+                // won't read loaded as "nothing chosen", and saving that put
+                // every other setting back while this page said "it's on".
+                let mut prefs = match crate::preferences::Preferences::load_checked(dir) {
+                    Ok(p) => p,
+                    Err(e) => return format!("I haven't changed anything: {e}. Fix that file or delete it, then try again."),
+                };
                 prefs.set(key, raw);
                 match prefs.save(dir) {
                     Ok(()) => confirmation,

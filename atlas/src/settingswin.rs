@@ -33,7 +33,8 @@ use std::path::PathBuf;
 pub fn keep_setting(config_dir: &Path, key: &str, raw: &str) -> Result<String, String> {
     let mut settings = current_settings(config_dir)?;
     let said = settings.set(key, raw)?;
-    let mut prefs = crate::preferences::Preferences::load(config_dir);
+    let mut prefs = crate::preferences::Preferences::load_checked(config_dir)
+        .map_err(|e| format!("I haven't changed anything: {e}. Fix that file or delete it, then try again."))?;
     prefs.set(key, raw);
     prefs.save(config_dir).map_err(|e| format!("I couldn't keep that change: {e}"))?;
     Ok(said)
@@ -54,7 +55,8 @@ pub fn when_it_applies(key: &str, said: &str) -> String {
 pub fn put_back(config_dir: &Path, key: &str) -> Result<String, String> {
     let mut settings = current_settings(config_dir)?;
     let said = settings.reset(key)?;
-    let mut prefs = crate::preferences::Preferences::load(config_dir);
+    let mut prefs = crate::preferences::Preferences::load_checked(config_dir)
+        .map_err(|e| format!("I haven't changed anything: {e}. Fix that file or delete it, then try again."))?;
     prefs.clear(key);
     prefs.save(config_dir).map_err(|e| format!("I couldn't put that back: {e}"))?;
     Ok(said)

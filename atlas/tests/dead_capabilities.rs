@@ -911,7 +911,8 @@ const ORPHANS: &[(&str, &str)] = &[
 // count fell because the module went.
 // 101 -> 100 (29 Sep 2026): overlay::window_style is applied now -- the
 // overlay is made see-through by Windows' colour key (`overlaywin::see_through`).
-const TEST_ONLY_MAX: usize = 100;
+// 100 -> 99 (30 Sep 2026): `capture::found` is called -- notes can be asked for.
+const TEST_ONLY_MAX: usize = 99;
 // 287 -> 286 (22 Sep): `consolidate::size_note` gained a real caller. The new
 // `KnowledgeSize` intent ("how much do you know", "how big is your memory")
 // routes through `Daemon::knowledge_store_size`, which reads the store count

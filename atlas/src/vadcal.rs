@@ -142,7 +142,7 @@ fn score(mix: &[i16], truth: &[bool], rate: u32, frame: usize, p: VadParams) -> 
 /// Write the calibrated thresholds into your settings (the preferences layer
 /// the settings page writes), so they show on the page and can be moved back.
 fn keep(c: &Calibration, config_dir: &std::path::Path) -> crate::error::Result<()> {
-    let mut p = crate::preferences::Preferences::load(config_dir);
+    let mut p = crate::preferences::Preferences::load_checked(config_dir).map_err(crate::error::AtlasError::Config)?;
     p.set("endpoint.vad_energy_db", &c.best.energy_db.to_string());
     p.set("endpoint.vad_flatness_db", &c.best.flatness_db.to_string());
     p.set("endpoint.vad_loud_db", &c.best.loud_db.to_string());

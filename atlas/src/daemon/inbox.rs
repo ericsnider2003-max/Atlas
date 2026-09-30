@@ -773,6 +773,98 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// Drafted replies by voice, before anything else reads the sentence:
+    /// "send the reply to Jane", "send it" (after one was read out), "read
+    /// me the draft to Jane", "what drafts are waiting", "throw away the
+    /// reply to Jane".
+    ///
+    /// 30 Sep 2026: a reply Atlas drafted could be looked at and thrown away
+    /// and never sent -- `Outbox::mark_sent` had no caller -- so drafts sat
+    /// "waiting" for ever.
+    pub(super) fn drafts_help(&mut self, said: &str) -> Option<String> {
+        let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '@' || c == '.' || c == ' ' { c } else { ' ' }).collect();
+        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+        let about_drafts = t.contains("reply") || t.contains("draft");
+        let who = t.rsplit_once(" to ").map(|(_, w)| w.trim().to_string()).unwrap_or_default();
+        if about_drafts && (t.contains("what drafts") || t.contains("my drafts") || t.contains("drafts waiting") || t.contains("any drafts")) {
+            let outbox = crate::outbox::Outbox::load(&self.store);
+            let waiting = outbox.waiting();
+            return Some(if waiting.is_empty() {
+                "No drafts waiting.".into()
+            } else {
+                format!("Waiting: {}.", waiting.iter().map(|r| format!("a reply to {}", r.to_name)).collect::<Vec<_>>().join("; "))
+            });
+        }
+        let sending = t.starts_with("send") && (about_drafts || t == "send it" || t == "send that" || t == "send it off");
+        if sending {
+            let pick = if who.is_empty() { self.draft_last_read.clone() } else { Some(who) };
+            return Some(self.send_draft(pick.as_deref()));
+        }
+        if about_drafts && (t.starts_with("read") || t.starts_with("pull up") || t.starts_with("show")) && !who.is_empty() {
+            let reply = self.read_draft(&who);
+            if reply.starts_with("Reply to") {
+                self.draft_last_read = Some(who);
+                return Some(format!("{reply} Say \"send it\" and it goes."));
+            }
+            return Some(reply);
+        }
+        if about_drafts && ["throw away", "discard", "scrap", "delete"].iter().any(|v| t.starts_with(v)) && !who.is_empty() {
+            return Some(self.discard_draft(&who));
+        }
+        None
+    }
+
+    /// Send a waiting draft: to `who` (a name or address), or the only one
+    /// waiting. On the crew, because it's a network call.
+    fn send_draft(&mut self, who: Option<&str>) -> String {
+        let cfg = self.tools_cfg().mail.clone();
+        let outbox = crate::outbox::Outbox::load(&self.store);
+        let pending = match who {
+            Some(w) => outbox.waiting_for(w).cloned(),
+            None => match outbox.waiting().as_slice() {
+                [only] => Some((*only).clone()),
+                [] => return "There's no draft waiting to send.".into(),
+                many => {
+                    return format!(
+                        "Which one? {}.",
+                        many.iter().map(|r| format!("the reply to {}", r.to_name)).collect::<Vec<_>>().join(", ")
+                    )
+                }
+            },
+        };
+        let Some(pending) = pending else {
+            return format!("I don't have a draft waiting for {}.", who.unwrap_or("them"));
+        };
+        let Some(account) = cfg.accounts.iter().find(|a| a.name == pending.account).or(cfg.accounts.first()).cloned() else {
+            return "There's no mail account set up to send it from.".into();
+        };
+        let now = crate::store::now();
+        let password = match crate::mail::credential_source(&account)
+            .map(|n| n.to_string())
+            .map_err(|e| e.to_string())
+            .and_then(|n| self.vault.get(&n, now).map_err(|e| e.to_string()))
+        {
+            Ok(p) => p,
+            Err(e) => return format!("I can't send from {} yet: {e}. It's still waiting.", account.name),
+        };
+        let store = self.store.clone();
+        let to = pending.to_name.clone();
+        let work: crew::Work = Box::new(move |_ctl| {
+            send_reply(&pending, &account.address, &password, account.oauth.then_some(account.client_id.as_str()))
+                .map_err(|e| format!("the reply to {} didn't go: {e}. It's still waiting.", pending.to_name))?;
+            let mut outbox = crate::outbox::Outbox::load(&store);
+            outbox.mark_sent(&pending.id);
+            outbox.save(&store).map_err(|e| format!("it went, but I couldn't note that it did ({e})"))?;
+            Ok(format!("Sent the reply to {}.", pending.to_name))
+        });
+        self.draft_last_read = None;
+        if self.hand_off("send reply", now, work, Some(to.clone()), SpeakPolicy::Always) {
+            format!("Sending the reply to {to}.")
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        }
+    }
+
     /// "Throw away the reply to Jane." / "Scrap the draft to Jane." You
     /// looked at a held draft and said no, so it is marked `Discarded` and
     /// leaves `waiting()`/`waiting_for()`. Without this there was no way to

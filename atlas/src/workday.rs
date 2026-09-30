@@ -796,6 +796,11 @@ impl Daemon<'_> {
 
     // -- 10. find any file -------------------------------------------------------------
 
+    /// The files the last search listed, in the order they were said.
+    pub(crate) fn files_last_listed(&self) -> &[String] {
+        &self.workday.last_files
+    }
+
     pub(crate) fn wd_find_file(&mut self, said: &str, t: u64) -> String {
         // A moment for the list on disk, if it's still being read at start.
         self.wait_for_index(std::time::Duration::from_secs(2));

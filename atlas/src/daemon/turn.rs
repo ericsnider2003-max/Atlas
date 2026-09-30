@@ -1089,6 +1089,10 @@ impl<'a> Daemon<'a> {
     /// fact you've stated, your notes, and the rest. `None` when none of it does.
     fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
+            .or_else(|| self.writing_help(raw))
+            .or_else(|| self.research_note_help(raw))
+            .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.note_asked(raw, t))
             .or_else(|| self.weather_help(raw))
             .or_else(|| self.remind_help(raw, t))
             .or_else(|| self.spot_opportunity(raw))
@@ -1115,6 +1119,10 @@ impl<'a> Daemon<'a> {
     /// shared one word with "what should I eat" was the whole reply.
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
+            .or_else(|| self.writing_help(raw))
+            .or_else(|| self.research_note_help(raw))
+            .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.note_asked(raw, t))
             .or_else(|| self.weather_help(raw))
             .or_else(|| self.remind_help(raw, t))
             .or_else(|| self.learn_stated(raw))

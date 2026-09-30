@@ -779,6 +779,10 @@ pub struct Daemon<'a> {
     pub reminder_waiting_for_a_time: Option<String>,
     /// The town the weather was last given for, kept for the session.
     pub weather_place: Option<crate::weather::Place>,
+    /// Whose draft was last read out ("send it").
+    pub draft_last_read: Option<String>,
+    /// Notes routed to speaking (`reach_you`), said on the next tick.
+    pub to_say_aloud: Vec<String>,
     /// Where the vault is kept (`vault_home_for`).
     pub vault_home: crate::store::Store,
     /// How many times each undelivered message has been tried, and when.
@@ -1594,6 +1598,8 @@ impl<'a> Daemon<'a> {
             last_reminder_set: None,
             reminder_waiting_for_a_time: None,
             weather_place: None,
+            draft_last_read: None,
+            to_say_aloud: Vec::new(),
             vault_home: if keeps_the_install_vault(&store_for_vault) { crate::roots::install_state() } else { store_for_vault.clone() },
             chats: chats_at_start,
             tries: crate::courier::Tries::default(),

@@ -1821,6 +1821,15 @@ impl<'a> Daemon<'a> {
                     }
                 }
                 if spoken.is_a_whole_item() {
+                    // Kept as well as announced (30 Sep 2026: it said
+                    // `Made "Tuesday tips", due friday.` and kept it nowhere
+                    // unless the project was one the workshop tracks).
+                    let id = self.notebook.capture(text, None, now, &cfg);
+                    self.wd_date_note(id, now);
+                    self.synclog.append(crate::sync::What::Captured { id: id.to_string(), text: text.clone() }, now);
+                    if let Err(e) = self.notebook.save(&self.store) {
+                        return format!("I couldn't write that down ({e}). Say it again once that's sorted, because I haven't kept it.");
+                    }
                     crate::capture::made(&spoken)
                 } else {
                     let id = self.notebook.capture(text, None, now, &cfg);

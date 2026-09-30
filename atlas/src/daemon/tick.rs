@@ -31,6 +31,10 @@ impl<'a> Daemon<'a> {
     /// Work Atlas does without being asked. Returns anything worth saying.
     pub fn tick(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
+        // Notes `reach_you` routed to speaking, said now (30 Sep 2026: that
+        // route only wrote a log line, so a message for you while you sat at
+        // the desk was never heard).
+        out.append(&mut self.to_say_aloud);
         if let Some(line) = self.model_warmed.lock().ok().and_then(|mut w| w.take()) {
             self.log.info(&line);
         }
@@ -1132,7 +1136,19 @@ impl<'a> Daemon<'a> {
         // check, for the reason given there: it is housekeeping, and pausing
         // Atlas is exactly when you want the memory back.
         // Anything the crew finished, vanished on, or still won't stop for.
-        out.extend(self.take_crew_news(t));
+        // Finished work reaches you where you are (30 Sep 2026: it was said
+        // into the room once and lost if you'd stepped away). At the machine,
+        // said as before; away, it goes the way any note does -- the phone,
+        // a notification, or held for when you're back.
+        let news = self.take_crew_news(t);
+        if !news.is_empty() && self.quiet_for(t) > self.away_after {
+            for line in news {
+                let note = crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);
+                let _ = self.reach_you(note, t);
+            }
+        } else {
+            out.extend(news);
+        }
 
         // --- The day's run, when you come in rather than when a clock says ---
         //

@@ -1221,6 +1221,19 @@ fn main() {
     // wake word. Where it cannot be built (no config/tools.yaml) the prompt
     // falls back to the six it always had, so a machine with no voice setup
     // still gets a working prompt rather than an error.
+    // Not beside a running Atlas (30 Sep 2026): this built a second daemon
+    // on the same store, and its first save wrote every file -- the
+    // schedule, the calendar, what you've told it -- back from the copy it
+    // loaded at start, over whatever the running one had done since.
+    if let atlas::onlyone::Found::Running { .. } =
+        atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir()).look(atlas::store::now())
+    {
+        println!(
+            "Atlas is already running. Talk to it, use its typing box, or the hub's Talk page -- \
+             a second one here would write over what it keeps."
+        );
+        return;
+    }
     let store = atlas::roots::store();
     let mut shell: Option<Daemon> = cfg.tools.as_ref().map(|tc| {
         // With the model, like every other door. `None` here meant a

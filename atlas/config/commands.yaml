@@ -963,7 +963,7 @@ commands:
     # curve" and "explain what a Roth IRA is" went to the code explainer.
     phrases: ["explain code", "explain this code", "explain the code", "explain this function",
               "explain the function", "explain this script", "what does this code do", "code explanation",
-              "explain the change", "explain the queued change", "explain what changed", "explain that change"]
+              "explain the change", "explain the queued change", "explain what changed"]
     takes_argument: true
     argument_optional: false
     raw_argument: true

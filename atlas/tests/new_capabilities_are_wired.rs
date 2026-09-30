@@ -105,7 +105,6 @@ const KNOWN: &[&str] = &[
     // anything a person could say; `correct` -- which rewrites the kind or adds
     // a handle and marks the note confirmed -- was reached only by its own test
     // until now. See tests/refile_corrects_a_captured_note.rs.
-    "capture::found",
     // cdp::links came off 23 Sep 2026 (decision-list remainder, doc 15).
     // `cdp::url` came off 21 Sep 2026 by bare-name collision, not by being
     // wired: `motion.rs`'s animation sniffer holds the CSS token `"url(http"` as

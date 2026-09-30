@@ -264,6 +264,35 @@ impl<'a> Daemon<'a> {
         })
     }
 
+    /// "Where's that note about broker fees", "what did I note yesterday",
+    /// "find my note about X", "what did I write down about X": the notebook
+    /// searched (30 Sep 2026: `Notebook::find` had no caller, so a thought
+    /// written down could never be asked for again).
+    pub(super) fn note_asked(&self, said: &str, now: u64) -> Option<String> {
+        let t = said.to_lowercase();
+        let asking = [
+            "where's that note", "wheres that note", "where is that note", "find my note", "find the note", "find that note",
+            "what did i note", "what did i write down", "what did i jot", "did i note", "my note about", "my notes about",
+            "read my notes", "what's in my notes", "whats in my notes", "what notes do i have", "my last note",
+        ]
+        .iter()
+        .any(|p| t.contains(p));
+        if !asking {
+            return None;
+        }
+        if t.contains("my last note") {
+            return Some(match self.notebook.notes.last() {
+                Some(n) => n.text.clone(),
+                None => "Your notebook is empty.".into(),
+            });
+        }
+        let hits = self.notebook.find(said, now);
+        if hits.is_empty() {
+            return Some("I can't find a note like that. Say \"note that ...\" and I'll keep the next one.".into());
+        }
+        Some(crate::capture::found(&hits.into_iter().take(3).collect::<Vec<_>>()))
+    }
+
     /// The event these words mean, among the next two weeks' (and today's
     /// earlier ones): by what it's called or when it is. One only.
     fn event_meant(&self, what: &str, t: u64) -> Option<crate::calendar::Event> {

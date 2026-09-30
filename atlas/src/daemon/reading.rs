@@ -6,7 +6,107 @@
 use super::*;
 
 impl<'a> Daemon<'a> {
+    /// "Read me the full brief", "open the report": the newest research
+    /// write-up, read out or opened (30 Sep 2026: only its first two
+    /// sentences were ever said, and where the rest went was never told).
+    pub(super) fn research_note_help(&mut self, said: &str) -> Option<String> {
+        let t = said.to_lowercase();
+        let reading = ["full brief", "full write up", "full write-up", "full report", "whole report", "rest of the research", "read me the report", "read me the research", "read the research"]
+            .iter()
+            .any(|p| t.contains(p));
+        let opening = ["open the report", "open that report", "open the research", "open the write up", "open the write-up", "open the brief", "show me the report", "show me the research"]
+            .iter()
+            .any(|p| t.contains(p));
+        if !reading && !opening {
+            return None;
+        }
+        let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
+        let newest = std::fs::read_dir(&dir)
+            .ok()?
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+            .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
+        let Some(newest) = newest else {
+            return Some("There's no research write-up yet. Say \"research\" and a topic, and I'll write one.".into());
+        };
+        let path = newest.path();
+        if opening {
+            return Some(match self.plat.open_path(&path.display().to_string()) {
+                Ok(()) => format!("Opening {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()),
+                Err(e) => format!("I couldn't open it ({e}). It's at {}.", path.display()),
+            });
+        }
+        let text = std::fs::read_to_string(&path).ok()?;
+        // The write-up without its "# title" line and its source list.
+        let body = text.split("\n## Sources").next().unwrap_or(&text);
+        let body = if body.starts_with('#') { body.split_once('\n').map(|(_, rest)| rest).unwrap_or("") } else { body };
+        let body = body.trim().to_string();
+        Some(body)
+    }
+
+    /// "Write me a cover letter for ...", "draft a letter to my landlord
+    /// about the heating", "write a report on ...": written in the
+    /// background and kept as a document you can hear or open (30 Sep 2026:
+    /// nothing in Atlas wrote a document -- "write me a letter" built a
+    /// program).
+    pub(super) fn writing_help(&mut self, said: &str) -> Option<String> {
+        let t = said.trim().to_lowercase();
+        let lead = ["write me a ", "write me an ", "write a ", "write an ", "draft me a ", "draft a ", "draft an ", "compose a ", "can you write me a ", "can you write a ", "could you write me a ", "please write a ", "please write me a "]
+            .iter()
+            .find(|p| t.starts_with(**p))?;
+        let what = t[lead.len()..].trim().to_string();
+        const DOCS: &[&str] = &[
+            "letter", "cover letter", "report", "essay", "memo", "speech", "bio", "biography", "summary", "proposal",
+            "article", "blog", "press release", "resume", "cv", "outline", "plan", "announcement", "statement", "toast",
+            "eulogy", "complaint", "reference", "recommendation", "thank you note", "note to",
+        ];
+        let first_word = what.split_whitespace().next().unwrap_or("");
+        let is_doc = DOCS.iter().any(|d| what.starts_with(d) || (first_word.len() > 2 && what.split_whitespace().take(3).any(|w| d.starts_with(w) && w.len() > 3)));
+        if !is_doc {
+            return None;
+        }
+        let Some(llm) = self.llm.clone() else {
+            return Some("I need a language model to write that, and I haven't got one yet.".into());
+        };
+        let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
+        let ask = said.trim().to_string();
+        let title: String = what.split_whitespace().take(8).collect::<Vec<_>>().join(" ");
+        let work: crew::Work = Box::new(move |ctl| {
+            if ctl.checkpoint() {
+                return Err("stopped before writing".into());
+            }
+            let system = "You write documents for the person you work for, in their voice: clear, specific, \
+                          ready to use. Write the whole document -- no preamble, no notes about what you did, \
+                          no placeholder brackets unless a fact truly isn't known (then one short [bracket] \
+                          saying what goes there). Plain text with simple headings where they help.";
+            let text = llm.complete_hard(system, &ask).map_err(|e| format!("the writing didn't come back ({e})"))?;
+            let text = crate::phonemodel::without_thinking(&text).trim().to_string();
+            if text.is_empty() {
+                return Err("the model wrote nothing".into());
+            }
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let slug: String = title.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string();
+            let path = std::path::Path::new(&dir).join(format!("{}-{slug}.md", crate::store::now()));
+            std::fs::write(&path, format!("# {title}\n\n{text}\n")).map_err(|e| format!("it's written, but I couldn't save it ({e})"))?;
+            let words = text.split_whitespace().count();
+            let opening: String = text.split(['.', '\n']).find(|l| l.split_whitespace().count() > 3).unwrap_or("").trim().to_string();
+            Ok(format!(
+                "Written: your {title}, about {words} words. It opens: \"{opening}.\" Say \"read me the full brief\" to hear it, or \"open the report\" to see it."
+            ))
+        });
+        Some(if self.hand_off("writing", crate::store::now(), work, Some(what.clone()), SpeakPolicy::Always) {
+            format!("Writing your {} now. I'll tell you when it's ready.", what.split_whitespace().take(6).collect::<Vec<_>>().join(" "))
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        })
+    }
+
     pub(super) fn research(&mut self, topic: &str) -> String {
+        // "Research it again": "again" is a request for a fresh look, not
+        // part of the topic (30 Sep 2026: it was searched for as a word).
+        let fresh = topic.to_lowercase().split_whitespace().any(|w| w == "again");
+        let cleaned: String = topic.split_whitespace().filter(|w| !w.eq_ignore_ascii_case("again")).collect::<Vec<_>>().join(" ");
+        let topic = cleaned.as_str();
         let mut cfg = self.tools_ref()
             .map(|t| t.research.clone())
             .unwrap_or_default()
@@ -21,7 +121,7 @@ impl<'a> Daemon<'a> {
         // away the moment it was spoken. "again" anywhere in the ask
         // forces a fresh run — a cache must never argue with you.
         let now_check = crate::store::now();
-        if !topic.to_lowercase().contains("again") {
+        if !fresh {
             if let Some(c) = self
                 .known
                 .iter_mut()
@@ -105,7 +205,9 @@ impl<'a> Daemon<'a> {
                     // spoken, on the same reasoning: the note itself,
                     // which is the thing you actually asked for, still
                     // came back fine.
-                    let _ = r.save(&note);
+                    // Where it went is said now (30 Sep 2026: it was
+                    // deliberately never said, and a failed save was silent).
+                    let kept = r.save(&note);
                     // The one place in Atlas where grounding is known exactly
                     // rather than guessed at: the note carries the list of
                     // what it read. A write-up built on nothing gets said as
@@ -155,8 +257,12 @@ impl<'a> Daemon<'a> {
                     // read, or unreadable. A qualifier on every answer is a
                     // qualifier nobody reads.
                     let rests = crate::research::rests_on(&note, &judging);
+                    let kept = match kept {
+                        Ok(_) => " The full write-up is in your notes -- say \"read me the full brief\" or \"open the report\".".to_string(),
+                        Err(e) => format!(" I couldn't save the full write-up ({e})."),
+                    };
                     Ok(format!(
-                        "{} Read {} source{}.{}",
+                        "{} Read {} source{}.{}{kept}",
                         spoken,
                         note.sources.len(),
                         if note.sources.len() == 1 { "" } else { "s" },
