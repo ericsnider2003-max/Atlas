@@ -11,7 +11,9 @@
 //! - The Talk page's polling piled up until the hub refused every page.
 
 fn source(path: &str) -> String {
-    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"))
+    // Through `read_source_path` (29 Sep 2026): daemon.rs and main.rs were
+    // split into src/daemon/*.rs and src/main/*.rs, read here as one.
+    crate::common::read_source_path(path).unwrap_or_else(|| panic!("{path}: not found"))
 }
 
 fn scratch(name: &str) -> std::path::PathBuf {

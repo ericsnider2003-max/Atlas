@@ -6,7 +6,9 @@
 //! nothing and said nothing. Only `atlas --voice` picked the real microphone.
 
 fn source(path: &str) -> String {
-    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"))
+    // Through `read_source_path` (29 Sep 2026): daemon.rs and main.rs were
+    // split into src/daemon/*.rs and src/main/*.rs, read here as one.
+    crate::common::read_source_path(path).unwrap_or_else(|| panic!("{path}: not found"))
 }
 
 /// A method's body inside an impl: from its signature to the first line
@@ -177,7 +179,7 @@ fn silence_after_the_wake_word_is_not_a_broken_microphone() {
 #[test]
 fn a_broken_microphone_does_not_silence_atlas() {
     let daemon = source("src/daemon.rs");
-    let say = method_body(&daemon, "    fn say(&self, mouth: &dyn Mouth, line: &str)");
+    let say = method_body(&daemon, "fn say(&self, mouth: &dyn Mouth, line: &str)");
     let gate = say.find("can_speak").expect("typing-only mutes every reply again");
     let speak = say.find("mouth.speak(").expect("say speaks");
     assert!(gate < speak);
