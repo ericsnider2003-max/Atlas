@@ -122,10 +122,55 @@ pub struct Lessons {
     pub yours_seen: HashMap<String, Seen>,
     /// Your own fixes that are now corrections Atlas makes.
     pub learned: HashMap<String, String>,
+    /// Which one-off repairs of what earlier versions learned wrongly have
+    /// been made (`repair`).
+    #[serde(default)]
+    pub repaired: u32,
+}
+
+/// Only the case differs ("i" -> "I").
+fn case_only(was: &str, becomes: &str) -> bool {
+    was != becomes && was.to_lowercase() == becomes.to_lowercase()
 }
 
 fn key(was: &str, becomes: &str) -> String {
+    // A correction that only changes case keeps its case in the key: it was
+    // "i→i" (30 Sep 2026, Eric's lessons), a correction to itself.
+    if case_only(was, becomes) {
+        return format!("{was}→{becomes}");
+    }
     format!("{}→{}", was.to_lowercase(), becomes.to_lowercase())
+}
+
+/// Is `seen` the word as you typed it (`was`) rather than as Atlas made it
+/// (`becomes`)? Letter case is ignored -- "Dont" changed back is still a
+/// change-back -- except for a correction that only changes case, where case
+/// is the whole of it: "I" read as "i" ignoring case counted Atlas's own
+/// capital as you changing it back, on the very next look (30 Sep 2026:
+/// "i→I" had four change-backs and no keeps in Eric's lessons, in Chrome and
+/// Claude, and had stopped).
+fn is_as_typed(seen: &str, was: &str, becomes: &str) -> bool {
+    if case_only(was, becomes) {
+        seen == was
+    } else {
+        seen.eq_ignore_ascii_case(was) && !seen.eq_ignore_ascii_case(becomes)
+    }
+}
+
+fn is_as_made(seen: &str, was: &str, becomes: &str) -> bool {
+    if case_only(was, becomes) {
+        seen == becomes
+    } else {
+        seen.eq_ignore_ascii_case(becomes)
+    }
+}
+
+/// One side the start of the other: "happe" and "happen", "doesn'" and
+/// "doesn't" -- what a word looks like part-way through being typed or
+/// backspaced.
+fn one_starts_the_other(a: &str, b: &str) -> bool {
+    let (a, b) = (a.to_lowercase(), b.to_lowercase());
+    a.starts_with(&b) || b.starts_with(&a)
 }
 
 impl Lessons {
@@ -165,7 +210,9 @@ impl Lessons {
     /// You fixed a word yourself: `was` became `becomes` in this text.
     /// Returns true when that's now a correction Atlas makes.
     pub fn you_fixed(&mut self, was: &str, becomes: &str, now: u64) -> bool {
-        if !close_spellings(was, becomes) {
+        // A word and the same word with letters added or taken off its end
+        // is typing, not fixing (`repair`).
+        if !close_spellings(was, becomes) || one_starts_the_other(was, becomes) {
             return false;
         }
         let k = key(was, becomes);
@@ -200,9 +247,38 @@ impl Lessons {
         false
     }
 
+    /// Undo what earlier versions learned wrongly, once (30 Sep 2026).
+    ///
+    /// Eric's lessons had learned "start" → "starte", "happen" → "happeni",
+    /// "assist" → "assista" and 26 more: a word part-way through being typed,
+    /// read twice a few letters apart, was taken for you correcting yourself
+    /// (`look` compared every poll with the last, and "happe" then "happen"
+    /// is a close spelling in the same place). Three texts later Atlas made
+    /// it a correction, and typed "starte" over your "start". What either
+    /// side of starts the other is exactly that pattern: dropped, from what
+    /// was learned and from what was being counted towards it. And "i→i",
+    /// a case-only correction whose change-backs were Atlas's own capital
+    /// misread (`is_as_typed`): its false tally is dropped.
+    fn repair(&mut self) {
+        if self.repaired >= 1 {
+            return;
+        }
+        self.learned.retain(|w, b| !one_starts_the_other(w, b));
+        self.yours_seen.retain(|k, _| match k.split_once('→') {
+            Some((w, b)) => !one_starts_the_other(w, b),
+            None => false,
+        });
+        self.tallies.retain(|k, _| match k.split_once('→') {
+            Some((w, b)) => w != b,
+            None => false,
+        });
+        self.repaired = 1;
+    }
+
     /// Learned corrections fade too: one that hasn't been kept in a long
     /// while, with no fresh evidence, is dropped.
     pub fn tidy(&mut self, now: u64) {
+        self.repair();
         for t in self.tallies.values_mut() {
             t.fade(now);
         }
@@ -339,6 +415,21 @@ pub struct Text {
     pub leave_alone: Vec<String>,
     /// Your own fixes already counted in this text.
     pub counted: Vec<String>,
+    /// The finished words of the text (each followed by a space or a mark),
+    /// as last seen finished: a word you go back and change is compared
+    /// with how it stood when you'd finished it, not with a half-typed
+    /// version from a moment ago.
+    pub settled: Vec<String>,
+}
+
+/// The words of a text that are finished: all but a last word the text
+/// ends inside.
+fn finished_words(text: &str) -> Vec<String> {
+    let mut w = words_of(text);
+    if text.chars().last().is_some_and(|c| c.is_alphanumeric() || c == '\'') {
+        w.pop();
+    }
+    w
 }
 
 /// The words of a text, in order.
@@ -357,10 +448,14 @@ pub enum Now {
     Fix {
         was: String,
         becomes: String,
-        /// Characters to delete from the end: the word and what followed it.
+        /// Characters to delete from the end: the part of the word that
+        /// differs, and what followed it.
         delete: usize,
         /// What to type in its place: the correction and what followed it.
         type_in: String,
+        /// How the text should then end: the whole correction and what
+        /// followed it.
+        expect_end: String,
         word_no: usize,
     },
 }
@@ -379,18 +474,17 @@ fn look(
 ) -> Now {
     let before = std::mem::replace(&mut text.last, now_text.to_string());
     let words_now = words_of(now_text);
-    let words_before = words_of(&before);
 
     // Change-backs and keeps, for corrections made in this text.
     for m in text.made.iter_mut().filter(|m| !m.settled) {
         match words_now.get(m.word_no) {
-            Some(w) if w.eq_ignore_ascii_case(&m.was) => {
+            Some(w) if is_as_typed(w, &m.was, &m.becomes) => {
                 lessons.changed_back(&m.was, &m.becomes, app, t);
                 text.leave_alone.push(m.was.to_lowercase());
                 m.settled = true;
             }
             // Kept once the text has moved on three words past it.
-            Some(w) if w.eq_ignore_ascii_case(&m.becomes) && words_now.len() > m.word_no + 3 => {
+            Some(w) if is_as_made(w, &m.was, &m.becomes) && words_now.len() > m.word_no + 3 => {
                 lessons.kept(&m.was, &m.becomes, t);
                 m.settled = true;
             }
@@ -398,17 +492,31 @@ fn look(
         }
     }
 
-    // Your own fixes: same place, same neighbours, a close spelling.
-    if words_now.len() == words_before.len() {
-        for (i, (a, b)) in words_before.iter().zip(&words_now).enumerate() {
-            if a != b
-                && !text.made.iter().any(|m| m.word_no == i)
-                && close_spellings(a, b)
-                && !text.counted.contains(&a.to_lowercase())
-            {
-                text.counted.push(a.to_lowercase());
-                lessons.you_fixed(a, b, t);
+    // Your own fixes: a finished word, changed, and finished again -- in
+    // the same place, a close spelling. Compared with how it stood when it
+    // was last finished (`Text::settled`), never with a word part-way
+    // through being typed or backspaced: every poll used to be compared
+    // with the one before, so "happe" then "happen" was you "fixing" happe
+    // (30 Sep 2026, `Lessons::repair`).
+    let finished = finished_words(now_text);
+    if finished.len() + 1 < text.settled.len() {
+        // Words deleted wholesale: a rewrite, not a word fixed.
+        text.settled.truncate(finished.len());
+    }
+    for (i, b) in finished.iter().enumerate() {
+        match text.settled.get(i).cloned() {
+            Some(a) => {
+                if a != *b
+                    && !text.made.iter().any(|m| m.word_no == i)
+                    && close_spellings(&a, b)
+                    && !text.counted.contains(&a.to_lowercase())
+                {
+                    text.counted.push(a.to_lowercase());
+                    lessons.you_fixed(&a, b, t);
+                }
+                text.settled[i] = b.clone();
             }
+            None => text.settled.push(b.clone()),
         }
     }
 
@@ -464,11 +572,23 @@ fn look(
     if !lessons.may_fix(word, &becomes, app, t) {
         return Now::Nothing;
     }
+    // The space you typed, as a space: a rich box (Chrome, Discord, Claude)
+    // shows a space at the end of its text as a no-break space, and typing
+    // that back put a no-break space into your message.
+    let boundary = if boundary == '\u{a0}' { ' ' } else { boundary };
+    // Only the part that differs is taken back and typed: "dont " becomes
+    // "don't " by two backspaces and "'t ", not five and "don't ". Every key
+    // Atlas sends is a moment in which one of yours can land between two of
+    // its own (30 Sep 2026: the whole word retyped, a key at a time, took
+    // about 0.4 s), so the fewer the better.
+    let same: usize = word.chars().zip(becomes.chars()).take_while(|(a, b)| a == b).count();
+    let tail: String = becomes.chars().skip(same).collect();
     Now::Fix {
         was: word.to_string(),
         becomes: becomes.clone(),
-        delete: word.chars().count() + 1,
-        type_in: format!("{becomes}{boundary}"),
+        delete: word.chars().count() - same + 1,
+        type_in: format!("{tail}{boundary}"),
+        expect_end: format!("{becomes}{boundary}"),
         word_no,
     }
 }
@@ -477,16 +597,36 @@ fn look(
 /// text's memory either way.
 fn after_fixing(text: &mut Text, expected_end: &str, now_text: &str, was: &str, becomes: &str, word_no: usize) -> bool {
     text.last = now_text.to_string();
-    let ok = now_text.ends_with(expected_end);
+    let ok = ends_as_expected(now_text, expected_end);
     if ok {
         text.made.push(Made { was: was.to_string(), becomes: becomes.to_string(), word_no, settled: false });
     }
+    // Atlas's own fix is where the word now stands, not a fix of yours.
+    text.settled = finished_words(now_text);
     ok
+}
+
+/// Does the box end with what was typed? A rich box reads a space at its
+/// end back as a no-break space, or not at all (30 Sep 2026: "I tried to
+/// change \"doesnt\" to \"doesn't\" and the box didn't come out as I
+/// expected", in Chrome and Claude, where the fix had landed).
+fn ends_as_expected(box_text: &str, expected_end: &str) -> bool {
+    let plain = |s: &str| s.replace('\u{a0}', " ");
+    let (b, e) = (plain(box_text), plain(expected_end));
+    b.ends_with(&e) || (!e.trim_end().is_empty() && b.trim_end().ends_with(e.trim_end()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rich_box_s_trailing_space_still_reads_as_the_fix_landing() {
+        assert!(ends_as_expected("Hi, I don't\u{a0}", "don't "));
+        assert!(ends_as_expected("Hi, I don't", "don't "));
+        assert!(!ends_as_expected("Hi, I dont ", "don't "));
+        assert!(!ends_as_expected("Hi, I ddon'et ", "don't "));
+    }
 
     #[test]
     fn close_spellings_are_one_word_not_two() {
@@ -567,6 +707,7 @@ pub fn look_at_the_box(
     let text = w.texts.entry((win.0, aw.title.clone())).or_default();
     if text.last.is_empty() && text.made.is_empty() && !now_text.is_empty() {
         // First sight of this box: remember it, correct nothing already there.
+        text.settled = finished_words(&now_text);
         text.last = now_text;
         return Polled::Nothing;
     }
@@ -586,17 +727,19 @@ pub fn look_at_the_box(
         return Polled::Nothing;
     }
     w.waiting = None;
-    let Now::Fix { was, becomes, delete, type_in, word_no } = waiting.fix else { return Polled::Nothing };
-    for _ in 0..delete {
-        if plat.press("backspace").is_err() {
-            return Polled::Nothing;
-        }
-    }
-    if plat.type_text(&type_in).is_err() {
+    let Now::Fix { was, becomes, delete, type_in, expect_end, word_no } = waiting.fix else { return Polled::Nothing };
+    // Looked at again at the last moment: if you've started typing again,
+    // Atlas's keys would land in the middle of yours.
+    if plat.focused_text().ok().flatten().as_deref() != Some(now_text.as_str()) {
         return Polled::Nothing;
     }
-    let after = plat.focused_text().ok().flatten().unwrap_or_default();
-    if after_fixing(text, &type_in, &after, &was, &becomes, word_no) {
+    // The backspaces in one burst (`Platform::replace_typed`), then the
+    // letters.
+    if plat.replace_typed(delete, &type_in).is_err() {
+        return Polled::Nothing;
+    }
+    let after = read_back(plat, &expect_end);
+    if after_fixing(text, &expect_end, &after, &was, &becomes, word_no) {
         Polled::Fixed { was, becomes }
     } else {
         // Your keys and Atlas's crossed, or the box didn't take it. Stop for
@@ -606,6 +749,24 @@ pub fn look_at_the_box(
             "I tried to change \"{was}\" to \"{becomes}\" and the box didn't come out as I expected — have a look at it. I'll leave your typing alone for a minute."
         ));
         Polled::DidNotLand
+    }
+}
+
+/// How long the box may take to show what was typed before it's judged.
+pub const READ_BACK_MS: u64 = 600;
+
+/// The box, read back once it has taken the keys in: an app handles typed
+/// keys a moment after they are sent, and reading straight away saw the box
+/// as it was (30 Sep 2026: a fix that landed was called one that didn't,
+/// and the next look took the change for your own fix of "doesnt").
+fn read_back(plat: &dyn crate::platform::Platform, expected_end: &str) -> String {
+    let started = std::time::Instant::now();
+    loop {
+        let now = plat.focused_text().ok().flatten().unwrap_or_default();
+        if ends_as_expected(&now, expected_end) || started.elapsed().as_millis() as u64 >= READ_BACK_MS {
+            return now;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(40));
     }
 }
 
