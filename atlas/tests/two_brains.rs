@@ -37,6 +37,9 @@ type Replier = Arc<dyn Fn(&Value) -> String + Send + Sync>;
 struct Seen {
     requests: Vec<Value>,
     words_at: Vec<Instant>,
+    /// When a client hung up while the server was still "reading the
+    /// prompt" (before its first word).
+    hung_up_at: Vec<Instant>,
 }
 
 struct Scripted {
@@ -81,7 +84,7 @@ fn read_request(s: &mut TcpStream) -> Option<(String, String, String)> {
     Some((method, path, String::from_utf8_lossy(&body).to_string()))
 }
 
-fn serve_one(mut s: TcpStream, reply: Replier, word_ms: u64, ready_at: Instant, seen: Arc<Mutex<Seen>>) {
+fn serve_one(mut s: TcpStream, reply: Replier, word_ms: u64, prefill_ms: u64, ready_at: Instant, seen: Arc<Mutex<Seen>>) {
     let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
     let Some((method, path, body)) = read_request(&mut s) else { return };
     if method == "GET" && path == "/health" {
@@ -91,6 +94,23 @@ fn serve_one(mut s: TcpStream, reply: Replier, word_ms: u64, ready_at: Instant, 
     }
     let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
     seen.lock().unwrap().requests.push(v.clone());
+    // Reading the prompt: nothing sent for `prefill_ms`, watching for the
+    // client hanging up (llama-server cancels the request then).
+    let until = Instant::now() + Duration::from_millis(prefill_ms);
+    while Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(10));
+        let _ = s.set_nonblocking(true);
+        let gone = match s.peek(&mut [0u8; 1]) {
+            Ok(0) => true,
+            Ok(_) => false,
+            Err(e) => e.kind() != std::io::ErrorKind::WouldBlock,
+        };
+        let _ = s.set_nonblocking(false);
+        if gone {
+            seen.lock().unwrap().hung_up_at.push(Instant::now());
+            return;
+        }
+    }
     let text = reply(&v);
     if s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").is_err() {
         return;
@@ -108,6 +128,11 @@ fn serve_one(mut s: TcpStream, reply: Replier, word_ms: u64, ready_at: Instant, 
 
 impl Scripted {
     fn start(port: u16, reply: Replier, word_ms: u64, load_ms: u64, seen: Arc<Mutex<Seen>>) -> Scripted {
+        Scripted::start_reading(port, reply, word_ms, 0, load_ms, seen)
+    }
+
+    /// One that takes `prefill_ms` to read each prompt before its first word.
+    fn start_reading(port: u16, reply: Replier, word_ms: u64, prefill_ms: u64, load_ms: u64, seen: Arc<Mutex<Seen>>) -> Scripted {
         let stop = Arc::new(AtomicBool::new(false));
         let l = TcpListener::bind(("127.0.0.1", port)).expect("bind the scripted server");
         l.set_nonblocking(true).unwrap();
@@ -119,7 +144,7 @@ impl Scripted {
                     Ok((s, _)) => {
                         let _ = s.set_nonblocking(false);
                         let (r, sn) = (reply.clone(), sn.clone());
-                        std::thread::spawn(move || serve_one(s, r, word_ms, ready_at, sn));
+                        std::thread::spawn(move || serve_one(s, r, word_ms, prefill_ms, ready_at, sn));
                     }
                     Err(_) => std::thread::sleep(Duration::from_millis(5)),
                 }
@@ -147,6 +172,7 @@ struct ScriptedEngine {
     port: u16,
     reply: Replier,
     word_ms: u64,
+    prefill_ms: u64,
     load_ms: u64,
     seen: Arc<Mutex<Seen>>,
     running: Option<Scripted>,
@@ -156,7 +182,7 @@ struct ScriptedEngine {
 impl Engine for ScriptedEngine {
     fn start(&mut self) -> Result<(), String> {
         self.starts.fetch_add(1, Ordering::SeqCst);
-        self.running = Some(Scripted::start(self.port, self.reply.clone(), self.word_ms, self.load_ms, self.seen.clone()));
+        self.running = Some(Scripted::start_reading(self.port, self.reply.clone(), self.word_ms, self.prefill_ms, self.load_ms, self.seen.clone()));
         Ok(())
     }
     fn stop(&mut self) {
@@ -184,6 +210,9 @@ impl Llm for HttpChat {
     }
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
         atlas::models::chat_call(&format!("http://127.0.0.1:{}/v1/chat/completions", self.0), req, on_text)
+    }
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<ChatReply> {
+        atlas::models::chat_call_until(&format!("http://127.0.0.1:{}/v1/chat/completions", self.0), req, on_text, keep_going)
     }
 }
 
@@ -237,10 +266,14 @@ struct Rig {
 }
 
 fn rig(reply: Replier, word_ms: u64, load_ms: u64, idle: Duration, free_mb: u64) -> Rig {
+    rig_reading(reply, word_ms, 0, load_ms, idle, free_mb)
+}
+
+fn rig_reading(reply: Replier, word_ms: u64, prefill_ms: u64, load_ms: u64, idle: Duration, free_mb: u64) -> Rig {
     let port = free_port();
     let seen = Arc::new(Mutex::new(Seen::default()));
     let starts = Arc::new(AtomicUsize::new(0));
-    let engine = ScriptedEngine { port, reply, word_ms, load_ms, seen: seen.clone(), running: None, starts: starts.clone() };
+    let engine = ScriptedEngine { port, reply, word_ms, prefill_ms, load_ms, seen: seen.clone(), running: None, starts: starts.clone() };
     let deep = DeepBrain::new(Box::new(engine), Arc::new(HttpChat(port)), "Qwen_Qwen3.5-9B-IQ4_XS", 6_400, idle, Box::new(move || free_mb));
     Rig { deep, seen, starts, port }
 }
@@ -411,6 +444,39 @@ fn a_turn_cuts_in_and_the_deep_work_carries_on_from_its_words() {
     let last = reqs[1]["messages"].as_array().unwrap().last().unwrap().clone();
     assert_eq!(last["role"], "assistant", "the carry-on didn't send its words so far");
     assert!(ALL.starts_with(last["content"].as_str().unwrap()) && last["content"].as_str().unwrap().starts_with("one two three"));
+}
+
+#[test]
+fn a_turn_cuts_in_while_the_deep_model_is_still_reading_its_prompt() {
+    // A long prompt (research sources) takes seconds to read before the
+    // first word: the turn can't wait for a word to cut in at.
+    let mut r = rig_reading(fixed("The write-up."), 5, 1_500, 0, Duration::from_secs(60), 16_000);
+    let talk = Arc::new(TalkSpy::default());
+    let gate = r.deep.gate.clone();
+    let llm = r.deep.for_background(talk as Arc<dyn Llm>);
+    let h = std::thread::spawn(move || llm.complete("s", "write up these sources"));
+    let until = Instant::now() + Duration::from_secs(10);
+    while r.seen.lock().unwrap().requests.is_empty() && Instant::now() < until {
+        r.deep.keep();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    let turn = gate.talk();
+    let began = Instant::now();
+    std::thread::sleep(Duration::from_millis(700));
+    let hung_up = r.seen.lock().unwrap().hung_up_at.clone();
+    assert_eq!(hung_up.len(), 1, "the deep request wasn't dropped while the turn was answered");
+    assert!(hung_up[0].duration_since(began) < Duration::from_millis(500), "it took {:?} to give way", hung_up[0].duration_since(began));
+    assert_eq!(r.seen.lock().unwrap().requests.len(), 1, "asked again during the turn");
+    drop(turn);
+    let until = Instant::now() + Duration::from_secs(10);
+    while !h.is_finished() && Instant::now() < until {
+        r.deep.keep();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(h.join().unwrap().unwrap(), "The write-up.");
+    assert_eq!(r.seen.lock().unwrap().requests.len(), 2, "asked again once the turn was answered");
+    assert_eq!(gate.yields.load(Ordering::SeqCst), 1);
 }
 
 #[test]

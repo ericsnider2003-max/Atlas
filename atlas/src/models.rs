@@ -1742,11 +1742,25 @@ pub fn chat_call(
     req: &crate::brain::ChatRequest,
     on_text: &mut dyn FnMut(&str) -> bool,
 ) -> Result<crate::brain::ChatReply> {
+    chat_call_until(url, req, on_text, &|| true)
+}
+
+/// `chat_call`, stopped as soon as `keep_going` says so (30 Sep 2026): asked
+/// a few times a second while nothing arrives -- the server still reading the
+/// prompt -- as well as between words. The deep model gives way to a turn
+/// this way even while it reads a long prompt, when no word comes for
+/// `on_text` to stop at (`deepbrain`). What came before the stop is the reply.
+pub fn chat_call_until(
+    url: &str,
+    req: &crate::brain::ChatRequest,
+    on_text: &mut dyn FnMut(&str) -> bool,
+    keep_going: &dyn Fn() -> bool,
+) -> Result<crate::brain::ChatReply> {
     let started = std::time::Instant::now();
     let mut req = req.clone();
     let mut shortened = false;
     loop {
-        match chat_call_once(url, &req, on_text) {
+        match chat_call_once(url, &req, on_text, keep_going) {
             Ok(r) => return Ok(r),
             Err(ChatFail::NoChat(m)) => {
                 chat_failed(url);
@@ -1773,10 +1787,41 @@ fn chat_call_once(
     url: &str,
     req: &crate::brain::ChatRequest,
     on_text: &mut dyn FnMut(&str) -> bool,
+    keep_going: &dyn Fn() -> bool,
 ) -> std::result::Result<crate::brain::ChatReply, ChatFail> {
-    match chat_call_io(url, req, on_text) {
+    match chat_call_io(url, req, on_text, keep_going) {
         Ok(r) => r,
         Err(e) => Err(ChatFail::Other(e.to_string())),
+    }
+}
+
+/// How often a read with nothing arriving stops to ask `keep_going`.
+const READ_SLICE_MS: u64 = 200;
+
+/// One read, in slices of `READ_SLICE_MS`, asking `keep_going` between them.
+/// `Ok(None)`: told to stop. A read that times out altogether (nothing for
+/// `timeout`) is the error it always was.
+fn read_or_stop(
+    s: &mut std::net::TcpStream,
+    buf: &mut [u8],
+    keep_going: &dyn Fn() -> bool,
+    timeout: std::time::Duration,
+) -> std::io::Result<Option<usize>> {
+    use std::io::Read;
+    let began = std::time::Instant::now();
+    loop {
+        match s.read(buf) {
+            Ok(n) => return Ok(Some(n)),
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+                if !keep_going() {
+                    return Ok(None);
+                }
+                if began.elapsed() >= timeout {
+                    return Err(e);
+                }
+            }
+            Err(e) => return Err(e),
+        }
     }
 }
 
@@ -1784,6 +1829,7 @@ fn chat_call_io(
     url: &str,
     req: &crate::brain::ChatRequest,
     on_text: &mut dyn FnMut(&str) -> bool,
+    keep_going: &dyn Fn() -> bool,
 ) -> Result<std::result::Result<crate::brain::ChatReply, ChatFail>> {
     use std::io::{Read, Write};
     let rest = url
@@ -1814,7 +1860,7 @@ fn chat_call_io(
             reach().map_err(|why| AtlasError::Platform(unreachable_words(&host, &why)))?
         }
     };
-    s.set_read_timeout(Some(timeout))?;
+    s.set_read_timeout(Some(std::time::Duration::from_millis(READ_SLICE_MS)))?;
     s.set_write_timeout(Some(timeout))?;
     let body = chat_body(req, true);
     s.write_all(crate::http::build_request("POST", &host, path, Some(&body)).as_bytes())?;
@@ -1826,7 +1872,11 @@ fn chat_call_io(
         if let Some(i) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
             break i;
         }
-        let n = s.read(&mut buf)?;
+        // Told to stop before the server has answered at all (still reading
+        // the prompt): nothing was said, and the connection is closed.
+        let Some(n) = read_or_stop(&mut s, &mut buf, keep_going, timeout)? else {
+            return Ok(Ok(crate::brain::ChatReply::default()));
+        };
         if n == 0 {
             return Err(AtlasError::Platform("the model server closed the connection".into()));
         }
@@ -1890,7 +1940,10 @@ fn chat_call_io(
         if status != 200 && !chunked && error_len.is_some_and(|l| body_bytes.len() >= l) {
             break;
         }
-        let n = s.read(&mut buf)?;
+        let Some(n) = read_or_stop(&mut s, &mut buf, keep_going, timeout)? else {
+            stopped = true;
+            break;
+        };
         if n == 0 {
             break;
         }

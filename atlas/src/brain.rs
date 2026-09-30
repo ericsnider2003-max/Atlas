@@ -237,6 +237,15 @@ pub trait Llm: Send + Sync {
         chat_by_flattening(self, req, on_text)
     }
 
+    /// `chat`, stopped as soon as `keep_going` says so -- asked while the
+    /// model is still reading the prompt too, when no word has come for
+    /// `on_text` to stop at (30 Sep 2026, `deepbrain`: the deep model gives
+    /// way to a turn). A model that can't be stopped mid-call just answers.
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+        let _ = keep_going;
+        self.chat(req, on_text)
+    }
+
     /// Complete a task worth escalating to a stronger model when one is
     /// configured — a self-fix draft, code from a description. A single model
     /// has nothing stronger to reach for, so the default is just `complete`;
@@ -575,6 +584,13 @@ impl Llm for ShellLlm {
             return chat_by_flattening(self, req, on_text);
         };
         crate::models::chat_call(&url, req, on_text)
+    }
+
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+        let Some(url) = crate::models::chat_url_beside(&self.cfg) else {
+            return chat_by_flattening(self, req, on_text);
+        };
+        crate::models::chat_call_until(&url, req, on_text, keep_going)
     }
 
     fn complete(&self, system: &str, user: &str) -> Result<String> {

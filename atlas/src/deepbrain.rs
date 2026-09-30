@@ -42,15 +42,23 @@
 //!
 //! So the deep model **yields**: it works only while no turn is being
 //! answered. Every talking call holds a `TalkGuard` (the turn's worker, the
-//! rewording of a tool's result, a turn answered on the loop). A deep call
-//! waits for none to be held before it starts, and one in progress is cut
-//! off within a word when a turn begins: the words so far are kept, and once
-//! the turn is answered it carries on from them (the words so far sent back
-//! as the start of its answer -- llama-server continues a last assistant
-//! message; its prompt is still in its cache, so little is read again). A
-//! request with tools is asked again whole instead: its half-written tool
-//! call can't be continued. The deep server isn't even started while a turn
-//! is being answered, because loading 5.5 GB competes too.
+//! rewording of a tool's result, a turn answered on the loop, the parts of a
+//! request worked side by side). A deep call waits for none to be held
+//! before it starts, and one in progress is cut off when a turn begins --
+//! within a word while it writes, and within a fifth of a second while it is
+//! still reading its prompt (the connection is closed,
+//! `models::chat_call_until`), since a long prompt is where it holds the
+//! graphics longest. The words so far are kept, and once the turn is
+//! answered it carries on from them (sent back as the start of its answer:
+//! llama-server continues a last assistant message). How much of the prompt
+//! it reads again then depends on llama.cpp's cache for Qwen3.5's mixed
+//! layers -- not measured. A request with tools is asked again whole
+//! instead: its half-written tool call can't be continued. The deep server
+//! isn't even started while a turn is being answered, because loading 5.5 GB
+//! competes too.
+//!
+//! Not covered: a question from the phone answered by this computer's model
+//! server holds no guard, so the deep model doesn't give way to it.
 
 use crate::brain::{ChatReply, ChatRequest, Llm, Msg};
 use crate::error::{AtlasError, Result};
@@ -248,19 +256,33 @@ impl DeepLlm {
             let mut stopped = false;
             let mut this_round = String::new();
             let gate = &self.gate;
-            let r = self.deep.chat(&cur, &mut |piece| {
-                // A turn starting cuts in.
-                if may_yield && gate.talking() {
-                    yielded = true;
-                    return false;
+            // Asked while it reads the prompt as well, when no word comes.
+            let cut = std::cell::Cell::new(false);
+            let keep_going = || {
+                let go = !(may_yield && gate.talking());
+                if !go {
+                    cut.set(true);
                 }
-                this_round.push_str(piece);
-                if !on_text(piece) {
-                    stopped = true;
-                    return false;
-                }
-                true
-            });
+                go
+            };
+            let r = self.deep.chat_until(
+                &cur,
+                &mut |piece| {
+                    // A turn starting cuts in.
+                    if may_yield && gate.talking() {
+                        yielded = true;
+                        return false;
+                    }
+                    this_round.push_str(piece);
+                    if !on_text(piece) {
+                        stopped = true;
+                        return false;
+                    }
+                    true
+                },
+                &keep_going,
+            );
+            let yielded = yielded || cut.get();
             match r {
                 Ok(reply) if yielded && !stopped => {
                     self.gate.yields.fetch_add(1, Ordering::SeqCst);
