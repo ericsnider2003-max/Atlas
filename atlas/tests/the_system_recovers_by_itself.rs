@@ -178,7 +178,9 @@ fn a_second_question_while_one_is_thinking_takes_the_other_slot() {
     let asked = daemon[aside..].find(".converse_noting(").map(|i| i + aside).expect("converse_noting");
     assert!(aside < asked);
     let brain = source("src/brain.rs");
-    assert_eq!(brain.matches("aside: turn.aside").count(), 2, "the conversation call no longer carries the choice");
+    // Three since 30 Sep 2026: the call made first when a request plainly
+    // wants a tool (`converse_with_tools`) is a conversation call too.
+    assert_eq!(brain.matches("aside: turn.aside").count(), 3, "the conversation call no longer carries the choice");
 }
 
 // ------------------------------------------------------------- the Talk page
@@ -794,4 +796,18 @@ fn have_a_go_hands_over_the_cause_as_the_cause() {
     assert_eq!(s.diagnosing.cause.as_deref(), Some(r.cause.as_str()));
     assert_eq!(s.diagnosing.where_.as_deref(), Some(r.where_.as_str()));
     assert_eq!(s.diagnosing.proof.as_deref(), Some(r.proof.as_str()));
+}
+
+#[test]
+fn a_failed_call_is_said_once_without_the_error_kind() {
+    // The real-model run, 30 Sep 2026: "(platform: platform: I couldn't reach
+    // the model at 127.0.0.1:8093: Connection refused. I'll try again with
+    // your next message), so the answer you asked for is missing. I'll try
+    // again with your next message."
+    let w = atlas::daemon::model_failed_words(
+        "Model unreachable: platform: platform: I couldn't reach the model at 127.0.0.1:8093: Connection refused (os error 111). I'll try again with your next message",
+    );
+    assert_eq!(w.matches("try again").count(), 1, "{w}");
+    assert!(!w.to_lowercase().contains("platform:"), "{w}");
+    assert!(w.contains("Connection refused"), "{w}");
 }

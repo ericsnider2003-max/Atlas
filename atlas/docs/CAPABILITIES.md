@@ -104,6 +104,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | suggest where your files should live, and move them only when you say | built, never run for real | `filing` | ready | ready | ready | catch | would | catch |
 | edit a video from what you describe -- the plan first, then the cut -- with ffmpeg or an editor you already own | built, never run for real | `edit` `editors` | ready | ready | ready | catch | would | catch |
 | edit a photo or a folder of them on a new copy -- brighter, fixed colours, straightened (offered, never forced), cropped for Instagram or a YouTube thumbnail, background blurred or removed -- and take it back | built, never run for real | `photo` `straighten` `cutout` | ready | ready | ready | catch | would | catch |
+| make a new picture from a description, on this machine -- nothing uploaded, saved in your Pictures folder | waiting on the picture maker: a one-off 6.5 GB download (say "get the picture maker") | `imagemake` | ready | ready | ready | catch | would | catch |
 | measure a clip's loudness, dialogue and colour, say what a viewer will notice first -- in your words, not the jargon -- and fix it | built, never run for real | `grade` `measure` `plainly` | ready | ready | ready | catch | would | catch |
 | lay your script over your footage -- where each line lands, the gaps, the music ducked under your voice | waiting on piper | `voiceover` | ready | ready | ready | catch | would | catch |
 
@@ -354,4 +355,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-235 things, across 399 of 434 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+236 things, across 400 of 435 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

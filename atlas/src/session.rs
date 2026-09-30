@@ -386,6 +386,7 @@ pub fn kind_of(i: &Intent) -> &'static str {
         Intent::UseMic(_) => "use_mic",
         Intent::EditMedia(_) => "edit_media",
         Intent::EditPhoto(_) => "edit_photo",
+        Intent::MakePicture(_) => "make_picture",
         Intent::Clock => "clock",
         Intent::SetKey(_) => "set_key",
         Intent::Languages(_) => "languages",

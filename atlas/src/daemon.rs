@@ -237,6 +237,8 @@ fn crew_job(name: &str, topic: Option<&str>, speak: &SpeakPolicy) -> crew::Job {
         // A compiler, the whole council's model calls, the self-improvement
         // loop: each saturates every core on its own.
         "build" | "improve" | "council" => TheWholeMachine,
+        // A picture being made keeps the graphics and every core busy.
+        "make-picture" => TheWholeMachine,
         // Disk and network: copying files, talking to a mail server.
         "backup" | "mail" | "unsubscribe" | "outlook-connect" | "outreach" | "reclaim" | "mcp" | "draft-model" => MostlyWaiting,
         // Hub buttons that wait on the network (`hubjobs`), and the knock on
@@ -3881,7 +3883,17 @@ fn opens_with_deciding(said: &str) -> bool {
 /// A failed model call, in words: what went wrong and that the next message
 /// tries again (`brain` puts "Model unreachable: <why>" in `say`).
 pub fn model_failed_words(why: &str) -> String {
-    let why = why.trim().trim_start_matches("Model unreachable:").trim().trim_end_matches('.');
+    let mut why = why.trim().trim_start_matches("Model unreachable:").trim().to_string();
+    // The error's kind, once or twice over ("platform: platform: I couldn't
+    // reach..."), and the promise to try again, said twice (the real-model
+    // run, 30 Sep 2026): once each, in words.
+    while let Some(rest) = why.strip_prefix("platform:").or_else(|| why.strip_prefix("Platform:")) {
+        why = rest.trim().to_string();
+    }
+    for again in ["I'll try again with your next message.", "I'll try again with your next message"] {
+        why = why.replace(again, "");
+    }
+    let why = why.trim().trim_end_matches(['.', ' ']);
     // Names the source the way the connections board does
     // (`integrations::MODEL`) and says what it cost: the answer is missing.
     let model = crate::integrations::MODEL;

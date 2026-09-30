@@ -1674,7 +1674,7 @@ impl<'a> Daemon<'a> {
             }
             Ok("The meaning model is here and checked. I'll understand what you mean, not only the words, from now on.".into())
         });
-        if self.hand_off("model-piece", crate::store::now(), work, None, SpeakPolicy::Always) {
+        if self.hand_off("model-piece", crate::store::now(), work, Some("the meaning model".into()), SpeakPolicy::Always) {
             self.meaning_route_retry = true;
             format!("Getting the meaning model ({mb} MB) -- I'll say when it's ready.")
         } else {
@@ -1706,7 +1706,11 @@ impl<'a> Daemon<'a> {
                 None => format!("{} is here and checked.", capital(name)),
             })
         });
-        if self.hand_off("model-piece", crate::store::now(), work, None, SpeakPolicy::Always) {
+        // Keyed by which model: "get the better model" and "get the deep
+        // brain" are two downloads, not one asked twice (both were
+        // "model-piece" with nothing to tell them apart, so the second
+        // joined the first and never ran).
+        if self.hand_off("model-piece", crate::store::now(), work, Some(name.to_string()), SpeakPolicy::Always) {
             format!("Getting {name} ({label}) -- I'll say when it's ready.")
         } else {
             "I've too much going on to start that download now. Try again in a minute.".into()

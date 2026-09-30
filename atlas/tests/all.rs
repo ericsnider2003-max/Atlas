@@ -904,3 +904,5 @@ mod talking_does_not_hold_the_loop;
 mod a_quiet_tick_is_quick;
 #[path = "every_ability_answers.rs"]
 mod every_ability_answers;
+#[path = "pictures_are_made_here.rs"]
+mod pictures_are_made_here;

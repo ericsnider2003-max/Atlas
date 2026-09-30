@@ -313,6 +313,7 @@ impl<'a> Daemon<'a> {
             one_prompt: one_prompt.to_string(),
             skip_phrases: false,
             research_on: self.tools_ref().is_some_and(|tc| tc.research.enabled),
+            wants_a_tool: !handed_over && !about_atlas && self.router.sure_of(said, None),
             // The same question asked again may get the same answer: its
             // earlier answer isn't counted as a repeat.
             recent_replies: Some(match self.thread.said_earlier(said) {

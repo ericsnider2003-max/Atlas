@@ -185,6 +185,7 @@ impl<'a> Daemon<'a> {
             // A video edited on a copy; the original only after you say (G8).
             Intent::EditMedia(said) => self.edit_media(said, crate::store::now()),
             Intent::EditPhoto(said) => self.edit_photo(said),
+            Intent::MakePicture(said) => self.make_picture(said),
             Intent::Clock => crate::localclock::spoken_now(crate::store::now(), crate::localclock::offset_secs()),
             Intent::SetKey(said) => self.set_key(said),
             Intent::Languages(_) => self.languages_heard(),

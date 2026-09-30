@@ -124,6 +124,9 @@ pub struct ToolsConfig {
     /// model that can talk about what it sees (`picture_talk`).
     #[serde(default)]
     pub picture_talk: crate::picture_talk::PictureTalkConfig,
+    /// Making pictures on this machine (`imagemake`).
+    #[serde(default)]
+    pub picture_making: crate::imagemake::PictureMakingConfig,
     /// Smoothing and prediction for the pointer.
     #[serde(default)]
     pub smoothing: crate::handtrack::SmoothConfig,

@@ -80,6 +80,7 @@ pub mod reach;
 pub mod reclaim;
 pub mod meaning;
 pub mod meaningroute;
+pub mod imagemake;
 pub mod used;
 #[cfg(feature = "onnx")]
 pub mod meaningnative;

@@ -7,6 +7,71 @@
 use super::*;
 
 impl<'a> Daemon<'a> {
+    /// "Draw me a lighthouse at dusk": a picture made on this machine
+    /// (`imagemake`), on the crew -- it takes a few minutes on a laptop, and
+    /// Atlas keeps listening meanwhile. "Get the picture maker" fetches it.
+    pub(super) fn make_picture(&mut self, said: &str) -> String {
+        let l = said.to_lowercase();
+        if l.contains("picture maker") && (l.contains("get") || l.contains("download") || l.contains("fetch")) {
+            return self.get_picture_maker();
+        }
+        let tools = self.tools_cfg();
+        let cfg = tools.picture_making.clone();
+        let root = self.store.install_root();
+        if let Err(why) = crate::imagemake::ready(&cfg, &root) {
+            return format!("I can't make pictures here yet: {why}.");
+        }
+        let what = crate::imagemake::subject(said);
+        if what.trim().is_empty() {
+            return "What should I draw?".into();
+        }
+        let t = crate::store::now();
+        let out = crate::imagemake::folder(&cfg).join(crate::imagemake::file_name(&what, t));
+        let name = "picture maker";
+        if let Err(why) = self.helpers.want(name, crate::imagemake::MEMORY_MB, t, || Ok(None)) {
+            return format!("I can't make it right now: {why}");
+        }
+        let prompt = what.clone();
+        let work: crew::Work = Box::new(move |c: &crew::Control| {
+            match crate::imagemake::make(&cfg, &root, &prompt, &out, t, &|| c.stopping()) {
+                Ok(p) => Ok(format!("Here's {prompt}: it's in {}.", p.display())),
+                Err(why) => Err(format!("I couldn't make that picture: {why}.")),
+            }
+        });
+        if self.hand_off("make-picture", t, work, Some(what.clone()), SpeakPolicy::Always) {
+            format!("Making a picture of {what} on this machine -- it takes a few minutes; I'll say when it's ready.")
+        } else {
+            self.helpers.finished(name);
+            "I have too much on to start a picture now -- ask me again in a minute.".into()
+        }
+    }
+
+    /// Fetch the picture maker and its three model files, checked, on the crew.
+    fn get_picture_maker(&mut self) -> String {
+        if self.handover().stance.handed_over() {
+            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+        }
+        let root = self.store.install_root();
+        let pieces = crate::getpieces::picture_making();
+        if pieces.iter().all(|p| crate::getpieces::have(p, &root)) {
+            return "The picture maker is already here. Say \u{201c}draw me\u{201d} and what.".into();
+        }
+        let gb = pieces.iter().map(|p| p.bytes).sum::<u64>() as f64 / 1e9;
+        let work: crew::Work = Box::new(move |_ctl| {
+            for p in &pieces {
+                if !crate::getpieces::have(p, &root) {
+                    crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                }
+            }
+            Ok("The picture maker is here and checked. Say \u{201c}draw me\u{201d} and what, and I'll make it on this machine.".into())
+        });
+        if self.hand_off("model-piece", crate::store::now(), work, Some("the picture maker".into()), SpeakPolicy::Always) {
+            format!("Getting the picture maker ({gb:.1} GB) -- I'll say when it's ready.")
+        } else {
+            "I've too much going on to start that download now. Try again in a minute.".into()
+        }
+    }
+
     /// A Cloudflare worker to delegate to, when the machine is online and the
     /// provider is set up — otherwise `None` and the local model does the
     /// work, exactly as before. The token is fetched here, on the tick

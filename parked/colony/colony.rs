@@ -119,7 +119,7 @@ pub fn zone_for(errand: &str) -> Zone {
         "mail" | "mail-sort" | "mail-sort-apply" | "unsubscribe" | "friend-knock" | "conversation-reply" | "post" => {
             Zone::MailRoom
         }
-        "photo" | "edit-media" | "pictures" | "video" => Zone::Printing,
+        "photo" | "edit-media" | "pictures" | "video" | "make-picture" => Zone::Printing,
         "code" | "build" | "improve" | "housekeeping" | "backup" | "reclaim" | "security-change" | "model-piece"
         | "draft-model" | "mcp" | "move-files" | "sign-in" | "sign-up" | "teach-gesture" | "outlook-connect" => {
             Zone::ComputerLab

@@ -57,6 +57,12 @@ const REQUESTS: &[(&str, &str)] = &[
     ("what's on my calendar tomorrow", "agenda"),
     ("find the tax pdf from last year", "find_file"),
     ("my laptop is running slow, what's eating the memory", "machine_health"),
+    // Said without the commands' own words (30 Sep 2026, the capability
+    // sweep): what "doesn't seem to know it has them" looked like.
+    ("how much space have I got left on this thing", "machine_health"),
+    ("anything new come in by email", "mail"),
+    ("could you find me some freelance gigs", "opportunities"),
+    ("how did my last youtube video do", "social"),
 ];
 
 const TALK: &[&str] = &[
@@ -76,18 +82,34 @@ fn his_sentences_against_a_real_model() {
     // that does it (the part that doesn't need a model to check).
     let book = atlas::intent::ToolBook::new(&atlas::config::Config::load(Path::new("config")).unwrap().commands);
     let router = atlas::router::Router::new(&book);
-    for (said, want) in REQUESTS {
+    // The ones said in the commands' own words: words alone find them.
+    for (said, want) in &REQUESTS[..8] {
         let names = router.names_for(said, atlas::router::SHORTLIST);
         assert!(names.iter().any(|n| n == want), "{said:?}: {names:?}");
     }
     let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else { return };
-    let c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
+    // With the meaning encoder too, when there is one (`ATLAS_EMBED_DIR`, as
+    // in `meaning_picks_the_tool.rs`): the paraphrases need it.
+    if let Some(dir) = std::env::var_os("ATLAS_EMBED_DIR").map(std::path::PathBuf::from) {
+        let enc = serde_json::json!({ "encoder": {
+            "command": dir.join("embed").to_string_lossy(),
+            "args": ["--model", dir.join("all-MiniLM-L6-v2.onnx").to_string_lossy(), "--vocab", dir.join("vocab.txt").to_string_lossy()],
+            "stdin_text": true
+        }});
+        c.tools.get_or_insert_with(Default::default).meaning = serde_json::from_value(enc).unwrap();
+    }
     let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
     let dir = std::env::temp_dir().join(format!("atlas-real-model-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let llm = Arc::new(Real { url, seen: Mutex::new(Vec::new()) });
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
     let mut t = 1_790_760_000u64;
+    // The tick starts the encoder; its tools take a few seconds to embed.
+    d.tick(t);
+    if std::env::var_os("ATLAS_EMBED_DIR").is_some() {
+        std::thread::sleep(std::time::Duration::from_secs(25));
+    }
     let mut right = 0;
     let mut routed = 0;
     for (said, want) in REQUESTS {

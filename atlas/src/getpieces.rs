@@ -486,6 +486,48 @@ pub fn understanding() -> Vec<Piece> {
     ]
 }
 
+/// The picture maker (`imagemake`, 30 Sep 2026): stable-diffusion.cpp's
+/// Vulkan build for Windows (release master-890-74988b2, MIT), Z-Image Turbo
+/// at 4-bit (Apache 2.0), its Qwen3 4B text encoder (Apache 2.0) and its
+/// decoder. Sizes and SHA-256 from Hugging Face's own records and the
+/// release file, 30 Sep 2026. About 6.5 GB.
+pub fn picture_making() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the picture maker",
+            for_what: "making pictures on this machine",
+            url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-890-74988b2/sd-master-74988b2-bin-win-vulkan-x64.zip",
+            sha256: "744c8f817c66ecfd02fbb9dc8b122e1f29f7240db1f6086dfde2669403c5d896",
+            bytes: 31_932_748,
+            lands: Lands::Zip { inside: "", dir: "tools/sd", key: "tools/sd/sd-cli.exe" },
+        },
+        Piece {
+            name: "its picture model",
+            for_what: "making pictures on this machine",
+            url: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_0.gguf",
+            sha256: "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+            bytes: 3_683_370_944,
+            lands: Lands::File("models/pictures/z_image_turbo-Q4_0.gguf"),
+        },
+        Piece {
+            name: "its text encoder",
+            for_what: "making pictures on this machine",
+            url: "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            sha256: "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+            bytes: 2_497_281_120,
+            lands: Lands::File("models/pictures/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"),
+        },
+        Piece {
+            name: "its decoder",
+            for_what: "making pictures on this machine",
+            url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+            sha256: "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+            bytes: 335_304_388,
+            lands: Lands::File("models/pictures/ae.safetensors"),
+        },
+    ]
+}
+
 /// A set by the word you'd type after `atlas get`: nothing for the voice
 /// pieces, `seeing`, `pictures`, `photos`, or `tor`.
 pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
@@ -495,6 +537,7 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("pictures") => Some(("what Atlas needs to read charts and screens (about 3 GB)", pictures())),
         Some("tor" | "friends") => Some(("Tor, so friends can reach your Atlas from anywhere", tor())),
         Some("photos" | "photo") => Some(("the cut-out models Atlas needs to blur or remove a photo's background", photos())),
+        Some("pictures-made" | "picture-maker" | "imagemake") => Some(("what Atlas needs to make pictures on this machine (about 6.5 GB)", picture_making())),
         Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,

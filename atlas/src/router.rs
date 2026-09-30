@@ -119,7 +119,7 @@ const EVERYDAY: &[(&str, &str)] = &[
     ("mail", "email emails inbox mail"),
     ("delegate", "reply respond draft answer message email"),
     ("message", "text message send friend"),
-    ("machine_health", "computer laptop slow memory ram disk cpu fan hot"),
+    ("machine_health", "computer laptop slow memory ram disk cpu fan hot space storage left free drive room battery"),
     ("recommend", "improve improving better faster quality upgrade"),
     ("work_on_yourself", "fix yourself improve yourself own code"),
     ("clock", "time date"),
@@ -351,6 +351,47 @@ impl Router {
         order.into_iter().map(|(i, s)| (&self.entries[i], s)).collect()
     }
 
+    /// Does this sentence plainly ask for one of the tools: a command's
+    /// phrase leads it, the words match strongly, or the meaning is sure?
+    pub fn sure_of(&self, said: &str, meaning: Option<(&[f32], &[Vec<f32>])>) -> bool {
+        if small_talk(said) {
+            return false;
+        }
+        // A question is a request only when it's about their own things
+        // ("how did my last video do"): "wait, what do you mean" and "what
+        // are volcanic islands made of" are conversation.
+        let l = format!(" {} ", said.to_lowercase().replace(['?', ',', '.', '!'], " "));
+        let question = said.trim_end().ends_with('?')
+            || ["what", "why", "how", "who", "when", "where", "which", "is", "are", "do", "does", "can", "could", "would", "will", "wait"]
+                .iter()
+                .any(|w| l.trim_start().starts_with(&format!("{w} ")));
+        let theirs = [" my ", " i ", " i've ", " i'm ", " me ", " mine "].iter().any(|w| l.contains(w));
+        if question && !theirs {
+            return false;
+        }
+        // A command's own phrase leading it, of two words or more ("check my
+        // email"); a one-word phrase ("write", "wait") leads too much else.
+        let lead = leading_words(said);
+        if self.entries.iter().any(|e| e.phrases.iter().any(|p| p.split_whitespace().count() >= 2 && starts_with_phrase(&lead, p))) {
+            return true;
+        }
+        // Or the words match one tool strongly and clearly ahead of the next:
+        // measured on his sentences (30 Sep 2026), the right tool scored 6.6
+        // to 20.7 with the next at most 0.82 of it; "write a haiku" (build_it
+        // 5.6) and "tell me a story" (4.9) stayed under.
+        let top = self.shortlist(said, 2);
+        if let Some((_, s)) = top.first() {
+            let next = top.get(1).map(|(_, n)| *n).unwrap_or(0.0);
+            if *s != f64::MAX && *s >= FLOOR * 2.5 && next <= *s * 0.85 {
+                return true;
+            }
+        }
+        match meaning {
+            Some((q, lines)) => self.meaning_of(q, lines).into_iter().any(|c| c >= MEANING_SURE),
+            None => false,
+        }
+    }
+
     /// The names only.
     pub fn names_for(&self, said: &str, k: usize) -> Vec<String> {
         self.shortlist(said, k).into_iter().map(|(e, _)| e.name.clone()).collect()
@@ -400,6 +441,7 @@ const SAID_FOR: &[(&str, &str)] = &[
     ("capture", "make a note of this for later"),
     ("machine_health", "why is my laptop so slow right now"),
     ("machine_health", "is something hogging the processor"),
+    ("machine_health", "how much room is left on my drive"),
     ("self_check", "are you working properly"),
     ("self_check", "check yourself for problems"),
     ("tidy_desktop", "clean up all the icons on my desktop"),
@@ -536,6 +578,9 @@ pub fn small_talk(said: &str) -> bool {
         " hi ", " hey ", " hello ", " morning ", " evening ", " thanks ", " thank you ", " cheers ", " bye ", " goodbye ",
         " good night ", " goodnight ", " how's it going ", " hows it going ", " how are you ", " how's your day ",
         " what's up ", " whats up ", " see you ", " have a good ", " you there ", " can you hear me ",
+        // Reactions, not requests (30 Sep 2026: "haha fair enough" matched
+        // "that's enough", the phrase that takes a panel down).
+        " haha ", " lol ", " fair enough ", " fair point ", " nice one ", " makes sense ",
     ]
     .iter()
     .any(|w| t.contains(w))

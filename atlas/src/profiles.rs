@@ -71,6 +71,9 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
     // "undo the last photo edit" removes one -- the owner's files, the same
     // as `edit_media` above (29 Sep 2026, when photo editing was merged).
     "edit_photo",
+    // Making a picture writes into the owner's Pictures folder, and "get the
+    // picture maker" downloads 6.5 GB onto the owner's machine (30 Sep 2026).
+    "make_picture",
     "set_key",
     "languages",
     "teach_gesture",

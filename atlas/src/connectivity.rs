@@ -426,6 +426,8 @@ pub fn need_of(intent: &Intent) -> Need {
         | Intent::EditMedia(_)
         // ffmpeg and the cut-out models, on this machine.
         | Intent::EditPhoto(_)
+        // stable-diffusion.cpp and its model, on this machine.
+        | Intent::MakePicture(_)
         // This machine's own clock.
         | Intent::Clock
         // Your settings are on this machine.

@@ -212,3 +212,33 @@ fn the_encoder_inside_atlas_matches_the_program() {
     eprintln!("inside Atlas, one sentence (debug build): {:?}", t.elapsed());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A request that plainly names a tool is sure; his small talk and his
+/// questions about the world aren't (`Router::sure_of`, the forced call).
+#[test]
+fn sure_only_of_plain_requests() {
+    let r = router();
+    for (said, _) in crate::the_right_tools_for_the_sentence::HIS_REQUESTS {
+        eprintln!("sure={} {said}", r.sure_of(said, None));
+    }
+    for said in ["my laptop is running slow, what's eating the memory", "check my email", "organize my desktop", "how did my last youtube video do"] {
+        assert!(r.sure_of(said, None), "{said}");
+    }
+    for said in [
+        "hey, how's it going", "tell me something interesting about octopuses", "why do they have three hearts",
+        "Thanks, have a good day.", "haha fair enough", "wait, what do you mean", "what are volcanic islands made of",
+        "write a haiku about rain", "continue the story", "what should I eat tonight",
+    ] {
+        assert!(!r.sure_of(said, None), "{said}");
+    }
+}
+
+
+/// "How much space have I got left on this thing" went to the model's own
+/// call log with a real 4B model (30 Sep 2026): space is the machine's.
+#[test]
+fn space_left_is_the_machines_health() {
+    let r = router();
+    let names: Vec<String> = r.shortlist("how much space have I got left on this thing", 2).into_iter().map(|(e, _)| e.name.clone()).collect();
+    assert_eq!(names.first().map(String::as_str), Some("machine_health"), "{names:?}");
+}

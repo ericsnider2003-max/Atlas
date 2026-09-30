@@ -733,6 +733,17 @@ commands:
   # Editing a photo, or every photo in a folder, on a new copy beside it
   # (`photo`, 29 Sep 2026). The whole sentence goes through: it says both
   # what to do and, often, which photo.
+  # Make a picture on this machine (`imagemake`, 30 Sep 2026): Z-Image Turbo
+  # through stable-diffusion.cpp, nothing uploaded. The whole sentence goes
+  # through; what to draw is taken from it.
+  - intent: make_picture
+    describe: "Make a new picture from a description, on this machine (a local image model; nothing is uploaded), saved in Pictures\\Atlas. Or fetch the picture maker. arg: what to draw, in the user's words."
+    expose: core
+    phrases: ["draw me", "draw a picture of", "draw me a picture of", "paint me", "paint a picture of",
+              "make me a picture of", "make a picture of", "make me an image of", "make an image of",
+              "generate an image of", "generate a picture of", "generate me an image of", "generate an image",
+              "create an image of", "create a picture of", "make me a picture", "make a picture", "make an image",
+              "get the picture maker", "download the picture maker"]
   - intent: edit_photo
     describe: "Edit a photo (or every photo in a folder) on a new copy beside the original: brighter/darker, fix colours, straighten, rotate, crop for Instagram/YouTube/stories, denoise, sharpen, blur or remove the background, convert to JPEG/PNG/WebP; or undo the last photo edit. arg: what to do, and the photo's path if given."
     expose: core

@@ -1413,7 +1413,29 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     body["chat_template_kwargs"] = json!({ "enable_thinking": false });
     if !req.tools.is_empty() {
         body["tools"] = Value::Array(req.tools.clone());
-        body["tool_choice"] = json!(if req.force_tool { "required" } else { "auto" });
+        body["tool_choice"] = json!("auto");
+        // A call required: llama.cpp (b10456, Qwen3-VL, its own template or
+        // Atlas's) doesn't hold the model to `tool_choice: "required"` --
+        // measured 30 Sep 2026, "tell me a joke" with a call required came
+        // back a joke, and every forced retry that evening came back words
+        // ("Your last YouTube video got 12K views"). A JSON schema is held
+        // to: the reply is `{"name": <one of the tools>, "arg": "..."}`,
+        // made a tool call by `forced_call`.
+        if req.force_tool {
+            let names: Vec<Value> = req
+                .tools
+                .iter()
+                .filter_map(|t| t.pointer("/function/name").cloned())
+                .collect();
+            body["response_format"] = json!({
+                "type": "json_schema",
+                "json_schema": { "name": "call", "schema": {
+                    "type": "object",
+                    "properties": { "name": { "type": "string", "enum": names }, "arg": { "type": "string" } },
+                    "required": ["name", "arg"]
+                }}
+            });
+        }
         // Which tools are the same every turn, for Atlas's own template
         // (`tools_late_template`); any other template never reads it.
         if req.stable_tools > 0 && req.stable_tools < req.tools.len() {
@@ -1421,6 +1443,20 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
         }
     }
     body.to_string()
+}
+
+/// A forced call's answer (`chat_body`'s schema) as a tool call: the tool's
+/// name and, for a tool that takes one, its `arg`. `None` when the text isn't
+/// one of the offered tools.
+pub fn forced_call(text: &str, tools: &[serde_json::Value]) -> Option<crate::brain::ToolCall> {
+    use serde_json::{json, Value};
+    let v: Value = serde_json::from_str(text.trim()).ok()?;
+    let name = v.get("name")?.as_str()?.trim().to_string();
+    let spec = tools.iter().find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.as_str()))?;
+    let takes_arg = spec.pointer("/function/parameters/properties/arg").is_some();
+    let arg = v.get("arg").and_then(|a| a.as_str()).unwrap_or("").trim().to_string();
+    let arguments = if takes_arg { json!({ "arg": arg }) } else { json!({}) };
+    Some(crate::brain::ToolCall { name, arguments })
 }
 
 /// The name the chat template knows the number of every-turn tools by.
