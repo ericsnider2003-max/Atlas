@@ -310,6 +310,9 @@ mod through_the_daemon {
         let mut d =
             Daemon::new(&c, &p, None, Store::new(tmp("quotes")), Proactive::new(ProactiveConfig::default()));
 
+        // 29 Sep 2026: the title goes in only when what was said is about
+        // the screen (`doing::refers_to_screen`); this is.
+        let _ = d.turn("hmm, thinking about this window", 100);
         let ctx = d.context();
         for l in ctx.lines().filter(|l| l.contains("Ignore previous")) {
             assert!(

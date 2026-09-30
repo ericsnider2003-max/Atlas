@@ -529,8 +529,17 @@ fn speaking_over_a_reply_stops_it_and_what_you_said_is_answered_next() {
     let said = mouth.said.lock().unwrap().clone();
     assert!(said.first().is_some_and(|(_, cut)| *cut), "the first line wasn't cut off: {said:?}");
     assert_eq!(st.transcribed.load(Ordering::SeqCst), 1, "what you said over it wasn't taken");
-    // The room, the first reply, and the answer to what you said.
-    assert!(st.streams.load(Ordering::SeqCst) >= 3, "no second reply was spoken (the cut-in wasn't answered): {said:?}");
+    // The room and the first reply were watched; and the answer to what you
+    // said was spoken. 29 Sep 2026: this counted a third microphone stream,
+    // for the answer -- which opened only because "Paused." was said first
+    // and gave the microphone's thread time to finish with your words.
+    // Taking the turn is answered without "Paused." now (`speech::YOUR_TURN`),
+    // and this test's answer (the time) comes back instantly, so it can be
+    // said before the thread is watching again; a real answer waits on the
+    // model. What the test is about -- you were heard over the reply, it
+    // stopped, and what you said was answered -- is asserted directly.
+    assert!(st.streams.load(Ordering::SeqCst) >= 2, "the reply wasn't watched: {said:?}");
+    assert!(said.len() >= 2, "no second reply was spoken (the cut-in wasn't answered): {said:?}");
     assert!(said.iter().skip(1).any(|(_, cut)| !cut), "the answer to what you said was cut too: {said:?}");
     assert!(!st.recording.load(Ordering::SeqCst) || st.attempts.load(Ordering::SeqCst) > 0);
     let _ = d.shut_down();
