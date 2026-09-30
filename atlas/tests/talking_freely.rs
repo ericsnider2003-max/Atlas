@@ -389,10 +389,14 @@ fn the_prompt_prefix_is_identical_across_turns_with_different_window_titles() {
     let spy = ChatSpy::saying("Sounds good.");
     let mut d = daemon(&c, &p, spy.clone(), "prefix");
     *p.active.borrow_mut() = Some(ActiveWindow { process: "chrome.exe".into(), title: "Quarterly numbers - Sheets".into() });
-    let _ = d.turn("what do you think of the plan", 100);
+    // 29 Sep 2026: the window's name goes in only when what was said is
+    // about the screen (`doing::refers_to_screen`) -- with Discord in front,
+    // Eric's evening was answered as if every sentence were about Discord.
+    // These two mention the page and the window.
+    let _ = d.turn("what do you think of the plan on this page", 100);
     let first = spy.last().messages;
     *p.active.borrow_mut() = Some(ActiveWindow { process: "code.exe".into(), title: "main.rs - atlas".into() });
-    let _ = d.turn("tell me a joke about compilers", 160);
+    let _ = d.turn("tell me a joke about the code in this window", 160);
     let second = spy.last().messages;
 
     assert_eq!(first[0].content, second[0].content, "the system message changed between turns");
@@ -700,6 +704,7 @@ fn live_llama_server_smoke() {
             max_sentences: Some(3),
             one_prompt: String::new(),
             skip_phrases: true,
+            recent_replies: None,
         };
         let started = std::time::Instant::now();
         let mut first: Option<std::time::Duration> = None;

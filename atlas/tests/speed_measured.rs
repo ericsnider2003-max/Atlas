@@ -81,7 +81,14 @@ impl Llm for Talker {
         // Never the same answer twice: Atlas asks again when a reply
         // repeats the last one word for word.
         let about = req.messages.last().map(|m| m.content.rsplit("User said: ").next().unwrap_or("").to_string()).unwrap_or_default();
-        let reply = format!("On {about}: {}", self.reply);
+        // 29 Sep 2026: and never the same sentences twice either. Atlas now
+        // leaves out a sentence an earlier reply already said, and asks
+        // again when most of a reply is repeats (`repeating`); a talker
+        // saying the same three sentences after a new opening every turn is
+        // the loop Eric's laptop fell into, not a conversation.
+        let n = self.asked.lock().unwrap().len();
+        let body = if self.reply == REPLY { REPLIES[n % REPLIES.len()] } else { self.reply.as_str() };
+        let reply = format!("On {about}: {body}");
         std::thread::sleep(Duration::from_millis(self.first_ms));
         for w in reply.split_inclusive(' ') {
             if !on_text(w) {
@@ -167,6 +174,34 @@ const CONVERSATION: &[&str] = &[
 const REPLY: &str = "Fair question, and there's more to it than it looks. The short version is that it \
     depends on a few things, mostly timing and what you already have to hand. If you tell me a bit more \
     about what you're after, I can be a lot more specific.";
+
+/// Replies the length of `REPLY`, each different, so a conversation of them
+/// is not a loop (`Talker`).
+const REPLIES: &[&str] = &[
+    "Fair question, and there's more to it than it looks. The short version is that it depends on a few things, \
+     mostly timing and what you already have to hand. If you tell me a bit more, I can be a lot more specific.",
+    "Most people get this one backwards at first. What matters is the order you do things in, not how fast. \
+     Start small and the rest tends to follow on its own.",
+    "It's simpler than it sounds once you see the trick behind it. Everything else is detail layered on top of \
+     one idea. Ask me about any part and I'll unpack that bit.",
+    "There are two camps on this and both have a point. One side cares about speed, the other about getting it \
+     right the first time. I lean towards the second, for what that's worth.",
+    "Short answer: yes, but with a caveat worth knowing. The caveat only bites in unusual cases, so you'll \
+     rarely hit it. When you do, it's obvious straight away.",
+    "That one surprised me when I first read about it. The explanation involves a bit of physics and a bit of \
+     history. I can go into either if you like.",
+    "Honestly, it comes down to taste more than anything. There's no wrong choice among the usual options. \
+     Pick the one you'd enjoy doing on a tired evening.",
+    "The numbers are closer than people expect. Neither is dramatically ahead once you account for the edges. \
+     It's the kind of thing that flips depending on who's counting.",
+    "Good one, and the usual explanation is only half right. The missing half is about how light scatters on \
+     its way through the air. Once you see that, the colours make sense.",
+    "I'd start with something short and well written rather than the famous doorstop. You'll finish it and \
+     want more. Then the big classic reads twice as well.",
+    "That was written by someone better known for something else entirely. It came out early in their career. \
+     Their later work is more polished but less fun.",
+    "Any time. I'll be around when you want to pick it up again. Enjoy the rest of your evening.",
+];
 
 /// Sentences that need a tool the phrases don't catch, for trying a real
 /// model's tool choice (`ATLAS_DUMP_TOOL_ASKS=<file>`).
@@ -359,6 +394,7 @@ fn each_request_says_which_tools_are_the_every_turn_ones() {
         force_tool: false,
         stable_tools: stable,
         aside,
+        stronger: false,
     };
     let sent_as = |stable: usize, aside: bool| {
         let (url, rx) = one_request_server();

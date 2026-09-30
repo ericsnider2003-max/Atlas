@@ -169,6 +169,10 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // finance::review and finance::summary came off 19 Sep 2026: `atlas money`
     // calls both module-qualified, so the scan can see which `review` and
     // which `summary` it reached.
+    // 29 Sep: `filing::suggest`'s caller is now `filing::plan_folder`, in its
+    // own module, which `atlas file` and "tidy my desktop" both reach by its
+    // full name; `atlas file` used to call `suggest` itself. Verified by hand.
+    "filing::suggest",
     "finance::allowed",
     "fixtures::path",
     "flow::expand",

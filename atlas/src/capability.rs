@@ -738,7 +738,21 @@ pub fn about_atlas(said: &str, most: usize) -> String {
 /// (27 Sep 2026).
 pub fn is_about_atlas(said: &str) -> bool {
     let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
-    let t = format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "));
+    let mut w: Vec<&str> = t.split_whitespace().collect();
+    // "Atlas, ..." is calling it by name, not asking about it (29 Sep 2026:
+    // nearly everything Eric said began "Atlas" -- or "At this", the name
+    // misheard -- and every one of them carried the whole about-Atlas block,
+    // two thousand characters, into the prompt).
+    for lead in [&["hey", "atlas"][..], &["ok", "atlas"], &["okay", "atlas"], &["at", "this"], &["atlas"]] {
+        if w.len() > lead.len() && w[..lead.len()] == *lead {
+            w.drain(..lead.len());
+            break;
+        }
+    }
+    if w.last() == Some(&"atlas") && w.len() > 1 {
+        w.pop();
+    }
+    let t = format!(" {} ", w.join(" "));
     if crate::register::read(said, &Default::default()) == crate::register::Register::AboutAtlas {
         return true;
     }
@@ -1334,7 +1348,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 410 -> 413 (29 Sep): `photo`, `straighten` and `cutout` (photo editing).
 // 413 -> 414 (29 Sep): `social` (its `src/social/*.rs` fold into it).
 // 414 -> 418 (29 Sep): `hunt`, `hunting` (opportunity hunting), `wit`, `talkback`.
-pub const MODULES_IN_TREE: usize = 418;
+// 418 -> 420 (29 Sep): `doing`, `repeating` (Eric's evening on the laptop; plumbing).
+pub const MODULES_IN_TREE: usize = 420;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1364,6 +1379,8 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("gguf", "reads a model file's header so the model loader knows what it is loading"),
     ("http", "a minimal loopback HTTP client for the browser debugger and local helpers"),
     ("intent", "turns a phrase into an intent for every capability; the understanding layer, not a thing you ask for"),
+    ("doing", "reads a request that doesn't start with a command's phrase as the command it means, and whether the screen was mentioned; part of the understanding layer"),
+    ("repeating", "keeps a reply from saying again what Atlas already said; part of how every reply is spoken, not a thing you ask for"),
     ("judgment", "the shared scale graded judgments are expressed on, borrowed by a dozen capabilities"),
     ("lifecycle", "starts heavyweight helpers when needed and reaps them when idle"),
     ("look", "the palette and catenary constants the native windows are painted from"),

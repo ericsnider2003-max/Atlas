@@ -575,6 +575,12 @@ impl<'a> Daemon<'a> {
             }
         }
         line.push_str(&format!(" model={model_ms}ms/{} call(s) delivering={speaking_ms}ms", calls.len()));
+        // What the model server itself counted for the last call: a whole
+        // prompt read again (a cache miss) reads very differently from a
+        // long reply (29 Sep 2026).
+        if let Some(st) = crate::models::take_last_timings() {
+            line.push_str(&format!("; {}", st.line()));
+        }
         self.log.info(&line);
     }
 
@@ -1107,7 +1113,7 @@ impl<'a> Daemon<'a> {
             if let Some(words) = cut_while_thinking {
                 // Set aside for what you said instead.
                 if let Some(mut s) = saying.take() {
-                    s.cut("hold on");
+                    s.cut(crate::speech::YOUR_TURN);
                     let _ = s.finish();
                 }
                 self.timing.add(timed);

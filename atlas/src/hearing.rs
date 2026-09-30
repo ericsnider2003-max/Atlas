@@ -156,6 +156,10 @@ pub struct Hearing {
     wanted: Option<Ear>,
     wanted_since: u64,
     pub last_calibration: u64,
+    /// The microphone you asked for by name ("use my webcam mic", 29 Sep
+    /// 2026): kept to while it is plugged in, whatever the scores say.
+    #[serde(default)]
+    pub chosen: Option<String>,
 }
 
 impl Hearing {
@@ -167,6 +171,12 @@ impl Hearing {
 
     pub fn save_to(&self, store: &crate::store::Store) -> crate::error::Result<()> {
         store.save("hearing", self)
+    }
+
+    /// Keep to this microphone from now on (`pick_microphone`).
+    pub fn choose(&mut self, name: &str) {
+        self.chosen = Some(name.to_string());
+        self.current = Some(Ear::Desk(name.to_string()));
     }
 
     pub fn observe_devices(&mut self, devices: &[Device]) {
@@ -479,6 +489,18 @@ pub fn pick_microphone(
     now: u64,
 ) -> Option<Picked> {
     hearing.observe_devices(devices);
+    // The one you asked for, while it's here (29 Sep 2026): the re-pick
+    // every few minutes used to take it back to whichever scored best.
+    if let Some(name) = hearing.chosen.clone() {
+        if devices.iter().any(|d| d.kind == crate::audio::Kind::Input && d.name == name) {
+            return Some(Picked {
+                device: crate::audio::ffmpeg_name_for(devices, &name),
+                name,
+                why: "you asked for this one".into(),
+                costs_quality: false,
+            });
+        }
+    }
     let choice = hearing.decide(w, &tc.hearing, now);
     // "Nothing" and "your phone" are not devices to record from.
     let picked = match &choice.ear {
@@ -508,4 +530,47 @@ pub fn pick_microphone(
         why: format!("no microphone stood out ({}), so the first one", sel.why),
         costs_quality: false,
     })
+}
+
+/// Which microphone a spoken kind ("webcam", "headset", "laptop") means.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MicFit<'a> {
+    One(&'a Device),
+    Several(Vec<&'a Device>),
+    None,
+}
+
+/// The input devices whose names fit `kind`: the word itself in the name,
+/// or what that kind of microphone is usually called ("webcam" fits a
+/// "Camera", a "C920", a "BRIO", or the name of the camera Atlas uses,
+/// `camera`), or -- for "laptop" -- the built-in one.
+pub fn mic_by_kind<'a>(devices: &'a [Device], kind: &str, camera: &str) -> MicFit<'a> {
+    let k = kind.trim().to_lowercase();
+    let k = k.trim_end_matches(" microphone").trim_end_matches(" mic").trim();
+    let camera = camera.trim().to_lowercase();
+    let also: &[&str] = match k {
+        "webcam" | "camera" | "cam" => &["webcam", "camera", "cam", "c920", "c922", "c930", "brio", "kiyo", "streamcam", "facecam", "lifecam"],
+        "headset" | "headphones" => &["headset", "headphone", "hands-free", "handsfree"],
+        "laptop" | "builtin" | "built in" => &["array", "internal", "built-in", "realtek", "intel"],
+        "airpods" => &["airpods"],
+        "bluetooth" => &["bluetooth", "hands-free", "airpods"],
+        "usb" => &["usb"],
+        _ => &[],
+    };
+    let fits = |d: &&Device| {
+        if d.kind != Kind::Input {
+            return false;
+        }
+        let n = d.name.to_lowercase();
+        n.contains(k)
+            || also.iter().any(|a| n.contains(a))
+            || (matches!(k, "webcam" | "camera" | "cam") && !camera.is_empty() && camera.split_whitespace().filter(|w| w.len() > 3 && *w != "camera").any(|w| n.contains(w)))
+            || (matches!(k, "laptop" | "builtin" | "built in") && d.builtin)
+    };
+    let found: Vec<&Device> = devices.iter().filter(fits).collect();
+    match found.len() {
+        0 => MicFit::None,
+        1 => MicFit::One(found[0]),
+        _ => MicFit::Several(found),
+    }
 }

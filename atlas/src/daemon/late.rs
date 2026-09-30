@@ -1211,6 +1211,116 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// "Organize my desktop" (Eric, 29 Sep 2026): the loose files on the
+    /// desktop, each with where it would go (`filing::plan_folder`), said
+    /// first and done only on a yes (`carry_out_desktop_plan`). Shortcuts,
+    /// folders and files whose names don't say what they are stay put.
+    pub(super) fn tidy_desktop(&mut self) -> String {
+        let sys = self.tools_cfg().system.clone();
+        if !sys.enabled {
+            return "Moving your files is switched off -- turn on System changes in Settings and ask me again.                     I'd only move loose files into folders, never delete anything."
+                .into();
+        }
+        let Some(home) = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")) else {
+            return "I couldn't work out where your home folder is, so I can't find your desktop.".into();
+        };
+        let home = std::path::PathBuf::from(home);
+        // Windows moves the desktop into OneDrive when OneDrive backs it up.
+        let desktop = [home.join("OneDrive").join("Desktop"), home.join("Desktop")]
+            .into_iter()
+            .find(|d| d.is_dir())
+            .unwrap_or_else(|| home.join("Desktop"));
+        let root = home.join("Documents").join("Filed");
+        let plan = crate::filing::plan_folder(&desktop, &root, crate::store::now());
+        let words = crate::filing::tidy_plan_words("your desktop", &plan, &root);
+        if plan.iter().any(|(_, s)| matches!(s, crate::filing::Suggestion::Move { .. })) {
+            self.session.ask(&words);
+            self.pending_desktop = Some(plan);
+        }
+        words
+    }
+
+    /// The desktop plan, carried out: each move judged and done
+    /// (`filing::file_one`), and what happened said -- how many went where,
+    /// and each one that didn't, with why.
+    pub(super) fn carry_out_desktop_plan(&mut self, plan: Vec<(std::path::PathBuf, crate::filing::Suggestion)>) -> String {
+        let sys = self.tools_cfg().system.clone();
+        let mut filed = 0usize;
+        let mut into: Option<std::path::PathBuf> = None;
+        let mut not: Vec<String> = Vec::new();
+        for (from, s) in &plan {
+            if crate::filing::as_change(from, s).is_none() {
+                continue;
+            }
+            match crate::filing::file_one(from, s, &sys) {
+                Ok(to) => {
+                    filed += 1;
+                    if into.is_none() {
+                        into = to.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf());
+                    }
+                    self.journal.record_at(Act::Upkeep, &format!("filed {} to {}", from.display(), to.display()), true, crate::store::now());
+                }
+                Err(why) => {
+                    let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    not.push(format!("{name} ({why})"));
+                }
+            }
+        }
+        let mut said = match (&into, filed) {
+            (_, 0) => "Nothing moved.".to_string(),
+            (Some(root), n) => format!("Filed {n} from your desktop, into folders under {}.", root.display()),
+            (None, n) => format!("Filed {n} from your desktop."),
+        };
+        if !not.is_empty() {
+            said.push_str(&format!(" Not moved: {}.", not.join("; ")));
+        }
+        said
+    }
+
+    /// "Use my webcam mic" (Eric, 29 Sep 2026): the microphones this machine
+    /// has, the one whose name fits `kind` ("webcam" fits "Microphone (HD Pro
+    /// Webcam C920)"), recorded from now on and kept to -- the periodic
+    /// re-pick leaves a microphone you chose alone while it's plugged in
+    /// (`hearing::Hearing::chosen`). Named back, or the ones there are when
+    /// none fits or several do.
+    pub(super) fn use_microphone(&mut self, kind: &str) -> String {
+        let Some(tc) = self.tools_ref().cloned() else {
+            return "I can't hear on this machine yet -- there's no voice set up.".into();
+        };
+        let ffmpeg = tc.vars.get("ffmpeg").cloned().unwrap_or_else(|| "ffmpeg".into());
+        let devices = match crate::audio::probe_devices(&ffmpeg) {
+            Ok(d) => d,
+            Err(e) => return format!("I couldn't list the microphones: {e}"),
+        };
+        let camera = tc.vars.get("webcam_device").cloned().unwrap_or_default();
+        let mics: Vec<&crate::audio::Device> = devices.iter().filter(|d| d.kind == crate::audio::Kind::Input).collect();
+        let names: Vec<String> = mics.iter().map(|d| crate::hearing::short(&d.name)).collect();
+        match crate::hearing::mic_by_kind(&devices, kind, &camera) {
+            crate::hearing::MicFit::One(d) => {
+                let device = d.ffmpeg_name();
+                crate::voice::set_microphone(&d.name, &device);
+                let store = crate::roots::store();
+                let mut hearing = crate::hearing::Hearing::load_from(&store);
+                hearing.choose(&d.name);
+                let _ = hearing.save_to(&store);
+                let line = format!("Listening with {} now, and I'll stay on it until you pick another.", crate::hearing::short(&d.name));
+                self.log.info(&line);
+                line
+            }
+            crate::hearing::MicFit::Several(ds) => {
+                let n: Vec<String> = ds.iter().map(|d| crate::hearing::short(&d.name)).collect();
+                format!("More than one microphone fits \"{kind}\": {}. Which one?", n.join(", "))
+            }
+            crate::hearing::MicFit::None => {
+                if names.is_empty() {
+                    "I can't find any microphone on this machine right now.".into()
+                } else {
+                    format!("None of the microphones here sounds like a {kind} one. The ones I can hear from: {}.", names.join(", "))
+                }
+            }
+        }
+    }
+
     pub(super) fn moved_news(&mut self, ending: &crew::Ending) -> Option<String> {
         let crew::Ending::Done(Ok(json)) = ending else {
             return Some("Moving the files didn't finish; nothing was removed that hadn't been copied.".into());
@@ -1725,7 +1835,12 @@ impl<'a> Daemon<'a> {
 impl<'a> Daemon<'a> {
     /// Fold old conversation when it's due (H12).
     pub(super) fn fold_if_due(&mut self, t: u64) {
-        if self.thread.needs_folding(&self.thread_cfg()) && !self.folding {
+        // Not while you're talking (29 Sep 2026). The summary is a second
+        // call on the same model: on Eric's laptop one ran for eight minutes
+        // beside the conversation, every turn meanwhile shared the graphics
+        // with it and took 26-58 seconds. It waits for a quiet stretch.
+        let talking = self.llm.is_some() && (self.pending_turn.is_some() || t.saturating_sub(self.thread.last_active) < FOLD_WHEN_QUIET_SECS);
+        if self.thread.needs_folding(&self.thread_cfg()) && !self.folding && !talking {
             // Compressed rather than dropped (H12): summarised by the local
             // model off the turn, with anything important it leaves out
             // added back; without a model, what it was about and the
@@ -1739,7 +1854,9 @@ impl<'a> Daemon<'a> {
                     let input = self.thread.fold_input(&cfg);
                     let work: crew::Work = Box::new(move |_ctl| {
                         let summary = llm.complete(crate::thread::FOLD_PROMPT, &input).map_err(|e| e.to_string())?;
-                        let kept = crate::thread::with_the_important_kept(&summary, &old, &earlier);
+                        // Checked before it is kept: no reply boilerplate,
+                        // no commentary, else the plain summary.
+                        let kept = crate::thread::accepted_summary(&summary, &old, &earlier);
                         serde_json::to_string(&(n, kept)).map_err(|e| e.to_string())
                     });
                     if self.hand_off("fold", t, work, None, SpeakPolicy::ViaWatcher) {

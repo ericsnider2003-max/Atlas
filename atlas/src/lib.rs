@@ -85,6 +85,8 @@ pub mod reference;
 pub mod references;
 pub mod register;
 pub mod rehearse;
+pub mod repeating;
+pub mod doing;
 pub mod presence;
 pub mod probe;
 pub mod prose;

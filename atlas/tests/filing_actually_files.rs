@@ -204,23 +204,34 @@ fn the_trash_is_counted_in_the_total_even_though_it_is_not_evictable() {
 
 // --------------------------------------------- filing moves, and never over
 
+/// The code that moves a filed file (`filing::file_one`), without comments,
+/// after checking `atlas file --do-it` goes through it (29 Sep 2026).
+fn file_one_body() -> String {
+    let main = crate::common::source_of("main");
+    let at = main.find("fn run_file(").expect("run_file is gone");
+    let body = &main[at..];
+    let end = body.find("\n/// Look for reclaimable space").unwrap_or(body.len());
+    let run_file: String = body[..end].lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
+    assert!(run_file.contains("filing::file_one("), "`atlas file --do-it` doesn't move files through `filing::file_one`");
+    assert!(!run_file.contains("trash.take("), "`atlas file --do-it` puts files in Atlas's trash");
+    let filing = crate::common::source_of("filing");
+    let at = filing.find("pub fn file_one(").expect("filing::file_one is gone");
+    let body = &filing[at..];
+    let end = body[1..].find("\npub fn ").map(|e| e + 1).unwrap_or(body.len());
+    body[..end].lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n")
+}
+
 #[test]
 fn filing_writes_the_file_to_where_it_said() {
     // The structural check, because the behavioural one needs a real home
     // directory with Downloads in it. What is asserted is the shape of the
     // code: the `Move` arm must rename to the destination, and must not hand
     // the file to the trash.
-    let main = crate::common::source_of("main");
-    let at = main.find("fn run_file(").expect("run_file is gone");
-    let body = &main[at..];
-    let end = body.find("\n/// Look for reclaimable space").unwrap_or(body.len());
-    let body = &body[..end];
-
-    let code: String = body
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    //
+    // 29 Sep 2026: the move itself is `filing::file_one`, shared with "tidy
+    // my desktop"; `run_file` calls it. So the shape is checked there, and
+    // `run_file` is checked to go through it.
+    let code = file_one_body();
 
     assert!(
         code.contains("rename(from, to)"),
@@ -247,15 +258,7 @@ fn a_failed_cross_volume_move_does_not_leave_two_copies() {
     // The other order-of-operations hazard in the same block: copy, then
     // remove. A failure between them must not leave a duplicate with nothing
     // said about which is which.
-    let main = crate::common::source_of("main");
-    let at = main.find("fn run_file(").expect("run_file");
-    let body = &main[at..];
-    let end = body.find("\n/// Look for reclaimable space").unwrap_or(body.len());
-    let code: String = body[..end]
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let code = file_one_body();
 
     let copy = code.find("fs::copy(from, to)").expect("no cross-volume fallback");
     let remove = code.find("remove_file(from)").expect("the fallback never removes the original");

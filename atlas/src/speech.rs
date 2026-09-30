@@ -89,12 +89,28 @@ pub fn split(text: &str) -> Vec<String> {
 // second copy of the rule that nothing called would have been two rules to
 // keep agreeing. Its tests drive `Saying` now (tests/speech_activity.rs).
 
+/// Why a reply stopped when you took the turn -- the talk key pressed, or
+/// your voice over it -- rather than saying "stop" or "pause". Not words
+/// anyone says, so it is never mistaken for them.
+pub const YOUR_TURN: &str = "(you took the turn)";
+
 /// What Atlas says when it has been cut off. Short — you interrupted because
 /// you wanted the floor, not another paragraph.
+///
+/// Nothing at all when you simply took the turn (29 Sep 2026). Pressing the
+/// talk key over a reply, or talking over it, is you starting to speak: the
+/// reply stops and Atlas listens. It used to be recorded as "hold on" --
+/// which reads as a pause -- so Eric heard "Paused." after nearly every reply
+/// on his laptop, spoken over what he was starting to say. "Paused." is for
+/// an explicit "pause" (or "hold on", "wait" said as such); what wasn't said
+/// is parked for "carry on" either way.
 pub fn acknowledge(d: &Delivery) -> String {
     match &d.interrupted_by {
+        Some(said) if said == YOUR_TURN => String::new(),
         Some(said) if hear(said) == Some(Heard::Cancel) => "Stopped.".into(),
-        Some(_) => "Paused.".into(),
+        Some(said) if matches!(hear(said), Some(Heard::Pause)) => "Paused.".into(),
+        // "Stop everything" and anything else said as an interruption.
+        Some(_) => "Stopped.".into(),
         None => String::new(),
     }
 }

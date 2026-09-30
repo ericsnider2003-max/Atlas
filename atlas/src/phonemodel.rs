@@ -684,7 +684,7 @@ mod tests {
         assert_eq!(no_thinking(p.clone(), "stories15M"), p);
         assert_eq!(without_thinking("<think>\nhmm, the user\n</think>\n\nSure."), "Sure.");
         assert_eq!(without_thinking("Sure. <think>unfinished"), "Sure.");
-        let asked: Asked = serde_json::from_str(&crate::models::completion_body("P", crate::models::Template::ChatMl, 64)).unwrap();
+        let asked: Asked = serde_json::from_str(&crate::models::completion_body("P", crate::models::Template::ChatMl, 64, &Default::default())).unwrap();
         assert_eq!((asked.prompt.as_str(), asked.n_predict), ("P", 64));
         assert!(asked.stop.iter().any(|s| s == "<|im_end|>"), "{:?}", asked.stop);
     }

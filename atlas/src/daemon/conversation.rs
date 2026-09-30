@@ -51,6 +51,7 @@ impl<'a> Daemon<'a> {
                     self.pending_media_original = None;
                     self.pending_undo = None;
                     self.pending_storage = None;
+                    self.pending_desktop = None;
                     self.pending_press = None;
                     self.pending_post_approval = None;
                     self.pending_post_when = None;
@@ -220,8 +221,28 @@ impl<'a> Daemon<'a> {
             },
             None => brain::Endpoint::CannotTell,
         };
+        // What they're trying to get done, from what they asked lately, so
+        // "that's it" or "this means organize my desktop" is read as about
+        // that (29 Sep 2026).
+        // Only a request no command of Atlas's took: those were done.
+        let parser = &self.parser;
+        if let Some(goal) = self
+            .thread
+            .current_goal_where(|s| matches!(parser.parse(s), Intent::Unknown(_)))
+            .filter(|g| g.trim() != said.trim())
+        {
+            now.push_str(&format!("What they've been asking you to do lately, in their words: \"{goal}\"\n"));
+        }
+        // The window in front only when what was said is about the screen
+        // (29 Sep 2026). It went in on every turn, and with Discord in front
+        // half of Eric's evening was answered as if it were about a Discord
+        // server. Labelled as background when it does go in.
         if let Ok(Some(active)) = self.plat.active_window() {
-            now.push_str(&brain::focus_line(&active, at));
+            let app = active.process.trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+            if crate::doing::refers_to_screen(said, &app) {
+                now.push_str("Background, only because they mentioned the screen -- what's in front of them, never the topic unless they ask about it:\n");
+                now.push_str(&brain::focus_line(&active, at));
+            }
         }
         let hints = self.notes_as_hints(said, t);
         if !hints.is_empty() {
@@ -238,7 +259,20 @@ impl<'a> Daemon<'a> {
             ));
             now.push_str(&crate::capability::about_atlas(said, 6));
         }
-        now.push_str(&persona.for_this_turn_on(register, persona.max_spoken_sentences, said, self.mid_flow()));
+        // A request the phrases didn't recognise: do it with a tool, or say
+        // what can be done instead -- never chat around it (29 Sep 2026:
+        // "organize my desktop" got "that's not just a request -- that's a
+        // command").
+        if crate::doing::looks_like_an_action(said) {
+            now.push_str(ACTION_OR_SAY_SO);
+            now.push('\n');
+        }
+        // Out loud, one to three short sentences unless more was asked for
+        // (29 Sep 2026): eight were allowed in conversation, and a spoken
+        // reply of eight sentences is a speech.
+        let short_spoken = self.reply_is_spoken() && !crate::persona::asks_for_more(said);
+        let sentences = if short_spoken { persona.max_spoken_sentences.min(SPOKEN_SENTENCES) } else { persona.max_spoken_sentences };
+        now.push_str(&persona.for_this_turn_on(register, sentences, said, self.mid_flow()));
 
         let tools = if handed_over { Vec::new() } else { self.turn_tools(said) };
         let core_tools = if handed_over { 0 } else { self.tool_book.for_sentence("", 0).len() };
@@ -256,13 +290,26 @@ impl<'a> Daemon<'a> {
             // count: a story or a poem runs past eight sentences, and was cut
             // off mid-line at two (27 Sep 2026). A task still stops at its
             // count.
-            max_sentences: Some(if register == crate::register::Register::Chatting {
+            max_sentences: Some(if short_spoken {
+                // One past what was asked: the stream stops at a sentence's
+                // end, and a model counts "Sure." as one.
+                sentences.max(1) + 1
+            } else if register == crate::register::Register::Chatting {
                 SAFETY_SENTENCES
             } else {
                 persona.max_spoken_sentences.max(1)
             }),
             one_prompt: one_prompt.to_string(),
             skip_phrases: false,
+            // The same question asked again may get the same answer: its
+            // earlier answer isn't counted as a repeat.
+            recent_replies: Some(match self.thread.said_earlier(said) {
+                Some(e) => {
+                    let same = e.reply.clone();
+                    self.thread.recent_replies(REPLIES_CHECKED).into_iter().filter(|r| *r != same).collect()
+                }
+                None => self.thread.recent_replies(REPLIES_CHECKED),
+            }),
         };
         // The whole prompt inside the model's context, with room for the
         // reply (`Turn::fit`).
@@ -270,6 +317,13 @@ impl<'a> Daemon<'a> {
             self.log.info("the prompt was more than the model's context -- shortened to fit");
         }
         turn
+    }
+
+    /// Will this turn's reply be said out loud (not only shown)? The same
+    /// reading `start_saying` makes.
+    fn reply_is_spoken(&self) -> bool {
+        let typed = (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
+        !typed
     }
 
     /// Have the model read the start of every conversation now -- who Atlas
@@ -292,7 +346,7 @@ impl<'a> Daemon<'a> {
         }
         let persona = self.persona_now();
         let turn = self.conversation_turn("", t, crate::register::Register::Chatting, &persona, None, "");
-        let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false };
+        let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false, stronger: false };
         let said = self.model_warmed.clone();
         std::thread::Builder::new()
             .name("atlas-warm".into())
@@ -399,7 +453,7 @@ impl<'a> Daemon<'a> {
              Answer what I asked from this, out loud, in one to three short sentences. Say what matters \
              first. No lists, no markdown. If items are numbered, keep the numbers I'd use to pick one."
         )));
-        let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true };
+        let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false };
         let llm = p.llm.clone();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
             let mut sentences = brain::Sentences::default();

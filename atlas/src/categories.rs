@@ -180,6 +180,9 @@ pub fn category_of(intent: &Intent) -> Category {
         // taken back ask first, in the handler.
         Intent::PressButton(_) => Category::LocalOperational,
         Intent::MoveBigFiles(_) => Category::LocalOperational,
+        // Shows the plan and waits for a yes; every move through `system::judge`.
+        Intent::TidyDesktop => Category::LocalOperational,
+        Intent::UseMic(_) => Category::LocalOperational,
         Intent::EditMedia(_) => media_category(MediaOp::Edit, false),
         // A new file beside the original; the original is only read.
         Intent::EditPhoto(_) => media_category(MediaOp::Edit, false),

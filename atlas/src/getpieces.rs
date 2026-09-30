@@ -61,6 +61,9 @@ impl Piece {
     }
 }
 
+/// Where the sharper listening model lands, install-relative.
+pub const SHARPER_LISTENING_MODEL: &str = "models/ggml-small.en-q5_1.bin";
+
 /// Everything, in the order it's fetched — hearing first, because it unblocks
 /// the most. Sizes and hashes measured 23 Sep 2026.
 pub fn catalogue() -> Vec<Piece> {
@@ -80,6 +83,28 @@ pub fn catalogue() -> Vec<Piece> {
             sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
             bytes: 147_964_211,
             lands: Lands::File("models/ggml-base.en.bin"),
+        },
+        // The sharper listening model (29 Sep 2026), preferred over the one
+        // above whenever it is here (`language::speech_model_for`). On Eric's
+        // laptop base.en heard "Atlas" as "At this" and "Brad", and "smart-
+        // ass" as "smart apps". whisper.cpp's small.en at 5 bits: the next
+        // size up (244M parameters to base's 74M), fewer word errors on
+        // English, 190 MB. large-v3-turbo (574 MB at 5 bits) keeps
+        // large-v3's full 32-layer encoder, which on the processor-only
+        // whisper build setup ships is several times slower again for each
+        // sentence -- too slow to wait for between turns. Not measured on
+        // Eric's laptop yet: how long a sentence takes to be heard is in the
+        // turn's timing line ("hearing="). The URL is the ggerganov/whisper.cpp
+        // repository's own file; the SHA-256 is Hugging Face's LFS record of
+        // it, and the file was downloaded and hashed to the same value on
+        // 29 Sep 2026 (190,098,681 bytes).
+        Piece {
+            name: "the sharper listening model",
+            for_what: "hearing you more accurately",
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin",
+            sha256: "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30",
+            bytes: 190_098_681,
+            lands: Lands::File(SHARPER_LISTENING_MODEL),
         },
         // Cutting in by voice (`micthread`, `barge_in`): Silero VAD's 16 kHz
         // opset-15 export, MIT. Round 3 made Atlas use it and setup never

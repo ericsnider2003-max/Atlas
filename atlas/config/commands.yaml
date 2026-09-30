@@ -759,6 +759,22 @@ commands:
     takes_argument: true
     argument_optional: true
 
+  # "Organize my desktop" (Eric, 29 Sep 2026): the desktop's loose files
+  # filed into folders by kind (`filing::plan_folder`), the plan said first
+  # and carried out only on a yes. Shortcuts and folders are never touched.
+  - intent: tidy_desktop
+    describe: "Tidy the user's desktop: file its loose files into folders. Says the plan and asks first; never deletes anything."
+    phrases: ["tidy my desktop", "tidy up my desktop", "tidy the desktop", "organize my desktop", "organise my desktop",
+              "clean up my desktop", "sort my desktop", "sort out my desktop"]
+
+  # "Use my webcam mic" (Eric, 29 Sep 2026): record from the microphone
+  # named by kind, and keep to it (`hearing::mic_by_kind`).
+  - intent: use_mic
+    describe: "Record from a different microphone and keep to it. arg: which one, e.g. webcam, headset, laptop."
+    phrases: ["switch microphone to", "switch the microphone to", "switch mic to", "change microphone to",
+              "use the microphone on the"]
+    takes_argument: true
+
   - intent: press_button
     describe: "Press a named button in the app in front. arg: the button's name."
     # Pressing a button in an app by its name (Eric, G4).

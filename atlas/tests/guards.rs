@@ -1364,11 +1364,20 @@ const GUARDS: &[(&str, &str, &str)] = &[
         "`system.file_roots`",
         "the out-of-roots refusal stops naming how to permit the folder",
     ),
+    // 29 Sep 2026: the move moved into `filing::file_one`, shared with "tidy
+    // my desktop"; the gate is guarded there, and `atlas file` guarded to go
+    // through it.
     (
-        "src/main.rs",
-        "atlas::system::judge(&change, &sys)",
+        "src/filing.rs",
+        "crate::system::judge(&change, sys)",
         "filing stops going through the safety gate and can move files outside \
          the folders Atlas is permitted to work in",
+    ),
+    (
+        "src/main.rs",
+        "atlas::filing::file_one(from, s, &sys)",
+        "`atlas file --do-it` stops moving files through `filing::file_one`, \
+         and with it the safety gate",
     ),
     (
         "src/reclaim.rs",

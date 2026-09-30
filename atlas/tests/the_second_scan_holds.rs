@@ -487,7 +487,7 @@ fn a_request(n_history: usize) -> ChatRequest {
     messages.push(Msg::user("User said: hello"));
     // `stable_tools` and `aside` since 28 Sep 2026 (the every-turn tools, and
     // a call beside the conversation); neither here.
-    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false }
+    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false, stronger: false }
 }
 
 #[test]

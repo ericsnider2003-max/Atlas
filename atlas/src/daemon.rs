@@ -1175,6 +1175,9 @@ pub struct Daemon<'a> {
     pending_press: Option<(u64, String, String)>,
     /// A storage plan shown and waiting for your yes.
     pending_storage: Option<crate::tune::StoragePlan>,
+    /// The desktop's loose files and where each would go, shown and waiting
+    /// for your yes ("tidy my desktop", 29 Sep 2026).
+    pending_desktop: Option<Vec<(std::path::PathBuf, crate::filing::Suggestion)>>,
     /// An undo asked about ("Undo X?"), waiting for your yes.
     pending_undo: Option<u64>,
     /// A dropped task you asked about: put back on the list on a yes (H8).
@@ -1752,6 +1755,7 @@ impl<'a> Daemon<'a> {
             posting: Vec::new(),
             pending_press: None,
             pending_storage: None,
+            pending_desktop: None,
             pending_undo: None,
             pending_media_keep: None,
             pending_unscanned: None,
@@ -1883,7 +1887,8 @@ const CUT_IN_STATE: &str = "cut_in";
 /// The talk key, while a reply is being said: held, the reply stops at once
 /// and you're listened to for as long as it's down. A stop or a pause is
 /// returned as said; anything else is kept in `cut_in`, to be answered
-/// next, and returned as "hold on".
+/// next, and returned as `speech::YOUR_TURN` -- you taking the turn, which
+/// is answered, not acknowledged with "Paused." (29 Sep 2026).
 fn key_cut_in(
     keys: Option<&crate::hotkeys::Hotkeys>,
     ears: &dyn Ears,
@@ -1900,7 +1905,7 @@ fn key_cut_in(
         return Some(words);
     }
     *cut_in.borrow_mut() = Some(words);
-    Some("hold on".to_string())
+    Some(crate::speech::YOUR_TURN.to_string())
 }
 
 /// A reply being said, as the loop sees it (`speakthread`).
@@ -3583,6 +3588,19 @@ pub const CHATTING_FOLLOWUP_SECS: u32 = 10;
 /// How many earlier exchanges go to the model as turns, and roughly how many
 /// tokens they may take.
 pub const HISTORY_EXCHANGES: usize = 6;
+/// How long nothing has been said before the conversation is summarised
+/// (`fold_if_due`): the summary is a model call, and shares the model with
+/// the conversation.
+pub const FOLD_WHEN_QUIET_SECS: u64 = 90;
+/// How many of Atlas's last replies a new one is checked against for
+/// saying the same again (`brain::Turn::recent_replies`).
+pub const REPLIES_CHECKED: usize = 4;
+/// The most sentences a spoken reply is asked for, unless more was asked
+/// for (`persona::asks_for_more`).
+pub const SPOKEN_SENTENCES: usize = 3;
+/// Said to the model when a sentence reads as a request (`doing::looks_like_an_action`).
+pub const ACTION_OR_SAY_SO: &str = "This is a request to do something. If one of your tools does it, call it. If none \
+does, say in one sentence what you can do instead and ask one short question. Don't chat around it.";
 pub const HISTORY_TOKENS: usize = 1200;
 
 /// How many facts you told Atlas go in front of the model every turn.

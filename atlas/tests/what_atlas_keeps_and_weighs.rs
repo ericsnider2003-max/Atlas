@@ -154,11 +154,11 @@ fn what_was_let_go_to_make_room_is_remembered_as_having_been_known() {
 fn your_own_words_become_the_speech_models_hints() {
     let mut v = atlas::improve::Vocabulary::default();
     v.learn("Ask Maya about Northwind. What did Maya say about Northwind?");
-    assert_eq!(atlas::improve::hint_args(&v).0, "--prompt");
+    assert_eq!(atlas::improve::hint_args(&v, &[]).0, "--prompt");
     let hints = v.hints(24);
     assert!(hints.contains(&"Maya".to_string()) && hints.contains(&"Northwind".to_string()), "{hints:?}");
     assert!(!hints.contains(&"What".to_string()) && !hints.contains(&"Ask".to_string()), "ordinary sentence starts aren't names: {hints:?}");
-    assert_eq!(atlas::improve::hint_args(&atlas::improve::Vocabulary::default()), (String::new(), String::new()));
+    assert_eq!(atlas::improve::hint_args(&atlas::improve::Vocabulary::default(), &[]), (String::new(), String::new()));
 
     let c = cfg();
     let p = plat();

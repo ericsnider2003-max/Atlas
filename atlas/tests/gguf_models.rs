@@ -359,7 +359,7 @@ fn stop_tokens_match_the_format() {
 
 #[test]
 fn the_completion_request_is_valid_json_with_the_right_stops() {
-    let body = completion_body("say \"hi\"\nnow", Template::ChatMl, 256);
+    let body = completion_body("say \"hi\"\nnow", Template::ChatMl, 256, &Default::default());
     let v: serde_json::Value = serde_json::from_str(&body).expect("must be valid json");
     assert_eq!(v["n_predict"], 256);
     assert_eq!(v["prompt"], "say \"hi\"\nnow", "quotes and newlines survive");

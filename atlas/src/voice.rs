@@ -667,12 +667,19 @@ impl<'a> Voice<'a> {
         v.insert("sentence_gap".into(), format!("{:.2}", vs.sentence_gap));
         // The language flags whisper's command carries. Without these every
         // spoken turn passed the literal `{task_opt}` to whisper-cli.
+        // The sharper listening model when setup has fetched it (29 Sep 2026).
+        let chosen = crate::language::speech_model_for(
+            v.get("stt_model").map(String::as_str).unwrap_or(""),
+            &crate::roots::install_root(),
+        );
+        v.insert("stt_model".into(), chosen);
         let model = crate::language::model_facts(v.get("stt_model").map(String::as_str).unwrap_or(""));
         crate::language::insert_whisper_vars(&self.cfg.language, &model, &mut v);
         // Your own words as the speech model's hints (H11): names, projects,
-        // jargon it would otherwise guess at.
+        // jargon it would otherwise guess at -- after the few every install
+        // is primed with ("Atlas" first), so there's a prompt from day one.
         let vocab: crate::improve::Vocabulary = crate::roots::store().load("vocabulary");
-        let (opt, val) = crate::improve::hint_args(&vocab);
+        let (opt, val) = crate::improve::hint_args(&vocab, crate::language::SPEECH_PRIMER);
         v.insert("hint_opt".into(), opt);
         v.insert("hint_val".into(), val);
         Ok(v)

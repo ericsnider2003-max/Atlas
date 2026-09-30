@@ -872,3 +872,5 @@ mod the_background_atlas_hears_you;
 mod the_overlay_covers_only_its_words;
 #[path = "the_system_recovers_by_itself.rs"]
 mod the_system_recovers_by_itself;
+#[path = "one_evening_on_the_laptop.rs"]
+mod one_evening_on_the_laptop;

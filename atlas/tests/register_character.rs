@@ -80,7 +80,9 @@ fn the_character_instructions_change_with_the_moment() {
     let chatting = p.prompt_for(Register::Chatting);
     assert_ne!(working, chatting, "one fixed prompt is what makes it sound like a machine");
     assert!(working.contains("No commentary, no jokes"));
-    assert!(chatting.contains("Talk like a person"));
+    // 29 Sep 2026: "Talk like a person: follow a tangent" became "answer
+    // what they just said first, like a person would" (Eric's evening).
+    assert!(chatting.contains("like a person would"));
     assert!(chatting.contains("Do not offer to help"), "no steering it back to work");
 }
 

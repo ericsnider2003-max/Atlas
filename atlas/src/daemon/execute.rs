@@ -171,6 +171,10 @@ impl<'a> Daemon<'a> {
             Intent::PressButton(said) => self.press_button(said),
             // Big folders to another drive, findable afterwards (G5).
             Intent::MoveBigFiles(said) => self.move_big_files(said, crate::store::now()),
+            // The desktop's loose files filed, after a yes (29 Sep 2026).
+            Intent::TidyDesktop => self.tidy_desktop(),
+            // The microphone you named, kept to (29 Sep 2026).
+            Intent::UseMic(kind) => self.use_microphone(kind),
             // A video edited on a copy; the original only after you say (G8).
             Intent::EditMedia(said) => self.edit_media(said, crate::store::now()),
             Intent::EditPhoto(said) => self.edit_photo(said),

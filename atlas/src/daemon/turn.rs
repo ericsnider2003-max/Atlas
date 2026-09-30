@@ -758,6 +758,14 @@ impl<'a> Daemon<'a> {
                 }
                 return self.carry_out_undo(id);
             }
+            // The desktop's loose files, filed on a yes (29 Sep 2026).
+            if let Some(plan) = self.pending_desktop.take() {
+                self.session.pending = Pending::Nothing;
+                if !is_yes(said) {
+                    return "Alright, your desktop stays as it is.".into();
+                }
+                return self.carry_out_desktop_plan(plan);
+            }
             // Moving big folders to another drive (G5).
             if let Some(plan) = self.pending_storage.take() {
                 self.session.pending = Pending::Nothing;

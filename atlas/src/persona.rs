@@ -118,10 +118,12 @@ impl Persona {
                 "Right now this is a task. Answer in one or two sentences and stop. \
                  No commentary, no jokes."
             }
+            // 29 Sep 2026: "follow a tangent ... up to about eight
+            // sentences" read, to a small model, as licence to ramble.
             R::Chatting => {
-                "Right now this is a conversation, not a task. Talk like a person: \
-                 follow a tangent if it's interesting, ask something back \
-                 if you're curious. Length is fine here — up to about eight sentences. \
+                "Right now this is a conversation, not a task. Answer what they just said first, \
+                 like a person would; ask something back only if you really want to know. A few \
+                 sentences, more only if they ask for detail or a story. \
                  Do not offer to help or steer it back to work."
             }
             R::AboutAtlas => {
@@ -183,6 +185,11 @@ impl Persona {
              Voice: {tone}\n\
              \n\
              How you talk:\n\
+             - Answer the latest thing they said first -- their words, not earlier topics or what's on \
+             their screen. Out loud: one to three short sentences unless they ask for more.\n\
+             - Keep track of what they're trying to get done, and help with that. One question at most, \
+             only when you need the answer. No stock closers or menus of options (\"What's your next \
+             move?\", \"Anything else?\", \"A joke? A memory?\"), and never say again what you already said.\n\
              - Talk like a knowledgeable friend: answer the actual question, from what you know. \
              General knowledge, advice, ideas, opinions, jokes, stories and small talk are all yours \
              to answer; you do not need a tool or a note for them.\n\
@@ -226,9 +233,12 @@ impl Persona {
         use crate::register::Register as R;
         let moment = match register {
             R::Working => "This is a task: confirm or answer briefly.",
+            // 29 Sep 2026: this said "go with a tangent, ask something back"
+            // and a 4B model on Eric's laptop answered every sentence with a
+            // tangent and three questions. Answering them comes first.
             R::Chatting => {
-                "This is a conversation: talk like a person, go with a tangent, ask something back \
-                 if you're curious. Don't steer it back to work."
+                "This is a conversation: answer what they just said, plainly, like a person would. \
+                 Ask something back only if you really want to know. Don't steer it back to work."
             }
             R::AboutAtlas => {
                 "You're being asked about yourself: answer plainly and specifically from what you \
@@ -239,6 +249,7 @@ impl Persona {
         let humour = crate::wit::prompt_line(self.wit, &crate::wit::Moment::new(register, said, "").during_a_flow(in_a_flow), true);
         let length = match sentences {
             0 | 1 => "Answer in one sentence.".to_string(),
+            n if n <= 3 => format!("One to {n} short sentences; more only if they asked for detail, a story or a list."),
             n if n >= 8 => format!("Up to about {n} sentences; longer only if they asked for detail, a story or a list of ideas."),
             n => format!("At most {n} sentences unless they ask for detail."),
         };
@@ -551,4 +562,16 @@ pub fn social_reply(said: &str, hour: u8) -> Option<String> {
         return Some(format!("{part}. What are we doing?"));
     }
     None
+}
+
+/// Did they ask for more than a short answer: a story, an explanation, a
+/// list, detail? Then a spoken reply may run past its usual few sentences.
+pub fn asks_for_more(said: &str) -> bool {
+    let t = format!(" {} ", crate::repeating::words(said).join(" "));
+    const MORE: &[&str] = &[
+        "story", "explain", "in detail", "detail", "tell me about", "tell me more", "more about", "list", "ideas",
+        "walk me through", "step by step", "how does", "how do", "why does", "why do", "why is", "poem", "describe",
+        "summarise", "summarize", "go on", "keep going", "keep talking", "long",
+    ];
+    MORE.iter().any(|m| t.contains(&format!(" {m} ")))
 }
