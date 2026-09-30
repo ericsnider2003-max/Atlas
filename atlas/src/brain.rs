@@ -1509,7 +1509,17 @@ fn first_sentence_end(text: &str) -> Option<usize> {
 fn starts_an_earlier_line(first: &str, earlier: &[&str]) -> bool {
     let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
     let f = norm(first);
-    f.len() >= 25 && earlier.iter().any(|e| norm(e).starts_with(&f))
+    if f.len() >= 25 && earlier.iter().any(|e| norm(e).starts_with(&f)) {
+        return true;
+    }
+    // A shorter opening counts when it is the whole first sentence of an
+    // earlier line (29 Sep 2026: "I'm here -- and I'm listening." is 20
+    // letters, under the bar above, and opened every reply for minutes).
+    f.len() >= 12
+        && earlier.iter().any(|e| {
+            let first_of = first_sentence_end(e).map(|i| &e[..i]).unwrap_or(e);
+            norm(first_of) == f
+        })
 }
 
 /// What a chat reply means: the first tool call it made, as the command it

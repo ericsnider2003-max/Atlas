@@ -75,6 +75,13 @@ pub fn atlas_is_up(watching: &mut crate::onlyone::Watching, data_dir: &std::path
     watching.still_there(&crate::onlyone::OnlyOne::at(data_dir).look(now), now)
 }
 
+/// The overlay window's title, which is how it is found to show and park.
+pub const OVERLAY_TITLE: &str = "Atlas overlay";
+
+/// Frames told to stay hidden after hiding: enough for Windows' own
+/// show-after-first-frame to be undone, and no more.
+pub const HIDE_FRAMES: u8 = 5;
+
 /// The part of the screen the overlay draws in, as `(x, y, width, height)`:
 /// the mark above the middle, the words and their shade across it.
 ///
@@ -115,7 +122,7 @@ pub fn run(folders: Folders) -> Result<(), String> {
     }
     let opts = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default().with_icon(crate::mark::window_icon())
-            .with_title("Atlas overlay")
+            .with_title(OVERLAY_TITLE)
             .with_decorations(false)
             .with_transparent(true)
             .with_always_on_top()
@@ -137,17 +144,25 @@ pub fn run(folders: Folders) -> Result<(), String> {
         only,
         last_check: std::time::Instant::now(),
         shown: false,
+        hidden_told: 0,
         keyed: false,
+        hwnd: 0,
         origin: (0.0, 0.0),
         band_w: 0.0,
         atlas: crate::onlyone::Watching::default(),
     };
     let watch_dir = app.data_dir.clone();
     let watch_cfg = app.config_dir.clone();
+    let (own_lock, atlas_dir) = (app.only.clone(), app.data_dir.clone());
     eframe::run_native(
         "atlas-overlay",
         opts,
         Box::new(move |cc| {
+            // The window by its handle, from eframe: looked up by title it
+            // wasn't found on Eric's laptop (`winpark`).
+            let hwnd = crate::winpark::handle_of(cc);
+            let mut app = app;
+            app.hwnd = hwnd;
             // A hidden window's own loop may not wake (Windows sends no
             // paint to a window that isn't shown), so a small thread watches
             // for Atlas starting to speak and wakes it.
@@ -157,8 +172,23 @@ pub fn run(folders: Folders) -> Result<(), String> {
                 let mut last: Option<u64> = None;
                 let mut enabled = overlay_cfg(&watch_cfg).enabled;
                 let mut looked = std::time::Instant::now();
+                let mut atlas = crate::onlyone::Watching::default();
+                let mut checked = std::time::Instant::now();
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(100));
+                    // Still wanted? Asked here, not only in the window's own
+                    // loop, which a hidden window may never run (29 Sep 2026:
+                    // an overlay outlived its Atlas, and its lock went stale
+                    // so a restarted Atlas could start a second one).
+                    if checked.elapsed().as_secs() >= 3 {
+                        checked = std::time::Instant::now();
+                        let now = crate::store::now();
+                        own_lock.beat(now);
+                        if !atlas_is_up(&mut atlas, &atlas_dir, now) {
+                            own_lock.release();
+                            std::process::exit(0);
+                        }
+                    }
                     // Its switch, as the window itself reads it: switched
                     // off, nothing is ever put on screen.
                     if looked.elapsed().as_secs() >= 3 {
@@ -167,7 +197,7 @@ pub fn run(folders: Folders) -> Result<(), String> {
                     }
                     let started = voice.now().filter(|s| s.still_going(crate::speaking::now_ms())).map(|s| s.started_ms);
                     if enabled && started.is_some() && started != last {
-                        show_without_focus();
+                        show_without_focus(hwnd);
                         ctx.request_repaint();
                     }
                     last = started.or(last);
@@ -199,8 +229,12 @@ struct App {
     last_check: std::time::Instant,
     /// Whether the window is on screen, and where its band starts.
     shown: bool,
+    /// Frames told "stay hidden" since it was last hidden (`HIDE_FRAMES`).
+    hidden_told: u8,
     /// Whether Windows has been told the overlay is see-through.
     keyed: bool,
+    /// Its native window, from eframe (`winpark::handle_of`); 0 until then.
+    hwnd: isize,
     origin: (f32, f32),
     band_w: f32,
     /// The background Atlas's lock, watched over time rather than trusted on
@@ -224,7 +258,7 @@ impl eframe::App for App {
         // window flags `overlay::window_style` describes were written and
         // never applied (29 Sep 2026). Applied here, once the window exists.
         if !self.keyed {
-            self.keyed = see_through();
+            self.keyed = see_through(self.hwnd);
         }
 
         // Every few seconds: still wanted, still switched on, still the one.
@@ -253,10 +287,34 @@ impl eframe::App for App {
         if !alive {
             if self.shown {
                 self.shown = false;
+                self.hidden_told = 0;
             }
-            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            // Told for a few frames after hiding, not every frame (29 Sep
+            // 2026): each command wakes the window again, and told every
+            // frame the hidden overlay spun a core at 40% doing nothing.
             egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |_| {});
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            // Hidden, nothing more is asked of the window's own loop once it
+            // is told: a hidden window gets no paint from Windows, so eframe
+            // kept its loop spinning on every "again in 100 ms" -- the idle
+            // overlay held a core at 40% (29 Sep 2026). The watcher thread
+            // wakes it when Atlas starts to speak, and does the lock and the
+            // is-Atlas-still-there check itself.
+            if self.hidden_told < HIDE_FRAMES {
+                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                self.hidden_told += 1;
+                if self.hidden_told < HIDE_FRAMES {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                } else {
+                    // Told enough: parked, so eframe stops waiting for a
+                    // paint Windows never sends a hidden window (`winpark`).
+                    crate::winpark::park(self.hwnd);
+                }
+            } else {
+                // Hidden and settled, and still being woken: at most a few
+                // times a second (`winpark::IDLE_NAP`), the way eframe itself
+                // naps a minimized window.
+                std::thread::sleep(crate::winpark::IDLE_NAP);
+            }
             return;
         }
         let Some(monitor) = ctx.input(|i| i.viewport().monitor_size) else {
@@ -268,6 +326,7 @@ impl eframe::App for App {
             let (x, y, w, h) = overlay_band(sw, sh, &self.cfg);
             self.origin = (x as f32, y as f32);
             self.band_w = w as f32;
+            crate::winpark::unpark(self.hwnd);
             ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(x as f32, y as f32)));
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(w as f32, h as f32)));
             ctx.send_viewport_cmd(ViewportCommand::Visible(true));
@@ -306,20 +365,17 @@ impl eframe::App for App {
 /// everything it doesn't paint is left out.
 ///
 /// True once applied; false while the window isn't there yet.
-fn see_through() -> bool {
+fn see_through(hwnd: isize) -> bool {
     #[cfg(windows)]
     unsafe {
-        use windows::Win32::Foundation::COLORREF;
+        use windows::Win32::Foundation::{COLORREF, HWND};
         use windows::Win32::UI::WindowsAndMessaging::{
-            FindWindowW, GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_COLORKEY,
+            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_COLORKEY,
         };
-        let title: Vec<u16> = "Atlas overlay".encode_utf16().chain(std::iter::once(0)).collect();
-        let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) else {
-            return false;
-        };
-        if h.0.is_null() {
+        if hwnd == 0 {
             return false;
         }
+        let h = HWND(hwnd as *mut core::ffi::c_void);
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32 | crate::overlay::window_style();
         SetWindowLongPtrW(h, GWL_EXSTYLE, style as isize);
         return SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok();
@@ -331,15 +387,15 @@ fn see_through() -> bool {
 #[cfg(feature = "desktop-ui")]
 /// Put the overlay on screen without taking the keyboard, found by its
 /// title (the window's own loop may be asleep while it's hidden).
-fn show_without_focus() {
+fn show_without_focus(hwnd: isize) {
+    // Unparked first: a parked window's loop doesn't run (`winpark`).
+    crate::winpark::unpark(hwnd);
     #[cfg(windows)]
     unsafe {
-        use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_SHOWNOACTIVATE};
-        let title: Vec<u16> = "Atlas overlay".encode_utf16().chain(std::iter::once(0)).collect();
-        if let Ok(h) = FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title.as_ptr())) {
-            if !h.0.is_null() {
-                let _ = ShowWindow(h, SW_SHOWNOACTIVATE);
-            }
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+        if hwnd != 0 {
+            let _ = ShowWindow(HWND(hwnd as *mut core::ffi::c_void), SW_SHOWNOACTIVATE);
         }
     }
 }

@@ -1666,7 +1666,14 @@ impl<'a> Daemon<'a> {
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
         match crate::audio::probe_devices(&ffmpeg) {
-            Ok(list) => self.audio_devices = Some(list),
+            // With the speakers too, where the listing names none (Windows):
+            // a notice then knows it is going into your headphones (29 Sep 2026).
+            Ok(mut list) => {
+                if !list.iter().any(|d| d.kind == crate::audio::Kind::Output) {
+                    list.extend(crate::playout::output_devices());
+                }
+                self.audio_devices = Some(list);
+            }
             Err(e) => {
                 self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
                 self.audio_devices_retry_at = now + 300;

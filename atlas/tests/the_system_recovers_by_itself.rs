@@ -408,3 +408,388 @@ fn only_an_atlas_is_ended_to_make_way() {
     assert!(!atlas::onlyone::end_holder(&dir, std::time::Duration::from_millis(10)), "it would end itself");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ------------------------------------------------ the speaker it speaks through
+
+fn wav16(rate: u32, channels: u16, samples: &[i16]) -> Vec<u8> {
+    let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let mut w = Vec::new();
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes());
+    w.extend_from_slice(&channels.to_le_bytes());
+    w.extend_from_slice(&rate.to_le_bytes());
+    w.extend_from_slice(&(rate * channels as u32 * 2).to_le_bytes());
+    w.extend_from_slice(&(channels * 2).to_le_bytes());
+    w.extend_from_slice(&16u16.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    w.extend_from_slice(&data);
+    w
+}
+
+#[test]
+fn a_reply_is_read_and_fitted_to_the_speaker() {
+    use atlas::playout::{fit_to_speaker, parse_wav};
+    // Piper's voice: 22,050 Hz, one channel, 16-bit.
+    let w = parse_wav(&wav16(22_050, 1, &[0, 16_384, -16_384, 32_767])).unwrap();
+    assert_eq!((w.rate, w.channels, w.samples.len()), (22_050, 1, 4));
+    assert!((w.samples[1] - 0.5).abs() < 1e-3 && (w.samples[2] + 0.5).abs() < 1e-3);
+    // A WASAPI speaker: 48,000 Hz, two channels.
+    let out = fit_to_speaker(&w, 48_000, 2);
+    assert_eq!(out.len() % 2, 0);
+    let frames = out.len() / 2;
+    assert!((8..=9).contains(&frames), "4 frames at 22,050 Hz are about 8.7 at 48,000: {frames}");
+    assert!(out.chunks(2).all(|f| f[0] == f[1]), "one channel wasn't copied to both");
+    // Two channels down to one: mixed.
+    let st = parse_wav(&wav16(48_000, 2, &[16_384, 0, 16_384, 0])).unwrap();
+    let mono = fit_to_speaker(&st, 48_000, 1);
+    assert!(mono.iter().all(|v| (v - 0.25).abs() < 1e-3), "{mono:?}");
+    assert!(parse_wav(b"not a wav at all").is_err());
+    assert!(fit_to_speaker(&atlas::playout::Wav { rate: 16_000, channels: 1, samples: vec![] }, 48_000, 2).is_empty());
+}
+
+#[test]
+fn it_speaks_into_your_headphones_when_theyre_there() {
+    use atlas::audio::{AudioConfig, Device, Kind};
+    use atlas::playout::chosen_output;
+    let speakers = vec![Device::new("Speakers (Realtek(R) Audio)", Kind::Output), Device::new("Headphones (AirPods Pro Stereo)", Kind::Output)];
+    let cfg = AudioConfig::default();
+    assert_eq!(chosen_output(&speakers, &cfg).as_deref(), Some("Headphones (AirPods Pro Stereo)"));
+    let named = AudioConfig { preferred_output: vec!["Speakers".into()], ..AudioConfig::default() };
+    assert_eq!(chosen_output(&speakers, &named).as_deref(), Some("Speakers (Realtek(R) Audio)"), "your named speaker lost to the headphones");
+    assert_eq!(chosen_output(&[], &cfg), None, "nothing listed is the system's default");
+    // Only the shipped player is played in place of; a player you named is used.
+    assert!(atlas::playout::plays_inside("ffplay") && atlas::playout::plays_inside(r"C:\Atlas\tools\ffmpeg\ffplay.exe"));
+    assert!(!atlas::playout::plays_inside("mpv"));
+    // The fallback is said once per reason, not every sentence.
+    assert!(atlas::playout::note_once("the speaker wouldn't play (test)").is_some());
+    assert!(atlas::playout::note_once("the speaker wouldn't play (test)").is_none());
+}
+
+// ---------------------------------------------- the voice, as Eric heard it
+
+fn tone(ms: u32, rate: u32, amp: f32) -> Vec<i16> {
+    let n = (rate * ms / 1000) as usize;
+    (0..n).map(|i| ((i as f32 * 2.0 * std::f32::consts::PI * 220.0 / rate as f32).sin() * amp * 32767.0) as i16).collect()
+}
+
+fn hiss(ms: u32, rate: u32, amp: f32) -> Vec<i16> {
+    let n = (rate * ms / 1000) as usize;
+    let mut x: u32 = 12345;
+    (0..n)
+        .map(|_| {
+            x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            (((x >> 16) as f32 / 32768.0 - 1.0) * amp * 32767.0) as i16
+        })
+        .collect()
+}
+
+#[test]
+fn a_quiet_room_is_silence_and_whisper_is_not_asked() {
+    use atlas::audio::{check_speech, SpeechCheck};
+    // Eric's room: steady hiss around -55 dB, for twelve seconds.
+    let room = hiss(12_000, 16_000, 0.002);
+    assert_eq!(check_speech(&room, 16_000), SpeechCheck::Silence, "a quiet room would be transcribed (and come back as \"you\")");
+    // Digital silence.
+    assert_eq!(check_speech(&vec![0i16; 16_000], 16_000), SpeechCheck::Silence);
+    // Speaking over the room: a second of voice.
+    let mut said = hiss(1_000, 16_000, 0.002);
+    said.extend(tone(1_000, 16_000, 0.3));
+    said.extend(hiss(1_000, 16_000, 0.002));
+    assert_eq!(check_speech(&said, 16_000), SpeechCheck::Speech);
+    // The same, quietly (a laptop mic behind a monitor): turned up, not dropped.
+    let mut quiet = hiss(1_000, 16_000, 0.0005);
+    quiet.extend(tone(1_000, 16_000, 0.01));
+    quiet.extend(hiss(1_000, 16_000, 0.0005));
+    match check_speech(&quiet, 16_000) {
+        SpeechCheck::Quiet(g) => {
+            assert!(g > 1.5 && g <= 30.0, "{g}");
+            let up = atlas::audio::turned_up(&quiet, g);
+            assert!(atlas::audio::level_db(&up) > atlas::audio::level_db(&quiet) + 3.0);
+        }
+        other => panic!("quiet speech read as {other:?}"),
+    }
+    // A click is not speech.
+    let mut click = hiss(2_000, 16_000, 0.002);
+    click.extend(tone(40, 16_000, 0.5));
+    click.extend(hiss(2_000, 16_000, 0.002));
+    assert_eq!(check_speech(&click, 16_000), SpeechCheck::Silence);
+}
+
+#[test]
+fn what_whisper_writes_for_silence_is_not_a_turn() {
+    use atlas::voice::not_really_said as ghost;
+    for s in ["you", "You.", " you ", "Thanks for watching!", "Thank you for watching.", "Bye.", "...", ""] {
+        assert!(ghost(s), "{s:?} would be answered");
+    }
+    for s in ["Thank you.", "Why can you not hear me? What is the issue?", "Can you hear me?", "you there?", "Look at me."] {
+        assert!(!ghost(s), "{s:?} was dropped");
+    }
+}
+
+#[test]
+fn a_reply_given_again_and_again_is_not_shown_to_the_model_again_and_again() {
+    let mut t = atlas::thread::Thread::default();
+    let stuck = "I\u{2019}m here \u{2014} and I\u{2019}m listening. What\u{2019}s on your mind?";
+    t.append("And you hear me.", stuck, None, 1);
+    t.append("What are you capable of?", "I can help with tasks on your computer.", None, 2);
+    t.append("Why can you not hear me? What is the issue?", stuck, None, 3);
+    t.append("you", stuck, None, 4);
+    t.append("Can you hear me?", stuck, None, 5);
+    let msgs = t.messages(20, 4000);
+    let text: Vec<String> = msgs.iter().map(|m| m.content.clone()).collect();
+    // 30 Sep 2026 (merge): a past reply is shown as its first sentence or
+    // two without the stock closers (`repeating::for_history`), and later
+    // near copies are left out, so the stuck reply is counted by its opening.
+    let opening = "I\u{2019}m here \u{2014} and I\u{2019}m listening.";
+    assert_eq!(text.iter().filter(|m| m.contains(opening)).count(), 1, "the same reply is shown to the model again and again: {text:?}");
+    assert!(!text.iter().any(|m| m == "you"), "a whisper ghost was kept as something said");
+    assert!(text.iter().any(|m| m == "Can you hear me?"), "the newest exchange was dropped");
+}
+
+#[test]
+fn a_short_opening_copied_from_the_last_reply_is_caught() {
+    let earlier = ["I\u{2019}m here \u{2014} and I\u{2019}m listening. What\u{2019}s on your mind?"];
+    let mut g = atlas::brain::SpeechGate::new(&earlier);
+    let out = g.take("I\u{2019}m here \u{2014} and I\u{2019}m listening. What");
+    assert!(g.repeated && out.is_empty(), "the copied opening was said again");
+    let mut ok = atlas::brain::SpeechGate::new(&earlier);
+    let said = ok.take("The microphone is fine now. What next?");
+    assert!(!ok.repeated && !said.is_empty());
+}
+
+#[test]
+fn at_the_desk_the_laptop_mic_beats_the_airpods_mic() {
+    use atlas::audio::{Device, Kind};
+    let tc = atlas::voice::ToolsConfig::default();
+    let mut laptop = Device::new("Microphone Array (Intel Smart Sound Technology for Digital Microphones)", Kind::Input);
+    laptop.builtin = true;
+    let devices = vec![laptop, Device::new("Headset (AirPods Pro)", Kind::Input)];
+    let at_desk = atlas::hearing::Where { at_desk: true, presence_unknown: false, headset_connected: true, phone_active: false, audio_playing: false };
+    // What Eric's start-up measured: the laptop mic at -54 dB, under the -45 floor.
+    let mut h = atlas::hearing::Hearing::default();
+    h.observe_devices(&devices);
+    h.record_level(&devices[0].name, -54.1, 1);
+    let p = atlas::hearing::pick_microphone(&devices, &mut h, &tc, &at_desk, true, 2).unwrap();
+    assert!(p.name.starts_with("Microphone Array"), "the AirPods' mic was picked, and the AirPods went to call quality: {p:?}");
+    assert!(!p.costs_quality);
+    // With the lid shut, the laptop is often put away: the AirPods it is
+    // (Eric, 29 Sep 2026: "using my laptop mic which is closed and stored
+    // away from me").
+    let mut h2 = atlas::hearing::Hearing::default();
+    h2.record_level(&devices[0].name, -54.1, 1);
+    let shut = atlas::hearing::pick_microphone(&devices, &mut h2, &tc, &at_desk, false, 2).unwrap();
+    assert!(shut.name.contains("AirPods"), "{shut:?}");
+    // But a webcam that hears you takes over from the laptop mic under the lid.
+    let mut with_cam = devices.clone();
+    with_cam.push(Device::new("Microphone (HD Pro Webcam C920)", Kind::Input));
+    let mut h4 = atlas::hearing::Hearing::default();
+    h4.record_level("Microphone (HD Pro Webcam C920)", -30.0, 1);
+    let cam = atlas::hearing::pick_microphone(&with_cam, &mut h4, &tc, &at_desk, false, 2).unwrap();
+    assert!(cam.name.contains("C920"), "{cam:?}");
+    // A microphone you named wins over all of it.
+    let mut named = tc.clone();
+    named.audio.preferred_input = vec!["AirPods".into()];
+    let mut h3 = atlas::hearing::Hearing::default();
+    let yours = atlas::hearing::pick_microphone(&devices, &mut h3, &named, &at_desk, true, 2).unwrap();
+    assert!(yours.name.contains("AirPods") && yours.why.contains("you chose"), "{yours:?}");
+}
+
+#[test]
+fn a_shut_lid_never_leaves_atlas_with_no_microphone() {
+    // Eric's desk, 29 Sep 2026: lid shut behind two monitors, the webcam's
+    // mic muted in Windows (-90 dB), AirPods not connected. Taking the laptop
+    // mic out for the lid left nothing, and Atlas went deaf.
+    use atlas::audio::{Device, Kind};
+    let tc = atlas::voice::ToolsConfig::default();
+    let mut laptop = Device::new("Microphone Array (Intel Smart Sound Technology for Digital Microphones)", Kind::Input);
+    laptop.builtin = true;
+    let webcam = Device::new("Microphone (HD Pro Webcam C920)", Kind::Input);
+    let devices = vec![laptop, webcam.clone()];
+    let w = atlas::hearing::Where { at_desk: true, presence_unknown: false, headset_connected: false, phone_active: false, audio_playing: false };
+    let mut h = atlas::hearing::Hearing::default();
+    h.observe_devices(&devices);
+    h.record_level(&webcam.name, -90.3, 1);
+    let p = atlas::hearing::pick_microphone(&devices, &mut h, &tc, &w, false, 2).expect("Atlas was left with no microphone");
+    assert!(p.name.starts_with("Microphone Array"), "{p:?}");
+}
+
+#[test]
+fn a_permission_with_an_apostrophe_still_asks_first() {
+    let s = atlas::settings::registry(&Default::default());
+    let page = atlas::hub::permissions_page(&s, &[]);
+    assert!(page.contains("data-confirm="), "no switch asks before it turns on");
+    assert!(!page.contains("return confirm('"), "the question is inside the script's quotes again, where \"that's\" breaks it");
+}
+
+#[test]
+fn a_report_on_itself_is_the_self_check() {
+    let cfg = atlas::config::Config::load(std::path::Path::new("config")).expect("the shipped config");
+    let p = atlas::intent::Parser::new(&cfg.commands);
+    for said in ["Can you do some work and generate a report on yourself?", "what still needs to be set up", "give me a status report"] {
+        assert_eq!(p.parse(said), atlas::intent::Intent::SelfCheck, "{said:?} went to the model, which said it can't");
+    }
+}
+
+#[test]
+fn a_sentence_copied_from_earlier_replies_is_not_kept_again() {
+    // 30 Sep 2026 (merge): `thread::without_repeated_sentences` took copied
+    // sentences out when a reply was stored; this chat's
+    // `repeating::SentenceFilter` stops them before they are said (through
+    // `brain::SpeechGate`), so the reply stored is already without them. The
+    // same text, through the one that was kept.
+    let clean = |reply: &str, earlier: &[&str]| {
+        let mut f = atlas::repeating::SentenceFilter::new(earlier);
+        for s in atlas::repeating::sentences(reply) {
+            f.pass(&s);
+        }
+        f.kept()
+    };
+    let tail = "What\u{2019}s your next move? A joke? A memory? Or maybe you\u{2019}re testing if I can still hear you when you\u{2019}re not talking? Either way, I\u{2019}m tuned in.";
+    let earlier = format!("You\u{2019}re not wrong. {tail}");
+    let now = format!("You\u{2019}re right, I\u{2019}m not calm. {tail}");
+    let kept = clean(&now, &[&earlier]);
+    assert_eq!(kept, "You\u{2019}re right, I\u{2019}m not calm.", "{kept}");
+    assert_eq!(clean("Sure. Done.", &["Sure. Done."]), "Sure. Done.", "short answers repeat because they're right");
+    let mut t = atlas::thread::Thread::default();
+    t.append("a", &earlier, None, 1);
+    t.append("b", &now, None, 2);
+    let msgs = t.messages(20, 4000);
+    let all: String = msgs.iter().map(|m| m.content.clone()).collect::<Vec<_>>().join(" ");
+    // Shown to the model at most once (a stock closer: not at all).
+    assert!(all.matches("Either way, I\u{2019}m tuned in.").count() <= 1, "{all}");
+    assert!(all.matches("Or maybe you\u{2019}re testing").count() <= 1, "{all}");
+}
+
+#[test]
+fn a_parked_window_is_marked_minimized_and_unmarked_to_show() {
+    use atlas::winpark::with_minimized_bit as bit;
+    let style: isize = 0x0080_0000; // some other style bit
+    let parked = bit(style, true);
+    assert_eq!(parked & 0x2000_0000, 0x2000_0000);
+    assert_eq!(parked & 0x0080_0000, 0x0080_0000, "another style bit was lost");
+    assert_eq!(bit(parked, false), style);
+    // Both helper windows park when hidden and unpark before being shown.
+    let overlay = source("src/overlaywin.rs");
+    let typebox = source("src/typebox.rs");
+    // By the handle eframe gives, not a search by title (which found nothing
+    // on Eric's laptop).
+    assert!(overlay.contains("winpark::handle_of(cc)") && overlay.contains("winpark::park(self.hwnd)") && overlay.contains("winpark::unpark(hwnd)"));
+    assert!(typebox.contains("winpark::handle_of(cc)") && typebox.contains("winpark::park(self.hwnd)") && typebox.contains("winpark::unpark(hwnd)"));
+    assert!(!overlay.contains("FindWindowW") && !typebox.contains("FindWindowW(windows::core::PCWSTR::null(), windows::core::PCWSTR(title"), "a window is looked up by title again");
+}
+
+// ---- 29 Sep 2026, evening: Eric's report -- "it doesn't hear me most of the
+// time", a research request not done, and Atlas saying it didn't care and
+// couldn't research. Each test below is one of the causes found in his log.
+
+/// "Atlas, can you see me?" in one breath: the words after the name were in
+/// the wake word's own clip and were thrown away ("I heard my name but
+/// nothing after it", five times in one evening).
+#[test]
+fn the_words_said_with_the_name_are_kept() {
+    // 30 Sep 2026 (merge): `after_wake_phrase` and `words_after_name` were
+    // the same matcher; `words_after_name` is the one kept.
+    use atlas::voice::words_after_name as after_wake_phrase;
+    assert_eq!(after_wake_phrase("Atlas, can you see me?", "atlas").as_deref(), Some("can you see me?"));
+    assert_eq!(after_wake_phrase("Hey Atlas. Research local models.", "hey atlas").as_deref(), Some("Research local models."));
+    assert_eq!(after_wake_phrase("Atlas.", "atlas").as_deref(), Some(""));
+    assert_eq!(after_wake_phrase("thanks for watching", "atlas"), None);
+}
+
+/// Those words start what was said; a listen that hears nothing more leaves
+/// them as all of it, and a finished sentence isn't waited on.
+#[test]
+fn the_name_and_the_rest_make_one_request() {
+    use atlas::micthread::{sentence_finished, with_wake_word};
+    let nothing = Err(format!("{}", atlas::voice::HEARD_NOTHING));
+    assert_eq!(with_wake_word(Some("can you see me?".into()), nothing.clone()), Ok("can you see me?".into()));
+    assert_eq!(with_wake_word(Some("research".into()), Ok("local models".into())), Ok("research local models".into()));
+    assert_eq!(with_wake_word(None, nothing.clone()), nothing);
+    assert_eq!(with_wake_word(Some("  ".into()), Ok("hello there".into())), Ok("hello there".into()));
+    assert!(sentence_finished("can you see me?"));
+    assert!(!sentence_finished("research ways to"));
+    assert!(!sentence_finished("Yes."), "one word may be the start of more");
+}
+
+/// "Research ways to improve in house language models ... allowing it to do
+/// better ... put it into a document" was answered "About what?": the "it"s
+/// inside a long request were taken as needing something said earlier.
+#[test]
+fn a_long_request_with_it_in_it_is_not_asked_about_what() {
+    use atlas::references::argument_leans_on_earlier;
+    assert!(argument_leans_on_earlier("it"));
+    assert!(argument_leans_on_earlier("that one"));
+    assert!(argument_leans_on_earlier("it again"));
+    assert!(!argument_leans_on_earlier(
+        "ways to improve in house language models allowing it to do better put it into a document"
+    ));
+    let cfg = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    let p = atlas::intent::Parser::new(&cfg.commands);
+    match p.parse("Research ways to improve in house language models, allowing it to do better. Put it into a document.") {
+        atlas::intent::Intent::Research(t) => assert!(!argument_leans_on_earlier(&t), "{t}"),
+        other => panic!("not research: {other:?}"),
+    }
+}
+
+/// "Start that research", "do the research I asked for": asking to get on
+/// with it, not a topic -- they went to the model, which said "I'm already on
+/// it" and started nothing.
+#[test]
+fn getting_on_with_the_research_is_recognised() {
+    use atlas::references::starts_the_research;
+    for s in ["And you start that research.", "Ok then lets get started on the research.",
+              "I want you to use the internet and do the research i asked for.",
+              "When you start that research, tell me what you find."] {
+        assert!(starts_the_research(s), "{s}");
+    }
+    for s in ["what did the research say", "research quantum computing", "start the timer"] {
+        assert!(!starts_the_research(s), "{s}");
+    }
+}
+
+/// Atlas knows whose it is and what its job is, and the model is told what
+/// it told Eric isn't true of it.
+#[test]
+fn atlas_knows_who_it_is_and_what_its_job_is() {
+    let p = atlas::persona::Persona::default();
+    for prompt in [p.character(), p.system_prompt()] {
+        assert!(prompt.contains("personal assistant of the person who owns this computer"), "{prompt}");
+        assert!(prompt.contains("Your job is to take things off their plate"));
+        assert!(prompt.contains("research a topic on the web"));
+        assert!(prompt.contains("You want to get better at this job"));
+        assert!(prompt.contains("that you can't do research"));
+    }
+    // Still says to call the tools (the second scan's check).
+    assert!(p.character().contains("call the tool"));
+}
+
+/// "I'm *you*" read aloud: emphasis marks are taken out of what's spoken,
+/// and arithmetic is left alone.
+#[test]
+fn emphasis_marks_are_not_read_aloud() {
+    use atlas::persona::without_emphasis;
+    assert_eq!(without_emphasis("I'm *you*, **really**."), "I'm you, really.");
+    assert_eq!(without_emphasis("3 * 4 is 12"), "3 * 4 is 12");
+    let p = atlas::persona::Persona::default();
+    assert!(!p.spoken("I'm not *doing* research.").contains('*'));
+}
+
+/// "Have a go" on the Improvements page was refused every time as "the cause
+/// is a restatement of the symptom": the session already held the symptom,
+/// and was handed it again as the cause.
+#[test]
+fn have_a_go_hands_over_the_cause_as_the_cause() {
+    use atlas::selfaudit::{recommend, Kind, Signal};
+    let sig = Signal { kind: Kind::NotUnderstood, subject: "what you said".into(), seen: 9, of: 10, example: "flip channel names".into() };
+    let recs = recommend(&[sig], 3);
+    let r = recs.first().expect("a recommendation");
+    let s = atlas::selfwork::Session::from_recommendation(r, 0);
+    assert_eq!(s.diagnosing.symptom.as_deref(), Some(r.symptom.as_str()));
+    assert_eq!(s.diagnosing.cause.as_deref(), Some(r.cause.as_str()));
+    assert_eq!(s.diagnosing.where_.as_deref(), Some(r.where_.as_str()));
+    assert_eq!(s.diagnosing.proof.as_deref(), Some(r.proof.as_str()));
+}

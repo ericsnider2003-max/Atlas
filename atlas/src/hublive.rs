@@ -1618,7 +1618,17 @@ impl Daemon<'_> {
         // a switch that did nothing into one that stops Atlas starting.
         let mut settings = crate::settings::registry(&self.tools_cfg());
         let said = settings.set_and_keep(key, value, &crate::roots::config_dir());
-        let _ = self.pick_up_settings();
+        // What taking it up says wins: it knows a change that waits for the
+        // next start from one that is live now (29 Sep 2026: "is now on" was
+        // shown for Voice, Push-to-talk and the speaking voice, which only
+        // change when Atlas starts again).
+        let took = self.pick_up_settings();
+        if !took.is_empty() {
+            return took.join(" ");
+        }
+        if crate::settings::needs_a_restart(key) && !said.to_lowercase().contains("couldn") {
+            return format!("{said} It takes effect when Atlas next starts.");
+        }
         said
     }
 
@@ -3043,11 +3053,7 @@ impl Daemon<'_> {
                 Err(why) => format!("This copy can't change its own code, and the idea couldn't be sent on: {why}"),
             };
         }
-        let thought = crate::selfaudit::as_thought(&r);
-        let mut session = crate::selfwork::Session::new(&r.symptom, 0);
-        for answer in [&thought.symptom, &thought.cause, &thought.where_, &thought.proof] {
-            let _ = session.diagnosing.answer(answer);
-        }
+        let session = crate::selfwork::Session::from_recommendation(&r, 0);
         self.selfwork = Some(session);
         self.work_on_myself(&r.symptom)
     }

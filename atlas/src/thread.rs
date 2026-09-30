@@ -69,6 +69,14 @@ impl Thread {
         if let Some(a) = &about {
             self.current_topic = Some(a.clone());
         }
+        // Kept as it was said (merged 30 Sep 2026). The other chat took out
+        // here any sentence copied from the last four replies; this chat
+        // stops those sentences before they are said (`repeating::
+        // SentenceFilter`, through `brain::SpeechGate` -- near copies and stock
+        // closers too, and the reply kept is what was said), and shows the
+        // model each past reply only as its first sentence or two, near
+        // copies left out (`messages`). Doing it here as well rewrote replies
+        // that were right to repeat ("Moved 3 files to Documents.").
         self.recent.push(Exchange {
             at: t,
             said: said.to_string(),
@@ -257,6 +265,17 @@ impl Thread {
             if self.folded + i < from || e.said.trim().is_empty() || e.reply.trim().is_empty() {
                 continue;
             }
+            // What whisper writes for a quiet room was never said (29 Sep 2026).
+            if crate::voice::not_really_said(&e.said) {
+                continue;
+            }
+            // Merged 30 Sep 2026: both chats stopped the model being shown its
+            // own reply again and again. The other chat's way dropped an
+            // earlier reply when the same one came later (exact match); this
+            // one (below) keeps the first and leaves out later near copies
+            // (`repeating::near_copy`), which also catches a copy with a
+            // different first few words, and leaves the start of the prompt
+            // as it was, so the model server can reuse what it already read.
             out.push(Msg::user(e.said.clone()));
             let short = crate::repeating::for_history(&e.reply, HISTORY_SENTENCES);
             if short.trim().is_empty() || shown.iter().any(|s| crate::repeating::near_copy(&short, s) || crate::repeating::near_copy(&e.reply, s)) {

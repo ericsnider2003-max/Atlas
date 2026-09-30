@@ -401,17 +401,36 @@ pub fn choose(devices: &[Device], cfg: &AudioConfig, laptop_screen_active: bool)
         }
     };
 
-    let output = if cfg.prefer_headphones_for_output {
-        bt_out.or_else(|| outputs.first()).map(|d| d.name.clone())
+    // A speaker you named wins here too (29 Sep 2026: it was honoured only
+    // when you had also named a microphone). Headphones, when preferred,
+    // include wired ones, not only Bluetooth.
+    let named_out = first_preferred(&outputs, &cfg.preferred_output);
+    let ears_out = outputs.iter().find(|d| d.bluetooth || looks_like_headphones(&d.name.to_lowercase()));
+    let output = if let Some(d) = named_out {
+        Some(d.name.clone())
+    } else if cfg.prefer_headphones_for_output {
+        ears_out.or_else(|| outputs.first()).map(|d| d.name.clone())
     } else {
         outputs.iter().find(|d| !d.bluetooth).or_else(|| outputs.first()).map(|d| d.name.clone())
     };
 
-    if output.is_some() && bt_out.is_some() && cfg.prefer_headphones_for_output {
+    if named_out.is_none() && output.is_some() && ears_out.is_some() && cfg.prefer_headphones_for_output {
         why.push_str(", speaking through your headphones");
     }
+    let _ = bt_out;
 
     Selection { input, output, why, degrades_audio: degrades }
+}
+
+/// A speaker you wear: headphones, a headset, earbuds.
+fn looks_like_headphones(lower: &str) -> bool {
+    ["headphone", "headset", "earphone", "earbud", "buds", "airpods"].iter().any(|k| lower.contains(k))
+}
+
+/// The microphone you named in `preferred_input`, if this machine has it.
+pub fn preferred_input_of<'a>(devices: &'a [Device], cfg: &AudioConfig) -> Option<&'a Device> {
+    let inputs: Vec<&Device> = devices.iter().filter(|d| d.kind == Kind::Input).collect();
+    first_preferred(&inputs, &cfg.preferred_input)
 }
 
 fn first_preferred<'a>(devices: &[&'a Device], preferred: &[String]) -> Option<&'a Device> {
@@ -685,4 +704,69 @@ pub fn probe_cameras(ffmpeg_cmd: &str) -> Vec<String> {
         Ok(o) => parse_cameras(&String::from_utf8_lossy(&o.stderr)),
         Err(_) => Vec::new(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Is there anyone speaking in this clip? (29 Sep 2026)
+//
+// Whisper, handed a clip of a quiet room, writes something anyway -- most
+// often "you", sometimes "Thank you." or "Thanks for watching". On Eric's
+// laptop that turned every silent follow-up listen into a turn: Atlas
+// answered "you", listened again, heard the room, got "you" again, and went
+// round for as long as it ran, with the model and the transcriber working
+// the whole time. And the wake-word listener ran whisper on every two-second
+// clip of an empty room. A clip with no speech in it is now silence, and
+// whisper is never asked about it; a clip with quiet speech in it is turned
+// up first.
+// ---------------------------------------------------------------------------
+
+/// What a clip holds, for speech-to-text.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpeechCheck {
+    /// Nobody speaking: don't transcribe it.
+    Silence,
+    /// Speech, loud enough as it is.
+    Speech,
+    /// Speech, but quiet: multiply by this before transcribing.
+    Quiet(f32),
+}
+
+/// How much speech a clip needs before it is transcribed.
+pub const MIN_SPEECH_MS: u32 = 250;
+/// Speech stands this far above the clip's own quiet parts.
+pub const SPEECH_OVER_ROOM_DB: f32 = 9.0;
+/// Below this nothing is speech, however quiet the room (a dead device).
+pub const QUIETEST_SPEECH_DB: f32 = -62.0;
+/// Speech whose loudest part is under this is turned up.
+pub const TURN_UP_BELOW_DB: f32 = -28.0;
+
+/// Look at `samples` (at `rate`) the way speech is looked for: 30 ms frames,
+/// the room's level taken from the quietest fifth of them, speech as frames
+/// well above it. A clip too short to judge is given the benefit of the doubt.
+pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
+    let frame = (rate as usize * 30 / 1000).max(1);
+    let levels: Vec<f32> = samples.chunks(frame).filter(|c| c.len() == frame).map(level_db).collect();
+    if levels.len() < 4 {
+        return SpeechCheck::Speech;
+    }
+    let mut sorted = levels.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let room = sorted[sorted.len() / 5];
+    let loudest = *sorted.last().unwrap_or(&SILENT_DB);
+    let bar = (room + SPEECH_OVER_ROOM_DB).max(QUIETEST_SPEECH_DB);
+    let speech_frames = levels.iter().filter(|l| **l >= bar).count() as u32;
+    if speech_frames * 30 < MIN_SPEECH_MS {
+        return SpeechCheck::Silence;
+    }
+    if loudest < TURN_UP_BELOW_DB {
+        // Up to about -12 dBFS at its loudest, and never more than 30x.
+        let gain = 10f32.powf((-12.0 - loudest) / 20.0).clamp(1.0, 30.0);
+        return SpeechCheck::Quiet(gain);
+    }
+    SpeechCheck::Speech
+}
+
+/// `samples` turned up by `gain`, clipped rather than wrapped.
+pub fn turned_up(samples: &[i16], gain: f32) -> Vec<i16> {
+    samples.iter().map(|s| ((*s as f32) * gain).clamp(i16::MIN as f32, i16::MAX as f32) as i16).collect()
 }

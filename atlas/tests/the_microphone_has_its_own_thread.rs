@@ -540,6 +540,9 @@ fn speaking_over_a_reply_stops_it_and_what_you_said_is_answered_next() {
     // stopped, and what you said was answered -- is asserted directly.
     assert!(st.streams.load(Ordering::SeqCst) >= 2, "the reply wasn't watched: {said:?}");
     assert!(said.len() >= 2, "no second reply was spoken (the cut-in wasn't answered): {said:?}");
+    // Both chats' version of this test (merged 30 Sep 2026): no "Paused."
+    // before the answer to words said over a reply.
+    assert!(!said.iter().any(|(l, _)| l == "Paused."), "\"Paused.\" was said before the answer: {said:?}");
     assert!(said.iter().skip(1).any(|(_, cut)| !cut), "the answer to what you said was cut too: {said:?}");
     assert!(!st.recording.load(Ordering::SeqCst) || st.attempts.load(Ordering::SeqCst) > 0);
     let _ = d.shut_down();

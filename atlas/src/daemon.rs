@@ -849,6 +849,8 @@ pub struct Daemon<'a> {
     heard_note: Option<String>,
     /// The connection lines last written to the log, so each is written once.
     connections_logged: Vec<String>,
+    /// The tier-mix line last logged, so it is logged once each time it changes.
+    tier_mix_logged: Option<String>,
     /// The typing box, started hidden and shown on its key.
     typebox: Option<crate::typebox::Standby>,
     /// The turn being answered was typed, not said: "hands-free only"
@@ -1612,6 +1614,7 @@ impl<'a> Daemon<'a> {
             running: crate::awake::Running::Awake,
             heard_note: None,
             connections_logged: Vec::new(),
+            tier_mix_logged: None,
             typebox: None,
             turn_was_typed: false,
             unknown_count: 0,

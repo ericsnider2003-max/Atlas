@@ -1387,7 +1387,11 @@ fn control(s: &crate::settings::Setting) -> String {
         Value::Toggle(on) => {
             let (label, next) = if *on { ("Turn off", "off") } else { ("Turn on", "on") };
             let confirm = if s.weight.needs_confirming() && !*on {
-                format!(" onsubmit=\"return confirm('{}')\"", esc(&s.cost))
+                // The words in an attribute of their own, read by the script:
+                // put inside the script's quotes, an apostrophe ("that's")
+                // ended the string, the handler didn't compile, and the switch
+                // turned on with no question asked (29 Sep 2026).
+                format!(" data-confirm=\"{}\" onsubmit=\"return confirm(this.dataset.confirm)\"", esc(&s.cost))
             } else {
                 String::new()
             };

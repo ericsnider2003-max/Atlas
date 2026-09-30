@@ -138,7 +138,10 @@ impl<'a> Daemon<'a> {
         // (1) Relative: "in 20 minutes", "in 2 hours".
         if let Some(secs) = relative_secs(&low) {
             let text = reminder_text(said);
-            let id = self.scheduler.in_secs(&format!("reminder Reminder: {text}"), secs);
+            // From the turn's own moment, like every other time here (it read
+            // the wall clock itself, so a turn's "in 2 minutes" and its tick
+            // disagreed whenever they weren't the same clock).
+            let id = self.scheduler.at(&format!("reminder Reminder: {text}"), now + secs);
             let _ = self.scheduler.save(&self.store);
             return Some(format!(
                 "Right — in {}, I'll remind you to {text}. (#{id})",

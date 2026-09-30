@@ -383,7 +383,17 @@ fn one_shot_jobs_are_done_and_do_not_rerun() {
 fn a_failed_recurring_job_stops_instead_of_looping_forever() {
     let mut s = Scheduler::default();
     let id = s.every("broken", 60, 0);
+    // 29 Sep 2026: one failure no longer stops a repeating job for good (a
+    // reminder that hit one bad moment never came again, unsaid). It is tried
+    // at its next time -- not at once, so still no loop -- and stops after
+    // `FAILS_BEFORE_STOPPING` failures in a row.
     s.complete(id, 100, "exploded", false);
+    assert_eq!(s.jobs[0].state, JobState::Pending);
+    assert_eq!(s.jobs[0].due, 160, "tried again at once, which is the loop this guards against");
+    for t in [160, 220] {
+        s.complete(id, t, "exploded", false);
+    }
+    assert_eq!(s.jobs[0].fails_in_a_row, atlas::scheduler::FAILS_BEFORE_STOPPING);
     assert_eq!(s.jobs[0].state, JobState::Failed);
     assert!(s.due(9999).is_empty());
 }

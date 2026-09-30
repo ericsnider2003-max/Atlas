@@ -217,7 +217,12 @@ commands:
               "make sure you're working", "check that you're working",
               "what's outstanding in your setup", "whats outstanding in your setup", "what's left to set up",
               "whats left to set up", "what's missing in your setup", "whats missing in your setup",
-              "is your setup finished", "is setup finished", "are you fully set up"]
+              "is your setup finished", "is setup finished", "are you fully set up",
+              # Eric, 29 Sep 2026: asked for these and was told Atlas can't.
+              "report on yourself", "a report on yourself", "generate a report on yourself",
+              "give me a report on yourself", "status report", "self report", "diagnostic report",
+              "what still needs to be set up", "what still needs setting up", "what needs to be set up",
+              "what still needs set up"]
 
   - intent: shakedown
     describe: "Run the commissioning shakedown over every capability that has never run on this machine."

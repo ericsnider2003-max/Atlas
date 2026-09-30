@@ -163,7 +163,14 @@ fn the_evening_replayed_through_the_prompt_builder() {
     // all 23 reached the model, 6,168 characters of messages on average
     // (the tools were 4,263: the same 18 schemas, unchanged).
     assert!(asked.len() + 8 <= rows.len(), "the commands the evening asked for still went to the model: {} of {}", asked.len(), rows.len());
-    assert!(avg_msgs < 5_000, "the messages are still {avg_msgs} characters on average");
+    // 30 Sep 2026 (merge): 5,000 -> 5,800. The other chat's fix for the
+    // model making things up about itself (`persona::who_and_what`: whose
+    // assistant Atlas is, its job, what it can do) put about 800 more
+    // characters at the top of every request -- fixed text, the same every
+    // turn, so the model server reads it once and reuses it. Measured after
+    // the merge: 5,656. The evening's own fixes are still what this holds:
+    // before them the average was 6,168 with the shorter character.
+    assert!(avg_msgs < 5_800, "the messages are still {avg_msgs} characters on average");
     for r in spy.asked.lock().unwrap().iter() {
         // The conversation as shown (the summary and the turns), not the
         // character, which names the closers it forbids.

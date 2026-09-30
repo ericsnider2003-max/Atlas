@@ -777,6 +777,9 @@ impl Calendar {
         }
     }
 
+    /// How long after an event started its reminder is still said.
+    pub const REMIND_LATE_SECS: u64 = 15 * 60;
+
     /// The occurrences whose reminder is due right now — start is still ahead
     /// but within its lead time. Repeating events are expanded, so a daily
     /// standup reminds each day. The caller tracks which it has already spoken
@@ -785,13 +788,18 @@ impl Calendar {
         // A reminder fires while now is in [start - lead, start). The largest
         // lead we support is a day, so a day-and-change window covers every one
         // without scanning further than it must.
+        //
+        // And for `REMIND_LATE_SECS` after it started (29 Sep 2026): a laptop
+        // asleep through the whole lead time, or Atlas paused, used to drop
+        // the reminder altogether; now it is said late ("started 4 minutes
+        // ago") rather than not at all.
         let window_end = now + 26 * 3600;
-        self.occurrences_between(now, window_end)
+        self.occurrences_between(now.saturating_sub(Self::REMIND_LATE_SECS), window_end)
             .into_iter()
             .filter(|e| {
                 let Some(mins) = e.remind_before_mins else { return false };
                 let lead = mins as u64 * 60;
-                e.start > now && e.start.saturating_sub(lead) <= now
+                e.start + Self::REMIND_LATE_SECS > now && e.start.saturating_sub(lead) <= now
             })
             .collect()
     }
@@ -1425,8 +1433,12 @@ mod tests {
         assert!(c.due_reminders(start - 3600).is_empty());
         // Ten minutes before (inside the 15-minute lead): due.
         assert_eq!(c.due_reminders(start - 600).len(), 1);
-        // After it's started: not due.
-        assert!(c.due_reminders(start + 60).is_empty());
+        // Just after it started: still due, late (29 Sep 2026: a laptop
+        // asleep across the lead window never said it at all; the daemon
+        // says "started a minute ago" and the `reminded` set says it once).
+        assert_eq!(c.due_reminders(start + 60).len(), 1);
+        // Once the late window is over: not due.
+        assert!(c.due_reminders(start + Calendar::REMIND_LATE_SECS).is_empty());
         // An event with no reminder set never comes due.
         let mut c2 = Calendar::default();
         c2.add("no reminder", w, None, THU);

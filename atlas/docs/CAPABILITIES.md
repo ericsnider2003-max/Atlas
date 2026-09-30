@@ -41,7 +41,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | hold a key in any window to talk; a quick tap still reaches the app | built, never run for real | `hotkey` `input` | ready | would | would | would | would | would |
 | notice a call, note your side, record the others only after they say yes, and write up who said what | built, never run for real | `callnotes` `callrec` `callwatch` `consent` | ready | would | would | would | would | would |
 | hold a key anywhere in Windows to talk, or press one to type, alongside the wake word | built, never run for real | `hotkeys` `typebox` `quickinput` | ready | would | would | would | would | would |
-| pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` | ready | would | would | would | would | would |
+| pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` `playout` | ready | would | would | would | would | would |
 | tell whether what it heard was meant for it -- a "stop" to it stops it, a voice on your call doesn't | waiting on whisper | `addressing` | ready | would | would | would | would | would |
 
 ## Talking
@@ -350,4 +350,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-231 things, across 387 of 421 source files. The other 34 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+231 things, across 388 of 423 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

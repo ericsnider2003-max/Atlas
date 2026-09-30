@@ -1448,13 +1448,35 @@ impl<'a> Daemon<'a> {
     /// The reply is over, as far as it got.
     pub(super) fn stop_saying(&mut self, s: crate::speakthread::Saying, mouth: &dyn Mouth) -> crate::speech::Delivery {
         let said = s.finish();
+        let over_it = said.words.clone();
         if let Some(w) = said.words {
             self.cut_in_by_voice = Some(w);
         }
         let d = said.delivery;
         if d.was_interrupted() {
+            // Cut by a sound that wasn't words -- a cough, a door, Atlas's own
+            // voice coming back -- is no reason to stop: the rest is said
+            // (29 Sep 2026: "Paused." and then nothing, over and over).
+            if over_it.as_deref().is_some_and(|w| crate::voice::not_really_said(w)) {
+                self.cut_in_by_voice = None;
+                self.unsaid = None;
+                let rest = d.remaining_text();
+                if !rest.trim().is_empty() {
+                    self.log.info("cut in by a sound, not words: carrying on");
+                    self.say(mouth, &rest);
+                }
+                return d;
+            }
             // Park what was not said, so "carry on" can finish it.
             self.unsaid = Some(d.remaining_text());
+            // Words said over it are answered next, straight away: no
+            // "Paused." in front of the answer. A stop still says so.
+            // (Merged 30 Sep 2026: both chats fixed this. The other chat
+            // skipped the "Paused." here when words came with the cut; this
+            // chat's `speech::YOUR_TURN` is the reason given for any cut that
+            // is you taking the turn -- your voice, the talk key, the cut
+            // switch -- and `acknowledge` says nothing for it, so the check
+            // here was the same thing twice and went.)
             let ack = crate::speech::acknowledge(&d);
             if !ack.is_empty() {
                 self.say(mouth, &ack);
