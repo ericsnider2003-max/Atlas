@@ -29,6 +29,11 @@ pub enum Pending {
 pub struct Session {
     pub turns: Vec<Turn>,
     pub pending: Pending,
+    /// Approvals asked for while another was waiting (30 Sep 2026): kept in
+    /// order and asked one at a time after it, rather than each new one
+    /// replacing the last -- two parts of a request that each needed an OK
+    /// left only the second to answer.
+    pub queued: std::collections::VecDeque<(Intent, String)>,
     /// Last app acted on, so "move it" and "close that" resolve.
     pub last_app: Option<String>,
     pub current_project: Option<String>,
@@ -41,6 +46,7 @@ impl Default for Session {
         Session {
             turns: Vec::new(),
             pending: Pending::Nothing,
+            queued: std::collections::VecDeque::new(),
             last_app: None,
             current_project: None,
             started: now(),
@@ -81,8 +87,61 @@ impl Session {
         self.pending = Pending::Clarification(question.to_string());
     }
 
+    /// Wait for a yes or no before doing `intent`. One already waiting keeps
+    /// its place and this one queues behind it (`queued`); the same one twice
+    /// is asked once.
     pub fn await_approval(&mut self, intent: Intent, description: &str) {
+        if let Pending::Approval(waiting, _) = &self.pending {
+            if *waiting != intent && !self.queued.iter().any(|(q, _)| *q == intent) {
+                self.queued.push_back((intent, description.to_string()));
+            }
+            return;
+        }
         self.pending = Pending::Approval(intent, description.to_string());
+    }
+
+    /// How many approvals are waiting: the one being asked and the queue.
+    pub fn approvals_waiting(&self) -> usize {
+        usize::from(matches!(self.pending, Pending::Approval(..))) + self.queued.len()
+    }
+
+    /// Every approval waiting, the one being asked first.
+    pub fn all_approvals(&self) -> Vec<(Intent, String)> {
+        let mut out = Vec::new();
+        if let Pending::Approval(i, d) = &self.pending {
+            out.push((i.clone(), d.clone()));
+        }
+        out.extend(self.queued.iter().cloned());
+        out
+    }
+
+    /// Nothing waits any more: the question and everything queued behind it.
+    pub fn drop_approvals(&mut self) {
+        if matches!(self.pending, Pending::Approval(..)) {
+            self.pending = Pending::Nothing;
+        }
+        self.queued.clear();
+    }
+
+    /// The question as it is put now: the one approval, or -- with more
+    /// waiting -- how many, and the first of them.
+    pub fn asking_line(&self) -> Option<String> {
+        let Pending::Approval(_, first) = &self.pending else { return None };
+        Some(match self.queued.len() {
+            0 => first.clone(),
+            n => format!("{} things need your OK. First: {}", count_word(n + 1), yes_or_no(first)),
+        })
+    }
+
+    /// The one asked has been answered: the next in the queue is asked now,
+    /// and the line that asks it. `None` when nothing else waits.
+    pub fn ask_the_next(&mut self) -> Option<String> {
+        let (i, d) = self.queued.pop_front()?;
+        self.pending = Pending::Approval(i, d.clone());
+        Some(match self.queued.len() {
+            0 => format!("Next: {}", yes_or_no(&d)),
+            n => format!("{} more need your OK. Next: {}", count_word(n + 1), yes_or_no(&d)),
+        })
     }
 
     pub fn is_waiting(&self) -> bool {
@@ -107,6 +166,92 @@ impl Session {
     pub fn steps(&self) -> Vec<String> {
         self.turns.iter().map(|t| t.action.clone()).collect()
     }
+}
+
+/// "Two", "Three" ... for saying how many.
+fn count_word(n: usize) -> String {
+    match n {
+        2 => "Two".into(),
+        3 => "Three".into(),
+        4 => "Four".into(),
+        5 => "Five".into(),
+        n => n.to_string(),
+    }
+}
+
+/// A "... Go ahead?" question as one of several: "... -- yes or no?".
+fn yes_or_no(q: &str) -> String {
+    let t = q.trim();
+    let t = t.strip_suffix("Go ahead?").unwrap_or(t).trim_end();
+    let t = t.trim_end_matches(['?', '.']).trim_end();
+    format!("{t} -- yes or no?")
+}
+
+/// An answer to several approvals at once, one entry each in the order they
+/// were asked: `Some(true)` yes, `Some(false)` no, `None` not answered (still
+/// asked). "Yes to both", "no to all of them", "neither", "yes to the first
+/// and no to the second", "no to the second". `None` when it isn't such an
+/// answer -- a bare "yes" or "no" answers only the one being asked, as
+/// always, and is left to `is_yes`/`is_no`. Strict like them: a clause that
+/// isn't clearly a yes or a no to a named one makes the whole thing not an
+/// answer.
+pub fn answers_for_several(said: &str, n: usize) -> Option<Vec<Option<bool>>> {
+    if n < 2 {
+        return None;
+    }
+    let t = said.to_lowercase().replace('\u{2019}', "'").replace("don't", "dont").replace("do not", "dont");
+    let t: String = t.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == ',' || c == ';' { c } else { ' ' }).collect();
+    let flat = t.replace([',', ';'], " ");
+    let flat: String = flat.split_whitespace().collect::<Vec<_>>().join(" ");
+    const ALL_YES: &[&str] = &[
+        "yes to both", "yes both", "both", "both of them", "do both", "yes do both", "go ahead with both", "ok both",
+        "okay both", "yes to all", "yes all", "all of them", "yes to all of them", "yes to everything", "do all of them",
+        "yes to all three", "all three", "yes please both", "yes to both please", "both please", "sure both",
+    ];
+    const ALL_NO: &[&str] = &[
+        "no to both", "no both", "neither", "neither of them", "no to either", "no to all", "no to all of them",
+        "none", "none of them", "dont do either", "no to everything", "not either", "no neither", "no to all three",
+    ];
+    if ALL_YES.contains(&flat.as_str()) {
+        return Some(vec![Some(true); n]);
+    }
+    if ALL_NO.contains(&flat.as_str()) {
+        return Some(vec![Some(false); n]);
+    }
+    // Clause by clause: "yes to the first, no to the second".
+    let mut out: Vec<Option<bool>> = vec![None; n];
+    let mut any = false;
+    for clause in t.split([',', ';']).flat_map(|c| c.split(" and ")).flat_map(|c| c.split(" but ")) {
+        let words: Vec<&str> = clause.split_whitespace().collect();
+        if words.is_empty() {
+            continue;
+        }
+        let no = words.iter().any(|w| matches!(*w, "no" | "nope" | "dont" | "not" | "skip" | "leave" | "cancel"));
+        // "Do" is a yes only when nothing in the clause says no.
+        let yes = !no && words.iter().any(|w| matches!(*w, "yes" | "yeah" | "yep" | "ok" | "okay" | "sure" | "do" | "approve"));
+        let which = words.iter().find_map(|w| match *w {
+            "first" | "1st" | "one" => Some(0),
+            "second" | "2nd" | "two" => Some(1),
+            "third" | "3rd" | "three" => Some(2),
+            "fourth" | "4th" | "four" => Some(3),
+            "last" => Some(n - 1),
+            _ => None,
+        });
+        match (yes, no, which) {
+            (true, false, Some(k)) | (false, true, Some(k)) if k < n => {
+                out[k] = Some(yes);
+                any = true;
+            }
+            // "yes to the first and the second": the ordinal alone takes the
+            // last answer given.
+            (false, false, Some(k)) if k < n && any => {
+                let last = out.iter().rev().flatten().next().copied();
+                out[k] = last;
+            }
+            _ => return None,
+        }
+    }
+    any.then_some(out)
 }
 
 /// Deliberately strict. An ambiguous grunt must not count as consent for a

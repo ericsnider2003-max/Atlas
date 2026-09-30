@@ -193,6 +193,14 @@ impl<'a> Daemon<'a> {
                 };
                 let q = format!("{} Go ahead?", say.trim());
                 self.session.await_approval(intent.clone(), &q);
+                // Another was already waiting (30 Sep 2026): this one queues
+                // behind it, and is said as waiting, not as the question.
+                if !matches!(&self.session.pending, crate::session::Pending::Approval(i, _) if i == intent) {
+                    return Outcome::NeedsYou(format!(
+                        "{} That needs your OK too -- I'll ask once you've answered the one before it.",
+                        say.trim()
+                    ));
+                }
                 return Outcome::NeedsYou(q);
             }
         }
@@ -554,8 +562,89 @@ impl<'a> Daemon<'a> {
 
     /// The answers of a request worked side by side, said together
     /// (`streams::merged`).
+    ///
+    /// Two or more waiting for your OK (30 Sep 2026): their questions aren't
+    /// said one after another -- only the last would have been answerable.
+    /// The rest are said, then how many need your OK and the first of them
+    /// (`Session::asking_line`); the others are asked in turn.
     fn parts_answer(&self, streams: &[crate::streams::Stream]) -> String {
-        crate::streams::merged(streams)
+        let asking = streams.iter().filter(|s| s.state == crate::streams::State::NeedsYou).count();
+        if asking < 2 {
+            return crate::streams::merged(streams);
+        }
+        let others: Vec<crate::streams::Stream> =
+            streams.iter().filter(|s| s.state != crate::streams::State::NeedsYou).cloned().collect();
+        let rest = crate::streams::merged(&others);
+        match self.session.asking_line() {
+            Some(q) => format!("{rest} {q}").trim().to_string(),
+            None => crate::streams::merged(streams),
+        }
+    }
+
+    /// After an approval is answered: the next one waiting asked now, after
+    /// what the answer did. Not when what was done asked something of its
+    /// own -- that is the question now, and the queue waits behind it.
+    pub(super) fn and_the_next_approval(&mut self, reply: String) -> String {
+        if self.session.is_waiting() {
+            return reply;
+        }
+        match self.session.ask_the_next() {
+            Some(q) => format!("{} {q}", reply.trim()).trim().to_string(),
+            None => reply,
+        }
+    }
+
+    /// Several approvals answered at once ("yes to both", "no to the
+    /// second"): each one done or left, in the order asked, and whatever was
+    /// not answered still asked.
+    pub(super) fn answer_several(&mut self, said: &str, answers: Vec<Option<bool>>, t: u64) -> String {
+        let all = self.session.all_approvals();
+        self.session.pending = crate::session::Pending::Nothing;
+        self.session.queued.clear();
+        let mut lines: Vec<String> = Vec::new();
+        let mut still: Vec<(Intent, String)> = Vec::new();
+        for (k, (intent, description)) in all.into_iter().enumerate() {
+            let Some(yes) = answers.get(k).copied().flatten() else {
+                still.push((intent, description));
+                continue;
+            };
+            if let Some(refusal) = self.handed_over_refusal(&intent) {
+                lines.push(refusal);
+                continue;
+            }
+            self.memory.record_approval(crate::session::kind_of(&intent), yes, None);
+            let line = if yes {
+                let r = self.execute(&intent);
+                // The first was what a scheduled job was waiting on.
+                if k == 0 {
+                    if let Some(jid) = self.pending_job.take() {
+                        self.scheduler.approve(jid);
+                        self.scheduler.complete(jid, t, &r, !r.starts_with("error"));
+                    }
+                }
+                r
+            } else {
+                if k == 0 {
+                    self.pending_job = None;
+                }
+                let (what, kind) = crate::person::learn_from_refusal(&description);
+                self.person.notice(&what, kind, t);
+                format!("Left that alone: {}.", intent.plain().trim_end_matches('.'))
+            };
+            self.session.record(said, &intent, &line);
+            lines.push(line);
+        }
+        // What wasn't answered keeps its place, behind anything the answers
+        // themselves asked.
+        for (i, d) in still {
+            self.session.await_approval(i, &d);
+        }
+        let mut reply = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        if let Some(q) = self.session.asking_line() {
+            reply = format!("{reply} Still waiting: {q}").trim().to_string();
+        }
+        self.persist();
+        reply
     }
 
     /// "What are you working on": each part of the last request still going,

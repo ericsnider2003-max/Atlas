@@ -41,6 +41,7 @@ impl<'a> Daemon<'a> {
                 if t.saturating_sub(*at) > QUESTION_LIFETIME_SECS {
                     self.log.info("a question went unanswered for ten minutes -- dropped it");
                     self.session.pending = Pending::Nothing;
+                    self.session.queued.clear();
                     self.pending_stamp = None;
                     self.pending_job = None;
                     self.pending_offer = None;

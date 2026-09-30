@@ -577,6 +577,12 @@ impl<'a> Daemon<'a> {
         // A parked approval takes precedence: the next thing you say is an
         // answer, not a new command.
         if let Pending::Approval(intent, description) = self.session.pending.clone() {
+            // Several waiting (30 Sep 2026), answered together: "yes to
+            // both", "no to the second".
+            let waiting = self.session.approvals_waiting();
+            if let Some(answers) = crate::session::answers_for_several(said, waiting) {
+                return self.answer_several(said, answers, t);
+            }
             let kind = kind_of(&intent).to_string();
             // A question you were asked is not a question anyone else may
             // answer. Atlas asks "go ahead?", you hand the laptop over, and
@@ -589,7 +595,7 @@ impl<'a> Daemon<'a> {
             // all. A stranger's yes must not teach Atlas anything about what
             // you approve of.
             if let Some(refusal) = self.handed_over_refusal(&intent) {
-                self.session.pending = Pending::Nothing;
+                self.session.drop_approvals();
                 self.pending_job = None;
                 return refusal;
             }
@@ -607,6 +613,7 @@ impl<'a> Daemon<'a> {
                     self.memory.record_approval(&kind, true, None);
                     let reply = self.execute(&intent);
                     self.session.record(said, &intent, &reply);
+                    let reply = self.and_the_next_approval(reply);
                     self.persist();
                     return reply;
                 }
@@ -641,10 +648,15 @@ impl<'a> Daemon<'a> {
                     "Left it alone.".into()
                 };
                 self.session.record(said, &intent, &reply);
+                // The next approval waiting, asked now.
+                let reply = self.and_the_next_approval(reply);
                 self.persist();
                 return reply;
             }
             self.pending_job = None;
+            // Something new instead of an answer: everything that was
+            // waiting is dropped with the question.
+            self.session.queued.clear();
         }
 
         // A workflow paused mid-chain for your yes.
