@@ -91,6 +91,13 @@ pub fn embed(cfg: &SpeakerConfig, vars: &Vars) -> Result<Vec<f32>> {
         .ok_or_else(|| AtlasError::Platform("no recording to read a voice from".into()))?;
     let bytes = std::fs::read(path)?;
     let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
+    // The trained model when it's here (`atlas get voiceid`): far better at
+    // telling voices apart than the built-in one (`speakernet`).
+    let models = crate::roots::models_dir();
+    if rate == 16000 && crate::speakernet::installed(&models) {
+        let f: Vec<f32> = samples.iter().map(|s| *s as f32 / 32768.0).collect();
+        return crate::speakernet::embed(&f, &models);
+    }
     let frames = clip_frames(&samples, rate)
         .ok_or_else(|| AtlasError::Platform("under half a second of speech in that".into()))?;
     let store = crate::roots::store();
@@ -105,6 +112,8 @@ pub fn embed(cfg: &SpeakerConfig, vars: &Vars) -> Result<Vec<f32>> {
 pub enum Encoder {
     /// The program set as `speaker.tool`, and it is installed.
     External,
+    /// The trained speaker model (`speakernet`), installed.
+    Neural,
     /// Atlas's own (a supervector against the background model).
     BuiltIn,
 }
@@ -112,6 +121,7 @@ pub enum Encoder {
 pub fn which(cfg: &SpeakerConfig, vars: &Vars) -> Encoder {
     match cfg.tool.as_ref() {
         Some(t) if t.available(vars) => Encoder::External,
+        _ if crate::speakernet::installed(&crate::roots::models_dir()) => Encoder::Neural,
         _ => Encoder::BuiltIn,
     }
 }
@@ -155,7 +165,7 @@ const BACKGROUND: &str = "voice_background";
 /// that is not installed counts as none — reporting it as present would be a
 /// check that cannot fail.
 pub fn available(cfg: &SpeakerConfig, vars: &Vars) -> bool {
-    which(cfg, vars) == Encoder::External || background(&crate::roots::store()).ready()
+    matches!(which(cfg, vars), Encoder::External | Encoder::Neural) || background(&crate::roots::store()).ready()
 }
 
 /// Said plainly when Atlas has no way to tell your voice from anyone else's.

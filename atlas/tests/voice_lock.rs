@@ -206,7 +206,11 @@ fn changing_encoder_is_refused_rather_than_silently_compared() {
     // them anyway produces a confident wrong answer.
     let mut id = VoiceId::default();
     id.enroll(&vec![0.5f32; 64]).unwrap();
-    assert!(id.enroll(&vec![0.5f32; 128]).is_err(), "mismatched sizes were accepted");
+    id.enroll(&vec![0.5f32; 64]).unwrap();
+    // A new encoder's sample starts the print again; the old ones are gone,
+    // never averaged in.
+    assert_eq!(id.enroll(&vec![0.5f32; 128]).unwrap(), 1, "mismatched sizes were mixed");
+    assert!(id.print.as_ref().unwrap().samples.iter().all(|s| s.len() == 128));
 }
 
 #[test]

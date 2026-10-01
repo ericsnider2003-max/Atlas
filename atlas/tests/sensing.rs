@@ -100,8 +100,10 @@ fn the_voiceprint_adapts_so_a_cold_does_not_lock_you_out() {
 fn changing_the_encoder_is_caught_rather_than_producing_nonsense() {
     let mut v = VoiceId::default();
     v.enroll(&emb(0.0)).unwrap();
-    let e = v.enroll(&vec![0.1; 32]).unwrap_err().to_string();
-    assert!(e.contains("re-enroll"), "got: {e}");
+    // Never mixed: a new encoder starts the print again (30 Sep 2026: the
+    // trained model arriving had to be enrollable, not refused forever).
+    assert_eq!(v.enroll(&vec![0.1; 32]).unwrap(), 1);
+    assert_eq!(v.print.as_ref().unwrap().centroid.len(), 32);
 }
 
 #[test]

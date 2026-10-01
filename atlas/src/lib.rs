@@ -376,6 +376,7 @@ pub mod startup;
 // Atlas's icon by the clock, owned by the background Atlas (Windows).
 pub mod notifyicon;
 pub mod speaker;
+pub mod speakernet;
 pub mod settings;
 pub mod session;
 pub mod shakedown;

@@ -77,6 +77,29 @@ pub struct VoiceIdConfig {
     /// measurement every run.
     pub builtin_accept: f32,
     pub builtin_reject: f32,
+    /// The same two lines for the trained speaker model (`speakernet`,
+    /// CAM++). Measured 30 Sep 2026 on 10 LibriSpeech speakers: the same
+    /// voice scored 0.48-0.95 pair against pair, other voices at most 0.48
+    /// (mean 0.13); against an enrolled average a voice scores higher
+    /// still. "You" from 0.45; "not you" only at 0.25 or under -- the open
+    /// floor ignores "not you", so that line sits well below anything your
+    /// own voice scored.
+    pub neural_accept: f32,
+    pub neural_reject: f32,
+}
+
+impl VoiceIdConfig {
+    /// The "you" and "not you" lines for an embedding of this size: each
+    /// encoder scores on its own scale.
+    pub fn lines_for(&self, dims: usize) -> (f32, f32) {
+        if dims == crate::speaker::BUILTIN_DIMS {
+            (self.builtin_accept, self.builtin_reject)
+        } else if dims == crate::speakernet::DIMS {
+            (self.neural_accept, self.neural_reject)
+        } else {
+            (self.accept, self.reject)
+        }
+    }
 }
 
 impl Default for VoiceIdConfig {
@@ -91,6 +114,8 @@ impl Default for VoiceIdConfig {
             adapt: true,
             builtin_accept: 0.30,
             builtin_reject: 0.15,
+            neural_accept: 0.45,
+            neural_reject: 0.25,
         }
     }
 }
@@ -138,14 +163,16 @@ impl VoiceId {
         if embedding.is_empty() {
             return Err(AtlasError::Platform("empty voice embedding".into()));
         }
-        let p = self.print.get_or_insert_with(Voiceprint::default);
-        if let Some(first) = p.samples.first() {
-            if first.len() != embedding.len() {
-                return Err(AtlasError::Platform(
-                    "voice embedding size changed — re-enroll after changing the encoder".into(),
-                ));
-            }
+        // A different encoder (the trained model arriving, 30 Sep 2026)
+        // scores on another scale: the old samples can't be mixed in, so
+        // enrolling starts the print again rather than refusing forever.
+        if self.print.as_ref().and_then(|p| p.samples.first()).is_some_and(|f| f.len() != embedding.len()) {
+            self.print = None;
+            self.accepted.clear();
+            self.after_name.clear();
+            self.turned_away.clear();
         }
+        let p = self.print.get_or_insert_with(Voiceprint::default);
         p.samples.push(embedding.to_vec());
         p.enrolled_at = now();
         p.centroid = mean(&p.samples);
@@ -200,7 +227,7 @@ impl VoiceId {
         let low = yours[yours.len() / 20]; // the 5th percentile
         let below = yours.iter().filter(|s| **s <= reject).count();
         let mut line = format!(
-            "after the wake word ({} turns, nearly always you) your voice scored as low as {low:.2};              {below} of them were at or under the \"not you\" line ({reject:.2})",
+            "after the wake word ({} turns, nearly always you) your voice scored as low as {low:.2}; {below} of them were at or under the \"not you\" line ({reject:.2})",
             yours.len()
         );
         if let Some(top) = self.turned_away.iter().cloned().fold(None, |m: Option<f32>, s| Some(m.map_or(s, |m| m.max(s)))) {
@@ -250,11 +277,7 @@ impl VoiceId {
             return Verdict::NotEnrolled;
         }
         let s = cosine(&p.centroid, embedding);
-        let (accept, reject) = if embedding.len() == crate::speaker::BUILTIN_DIMS {
-            (cfg.builtin_accept, cfg.builtin_reject)
-        } else {
-            (cfg.accept, cfg.reject)
-        };
+        let (accept, reject) = cfg.lines_for(embedding.len());
         if s >= accept {
             Verdict::You(s)
         } else if s <= reject {

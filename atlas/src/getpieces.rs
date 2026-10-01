@@ -528,6 +528,21 @@ pub fn picture_making() -> Vec<Piece> {
     ]
 }
 
+/// Telling your voice from others' (`speakernet`): 3D-Speaker's CAM++
+/// English VoxCeleb model (Apache-2.0) as sherpa-onnx publishes it. Hash and
+/// size from downloading it on 30 Sep 2026; measured against onnxruntime in
+/// `tests/voices_told_apart.rs`.
+pub fn voice_model() -> Vec<Piece> {
+    vec![Piece {
+        name: "the voice model",
+        for_what: "telling your voice from other voices, far more reliably",
+        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+        sha256: "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+        bytes: 29_596_978,
+        lands: Lands::File("models/campplus_en_voxceleb.onnx"),
+    }]
+}
+
 /// Better hearing (`parakeet`): sherpa-onnx 1.13.8's server and NVIDIA's
 /// Parakeet TDT 0.6B v2 (int8). Hashes and sizes from downloading each on
 /// 30 Sep 2026; the model and the Linux build were run through Atlas's own
@@ -605,6 +620,7 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         }
         Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
         Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better (about 500 MB)", parakeet_pieces())),
+        Some("voiceid" | "voice-id" | "voices") => Some(("the voice model, so Atlas can tell your voice from others (30 MB)", voice_model())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,
     }

@@ -133,6 +133,9 @@ fn what_he_asked_earlier_is_not_offered_to_small_talk() {
     let goal = Some("Research ways to improve in house language models");
     assert!(r.for_turn("hey, how's it going", goal, atlas::router::SHORTLIST).is_empty());
     assert!(r.for_turn("thanks", goal, atlas::router::SHORTLIST).is_empty());
+    // Nor to a question about the last answer (30 Sep 2026: "why not?").
+    assert!(r.for_turn("Why not?", goal, atlas::router::SHORTLIST).is_empty());
+    assert!(r.for_turn("what do you mean", goal, atlas::router::SHORTLIST).is_empty());
     // "That's it" leans on it.
     let names: Vec<String> = r.for_turn("That's it.", goal, atlas::router::SHORTLIST).iter().map(|e| e.name.clone()).collect();
     assert!(names.contains(&"research".to_string()), "{names:?}");

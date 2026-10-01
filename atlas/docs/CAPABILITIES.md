@@ -34,7 +34,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | understand and translate other languages | waiting on the multilingual model | `language` | ready | would | would | would | would | would |
 | stop talking the moment you start — cut in by voice while it speaks, your voice told apart from its own coming back through the speakers — and hear nothing at all while paused | switched off | `micthread` | ready | would | would | would | would | would |
 | hear that you've stopped talking even with a fan or air conditioner running | waiting on ffmpeg, for audio in | `vad` `endpoint` `voice` | ready | would | would | would | would | would |
-| turn a recording into who-said-what notes, with your lines marked as yours | built, never run for real | `diarize` `speaker` `voiceid` | ready | ready | ready | catch | would | catch |
+| turn a recording into who-said-what notes, with your lines marked as yours | built, never run for real | `diarize` `speaker` `voiceid` `speakernet` | ready | ready | ready | catch | would | catch |
 | tell your voice from others with no model to download — Atlas's own encoder, learned from the ordinary talk it hears | built, never run for real | `speaker` `mfcc` `gmm` | ready | would | would | would | would | would |
 | wake on your own phrase, taught from three recordings, without speech-to-text running all day | built, never run for real | `wakeword` `mfcc` | ready | would | would | **no** | would | **no** |
 | tune when it hears you stop talking to your own room, from a recording of the room and one of you | built, never run for real | `vadcal` `vad` | ready | ready | ready | catch | would | catch |
@@ -359,4 +359,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-240 things, across 407 of 443 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+240 things, across 408 of 444 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

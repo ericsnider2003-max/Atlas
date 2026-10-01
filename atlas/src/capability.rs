@@ -249,7 +249,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "bandit", what: "learn which of the things it offers you welcome, and still try the others now and then — and hold an offer for a natural break in your work (never longer than twenty minutes, and never over a presentation)", area: Itself, state: Untested, needs: None, offline: true, added: 32, runs: &[Needs::Background], modules: &["bandit", "proactive"] },
         Capability { id: "yata", what: "keep a page both of your machines can edit while apart, merged without a clash to settle", area: Keeping, state: Untested, needs: Some("a second device"), offline: true, added: 32, runs: &[Needs::Files], modules: &["yata", "sync"] },
         Capability { id: "vad", what: "hear that you've stopped talking even with a fan or air conditioner running", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 32, runs: &[Needs::Audio], modules: &["vad", "endpoint", "voice"] },
-        Capability { id: "diarize", what: "turn a recording into who-said-what notes, with your lines marked as yours", area: Hearing, state: Untested, needs: Some("speech-to-text installed for the words; voices are told apart by Atlas's own encoder"), offline: true, added: 32, runs: &[Needs::Files], modules: &["diarize", "speaker", "voiceid"] },
+        Capability { id: "diarize", what: "turn a recording into who-said-what notes, with your lines marked as yours", area: Hearing, state: Untested, needs: Some("speech-to-text installed for the words; voices are told apart by Atlas's own encoder"), offline: true, added: 32, runs: &[Needs::Files], modules: &["diarize", "speaker", "voiceid", "speakernet"] },
         Capability { id: "gmm", what: "tell your voice from others with no model to download — Atlas's own encoder, learned from the ordinary talk it hears", area: Hearing, state: Untested, needs: Some("30 clips of ordinary talk heard first (use it, or bring recordings in on the hub)"), offline: true, added: 33, runs: &[Needs::Audio], modules: &["speaker", "mfcc", "gmm"] },
         Capability { id: "wakeword", what: "wake on your own phrase, taught from three recordings, without speech-to-text running all day", area: Hearing, state: Untested, needs: Some("three takes of your phrase"), offline: true, added: 33, runs: &[Needs::WakeWord, Needs::Audio], modules: &["wakeword", "mfcc"] },
         Capability { id: "vadcal", what: "tune when it hears you stop talking to your own room, from a recording of the room and one of you", area: Hearing, state: Untested, needs: Some("two recordings on your microphone"), offline: true, added: 33, runs: &[Needs::Files], modules: &["vadcal", "vad"] },
@@ -1541,8 +1541,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `talkbench` (Atlas's conversation timed against a model), `parakeet`
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
-// `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`.
-pub const MODULES_IN_TREE: usize = 443;
+// `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
+pub const MODULES_IN_TREE: usize = 444;
 
 /// Every module no capability claims, and why it is not one.
 ///

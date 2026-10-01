@@ -412,7 +412,13 @@ impl Router {
         // Never for small talk: "hey, how's it going" has no words of its own
         // either, and was offered the tools for research asked an hour before
         // (30 Sep 2026, a real model then called one of them).
-        if picked.is_empty() && request_words(said).len() <= 1 && !small_talk(said) {
+        // Nor for a question: "why not?" is asking about the last answer,
+        // not "do it" (30 Sep 2026 logs: it was offered the last goal's
+        // tools and answered "I don't have notes to put up").
+        let low = said.trim().to_lowercase();
+        let a_question = low.ends_with('?')
+            || ["why", "what", "how", "who", "when", "where", "which", "huh", "really"].iter().any(|w| low == *w || low.starts_with(&format!("{w} ")));
+        if picked.is_empty() && request_words(said).len() <= 1 && !small_talk(said) && !a_question {
             if let Some(g) = goal.filter(|g| !g.trim().is_empty()) {
                 picked = self.shortlist(g, k.min(3)).into_iter().map(|(e, _)| e).collect();
             }
