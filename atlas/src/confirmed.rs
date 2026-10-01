@@ -114,6 +114,9 @@ pub enum Pressed {
     /// The page that loaded belongs to a different site from the one you
     /// said yes to (a redirect, a look-alike). Nothing pressed.
     SomewhereElse(String),
+    /// The page is a checkout -- card fields, a cart, a payment step. Atlas
+    /// doesn't buy things, so nothing on it is pressed.
+    Paying,
 }
 
 impl Pressed {
@@ -134,6 +137,7 @@ impl Pressed {
             Pressed::MoreThanOne(n) => format!("There were {n} controls that could be it, and I won't guess. {yours}"),
             Pressed::WantsYourPassword => format!("The page wants your password first — I never type that. {yours}"),
             Pressed::NoWordsForIt => format!("I don't know which control does that on {}. {yours}", asked.site),
+            Pressed::Paying => format!("That page is a payment step, and I don't buy things, so I didn't press anything. {yours}"),
         }
     }
 }
@@ -141,6 +145,11 @@ impl Pressed {
 /// The page script: count the visible controls carrying one of `words`
 /// (exactly, ignoring case and spacing), press it if there's exactly one,
 /// and say what happened. A visible password box stops it first.
+/// A page that is taking payment: card fields, or a checkout, cart, payment
+/// or billing address (1 Oct 2026 security pass: the buy-button names miss
+/// "Proceed", "Continue", an icon, another language; the page doesn't).
+pub const PAYING_JS: &str = "(/(checkout|\\/cart|payment|billing|\\/pay\\b)/i.test(location.pathname + location.hash) || !!document.querySelector('input[autocomplete^=\"cc-\"], input[name*=cardnumber i], input[name*=card_number i], input[id*=cardnumber i], input[name*=cvv i], input[name*=cvc i], input[name*=securitycode i], iframe[src*=\"stripe.com\"], iframe[src*=\"braintree\"], iframe[src*=\"paypal.com\"]'))";
+
 pub fn press_js(words: &[&str]) -> String {
     let list = words
         .iter()
@@ -152,6 +161,7 @@ pub fn press_js(words: &[&str]) -> String {
           const seen = e => {{ const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
             return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; }};
           if (Array.from(document.querySelectorAll('input[type=password]')).some(seen)) return 'password';
+          if ({PAYING_JS}) return 'paying';
           const words = [{list}];
           const said = e => [e.innerText, e.value, e.getAttribute('aria-label')]
             .filter(Boolean).map(t => t.replace(/\\s+/g, ' ').trim().toLowerCase());
@@ -170,6 +180,7 @@ pub fn pressed_from(result: &str) -> Pressed {
     match result {
         "pressed" => Pressed::Done,
         "password" => Pressed::WantsYourPassword,
+        "paying" => Pressed::Paying,
         r if r.starts_with("many:") => Pressed::MoreThanOne(r[5..].parse().unwrap_or(2)),
         _ => Pressed::NotFound,
     }

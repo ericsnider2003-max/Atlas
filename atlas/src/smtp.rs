@@ -223,6 +223,7 @@ impl<S: Read + Write> Session<S> {
 
     /// As `send_mail`, as a reply in a conversation (`message_text_in`).
     pub fn send_mail_in(&mut self, from: &str, to: &str, subject: &str, body: &str, thread: &crate::outbox::Thread) -> Result<(), String> {
+        let (from, to) = (plain_address(from)?, plain_address(to)?);
         let r = self.command(&format!("MAIL FROM:<{from}>")).map_err(|e| e.to_string())?;
         if !r.ok() {
             return Err(format!("MAIL FROM refused: {}", r.text()));
@@ -259,6 +260,19 @@ impl<S: Read + Write> Session<S> {
 /// (a curly apostrophe or an accent arrived as mojibake), and a subject
 /// that isn't plain ASCII encoded (RFC 2047). Lines end CRLF. 30 Sep 2026:
 /// only From, To and Subject were written.
+/// One bare address -- `name@example.com` -- or why it isn't one. Checked
+/// before it goes into `RCPT TO:<…>` or a `To:` line, where a line break, a
+/// bracket or a second address would be a second command or a second
+/// recipient (1 Oct 2026 security pass: only the subject was cleaned).
+pub fn plain_address(a: &str) -> Result<&str, String> {
+    let a = a.trim();
+    let bad = a.chars().any(|c| c.is_whitespace() || c.is_control() || "<>()[],;:\\\"".contains(c));
+    match a.split_once('@') {
+        Some((user, host)) if !bad && !user.is_empty() && host.contains('.') && !host.contains('@') && !host.starts_with('.') && !host.ends_with('.') => Ok(a),
+        _ => Err(format!("\"{}\" isn't an email address I'll send to", a.chars().filter(|c| !c.is_control()).take(80).collect::<String>())),
+    }
+}
+
 pub fn message_text(from: &str, to: &str, subject: &str, body: &str, now: u64) -> String {
     message_text_in(from, to, subject, body, now, &crate::outbox::Thread::default())
 }
@@ -266,6 +280,9 @@ pub fn message_text(from: &str, to: &str, subject: &str, body: &str, now: u64) -
 /// As `message_text`, as a reply in a conversation: `In-Reply-To` and
 /// `References`, so mail programs put it under the message it answers.
 pub fn message_text_in(from: &str, to: &str, subject: &str, body: &str, now: u64, thread: &crate::outbox::Thread) -> String {
+    // Never a header break, whatever a caller let through.
+    let (from, to) = (from.replace(['\r', '\n'], ""), to.replace(['\r', '\n'], ""));
+    let (from, to) = (from.as_str(), to.as_str());
     let threading = if thread.in_reply_to.trim().is_empty() {
         String::new()
     } else {
@@ -448,6 +465,21 @@ mod tests {
         let mut sess = Session::new(s);
         let e = sess.auth_login("me@gmail.com", "wrong").unwrap_err();
         assert!(e.contains("bad app password"), "got: {e}");
+    }
+
+    #[test]
+    fn an_address_with_a_second_command_or_recipient_in_it_is_never_sent_to() {
+        let s = Scripted::new("250 OK\r\n250 OK\r\n354 go\r\n250 OK\r\n");
+        let mut sess = Session::new(s);
+        let e = sess.send_mail("me@gmail.com", "a@b.com>\r\nRCPT TO:<evil@x.com", "x", "").unwrap_err();
+        assert!(e.contains("isn't an email address"), "{e}");
+        assert!(sess.stream.sent.is_empty(), "nothing reached the server");
+        for bad in ["Sam <sam@x.com>", "a@b.com,c@d.com", "no-at-sign", "a@localhost", "a@b@c.com", "a b@c.com"] {
+            assert!(plain_address(bad).is_err(), "{bad}");
+        }
+        assert_eq!(plain_address(" sam.o'neil+tag@mail.example.co.uk "), Ok("sam.o'neil+tag@mail.example.co.uk"));
+        let m = message_text("me@x.com", "a@b.com\r\nBcc: evil@x.com", "s", "b", 0);
+        assert_eq!(m.matches("\r\nBcc:").count(), 0, "{m}");
     }
 
     #[test]

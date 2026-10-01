@@ -504,7 +504,14 @@ pub fn press(name: &str) -> Press {
         || n.contains("confirm order")
         || n.contains("add to cart")
         || n.contains("1-click")
-        || n.contains("one-click");
+        || n.contains("one-click")
+        // 1 Oct 2026 security pass: the other ways a shop says it.
+        || ["check out", "order now", "submit order", "review order", "proceed to payment", "continue to payment",
+            "payment", "pay now", "book now", "reserve now", "start trial", "start free trial", "start my trial",
+            "upgrade", "add to bag", "add to basket", "rent", "pre-order", "preorder", "kaufen", "comprar", "acheter",
+            "bestellen", "commander"]
+            .iter()
+            .any(|p| if p.contains(' ') || p.contains('-') { n.contains(p) } else { has(p) });
     if paying {
         return Press::Never;
     }

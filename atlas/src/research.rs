@@ -31,7 +31,7 @@ pub struct ResearchConfig {
     pub searxng_url: String,
     /// Fetch pages on this machine or your network too. Off, and meant to
     /// stay off: it's for testing research against a server of your own
-    /// (`safe_to_fetch`).
+    /// (`public_address`).
     #[serde(default)]
     pub pages_on_this_machine: bool,
 }
@@ -325,14 +325,23 @@ impl Research {
                 return Err(AtlasError::Platform("stopped before finishing".into()));
             }
             // A search result pointing into this machine or your network is
-            // skipped, never fetched (`safe_to_fetch`).
-            if !self.cfg.pages_on_this_machine && !safe_to_fetch(url) {
-                continue;
-            }
+            // skipped, never fetched (`public_address`).
+            let held = if self.cfg.pages_on_this_machine {
+                None
+            } else {
+                match public_address(url) {
+                    Some(p) => Some(p),
+                    None => continue,
+                }
+            };
+            let fetch_now = match &held {
+                Some((host, ip)) if fetch.command.contains("{browser}") || is_a_browser(&fetch.command) => fenced(fetch, host, *ip),
+                _ => fetch.clone(),
+            };
             let mut fv = v.clone();
             fv.insert("url".into(), url.clone());
             // One dead link must not sink the whole job.
-            let Ok(html) = fetch.run(&fv, None) else { continue };
+            let Ok(html) = fetch_now.run(&fv, None) else { continue };
             // Kept as Markdown: a heading, a list and a code block stay what
             // they are, which a small model reads far better than one run of
             // lines (`readable::Article::markdown`).
@@ -914,15 +923,17 @@ fn figures(text: &str) -> Vec<String> {
 /// address 169.254.169.254 (research report, Stage 1 item 7). A page can
 /// plant such a link; fetching it reads, or pokes, something on your side of
 /// the network. A name that resolves to such an address is refused the same.
-pub fn safe_to_fetch(url: &str) -> bool {
+/// The page's host and the public address it was checked at, or `None` when
+/// it points into this machine or your network -- or can't be looked up at
+/// all (1 Oct 2026 security pass: an unresolvable name was waved through).
+/// The fetch is then held to that one address (`fenced`), so a name that
+/// answers "public" here and "your router" a second later gets nowhere.
+pub fn public_address(url: &str) -> Option<(String, std::net::IpAddr)> {
     let lower = url.trim().to_lowercase();
-    let rest = match lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://")) {
-        Some(r) => r,
-        None => return false,
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let rest = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"))?;
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
     if authority.contains('@') {
-        return false;
+        return None;
     }
     let host = if let Some(v6) = authority.strip_prefix('[') {
         v6.split(']').next().unwrap_or("").to_string()
@@ -930,24 +941,51 @@ pub fn safe_to_fetch(url: &str) -> bool {
         authority.rsplit_once(':').map(|(h, _)| h).unwrap_or(authority).to_string()
     };
     if host.is_empty() {
-        return false;
+        return None;
     }
     let local_name = host == "localhost"
         || [".localhost", ".local", ".internal", ".lan", ".home", ".arpa"].iter().any(|s| host.ends_with(s))
         || !host.contains('.') && host.parse::<std::net::Ipv6Addr>().is_err();
     if local_name {
-        return false;
+        return None;
     }
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return is_public(ip);
+        return is_public(ip).then_some((host, ip));
     }
-    // A name: every address it resolves to must be public. Not resolving
-    // is left to the fetch to fail on.
+    // A name: every address it resolves to must be public.
     use std::net::ToSocketAddrs;
-    match (host.as_str(), 80).to_socket_addrs() {
-        Ok(addrs) => addrs.map(|a| a.ip()).all(is_public),
-        Err(_) => true,
-    }
+    let addrs: Vec<std::net::IpAddr> = (host.as_str(), 80).to_socket_addrs().ok()?.map(|a| a.ip()).collect();
+    let first = *addrs.first()?;
+    addrs.iter().all(|ip| is_public(*ip)).then_some((host, first))
+}
+
+/// A fetch command that is a browser (the `{browser}` placeholder, or a
+/// Chrome/Edge/Chromium program named outright).
+fn is_a_browser(command: &str) -> bool {
+    let c = command.to_lowercase();
+    ["chrome", "chromium", "msedge", "brave"].iter().any(|b| c.contains(b))
+}
+
+/// The headless browser held to the one page it was sent to: the page's
+/// host can only reach the address `public_address` checked, and everything
+/// else -- a redirect to your router, a script reaching for this machine,
+/// another site's files -- is sent to a proxy that isn't there, so it never
+/// loads (1 Oct 2026 security pass: a public page could redirect the
+/// browser into your network and Atlas would read what came back).
+pub fn fenced(fetch: &crate::tools::ExternalTool, host: &str, ip: std::net::IpAddr) -> crate::tools::ExternalTool {
+    let mut f = fetch.clone();
+    let at = match ip {
+        std::net::IpAddr::V6(v) => format!("[{v}]"),
+        std::net::IpAddr::V4(v) => v.to_string(),
+    };
+    let mut args = vec![
+        format!("--host-resolver-rules=MAP {host} {at}"),
+        "--proxy-server=http://127.0.0.1:9".to_string(),
+        format!("--proxy-bypass-list=<-loopback>;{host}"),
+    ];
+    args.append(&mut f.args);
+    f.args = args;
+    f
 }
 
 fn is_public(ip: std::net::IpAddr) -> bool {
@@ -962,12 +1000,24 @@ fn is_public(ip: std::net::IpAddr) -> bool {
                 || v.is_multicast()
                 || o[0] == 0
                 || (o[0] == 100 && (64..128).contains(&o[1])) // carrier-grade NAT, Tailscale
-                || (o[0] == 198 && (o[1] == 18 || o[1] == 19)))
+                || (o[0] == 198 && (o[1] == 18 || o[1] == 19))
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0)
+                || o[0] >= 240)
         }
         std::net::IpAddr::V6(v) => {
             let seg = v.segments();
             if let Some(v4) = v.to_ipv4_mapped() {
                 return is_public(std::net::IpAddr::V4(v4));
+            }
+            // NAT64 (64:ff9b::/96) and 6to4 (2002::/16) carry a v4 address
+            // inside: judged by that, so 64:ff9b::7f00:1 isn't a way home.
+            if seg[0] == 0x64 && seg[1] == 0xff9b {
+                let o = v.octets();
+                return is_public(std::net::IpAddr::V4(std::net::Ipv4Addr::new(o[12], o[13], o[14], o[15])));
+            }
+            if seg[0] == 0x2002 {
+                let o = v.octets();
+                return is_public(std::net::IpAddr::V4(std::net::Ipv4Addr::new(o[2], o[3], o[4], o[5])));
             }
             !(v.is_loopback()
                 || v.is_unspecified()
@@ -980,7 +1030,9 @@ fn is_public(ip: std::net::IpAddr) -> bool {
 
 #[cfg(test)]
 mod fetching {
-    use super::safe_to_fetch;
+    fn safe_to_fetch(url: &str) -> bool {
+        super::public_address(url).is_some()
+    }
 
     #[test]
     fn this_machine_and_your_network_are_never_fetched() {
@@ -996,9 +1048,25 @@ mod fetching {
             "file:///C:/Users",
             "http://user@example.com/",
             "http://intranet/",
+            "http://[64:ff9b::7f00:1]/",
+            "http://[2002:c0a8:0101::1]/",
+            "http://192.0.0.8/",
+            "http://name-that-does-not-exist.invalid/",
         ] {
             assert!(!safe_to_fetch(u), "{u}");
         }
+    }
+
+    #[test]
+    fn the_browser_is_held_to_the_address_that_was_checked() {
+        let tool = crate::tools::ExternalTool { command: "{browser}".into(), args: vec!["--dump-dom".into(), "{url}".into()], ..Default::default() };
+        let f = super::fenced(&tool, "news.example.org", "93.184.215.14".parse().unwrap());
+        assert_eq!(f.args[0], "--host-resolver-rules=MAP news.example.org 93.184.215.14");
+        assert_eq!(f.args[2], "--proxy-bypass-list=<-loopback>;news.example.org");
+        assert_eq!(&f.args[3..], &["--dump-dom".to_string(), "{url}".to_string()]);
+        let v6 = super::fenced(&tool, "h.example", "2606:4700::1".parse().unwrap());
+        assert_eq!(v6.args[0], "--host-resolver-rules=MAP h.example [2606:4700::1]");
+        assert_eq!(super::public_address("https://8.8.8.8/x"), Some(("8.8.8.8".into(), "8.8.8.8".parse().unwrap())));
     }
 
     #[test]

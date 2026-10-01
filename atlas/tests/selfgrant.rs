@@ -40,7 +40,7 @@ fn permission_is_by_what_a_change_touches_not_by_how_sure_atlas_is() {
     // decision takes a confidence value — the same inputs always give the
     // same answer.
     let once = may_land(
-        &["src/vault.rs".into()],
+        &["src/mail.rs".into()],
         true,
         true,
         Some(&granted(Reach::HowItDecides)),
@@ -48,7 +48,7 @@ fn permission_is_by_what_a_change_touches_not_by_how_sure_atlas_is() {
         &SelfGrantConfig::default(),
     );
     let again = may_land(
-        &["src/vault.rs".into()],
+        &["src/mail.rs".into()],
         true,
         true,
         Some(&granted(Reach::HowItDecides)),
@@ -102,7 +102,7 @@ fn the_grantable_levels_are_the_two_where_being_wrong_is_recoverable() {
 #[test]
 fn one_file_at_a_higher_reach_makes_the_whole_change_that_reach() {
     // Not the average, and not what it's mostly about.
-    let mixed = vec!["config/commands.yaml".into(), "src/vault.rs".into()];
+    let mixed = vec!["config/commands.yaml".into(), "src/mail.rs".into()];
     assert_eq!(reach_of_change(&mixed), Reach::WhatItTouches);
 }
 

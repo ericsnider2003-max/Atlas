@@ -1866,6 +1866,41 @@ impl<'a> Daemon<'a> {
     /// path does — factored out so the per-tick serve can reuse it. Derivation
     /// is Argon2id (~0.5s), so this is called only once a peer has actually
     /// connected, never on an idle tick.
+    /// Whether whoever just connected to the sync port gets anything back
+    /// (1 Oct 2026 security pass: anyone on the same Wi-Fi who sent four
+    /// magic bytes used to get every note back, and could push in fakes).
+    ///
+    /// With a household key, only a bundle sealed with it is answered — a
+    /// plain one is refused even if it reads. With no key there is nothing to
+    /// prove, so only this machine and the devices you've named by address
+    /// are answered. Either way it must be another device of the same Atlas.
+    pub(super) fn may_answer_wire(
+        &self,
+        peer: std::net::IpAddr,
+        incoming: &[u8],
+        cfg: &crate::sync::SyncConfig,
+        key: Option<&[u8]>,
+    ) -> bool {
+        let named = if key.is_none() && !peer.is_loopback() && self.is_a_named_peer(peer) { vec![peer] } else { Vec::new() };
+        crate::sync::may_answer_wire(peer, incoming, key, &named, &self.synclog.device, &cfg.belongs_to)
+    }
+
+    /// Is this address one of the devices named in `elsewhere.known`? A
+    /// name is looked up; an address is compared as written.
+    fn is_a_named_peer(&self, peer: std::net::IpAddr) -> bool {
+        use std::net::ToSocketAddrs;
+        self.tools_cfg().elsewhere.known.iter().any(|p| {
+            let host = p.host.trim();
+            if host.is_empty() {
+                return false;
+            }
+            match host.parse::<std::net::IpAddr>() {
+                Ok(ip) => ip == peer,
+                Err(_) => (host, 0u16).to_socket_addrs().map(|mut a| a.any(|a| a.ip() == peer)).unwrap_or(false),
+            }
+        })
+    }
+
     fn sync_key(&self) -> Option<Vec<u8>> {
         let kept: crate::sync::KeptKey = self.store.load(crate::sync::KEY_FILE);
         if !kept.is_set() {
@@ -1903,9 +1938,12 @@ impl<'a> Daemon<'a> {
             return Vec::new();
         };
         let mut lines: Vec<String> = Vec::new();
-        let _ = server.poll(std::time::Duration::from_millis(50), |incoming| {
+        let _ = server.poll_from(std::time::Duration::from_millis(50), |peer, incoming| {
             // A peer actually connected — now the key derivation is worth it.
             let key = self.sync_key();
+            if !self.may_answer_wire(peer, &incoming, &cfg, key.as_deref()) {
+                return None;
+            }
             let (t, cl, sk) = self.take_in_wire(&incoming, &cfg, key.as_deref(), now);
             if t > 0 {
                 lines.push(format!(
@@ -1914,7 +1952,7 @@ impl<'a> Daemon<'a> {
             }
             lines.extend(cl);
             lines.extend(sk);
-            self.wire_bytes(&cfg, key.as_deref(), now).unwrap_or_default()
+            self.wire_bytes(&cfg, key.as_deref(), now)
         });
         self.sync_server = Some(server);
         lines
@@ -2006,12 +2044,15 @@ impl<'a> Daemon<'a> {
         }
         if let Some(server) = self.sync_server.take() {
             let key_ref = key.as_deref();
-            let _ = server.poll(std::time::Duration::from_millis(200), |incoming| {
+            let _ = server.poll_from(std::time::Duration::from_millis(200), |peer, incoming| {
+                if !self.may_answer_wire(peer, &incoming, &cfg, key_ref) {
+                    return None;
+                }
                 let (t, mut cl, mut sk) = self.take_in_wire(&incoming, &cfg, key_ref, now);
                 taken += t;
                 clashes.append(&mut cl);
                 skews.append(&mut sk);
-                self.wire_bytes(&cfg, key_ref, now).unwrap_or_default()
+                self.wire_bytes(&cfg, key_ref, now)
             });
             self.sync_server = Some(server);
         }

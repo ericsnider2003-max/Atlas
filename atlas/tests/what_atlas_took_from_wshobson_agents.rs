@@ -235,6 +235,9 @@ fn research_says_a_made_up_figure_is_unconfirmed_and_files_it() {
     {
         let tools = c.tools.as_mut().unwrap();
         tools.research.enabled = true;
+        // A stub fetch at a name that never resolves; the public-address
+        // check has its own tests.
+        tools.research.pages_on_this_machine = true;
         tools.research.notes_dir = dir.join("notes").display().to_string();
         tools.research.search = Some(atlas::tools::ExternalTool {
             command: "sh".into(),

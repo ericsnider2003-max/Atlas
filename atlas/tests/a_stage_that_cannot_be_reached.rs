@@ -703,6 +703,34 @@ fn many_targets_are_added_up_rather_than_last_one_wins() {
     assert_eq!(read_a_proof_run(out), ProofToday::Fails);
 }
 
+/// Research report item 5 (1 Oct 2026): other runners' results are read,
+/// and a test program that died before its summary is never a pass.
+#[test]
+fn every_runner_is_read_and_a_crash_is_never_a_pass() {
+    use atlas::selfwork::{count_passing, read_run};
+    // pytest
+    assert_eq!(read_a_proof_run("tests/test_a.py .F\n===== 1 failed, 1 passed in 0.12s ====="), ProofToday::Fails);
+    assert_eq!(read_a_proof_run("===== 4 passed in 0.10s ====="), ProofToday::PassesAlready);
+    // Jest / Vitest
+    assert_eq!(read_a_proof_run("Tests:       1 failed, 5 passed, 6 total"), ProofToday::Fails);
+    assert_eq!(count_passing("Tests:       5 passed, 5 total"), 5);
+    // node --test / TAP
+    assert_eq!(read_a_proof_run("# tests 3\n# pass 3\n# fail 0\n"), ProofToday::PassesAlready);
+    assert_eq!(read_a_proof_run("ℹ tests 3\nℹ pass 2\nℹ fail 1\n"), ProofToday::Fails);
+    // go
+    assert_eq!(read_a_proof_run("--- FAIL: TestThing (0.00s)\nFAIL\n"), ProofToday::Fails);
+    // A cargo test program killed part way: one summary for two programs.
+    let crashed = "     Running unittests src/lib.rs (target/debug/deps/atlas-1)\n\
+                   test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n\
+                        Running tests/all.rs (target/debug/deps/all-2)\n\
+                   thread 'main' has overflowed its stack\n";
+    assert!(read_run(crashed).crashed);
+    assert_eq!(read_a_proof_run(crashed), ProofToday::Fails, "ten passes and a crash is not passing");
+    assert_eq!(read_run(crashed).passed, 10);
+    // Nothing anyone recognises is still "no test yet", never a pass.
+    assert_eq!(read_a_proof_run("all good!"), ProofToday::NotWrittenYet);
+}
+
 #[test]
 fn a_tree_that_does_not_build_says_nothing_either_way() {
     // The pairs matter more than the wording: the SAME result lines, with and

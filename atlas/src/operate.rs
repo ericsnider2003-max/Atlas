@@ -520,5 +520,10 @@ mod presses {
         assert_eq!(crate::policy::press("Buy now"), crate::policy::Press::Never);
         assert_eq!(crate::policy::press("Delete"), crate::policy::Press::AskFirst);
         assert_eq!(crate::policy::press("Open"), crate::policy::Press::Go);
+        // 1 Oct 2026 security pass: the other ways a shop says it.
+        for label in ["Check out", "Order now", "Proceed to payment", "Start free trial", "Upgrade", "Add to bag", "Jetzt kaufen", "Pre-order"] {
+            assert_eq!(crate::policy::press(label), crate::policy::Press::Never, "{label}");
+        }
+        assert_eq!(crate::policy::press("Current folder"), crate::policy::Press::Go, "a word inside a word isn't one");
     }
 }

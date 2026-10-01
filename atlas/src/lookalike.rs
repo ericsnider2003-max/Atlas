@@ -125,6 +125,16 @@ fn resembles(domain: &str, known: &str) -> Option<String> {
     None
 }
 
+/// Did the receiving server vouch that this mail really is from its sender
+/// -- a DMARC or DKIM pass? Mail with no such word (no header at all, which
+/// is what Himalaya and some providers hand over) is not vouched for: Atlas
+/// may draft to it but never sends to it unasked (1 Oct 2026 security pass:
+/// a forged "client" mail with no header used to get an automatic reply).
+pub fn vouched_for(auth_results: &str) -> bool {
+    let c = Checks::parse(auth_results);
+    c.says_forged().is_none() && (c.dmarc.as_deref() == Some("pass") || c.dkim.as_deref() == Some("pass"))
+}
+
 /// The receiving server's verdicts from `Authentication-Results`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Checks {

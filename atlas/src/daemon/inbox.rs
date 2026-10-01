@@ -491,7 +491,7 @@ impl<'a> Daemon<'a> {
                                                         &m.references.split_whitespace().map(String::from).collect::<Vec<_>>(),
                                                     ),
                                                 };
-                                                if may_email_clients {
+                                                if may_email_clients && crate::lookalike::vouched_for(&m.authentication_results) {
                                                     match send_reply_routed(
                                                         crate::himalaya::route(&account.imap_host).as_ref(),
                                                         &pending,
@@ -1058,7 +1058,7 @@ impl<'a> Daemon<'a> {
         let to = pending.to_name.clone();
         let work: crew::Work = Box::new(move |_ctl| {
             let sent = match &himalaya {
-                Some((program, name)) => crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000)).and_then(|_| {
+                Some((program, name)) => crate::smtp::plain_address(&pending.to_address).and_then(|_| crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000))).and_then(|_| {
                     let text = crate::smtp::message_text_in(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
                     crate::himalaya::send(program, name, &text)
                 }),

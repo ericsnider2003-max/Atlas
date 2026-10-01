@@ -1235,6 +1235,38 @@ fn field(body: &str, key: &str) -> Option<String> {
     }
 }
 
+/// No other page may show Atlas's inside a frame of its own, where a click
+/// meant for that page lands on a hub button (1 Oct 2026 security pass).
+const NOT_IN_A_FRAME: &str = "X-Frame-Options: DENY\r\nContent-Security-Policy: frame-ancestors 'none'\r\n";
+
+/// Was this request sent by some other page, rather than the hub's own? The
+/// cookie is per machine, not per port, so any page served on this
+/// laptop -- a dev server, some program's local preview -- gets it sent along
+/// and could press hub buttons (1 Oct 2026 security pass). The browser says
+/// where a request came from in `Sec-Fetch-Site`; an older one that doesn't
+/// is judged by `Origin`, caught when it's this machine on another port.
+/// The phone app and paired devices send neither, and are not affected.
+pub fn from_another_page(head: &str) -> bool {
+    let field = |name: &str| {
+        head.lines()
+            .filter_map(|l| l.split_once(':'))
+            .find(|(k, _)| k.trim().eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.trim().to_ascii_lowercase())
+    };
+    if let Some(site) = field("sec-fetch-site") {
+        return !(site == "same-origin" || site == "none");
+    }
+    let (Some(origin), Some(host)) = (field("origin"), field("host")) else {
+        return false;
+    };
+    if origin == "null" {
+        return true;
+    }
+    let from = origin.split("://").nth(1).unwrap_or(&origin).trim_end_matches('/');
+    let from_this_machine = ["localhost", "127.", "[::1]"].iter().any(|h| from.starts_with(h));
+    from_this_machine && from != host
+}
+
 pub fn render(reply: &Reply) -> String {
     // One place that turns `set_cookie` into a header, so no reply can carry
     // a cookie that never reaches the browser.
@@ -1269,6 +1301,7 @@ pub fn render(reply: &Reply) -> String {
          {disposition}Content-Length: {}\r\n\
          {cookie}Cache-Control: no-store\r\n\
          X-Content-Type-Options: nosniff\r\n\
+         {NOT_IN_A_FRAME}\
          Connection: close\r\n\r\n{}",
         reply.status,
         match reply.status {
@@ -1296,6 +1329,7 @@ fn render_file(content_type: &str, headers: &str, bytes: &[u8]) -> Vec<u8> {
          Content-Length: {}\r\n\
          {headers}\
          X-Content-Type-Options: nosniff\r\n\
+         {NOT_IN_A_FRAME}\
          Connection: close\r\n\r\n",
         bytes.len()
     )
@@ -1822,6 +1856,16 @@ impl Server {
             return Ok(None);
         }
 
+        // Another page on this machine riding the hub's cookie: turned away
+        // before any token is looked at.
+        // A link carrying the token itself (`?t=`) was made by Atlas, so
+        // following it from another page -- a note, a chat -- still opens.
+        let carries_its_token = req.method == "GET" && token_matches(&self.token, query_field(&req.query, "t").as_deref());
+        if from_another_page(&head) && !carries_its_token {
+            let _ = stream.write_all(render(&Reply::denied()).as_bytes());
+            let _ = stream.flush();
+            return Ok(None);
+        }
         let is_hub = token_matches(&self.token, given.as_deref());
         // A peer credential is checked against its own space. `knows` only
         // answers whether this token belongs to a paired peer; what such a
