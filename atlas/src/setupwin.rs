@@ -451,8 +451,29 @@ fn phone_section(place: &Place) -> Phone {
 /// desktop window (the GUI-free core) can still name one.
 pub use crate::firstlaunch::First;
 
+/// A window height that fits a screen `screen` tall: at most nine tenths of
+/// it (room for the taskbar and title bar), never under the window's least.
+fn fit_height(want: f32, screen: f32) -> f32 {
+    want.min(screen * 0.9).max(480.0)
+}
+
+/// Left by a second "Open Atlas" for the open window to come forward.
+const RAISE_FILE: &str = "raise";
+
 /// Open the window. Blocks until it's closed.
 pub fn run(place: Place, first: First) -> Result<(), String> {
+    // One Atlas window (30 Sep 2026): "Open Atlas" by the clock, a
+    // double-click on the icon or the Start menu each opened another. A
+    // second one asks the first to come forward, and goes.
+    let window_dir = place.root.join("data").join("window");
+    let _ = std::fs::create_dir_all(&window_dir);
+    let window_lock = crate::onlyone::OnlyOne::at(&window_dir);
+    let now = crate::store::now();
+    if !window_lock.look(now).can_take() {
+        return std::fs::write(window_dir.join(RAISE_FILE), b"")
+            .map_err(|e| format!("Atlas's window is already open, and I couldn't ask it to come forward: {e}"));
+    }
+    let _ = window_lock.take(now);
     let progress = Arc::new(Mutex::new(Progress::new()));
     start_work(&place, &progress);
     let opts = eframe::NativeOptions {
@@ -488,8 +509,45 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
         note: None,
         voice: crate::speaking::Watch::new(place_data),
         feedback: FeedbackForm::default(),
+        fitted: false,
     };
-    eframe::run_native("atlas-home", opts, Box::new(|_cc| Ok(Box::new(app)))).map_err(|e| e.to_string())
+    // The lock is kept fresh, and a request to come forward answered, from
+    // a thread of its own: a minimized window isn't drawn, so its frames
+    // can't be what keeps it.
+    let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let keeper = {
+        let (closed, lock, dir) = (closed.clone(), window_lock.clone(), window_dir.clone());
+        move |ctx: eframe::egui::Context| {
+            std::thread::spawn(move || {
+                let mut last = now;
+                while !closed.load(std::sync::atomic::Ordering::SeqCst) {
+                    let t = crate::store::now();
+                    if lock.due(last, t) {
+                        lock.beat(t);
+                        last = t;
+                    }
+                    if std::fs::remove_file(dir.join(RAISE_FILE)).is_ok() {
+                        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Minimized(false));
+                        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Focus);
+                        ctx.request_repaint();
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                }
+            });
+        }
+    };
+    let shown = eframe::run_native(
+        "atlas-home",
+        opts,
+        Box::new(move |cc| {
+            keeper(cc.egui_ctx.clone());
+            Ok(Box::new(app))
+        }),
+    )
+    .map_err(|e| e.to_string());
+    closed.store(true, std::sync::atomic::Ordering::SeqCst);
+    window_lock.release();
+    shown
 }
 
 fn start_work(place: &Place, progress: &Arc<Mutex<Progress>>) {
@@ -536,12 +594,15 @@ struct App {
     voice: crate::speaking::Watch,
     /// "Report a problem with Atlas".
     feedback: FeedbackForm,
+    /// Whether the opening size has been checked against the screen.
+    fitted: bool,
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, win: &mut eframe::Frame) {
         // The locked hub design's colourway, not egui's default grey.
         crate::look_paint::dress(ctx);
+
         use crate::look_paint::MarkState;
         use eframe::egui::{self, FontId, RichText};
 
@@ -572,11 +633,24 @@ impl eframe::App for App {
         // The hub is laid out for a wide window (the command deck: Right now
         // beside your cards). The setup window is narrow, so the Hub page
         // widens it — within the screen — and leaving puts it back.
+        // 30 Sep 2026: the window opens 860 tall, which on a laptop screen
+        // at 150% scaling runs past the taskbar with the buttons under it.
+        // Once the screen is known, the window is brought within it.
+        if !self.fitted {
+            let (now, screen) = ctx.input(|i| (i.screen_rect().size(), i.viewport().monitor_size));
+            if let Some(room) = screen.filter(|r| r.y > 0.0) {
+                self.fitted = true;
+                let fits = fit_height(now.y, room.y);
+                if fits + 1.0 < now.y {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(now.x, fits)));
+                }
+            }
+        }
         if self.view == View::Hub && !self.hub_sized {
             self.hub_sized = true;
             let (now, screen) = ctx.input(|i| (i.screen_rect().size(), i.viewport().monitor_size));
             let room = screen.unwrap_or(egui::vec2(1440.0, 900.0));
-            let want = egui::vec2(1240.0f32.min(room.x * 0.92), now.y.max(860.0f32.min(room.y * 0.9)));
+            let want = egui::vec2(1240.0f32.min(room.x * 0.92), fit_height(now.y.max(860.0), room.y));
             if now.x + 40.0 < want.x {
                 self.size_before_hub = Some(now);
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));

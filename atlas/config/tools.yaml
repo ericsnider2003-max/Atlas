@@ -40,6 +40,11 @@ record:
          "-i", "audio={mic_device}", "-t", "{seconds}",
          "-ar", "16000", "-ac", "1", "-y", "{in_wav}"]
 
+# Which speech-to-text hears you: auto (Parakeet when `atlas get hearing`
+# has fetched it, whisper otherwise), parakeet, or whisper. Parakeet is
+# English; another language or translating goes to whisper either way.
+stt_engine: auto
+
 stt:
   command: "{whisper}"
   # {hint_opt} {hint_val}: your own words (names, projects) as whisper's
@@ -262,6 +267,14 @@ crew:
 
 # Research runs entirely in the BACKGROUND lane — a separate headless browser
 # process, never the Chrome window you are using. Start it and keep working.
+# The weather, from Open-Meteo (free, no account). place: your town, as you'd
+# say it ("Columbus, Ohio"); empty = the town your internet address is in,
+# which Atlas says back so a wrong guess is heard. units: auto (Fahrenheit in
+# the US), fahrenheit or celsius.
+weather:
+  place: ""
+  units: auto
+
 research:
   # On by default (Eric, 27 Sep 2026): when Atlas doesn't know, it looks it
   # up. That sends the question to a search engine; Settings turns it off.
@@ -517,6 +530,12 @@ models:
   deep_port: 0
   deep_idle_secs: 300
   deep_context: 8192
+  # Offline first, online second: when the model on this machine can't
+  # answer (or there isn't one), ask a free online model that needs no
+  # account or key (`freeonline.rs`: Kilo, Pollinations, OVHcloud). Keys,
+  # card numbers, emails and phone numbers are swapped for placeholders
+  # before anything leaves. false = never send a prompt online.
+  online_second: true
   # Layers on the graphics: auto, off, or a number. auto puts them all on the
   # graphics when the downloaded llama.cpp is a graphics (Vulkan) build.
   gpu_layers: auto

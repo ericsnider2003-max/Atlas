@@ -186,6 +186,7 @@ fn now(title: &str, steps: Vec<(Step, String)>, background: Vec<String>, working
         paused: false,
         working,
         background,
+        held: Vec::new(),
     })
 }
 
@@ -353,4 +354,28 @@ fn a_demoted_job_keeps_its_progress_and_its_thinking() {
     let w = m.get(id).unwrap();
     assert_eq!(w.progress(), (1, 2));
     assert_eq!(w.thoughts.len(), 1);
+}
+
+/// 30 Sep 2026: notes held because they couldn't reach you were said on your
+/// return and shown nowhere; the Now page lists them.
+#[test]
+fn notes_kept_for_you_are_on_the_now_page() {
+    let mut v = NowView {
+        title: "Waiting for you.".into(),
+        since: "Nothing underway right now.".into(),
+        steps: vec![],
+        plain_from: 0,
+        spent: None,
+        fallback: "I stop and tell you what stopped it.".into(),
+        paused: false,
+        working: false,
+        background: vec![],
+        held: vec!["Disk <nearly> full".into(), "Build finished".into()],
+    };
+    let page = now_page(&v);
+    assert!(page.contains("<div class=lab>Kept for you</div>"), "no box for held notes");
+    assert!(page.contains("2 notes that couldn't reach you when they came"));
+    assert!(page.contains("<li>Disk &lt;nearly&gt; full</li>"), "titles must be escaped");
+    v.held.clear();
+    assert!(!now_page(&v).contains("Kept for you"), "nothing held, nothing shown");
 }

@@ -748,6 +748,21 @@ fn an_announced_tool_is_called_rather_than_promised() {
     assert!(persona.character().contains("call the tool"), "the prompt doesn't say to call tools");
 }
 
+/// 30 Sep 2026: when the forced ask still called nothing, "I'll check your
+/// calendar." was the whole reply -- a promise nothing followed.
+#[test]
+fn an_announced_tool_that_never_runs_is_owned_up_to() {
+    let c = cfg();
+    let book = ToolBook::new(&c.commands);
+    let tools = book.for_sentence("what's on my calendar tomorrow", 6);
+    let llm = Pieces::new(vec![
+        (vec!["I'll check ", "your calendar."], Some(text("I'll check your calendar."))),
+        (vec![], Some(text("Sure."))),
+    ]);
+    let (d, _, _) = converse(&llm, &brain_turn("anything on for tomorrow", vec![], tools));
+    assert_eq!(d.say, format!("I'll check your calendar. {}", atlas::brain::NOTHING_FOLLOWED));
+}
+
 // ================= 10: times around the clocks changing =================
 
 #[test]

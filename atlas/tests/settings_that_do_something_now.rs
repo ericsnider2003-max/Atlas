@@ -1236,7 +1236,7 @@ fn pairing_is_ten_characters_and_the_folder_carries_the_rest() {
 fn the_short_code_is_worth_typing_and_the_long_one_still_works() {
     // The arithmetic that makes ten characters enough, written where it can
     // be checked rather than asserted in a comment: a 32-character alphabet,
-    // ten of them, is 2^50, and what it protects exists for three minutes
+    // ten of them, is 2^50, and what it protects exists for fifteen minutes
     // behind Argon2id at 64MiB.
     let mut alphabet: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
     for _ in 0..200 {
@@ -1270,7 +1270,9 @@ fn a_device_can_be_invited_and_joined_without_a_terminal() {
     assert!(page.contains("Invite a device"), "no way to start a pairing from the page");
     assert!(page.contains("name=code"), "and no way to finish one");
     assert!(page.contains("name=device"), "a joining machine has to say what it is called");
-    assert!(page.contains("three minutes"), "the page has to say the window is short");
+    // 30 Sep 2026: fifteen, not three -- the invitation has to survive a
+    // cloud folder's few minutes of carrying it (`INVITE_WAIT_SECS`).
+    assert!(page.contains("fifteen minutes"), "the page has to say the window is short");
 
     // And the buttons reach something. A page whose forms post into the void
     // is prose with a border on it -- `tests/retrospective.rs` is right to

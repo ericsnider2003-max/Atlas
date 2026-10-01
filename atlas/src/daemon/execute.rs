@@ -2009,7 +2009,7 @@ impl<'a> Daemon<'a> {
                 // means the next start has neither, and a vault with
                 // no check value opens for anything.
                 let first = !self.vault.proved_it();
-                if let Err(e) = self.vault.save(&crate::roots::install_state()) {
+                if let Err(e) = self.vault.save(&self.vault_home) {
                     format!(
                         "Open, but I couldn't write the vault to disk ({e}), so this \
                          passphrase won't be remembered past this run."
@@ -2196,6 +2196,15 @@ impl<'a> Daemon<'a> {
             }
         }
         if spoken.is_a_whole_item() {
+            // Kept as well as announced (30 Sep 2026: it said
+            // `Made "Tuesday tips", due friday.` and kept it nowhere
+            // unless the project was one the workshop tracks).
+            let id = self.notebook.capture(text, None, now, &cfg);
+            self.wd_date_note(id, now);
+            self.synclog.append(crate::sync::What::Captured { id: id.to_string(), text: text.clone() }, now);
+            if let Err(e) = self.notebook.save(&self.store) {
+                return format!("I couldn't write that down ({e}). Say it again once that's sorted, because I haven't kept it.");
+            }
             crate::capture::made(&spoken)
         } else {
             let id = self.notebook.capture(text, None, now, &cfg);
@@ -2382,6 +2391,9 @@ impl<'a> Daemon<'a> {
             self.connect_outlook_from_request(what)
         } else if !cfg.enabled {
             "Reading your email is switched off.".into()
+        } else if crate::unsub::go_ahead(what) || crate::unsub::go_ahead(&self.last_said.clone()) {
+            // The go-ahead after the report, not another look.
+            self.unsubscribe_help("unsubscribe from those").unwrap_or_default()
         } else if what.contains("clear") || what.contains("unsubscribe") {
             self.check_unsubscribe()
         } else if what.contains("outreach") {

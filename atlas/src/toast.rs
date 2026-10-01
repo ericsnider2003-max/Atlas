@@ -42,6 +42,17 @@ pub fn show(title: &str, body: &str) -> Result<(), String> {
     doc.LoadXml(&HSTRING::from(xml(title, body))).map_err(|e| e.to_string())?;
     let toast = ToastNotification::CreateToastNotification(&doc).map_err(|e| e.to_string())?;
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID)).map_err(|e| e.to_string())?;
+    // 30 Sep 2026: with Atlas's notifications (or all of them) switched off
+    // in Windows, `Show` still succeeds and nothing appears -- and the note
+    // was counted as reaching you. Asked first, so it falls through to
+    // Atlas's own panel, or is held and said when you're back.
+    use windows::UI::Notifications::NotificationSetting;
+    match notifier.Setting() {
+        Ok(NotificationSetting::Enabled) | Err(_) => {}
+        Ok(NotificationSetting::DisabledForApplication) => return Err("Atlas's notifications are switched off in Windows".into()),
+        Ok(NotificationSetting::DisabledForUser) => return Err("notifications are switched off in Windows".into()),
+        Ok(_) => return Err("Windows isn't allowing notifications here".into()),
+    }
     notifier.Show(&toast).map_err(|e| format!("Windows didn't show it: {e}"))
 }
 

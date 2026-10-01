@@ -435,6 +435,27 @@ it did so and carry on writing the brief.";
 pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
     let mut seen = BTreeMap::new();
     let mut out = Vec::new();
+    // DuckDuckGo's HTML results link through its own redirect
+    // (`//duckduckgo.com/l/?uddg=https%3A%2F%2F...`): no "http" in front and
+    // the real address percent-encoded, so the scan below passed every
+    // result over as noise and each search leaned on the headless browser
+    // (30 Sep 2026). The real addresses come out first, in page order.
+    let mut rest = html;
+    while let Some(i) = rest.find("uddg=") {
+        let tail = &rest[i..];
+        let end = tail.find(|c: char| c == '"' || c == '\'' || c == '<' || c == ' ').unwrap_or(tail.len());
+        let target = unwrap_redirect(&tail[..end]);
+        rest = &tail[end.max(1)..];
+        if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400 {
+            let clean = target.trim_end_matches(['.', ',', ';']).to_string();
+            if seen.insert(clean.clone(), ()).is_none() {
+                out.push(clean);
+                if out.len() >= max {
+                    return out;
+                }
+            }
+        }
+    }
     let mut rest = html;
     while let Some(i) = rest.find("http") {
         let tail = &rest[i..];

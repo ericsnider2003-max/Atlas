@@ -175,7 +175,10 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
 /// it isn't, so each one was checked against where it is read.
 pub const NEEDS_A_RESTART: &[&str] = &[
     "voice.enabled",
-    "wake.enabled",
+    // 30 Sep 2026: `wake.enabled` was listed here though `pick_up_settings`
+    // switches the wake word on and off at once; the phrase is the part the
+    // listener keeps from the start.
+    "wake.phrase",
     "quick_input.enabled",
     // The keys are handed to Windows once, when Atlas starts.
     "quick_input.hotkey",
@@ -235,7 +238,13 @@ impl Settings {
         match self.set(key, raw) {
             Err(e) => e,
             Ok(confirmation) => {
-                let mut prefs = crate::preferences::Preferences::load(dir);
+                // Checked, not defaulted (30 Sep 2026): a settings file that
+                // won't read loaded as "nothing chosen", and saving that put
+                // every other setting back while this page said "it's on".
+                let mut prefs = match crate::preferences::Preferences::load_checked(dir) {
+                    Ok(p) => p,
+                    Err(e) => return format!("I haven't changed anything: {e}. Fix that file or delete it, then try again."),
+                };
                 prefs.set(key, raw);
                 match prefs.save(dir) {
                     Ok(()) => confirmation,

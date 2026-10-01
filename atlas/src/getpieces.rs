@@ -528,6 +528,56 @@ pub fn picture_making() -> Vec<Piece> {
     ]
 }
 
+/// Better hearing (`parakeet`): sherpa-onnx 1.13.8's server and NVIDIA's
+/// Parakeet TDT 0.6B v2 (int8). Hashes and sizes from downloading each on
+/// 30 Sep 2026; the model and the Linux build were run through Atlas's own
+/// client on LibriSpeech speech (`parakeet.rs` has the numbers). sherpa-onnx
+/// is Apache-2.0; Parakeet TDT 0.6B v2 is CC-BY-4.0.
+fn parakeet_pieces() -> Vec<Piece> {
+    let server = if cfg!(windows) {
+        Piece {
+            name: "the hearing server",
+            for_what: "hearing you with Parakeet, which mishears far less than whisper",
+            url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-no-tts.tar.bz2",
+            sha256: "4b0a94f7b5c606b1b64a19a831c2127559e4b3d34e195465ebc7be73d9ed4783",
+            bytes: 23_271_851,
+            lands: Lands::Zip {
+                inside: "sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-no-tts",
+                dir: "tools/sherpa",
+                key: "tools/sherpa/bin/sherpa-onnx-offline-websocket-server.exe",
+            },
+        }
+    } else {
+        Piece {
+            name: "the hearing server",
+            for_what: "hearing you with Parakeet, which mishears far less than whisper",
+            url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-no-tts.tar.bz2",
+            sha256: "d0f96c8b65c6cd0974fada22737e337de81bc8cd2abbec2e39caf358b1eec5fc",
+            bytes: 24_802_494,
+            lands: Lands::Zip {
+                inside: "sherpa-onnx-v1.13.8-linux-x64-shared-no-tts",
+                dir: "tools/sherpa",
+                key: "tools/sherpa/bin/sherpa-onnx-offline-websocket-server",
+            },
+        }
+    };
+    vec![
+        server,
+        Piece {
+            name: "the Parakeet hearing model",
+            for_what: "hearing you across the room, not just up close",
+            url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+            sha256: "157c157bc51155e03e37d2466522a3a737dd9c72bb25f36eb18912964161e1ad",
+            bytes: 482_468_385,
+            lands: Lands::Zip {
+                inside: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+                dir: "models/parakeet",
+                key: "models/parakeet/encoder.int8.onnx",
+            },
+        },
+    ]
+}
+
 /// A set by the word you'd type after `atlas get`: nothing for the voice
 /// pieces, `seeing`, `pictures`, `photos`, or `tor`.
 pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
@@ -544,16 +594,17 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         // anything Atlas does here.
         Some("everything" | "all") => {
             let mut all = catalogue();
-            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making()] {
+            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making(), parakeet_pieces()] {
                 for p in more {
                     if !all.iter().any(|a: &Piece| a.key_path() == p.key_path()) {
                         all.push(p);
                     }
                 }
             }
-            Some(("everything Atlas can use on this machine: voice, understanding, seeing, reading and making pictures (about 11 GB)", all))
+            Some(("everything Atlas can use on this machine: voice, Parakeet hearing, understanding, seeing, reading and making pictures (about 11.5 GB)", all))
         }
         Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
+        Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better (about 500 MB)", parakeet_pieces())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,
     }

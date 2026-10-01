@@ -916,7 +916,7 @@ pub fn sound_page(v: &SoundView, notice: Option<&str>) -> String {
          <output for=spd>{speed:.2}</output><button>Save</button></form>\
          <form method=post action='/hub/sound'><input type=hidden name=key value=volume>\
          <label for=vol>Speaking volume</label><input id=vol name=value type=range min=0 max=100 step=5 value='{vol}'>\
-         <output for=vol>{vol}%</output><button>Save</button></form>\
+         <output for=vol data-unit=%>{vol}%</output><button>Save</button></form>\
          <form method=post action='/hub/sound'><input type=hidden name=key value=speak_replies>\
          <fieldset class=seg3><legend>Speak replies aloud</legend>",
         speed = v.speed,

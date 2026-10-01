@@ -458,6 +458,12 @@ pub const THEIRS_IS_THEIRS: &str =
 // The long block still works. Anyone mid-pairing when they update should not
 // find their code rejected.
 
+/// How long an invitation waits in the shared folder (30 Sep 2026: was
+/// three minutes). It travels by OneDrive or Dropbox, which can take several
+/// minutes to reach the other machine, so three minutes often ran out before
+/// the file had even arrived. Sealed under the code and deleted once taken.
+pub const INVITE_WAIT_SECS: u64 = 900;
+
 /// How many characters a pairing code is. See `vault::short_code`.
 pub const CODE_LEN: usize = 10;
 

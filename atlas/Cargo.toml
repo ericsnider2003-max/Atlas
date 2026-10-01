@@ -197,6 +197,11 @@ required-features = ["phone-llm"]
 name = "guests_at_the_daemon"
 path = "tests/guests_at_the_daemon.rs"
 
+# Hearing by what's said, through the real hearing server: sets ATLAS_HOME.
+[[test]]
+name = "hearing_by_what_is_said"
+path = "tests/hearing_by_what_is_said.rs"
+
 # Atlas on someone else's machine: sets ATLAS_HOME for the process.
 [[test]]
 name = "atlas_on_a_friends_machine"

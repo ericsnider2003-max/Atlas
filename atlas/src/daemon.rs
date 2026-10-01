@@ -60,6 +60,9 @@ mod helping;
 mod messages;
 mod hands;
 mod camera;
+pub use hands::{PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
+pub use errands::CONNECTED_ACCOUNTS;
+pub use tick::moment_clock;
 mod away;
 mod tick;
 mod inbox;
@@ -205,6 +208,14 @@ fn resolve_tools(tools: Option<&crate::voice::ToolsConfig>, store: &Store) -> cr
         let d = std::path::PathBuf::from(&t.work_dir);
         if d.is_relative() {
             t.work_dir = store.install_root().join(d).to_string_lossy().into_owned();
+        }
+    }
+    // Mail accounts Atlas connected itself (`errands::CONNECTED_ACCOUNTS`),
+    // after the ones you listed; one you listed by the same address wins.
+    let connected: Vec<crate::mail::Account> = store.load(errands::CONNECTED_ACCOUNTS);
+    for a in connected {
+        if !t.mail.accounts.iter().any(|b| b.address.eq_ignore_ascii_case(&a.address)) {
+            t.mail.accounts.push(a);
         }
     }
     t
@@ -791,6 +802,31 @@ pub struct Daemon<'a> {
     asks_quietly: Option<Box<dyn crate::typed::AsksQuietly>>,
     /// The passphrase-locked store. Sealed until you open it.
     pub vault: crate::vault::Vault,
+    /// The last reminder said when it came due, and when (`keeping`: "snooze").
+    pub last_reminder_fired: Option<(String, u64)>,
+    /// Notes a push to your phone failed for, tried again every few minutes
+    /// while you're still away (`tick`). 30 Sep 2026: one failed push -- a
+    /// phone on a lift, the push server restarting -- meant the note waited
+    /// until you were back at the desk, which is what the phone was for.
+    pub phone_to_retry: Vec<crate::notify::Note>,
+    /// What the background said, numbered, for an app on the phone to show
+    /// as notifications (`/hub/live.json`'s `said`). The phone has no
+    /// speaker loop: its tick output was dropped (30 Sep 2026), so a
+    /// reminder set on the phone never appeared.
+    pub said_for_apps: Vec<(u64, String)>,
+    pub phone_retry_at: u64,
+    /// The last reminder or timer set ("cancel that reminder").
+    pub last_reminder_set: Option<u64>,
+    /// "Remind me to X" with no time: X, until you say when.
+    pub reminder_waiting_for_a_time: Option<String>,
+    /// The town the weather was last given for, kept for the session.
+    pub weather_place: Option<crate::weather::Place>,
+    /// Whose draft was last read out ("send it").
+    pub draft_last_read: Option<String>,
+    /// Notes routed to speaking (`reach_you`), said on the next tick.
+    pub to_say_aloud: Vec<String>,
+    /// Where the vault is kept (`vault_home_for`).
+    pub vault_home: crate::store::Store,
     /// How many times each undelivered message has been tried, and when.
     ///
     /// Not persisted, deliberately: it is about the network rather than the
@@ -1441,6 +1477,7 @@ impl<'a> Daemon<'a> {
         proactive: Proactive,
     ) -> Self {
         let store_for_load = store.clone();
+        let store_for_vault = store.clone();
         let store_for_load2 = store.clone();
         let store_for_reached = store.clone();
         let tools_resolved = std::sync::Arc::new(resolve_tools(cfg.tools.as_ref(), &store));
@@ -1640,7 +1677,21 @@ impl<'a> Daemon<'a> {
             // a `default()` vault has no salt and no check value, so it
             // held nothing across a restart and its passphrase was set
             // afresh by the first unlock of every run.
-            vault: crate::vault::Vault::load(&crate::roots::install_state()),
+            vault: if keeps_the_install_vault(&store_for_vault) {
+                crate::vault::Vault::load(&crate::roots::install_state())
+            } else {
+                crate::vault::Vault::load(&store_for_vault)
+            },
+            last_reminder_fired: None,
+            phone_to_retry: Vec::new(),
+            said_for_apps: Vec::new(),
+            phone_retry_at: 0,
+            last_reminder_set: None,
+            reminder_waiting_for_a_time: None,
+            weather_place: None,
+            draft_last_read: None,
+            to_say_aloud: Vec::new(),
+            vault_home: if keeps_the_install_vault(&store_for_vault) { crate::roots::install_state() } else { store_for_vault.clone() },
             chats: chats_at_start,
             tries: crate::courier::Tries::default(),
             // Loaded rather than defaulted, for the same reason the vault is:
@@ -3665,6 +3716,22 @@ pub const QUESTION_LIFETIME_SECS: u64 = 600;
 /// model is asked for fewer and stopped at a sentence's end when it reaches
 /// them; this is only the ceiling for a model that runs on.
 pub const SAFETY_SENTENCES: usize = 16;
+
+/// Does a daemon given `store` keep the install's vault
+/// (`roots::install_state`, `vault::Vault::FILE`: one vault per copy of
+/// Atlas, whoever is using it)? Yes when `store` is this install's -- the
+/// owner's or a profile's -- or when you named the install (`ATLAS_HOME`).
+/// Otherwise the vault is kept in `store` itself.
+///
+/// 30 Sep 2026: every daemon went to the install's state whatever store it
+/// was given, so every test daemon, each in its own temporary store, shared
+/// the one vault in the checkout's `data/state`. One test saved a vault
+/// under its own passphrase there, and from then on every test that opened
+/// the vault with another was told "that isn't the passphrase" -- eleven
+/// failures in a full run, from a file no test had meant to create.
+fn keeps_the_install_vault(store: &crate::store::Store) -> bool {
+    store.root().starts_with(crate::roots::state_dir()) || crate::roots::how() == crate::roots::Chosen::Told
+}
 
 /// How long the floor stays open after Atlas speaks, in a conversation.
 pub const CHATTING_FOLLOWUP_SECS: u32 = 10;

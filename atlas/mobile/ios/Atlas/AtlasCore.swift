@@ -147,10 +147,13 @@ extension AtlasCore {
 struct LiveState: Decodable {
     struct Working: Decodable { let title: String; let step: String; let stage: String }
     struct Ready: Decodable { let title: String; let href: String }
+    /// What Atlas said in the background, numbered (reminders, finished work).
+    struct Said: Decodable { let id: Int64; let text: String }
     let status: String
     let working: Working?
     let ready: [Ready]
     let waiting: Int
+    let said: [Said]?
 }
 
 /// A session that doesn't follow the hub's redirect after a form: the

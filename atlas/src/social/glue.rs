@@ -605,14 +605,14 @@ impl Daemon<'_> {
                 let r: Refreshed = serde_json::from_str(&body).ok()?;
                 if let Some(tok) = &r.new_instagram_token {
                     if self.vault.put(VAULT_INSTAGRAM, crate::vault::Kind::ApiKey, tok, t).is_ok() {
-                        let _ = self.vault.save(&crate::roots::install_state());
+                        let _ = self.vault.save(&self.vault_home);
                         self.social_watch().instagram_token_at = t;
                         let _ = self.social_keep_watch();
                     }
                 }
                 if let Some(tok) = &r.new_threads_token {
                     if self.vault.put(VAULT_THREADS, crate::vault::Kind::ApiKey, tok, t).is_ok() {
-                        let _ = self.vault.save(&crate::roots::install_state());
+                        let _ = self.vault.save(&self.vault_home);
                         self.social_watch().threads_token_at = t;
                         let _ = self.social_keep_watch();
                     }
@@ -620,7 +620,7 @@ impl Daemon<'_> {
                 if let Some(tk) = &r.new_tiktok {
                     if let Ok(j) = serde_json::to_string(tk) {
                         if self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &j, t).is_ok() {
-                            let _ = self.vault.save(&crate::roots::install_state());
+                            let _ = self.vault.save(&self.vault_home);
                         }
                     }
                 }
@@ -701,7 +701,7 @@ impl Daemon<'_> {
                 let json = serde_json::to_string(&s).ok()?;
                 Some(match self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t) {
                     Ok(()) => {
-                        let _ = self.vault.save(&crate::roots::install_state());
+                        let _ = self.vault.save(&self.vault_home);
                         let on = if self.social_cfg().tiktok { "" } else { " Turn TikTok on under Your accounts on the Social page so the refresh reads it." };
                         format!("Signed in to TikTok; your videos' numbers come with the next refresh.{on}")
                     }
@@ -714,7 +714,7 @@ impl Daemon<'_> {
                 let json = serde_json::to_string(&s).ok()?;
                 Some(match self.vault.put(VAULT_YOUTUBE_OAUTH, crate::vault::Kind::ApiKey, &json, t) {
                     Ok(()) => {
-                        let _ = self.vault.save(&crate::roots::install_state());
+                        let _ = self.vault.save(&self.vault_home);
                         let lapse = if self.social_cfg().google_app_in_testing {
                             " While your Google app is in Testing, Google ends this sign-in after seven days; publishing the app (unverified is fine for your own use) stops that."
                         } else {
@@ -902,7 +902,7 @@ impl Daemon<'_> {
                     return "Nothing to keep.".into();
                 }
                 match self.vault.put(name, crate::vault::Kind::ApiKey, &secret, t) {
-                    Ok(()) => match self.vault.save(&crate::roots::install_state()) {
+                    Ok(()) => match self.vault.save(&self.vault_home) {
                         Ok(()) => {
                             if name == VAULT_INSTAGRAM {
                                 self.social_watch().instagram_token_at = t;
@@ -978,7 +978,7 @@ impl Daemon<'_> {
         if let Err(e) = self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t) {
             return e;
         }
-        let _ = self.vault.save(&crate::roots::install_state());
+        let _ = self.vault.save(&self.vault_home);
         match self.plat.open_path(&apis::tiktok_consent_url(&s)) {
             Ok(()) => "TikTok's sign-in is open in your browser. Say yes, then copy the address TikTok sends you to and paste it in the second box.".into(),
             Err(e) => format!("I couldn't open your browser for TikTok's sign-in: {e}"),

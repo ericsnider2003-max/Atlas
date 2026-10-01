@@ -915,7 +915,9 @@ const ORPHANS: &[(&str, &str)] = &[
 // -- every core command plus the ones a sentence reads like -- is no longer
 // what a conversation turn is offered (`router::Router::for_turn` is); the
 // tests that measure the old shape still call it.
-const TEST_ONLY_MAX: usize = 101;
+// 101 -> 100 (30 Sep 2026, merging the other chat's 30 Sep work):
+// `capture::found` is called -- notes can be asked for.
+const TEST_ONLY_MAX: usize = 100;
 // 287 -> 286 (22 Sep): `consolidate::size_note` gained a real caller. The new
 // `KnowledgeSize` intent ("how much do you know", "how big is your memory")
 // routes through `Daemon::knowledge_store_size`, which reads the store count

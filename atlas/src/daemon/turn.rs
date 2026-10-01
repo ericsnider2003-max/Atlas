@@ -1112,7 +1112,15 @@ impl<'a> Daemon<'a> {
         //
         // Unless one of round 11's tools just asked ("probably $7.75 -- keep
         // it?"): then the yes or no is its answer (`workday::read_first`).
-        if (is_yes(said) || is_no(said)) && !matches!(self.parser.parse_named(said).0, Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_)) {
+        // Unless Atlas's own last words asked something ("Want me to set a
+        // reminder?"): then the yes or no is an answer to that, and goes to
+        // the model with the question still in the conversation (30 Sep 2026:
+        // it was told "Nothing to confirm.").
+        let asked_last = self.thread.recent.last().is_some_and(|e| e.reply.trim_end().ends_with('?'));
+        if (is_yes(said) || is_no(said))
+            && !asked_last
+            && !matches!(self.parser.parse_named(said).0, Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_))
+        {
             return "Nothing to confirm.".into();
         }
 
@@ -1138,7 +1146,16 @@ impl<'a> Daemon<'a> {
     /// model: reminders (B3), what you've said you want (B2), a correction or
     /// fact you've stated, your notes, and the rest. `None` when none of it does.
     fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
-        self.remind_help(raw, t)
+        self.keeping_track(raw, t)
+            .or_else(|| self.writing_help(raw))
+            .or_else(|| self.research_note_help(raw))
+            .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.compose_help(raw))
+            .or_else(|| self.progress_help(raw))
+            .or_else(|| self.unsubscribe_help(raw))
+            .or_else(|| self.note_asked(raw, t))
+            .or_else(|| self.weather_help(raw))
+            .or_else(|| self.remind_help(raw, t))
             .or_else(|| self.spot_opportunity(raw))
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.from_notes(raw, t))
@@ -1162,7 +1179,16 @@ impl<'a> Daemon<'a> {
     /// (`notes_as_hints`) instead of answering on their own -- a note that
     /// shared one word with "what should I eat" was the whole reply.
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
-        self.remind_help(raw, t)
+        self.keeping_track(raw, t)
+            .or_else(|| self.writing_help(raw))
+            .or_else(|| self.research_note_help(raw))
+            .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.compose_help(raw))
+            .or_else(|| self.progress_help(raw))
+            .or_else(|| self.unsubscribe_help(raw))
+            .or_else(|| self.note_asked(raw, t))
+            .or_else(|| self.weather_help(raw))
+            .or_else(|| self.remind_help(raw, t))
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.exact_fact(raw, t))
             .or_else(|| if opens_with_ways(raw) { self.ways_in_help(raw) } else { None })
@@ -2032,8 +2058,13 @@ impl<'a> Daemon<'a> {
         //
         // Not in conversation: "tell me another joke" twice is a request for
         // a second one, and a model that answers again answers afresh.
+        // Only when the answer IS the same again (30 Sep 2026: "what
+        // reminders do I have" after setting three more was told "here it
+        // is again" in front of a list that had changed).
         let reply = match self.thread.asked_before(said) {
-            Some(_) if !chatted => format!("You asked this a little earlier -- here it is again. {reply}"),
+            Some(before) if !chatted && before.reply.trim() == reply.trim() => {
+                format!("You asked this a little earlier -- here it is again. {reply}")
+            }
             _ => reply,
         };
         self.fold_if_due(_t);
@@ -2467,7 +2498,9 @@ impl<'a> Daemon<'a> {
                 // Half-written or hand-broken: keep running on what we have,
                 // look again next tick, and say why once.
                 self.settings_watch = Some((dir, now));
-                return vec![format!("I couldn't read my changed settings, so I'm keeping the ones I had: {e}")];
+                let line = format!("I couldn't read my changed settings, so I'm keeping the ones I had: {e}");
+                self.log.warn(&line);
+                return vec![line];
             }
         };
         self.settings_watch = Some((dir.clone(), now));

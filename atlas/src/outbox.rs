@@ -270,3 +270,75 @@ mod tests {
         assert_eq!(reloaded.waiting().len(), 1);
     }
 }
+
+/// "Email Sam saying I'll be late" / "send an email to jo@x.com that the
+/// deck is ready": who, and what to say, in your words and capitals.
+///
+/// 30 Sep 2026: there was no way to start an email by asking. Atlas drafted
+/// replies to mail that came in, and "email Sam saying ..." went to the
+/// model, which said it had sent something it hadn't.
+pub fn email_asked(said: &str) -> Option<(String, String)> {
+    let s = said.trim().trim_end_matches(['.', '!']);
+    let low = s.to_ascii_lowercase();
+    let lead = [
+        "send an email to ", "send email to ", "send a email to ", "send an e-mail to ", "write an email to ",
+        "shoot an email to ", "drop an email to ", "shoot ", "email ", "e-mail ", "can you email ", "please email ",
+    ]
+    .iter()
+    .find(|p| low.starts_with(**p))?;
+    let rest_low = &low[lead.len()..];
+    let (at, mark) = [" saying ", " telling them ", " that ", ": ", ", ", " to say "]
+        .iter()
+        .filter_map(|m| rest_low.find(m).map(|i| (i, *m)))
+        .min_by_key(|(i, _)| *i)?;
+    let who = s[lead.len()..lead.len() + at].trim();
+    // "shoot Sam an email saying ..."
+    let who = who.strip_suffix(" an email").or_else(|| who.strip_suffix(" a message")).unwrap_or(who).trim();
+    if *lead == "shoot " && !low[lead.len()..lead.len() + at].ends_with(" an email") {
+        return None;
+    }
+    let message = s[lead.len() + at + mark.len()..].trim();
+    if who.is_empty() || who.split_whitespace().count() > 4 || message.split_whitespace().count() < 2 {
+        return None;
+    }
+    // "email him" with nobody named isn't something to guess at.
+    if ["him", "her", "them", "it", "me", "everyone"].contains(&who.to_ascii_lowercase().as_str()) {
+        return None;
+    }
+    Some((who.to_string(), message.to_string()))
+}
+
+/// What was said, as a letter's body: the first letter a capital, a lone
+/// "i" an "I", ending in a full stop.
+pub fn body_from_spoken(message: &str) -> String {
+    let mut words: Vec<String> = message
+        .split_whitespace()
+        .map(|w| match w {
+            "i" => "I".to_string(),
+            w if w.starts_with("i'") => format!("I{}", &w[1..]),
+            w => w.to_string(),
+        })
+        .collect();
+    if let Some(first) = words.first_mut() {
+        let mut c = first.chars();
+        if let Some(f) = c.next() {
+            *first = f.to_uppercase().collect::<String>() + c.as_str();
+        }
+    }
+    let mut body = words.join(" ");
+    if !body.ends_with(['.', '!', '?']) {
+        body.push('.');
+    }
+    body
+}
+
+/// A subject line from the body: its first few words.
+pub fn subject_from_body(body: &str) -> String {
+    let words: Vec<&str> = body.split_whitespace().collect();
+    let mut s = words.iter().take(7).cloned().collect::<Vec<_>>().join(" ");
+    s = s.trim_end_matches(['.', ',', '!', '?', ';', ':']).to_string();
+    if words.len() > 7 {
+        s.push_str("...");
+    }
+    s
+}

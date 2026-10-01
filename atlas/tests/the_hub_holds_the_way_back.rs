@@ -396,7 +396,8 @@ fn a_fresh_install_goes_folder_then_household_then_pairing_entirely_in_the_hub()
     let r = atlas::hublive::reply(&mut d, post("/hub/sync", "what=pair"));
     all.push(r);
     let html = page(&mut d, sync);
-    let lead = "Type this on the other machine within three minutes: ";
+    // 30 Sep 2026: fifteen minutes (`household::INVITE_WAIT_SECS`).
+    let lead = "Type this on the other machine within fifteen minutes: ";
     let at = html.find(lead).expect("no code") + lead.len();
     let code: String = html[at..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
     assert!(code.len() >= 8, "{code}");

@@ -33,6 +33,11 @@ impl<'a> Daemon<'a> {
         let mut out = Vec::new();
         // Where this pass spends its time, named in the log when it's slow.
         self.tick_laps = crate::timing::Laps::start();
+        // Notes `reach_you` routed to speaking, said now (30 Sep 2026: that
+        // route only wrote a log line, so a message for you while you sat at
+        // the desk was never heard).
+        out.append(&mut self.to_say_aloud);
+        self.retry_phone(t);
         if let Some(line) = self.model_warmed.lock().ok().and_then(|mut w| w.take()) {
             self.log.info(&line);
         }
@@ -135,8 +140,10 @@ impl<'a> Daemon<'a> {
         // Your settings, if you changed one while Atlas was running. Before
         // the pause check, like the heartbeat: switching something off is
         // exactly what you might do while Atlas is paused. Logged, not
-        // spoken — whoever changed it has just seen the change.
-        let _ = self.pick_up_settings();
+        // spoken — whoever changed it has just seen the change. A file that
+        // wouldn't read is different (30 Sep 2026: it was dropped here, so
+        // every choice seemed to revert with no word why): that is said.
+        out.extend(self.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")));
         self.tick_laps.mark("settings");
 
         // Calls: notice one starting or ending, and hand back finished notes.
@@ -336,6 +343,9 @@ impl<'a> Daemon<'a> {
             }
             let result = self.execute(&intent);
             let ok = !result.starts_with("error");
+            if job.command.starts_with("reminder ") {
+                self.last_reminder_fired = Some((job.command.clone(), t));
+            }
             self.journal.record_at(Act::Scheduled, &job.command, ok, t);
             self.scheduler.complete(id, t, &result, ok);
             // A reminder is its words: said whenever it fires (29 Sep 2026: it
@@ -684,9 +694,25 @@ impl<'a> Daemon<'a> {
         }
 
         // --- Work prepared before you ask for it ---
+        // 30 Sep 2026: the clock, the calendar and your return were left at
+        // their defaults here -- midnight on a Monday, no event, never back
+        // -- so every rule but a file appearing or the machine idling could
+        // never fire.
+        let local = t as i64 + crate::localclock::offset_secs();
+        let (minutes_of_day, weekday) = moment_clock(local);
+        let minutes_to_event = self
+            .calendar
+            .occurrences_between(t, t + 86_400)
+            .iter()
+            .filter(|e| e.start >= t)
+            .map(|e| (e.start - t) / 60)
+            .min();
         let moment = Moment {
+            minutes_of_day,
+            weekday,
+            minutes_to_event,
             new_files: signals.recent_changes.added.clone(),
-            returned: false,
+            returned: self.back_from.is_some(),
             idle_secs: signals.idle_secs,
             last_said: self.thread.last().map(|e| e.said.clone()).unwrap_or_default(),
             // Never prepare anything while you're mid-task; anticipation that
@@ -1012,8 +1038,14 @@ impl<'a> Daemon<'a> {
                         // proving the test fails. Landing still waits for
                         // your OK (`selfgrant`).
                         if let Some(thought) = u.thought {
+                            // `Session::new` holds the goal as the symptom
+                            // already, so the first answer is the cause. 30
+                            // Sep 2026: the symptom was given again first
+                            // here -- the fault fixed on the Improvements
+                            // page on 29 Sep -- so every weekly look made
+                            // the symptom its own cause and was refused.
                             let mut session = crate::selfwork::Session::new(&goal, 0);
-                            for answer in [&thought.symptom, &thought.cause, &thought.where_, &thought.proof] {
+                            for answer in [&thought.cause, &thought.where_, &thought.proof] {
                                 let _ = session.diagnosing.answer(answer);
                             }
                             self.selfwork = Some(session);
@@ -1163,7 +1195,19 @@ impl<'a> Daemon<'a> {
         // check, for the reason given there: it is housekeeping, and pausing
         // Atlas is exactly when you want the memory back.
         // Anything the crew finished, vanished on, or still won't stop for.
-        out.extend(self.take_crew_news(t));
+        // Finished work reaches you where you are (30 Sep 2026: it was said
+        // into the room once and lost if you'd stepped away). At the machine,
+        // said as before; away, it goes the way any note does -- the phone,
+        // a notification, or held for when you're back.
+        let news = self.take_crew_news(t);
+        if !news.is_empty() && self.quiet_for(t) > self.away_after {
+            for line in news {
+                let note = crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);
+                let _ = self.reach_you(note, t);
+            }
+        } else {
+            out.extend(news);
+        }
 
         // --- The day's run, when you come in rather than when a clock says ---
         //
@@ -1198,7 +1242,13 @@ impl<'a> Daemon<'a> {
             let arrival =
                 crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at, t, rolls_at, &dcfg);
 
+            // 30 Sep 2026: and you're actually here. `arriving` compares
+            // your last turn with now, so on the tick it read "a gap and a
+            // new day" at six in the morning with you asleep, and the brief
+            // was said to an empty room -- and marked given.
+            let here_now = self.quiet_for(t) < BRIEF_WHEN_HERE_WITHIN_SECS;
             if bcfg.enabled
+                && here_now
                 && arrival == crate::daily::Arrival::Starting
                 && this_hour >= bcfg.not_before_hour
             {
@@ -1632,6 +1682,23 @@ impl<'a> Daemon<'a> {
                 &bytes,
                 std::time::Duration::from_secs(4),
             ) {
+                // 30 Sep 2026: a reply that isn't this Atlas's (a refusal, a
+                // wrong key, another Atlas) was still announced as "Synced".
+                // (Empty is a peer with nothing to hand back.)
+                Ok(reply)
+                    if !reply.is_empty()
+                        && !std::str::from_utf8(&reply)
+                        .ok()
+                        .and_then(|t| crate::sync::read_bundle(t, key).ok())
+                        .is_some_and(|b| {
+                            crate::sync::can_open(&b).is_ok()
+                                && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok()
+                        }) =>
+                {
+                    lines.push(format!(
+                        "{name} answered but didn't take the sync — it may belong to a different Atlas or hold an older key."
+                    ));
+                }
                 Ok(reply) => {
                     let (t, cl, sk) = self.take_in_wire(&reply, cfg, key, now);
                     let took = if t > 0 { format!(", took in {t}") } else { String::new() };
@@ -1813,7 +1880,7 @@ impl<'a> Daemon<'a> {
         }
 
         // Anything left from a pairing that was started and never finished.
-        // The window is three minutes and a taken handoff deletes itself, so
+        // The window is fifteen minutes and a taken handoff deletes itself, so
         // this is only for the abandoned case -- which is exactly the one
         // nobody would think to tidy up.
         let swept = crate::sync::sweep_handoffs(dir, now)
@@ -2336,4 +2403,17 @@ impl<'a> Daemon<'a> {
             }
         }
     }
+}
+
+/// You count as here for the morning brief when you've typed, moved the mouse
+/// or spoken within this long.
+pub const BRIEF_WHEN_HERE_WITHIN_SECS: u64 = 120;
+
+/// Minutes since local midnight and the weekday (0 = Monday) for a local
+/// time in seconds, as the anticipation rules count them.
+pub fn moment_clock(local_secs: i64) -> (u32, u32) {
+    let minutes = (local_secs.rem_euclid(86_400) / 60) as u32;
+    // 1 January 1970 was a Thursday: day 0 is weekday 3.
+    let weekday = ((local_secs.div_euclid(86_400) + 3).rem_euclid(7)) as u32;
+    (minutes, weekday)
 }

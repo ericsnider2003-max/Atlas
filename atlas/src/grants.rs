@@ -254,7 +254,10 @@ pub fn span_from_answer(said: &str) -> Option<Span> {
     let broad = t.contains("always") || t.contains("from now on") || t.contains("every time");
     let session = t.contains("this session") || t.contains("for now") || t.contains("just today");
 
-    if crate::session::is_yes(&t) {
+    // A breadth word decides the span even inside a yes ("yes, always"):
+    // `is_yes` takes "yes please" too since 30 Sep 2026, so it can't be
+    // asked first.
+    if crate::session::is_yes(&t) && !broad && !session {
         // A bare yes is the narrowest grant there is.
         return Some(Span::Once);
     }

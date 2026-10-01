@@ -979,6 +979,10 @@ fn main() {
         return;
     }
 
+    if words.first().map(|s| s.as_str()) == Some("talk-bench") {
+        std::process::exit(run_talk_bench(&cfg, &words[1..]));
+    }
+
     if words.first().map(|s| s.as_str()) == Some("kokoro-check") {
         std::process::exit(run_kokoro_check(&words[1..]));
     }
@@ -1229,6 +1233,19 @@ fn main() {
     // wake word. Where it cannot be built (no config/tools.yaml) the prompt
     // falls back to the six it always had, so a machine with no voice setup
     // still gets a working prompt rather than an error.
+    // Not beside a running Atlas (30 Sep 2026): this built a second daemon
+    // on the same store, and its first save wrote every file -- the
+    // schedule, the calendar, what you've told it -- back from the copy it
+    // loaded at start, over whatever the running one had done since.
+    if let atlas::onlyone::Found::Running { .. } =
+        atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir()).look(atlas::store::now())
+    {
+        println!(
+            "Atlas is already running. Talk to it, use its typing box, or the hub's Talk page -- \
+             a second one here would write over what it keeps."
+        );
+        return;
+    }
     let store = atlas::roots::store();
     let mut shell: Option<Daemon> = cfg.tools.as_ref().map(|tc| {
         // With the model, like every other door. `None` here meant a
@@ -1274,4 +1291,33 @@ fn main() {
             prompt_line(&cfg, plat.as_ref(), &parser, approver.as_ref(), shell.as_mut(), &line)
         );
     }
+}
+
+/// `atlas talk-bench <model.gguf> [port]`: Atlas's own conversation, timed,
+/// against a server already serving that model (`talkbench`).
+fn run_talk_bench(cfg: &atlas::config::Config, words: &[String]) -> i32 {
+    let Some(path) = words.first().map(std::path::PathBuf::from) else {
+        println!("atlas talk-bench <model.gguf> [port]   (a llama.cpp server must already serve it on that port)");
+        return 2;
+    };
+    let port: u16 = words.get(1).and_then(|p| p.parse().ok()).unwrap_or(8091);
+    let Some(tc) = cfg.tools.as_ref() else {
+        println!("No tools section in the config.");
+        return 2;
+    };
+    let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let reg = atlas::models::Registry::scan(&dir);
+    let Some(model) = reg.models.iter().find(|m| m.path == path || m.path.file_name() == path.file_name()) else {
+        println!("Couldn't read a model at {}.", path.display());
+        return 2;
+    };
+    let mut mcfg = tc.models.clone();
+    mcfg.port = port;
+    let lc = atlas::models::llm_config_for(model, &mcfg, &atlas::models::server_post());
+    let llm = std::sync::Arc::new(atlas::brain::ShellLlm { cfg: lc, vars: tc.vars.clone() }) as std::sync::Arc<dyn atlas::brain::Llm>;
+    let store = std::env::temp_dir().join(format!("atlas-talk-bench-{}", std::process::id()));
+    let answers = atlas::talkbench::run(cfg, llm, &store);
+    println!("{}", atlas::talkbench::report(&model.id, &answers));
+    let _ = std::fs::remove_dir_all(&store);
+    0
 }

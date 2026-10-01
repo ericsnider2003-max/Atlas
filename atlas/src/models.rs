@@ -128,6 +128,10 @@ pub struct ModelsConfig {
     pub deep_idle_secs: u64,
     /// The deep model's context, in tokens.
     pub deep_context: u64,
+    /// Offline first, online second (Eric, 30 Sep 2026): when the model on
+    /// this machine can't answer, or there isn't one, a free model online
+    /// that needs no account (`freeonline`). `false`: nothing is sent.
+    pub online_second: bool,
 }
 
 /// How the model picks its next word, sent with every request (29 Sep 2026).
@@ -249,6 +253,7 @@ impl Default for ModelsConfig {
             deep_port: 0,
             deep_idle_secs: 300,
             deep_context: 8192,
+            online_second: true,
         }
     }
 }
@@ -1263,10 +1268,17 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
                 .map(|model| crate::models::llm_config_for(model, mcfg, &crate::models::server_post()))
         }
     };
-    let primary = tc.llm.as_ref().or(derived.as_ref()).map(|lc| {
+    let local = tc.llm.as_ref().or(derived.as_ref()).map(|lc| {
         std::sync::Arc::new(crate::brain::ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() })
             as std::sync::Arc<dyn crate::brain::Llm>
-    })?;
+    });
+    // No model on this machine: the free online ones are the only ones, when
+    // they're allowed (`models.online_second`).
+    let Some(primary) = local else {
+        return tc.models.online_second.then(|| {
+            std::sync::Arc::new(crate::freeonline::FreeOnline::new()) as std::sync::Arc<dyn crate::brain::Llm>
+        });
+    };
     // Atlas's own connection waits for a server Atlas has just started
     // (`Daemon::keep_model_server`) to finish loading its model.
     let primary = if tc.llm.is_none() {
@@ -1281,10 +1293,19 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
     // An optional stronger model for the hard drafts, and as a fallback if the
     // local one fails. Unset (the default) → this is just the local model, so
     // an offline install is unchanged.
-    let secondary = tc.llm_secondary.as_ref().map(|lc| {
-        std::sync::Arc::new(crate::brain::ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() })
-            as std::sync::Arc<dyn crate::brain::Llm>
-    });
+    let secondary = tc
+        .llm_secondary
+        .as_ref()
+        .map(|lc| {
+            std::sync::Arc::new(crate::brain::ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() })
+                as std::sync::Arc<dyn crate::brain::Llm>
+        })
+        // Your own second model first; otherwise the free online ones.
+        .or_else(|| {
+            tc.models.online_second.then(|| {
+                std::sync::Arc::new(crate::freeonline::FreeOnline::new()) as std::sync::Arc<dyn crate::brain::Llm>
+            })
+        });
     Some(std::sync::Arc::new(crate::brain::FallbackLlm::new(primary, secondary))
         as std::sync::Arc<dyn crate::brain::Llm>)
 }
@@ -1442,6 +1463,14 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
             body["chat_template_kwargs"][STABLE_TOOLS_KWARG] = json!(req.stable_tools);
         }
     }
+    // No thinking out loud before answering (30 Sep 2026): Qwen3.5 and
+    // Gemma 4 think by default, which spends seconds of generation on
+    // words nobody hears before the first one that is spoken. A template
+    // without the switch never reads it.
+    if !body["chat_template_kwargs"].is_object() {
+        body["chat_template_kwargs"] = json!({});
+    }
+    body["chat_template_kwargs"]["enable_thinking"] = json!(false);
     body.to_string()
 }
 

@@ -911,6 +911,11 @@ impl Parser {
             if intent == "improve" && !self.improve_is_meant(phrase, &rest) {
                 continue;
             }
+            // The phrase fits, but does what follows fit the command? ("back
+            // up a second", "book me a flight", "explain the yield curve").
+            if !fits_the_command(intent, phrase, &rest) {
+                continue;
+            }
             // "go to sleep" is not an app. The name is checked with the
             // politeness off the end ("close chrome for me").
             if row.names_only && !self.is_a_known_name(intent, &without_fillers(&rest)) {
@@ -1152,6 +1157,71 @@ fn understood_all_of_it(
         }
     }
     true
+}
+
+/// Does what follows a command's phrase read as that command -- or as an
+/// ordinary sentence that happens to start the same way? A sentence that
+/// doesn't fit goes to the model, which can still call the command.
+///
+/// 30 Sep 2026, from a sweep of everyday sentences through the parser:
+///
+/// | said | became |
+/// |---|---|
+/// | what's on my mind | the agenda |
+/// | back up a second, what did you mean | a backup |
+/// | drop the kids off at 3 | "stop using my name" |
+/// | this is a great idea | a photo, learned as "great idea" |
+/// | invite Sam to dinner | pairing another Atlas |
+/// | schedule is busy / block him on Twitter / book me a flight | calendar events |
+/// | explain the yield curve | the code explainer |
+/// | open to suggestions | an app called "to suggestions" |
+/// | google is down again / research shows coffee is fine | research |
+/// | they said no to the offer | a call recording refused |
+/// | I'm not doing the dishes tonight | a task dropped |
+/// | write me a letter to my landlord | a program built |
+fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
+    let r = rest.trim().to_lowercase();
+    let first = r.split_whitespace().next().unwrap_or("");
+    let words = r.split_whitespace().count();
+    let has = |ws: &[&str]| ws.iter().any(|w| format!(" {r} ").contains(&format!(" {w} ")));
+    const DAYS: &[&str] = &[
+        "today", "tonight", "tomorrow", "yesterday", "week", "weekend", "monday", "tuesday", "wednesday", "thursday",
+        "friday", "saturday", "sunday", "morning", "afternoon", "evening", "month", "next", "this", "calendar", "schedule", "agenda",
+    ];
+    match intent {
+        // "what's on" + a day, or nothing -- not "my mind", "TV".
+        "agenda" => (r.is_empty() || has(DAYS) || r.chars().any(|c| c.is_ascii_digit())) && !has(&["tv", "telly", "netflix", "youtube", "news", "mind", "radio"]),
+        "back_up" => !matches!(first, "a" | "an" | "the") || has(&["files", "everything", "atlas", "notes", "backup"]),
+        "address_as" => {
+            let p = phrase.trim();
+            if p.starts_with("drop the") || p.starts_with("just talk") {
+                words <= 3 && !has(&["off", "kids", "car", "at", "to"])
+            } else {
+                true
+            }
+        }
+        // "this is my sister Anna" -- a name; not "this is a great idea".
+        "name_this" => {
+            let describing = ["great", "good", "bad", "nice", "favorite", "favourite", "best", "worst", "big", "small", "lot", "real",
+                "new", "great", "terrible", "problem", "joke", "mess", "idea", "question", "song", "movie", "thing", "time", "way", "lie", "test"];
+            words <= 3 && !describing.iter().any(|d| r.split_whitespace().any(|w| w == *d))
+        }
+        // Another Atlas, a friend -- not "Sam to dinner".
+        "pair" if phrase.trim() == "invite" => !has(&["to", "for", "over"]) || r.contains("atlas"),
+        // A calendar entry is something at a time, not "is busy", "him on Twitter".
+        "schedule" => {
+            !matches!(first, "is" | "was" | "me" | "him" | "her" | "them" | "us" | "it" | "that" | "your")
+        }
+        "open_app" => !matches!(first, "to" | "up" | "minded" | "about" | "with" | "for" | "and"),
+        "research" => !matches!(first, "is" | "was" | "shows" | "showed" | "says" | "said" | "suggests" | "found" | "has" | "have" | "does" | "did" | "keeps" | "isnt" | "wasnt" | "doesnt"),
+        "call_they_declined" => words <= 2,
+        // A program, a tool, a page -- not a letter or a report.
+        "improve" if phrase.trim() == "improve" => {
+            !matches!(first, "my" | "your" | "our" | "his" | "her" | "their") || has(&["code", "app", "program", "script", "project", "page", "site", "website", "function", "tool"])
+        }
+        "build_it" => !has(&["letter", "report", "email", "essay", "note", "poem", "story", "speech", "summary", "cover", "bio", "message", "post", "article", "document", "doc", "memo", "paragraph", "response", "reply"]),
+        _ => true,
+    }
 }
 
 /// Intents whose argument must reach `build` exactly as spoken, whatever it

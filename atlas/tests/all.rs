@@ -912,3 +912,11 @@ mod an_old_question_of_its_own_is_dropped;
 mod atlas_tests_itself;
 #[path = "atlas_works_an_app.rs"]
 mod atlas_works_an_app;
+#[path = "keeping_track.rs"]
+mod keeping_track;
+#[path = "weather_answered.rs"]
+mod weather_answered;
+#[path = "conversation_sweep.rs"]
+mod conversation_sweep;
+#[path = "getting_things_done.rs"]
+mod getting_things_done;

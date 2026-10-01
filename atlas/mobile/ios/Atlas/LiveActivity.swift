@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import UserNotifications
 import WidgetKit
 
 /// The phone's live-activity card and Dynamic Island pill: what Atlas is
@@ -10,6 +11,11 @@ final class LiveActivity {
     static let shared = LiveActivity()
     private var activity: Activity<AtlasActivity>?
     private var timer: Timer?
+    /// The last of Atlas's own lines shown (live.json "said"): each reminder
+    /// or finished job becomes one notification (30 Sep 2026: the phone's
+    /// background lines were dropped, so reminders never appeared).
+    private var lastSaid: Int64 = 0
+    private var askedToNotify = false
 
     func begin() {
         // Runs whether or not Live Activities are allowed: the widgets' glance
@@ -44,7 +50,9 @@ final class LiveActivity {
         if let g = await AtlasCore.shared.glance(), GlanceStore.keep(g) {
             WidgetCenter.shared.reloadAllTimelines()
         }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled, let s = await AtlasCore.shared.live() else { return }
+        guard let s = await AtlasCore.shared.live() else { return }
+        await tell(s.said ?? [])
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let state = AtlasActivity.ContentState(
             status: s.status,
             doing: s.working?.title ?? "",
@@ -65,6 +73,25 @@ final class LiveActivity {
             await a.update(content)
         } else {
             activity = try? Activity.request(attributes: AtlasActivity(), content: content)
+        }
+    }
+
+    /// Each new line Atlas said, as a notification.
+    private func tell(_ said: [LiveState.Said]) async {
+        let fresh = said.filter { $0.id > lastSaid }
+        guard !fresh.isEmpty else { return }
+        lastSaid = fresh.map(\.id).max() ?? lastSaid
+        let center = UNUserNotificationCenter.current()
+        if !askedToNotify {
+            askedToNotify = true
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        }
+        for line in fresh {
+            let c = UNMutableNotificationContent()
+            c.title = "Atlas"
+            c.body = line.text
+            c.sound = .default
+            try? await center.add(UNNotificationRequest(identifier: "atlas-said-\(line.id)", content: c, trigger: nil))
         }
     }
 }

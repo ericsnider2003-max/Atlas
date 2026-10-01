@@ -100,6 +100,9 @@ impl Daemon<'_> {
                     "ready": ready,
                     "waiting": self.waiting_count(now),
                     "brief": deck.brief,
+                    // What the background said (a reminder, a finished job),
+                    // numbered: an app shows each new one as a notification.
+                    "said": self.said_for_apps.iter().map(|(id, text)| serde_json::json!({ "id": id, "text": text })).collect::<Vec<_>>(),
                 });
                 Reply::ok(&body.to_string())
             }
@@ -364,10 +367,10 @@ impl Daemon<'_> {
                                 &code,
                                 phrase.as_deref(),
                                 now,
-                                180,
+                                crate::household::INVITE_WAIT_SECS,
                             ) {
                                 Ok(_) => format!(
-                                    "Type this on the other machine within three minutes: \
+                                    "Type this on the other machine within fifteen minutes: \
                                      {code}{}",
                                     if phrase.is_some() {
                                         " — the household key goes with it."
@@ -1863,10 +1866,23 @@ impl Daemon<'_> {
         let mut out = vec![
             (
                 "Listening".to_string(),
+                // 30 Sep 2026: this said "Yes." whenever Atlas wasn't
+                // paused -- with no microphone running, or after the wake
+                // word had dropped to push-to-talk. Now it's what the loop is
+                // actually doing.
                 if self.attention.is_paused() {
                     "Paused — say \"carry on\" when you want me back.".to_string()
+                } else if !self.mic_running() {
+                    "No — the microphone isn't running, so type to me here.".to_string()
                 } else {
-                    "Yes.".to_string()
+                    let phrase = self.tools_cfg().wake.as_ref().map(|w| w.phrase.clone()).unwrap_or_default();
+                    match self.tiers.tier {
+                        crate::input::Tier::Voice if !phrase.trim().is_empty() => format!("Yes — listening for \"{}\".", phrase.trim()),
+                        crate::input::Tier::Voice => "Yes — listening for my name.".to_string(),
+                        crate::input::Tier::PushToTalk if !self.tiers.wake_on() => "When you hold the talk key (the wake word is off).".to_string(),
+                        crate::input::Tier::PushToTalk => "Only when you hold the talk key — the wake word stopped working, and I'll try it again shortly.".to_string(),
+                        crate::input::Tier::Typed => "No — I can't hear audio right now, so type to me here.".to_string(),
+                    }
                 },
             ),
             (
@@ -1966,6 +1982,7 @@ impl Daemon<'_> {
         let off = crate::localclock::offset_secs();
         let paused = self.attention.is_paused();
         let background: Vec<String> = self.mind.background().iter().map(|w| sentence(&w.asked)).collect();
+        let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
         let Some(w) = self.mind.focus() else {
             let title = if paused { "Paused." } else { "Waiting for you." };
             return hub::NowView {
@@ -1982,6 +1999,7 @@ impl Daemon<'_> {
                 paused,
                 working: false,
                 background,
+                held,
             };
         };
         let mut steps: Vec<(hub::Step, String)> = Vec::new();
@@ -2026,6 +2044,7 @@ impl Daemon<'_> {
             paused,
             working: !paused,
             background,
+            held,
         }
     }
 
@@ -2987,7 +3006,7 @@ impl Daemon<'_> {
         let now = crate::store::now();
         self.vault.open(&phrase, now, &self.tools_cfg().vault)?;
         let made = crate::release::make_release_key(&mut self.vault, now)?;
-        self.vault.save(&crate::roots::install_state()).map_err(|e| {
+        self.vault.save(&self.vault_home).map_err(|e| {
             format!("The key was made but I couldn't write your vault ({e}), so it isn't kept. Nothing was lost; try again.")
         })?;
         let kept = self.store.save(crate::release::KEY_CARD, &made.card);

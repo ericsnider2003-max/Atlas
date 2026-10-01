@@ -136,6 +136,12 @@ impl<'a> Daemon<'a> {
         if let Some(line) = self.knew_once_help(question) {
             out.push(clip(&line, 200));
         }
+        // What you wrote down yourself (the notebook), not only the fact book
+        // and the research library (30 Sep 2026: captured notes never reached
+        // an answer).
+        for n in self.notebook.find(question, now).into_iter().take(2) {
+            out.push(clip(&format!("Your note: {}", n.text), 240));
+        }
         out.dedup();
         out
     }
@@ -322,12 +328,19 @@ impl<'a> Daemon<'a> {
             // count: a story or a poem runs past eight sentences, and was cut
             // off mid-line at two (27 Sep 2026). A task still stops at its
             // count.
+            // Out loud, what was asked for, one past it (a model counts
+            // "Sure." as one). Otherwise, 30 Sep 2026, measured on the laptop
+            // (`atlas talk-bench`): left to their token budget, every model
+            // answered small talk in five to seven sentences, 8-26 s each, and
+            // the longer ones were where they made things up. Talk stops at a
+            // spoken length unless you asked for something long
+            // (`asks_for_length`).
             max_sentences: Some(if short_spoken {
-                // One past what was asked: the stream stops at a sentence's
-                // end, and a model counts "Sure." as one.
                 sentences.max(1) + 1
-            } else if register == crate::register::Register::Chatting {
+            } else if register == crate::register::Register::Chatting && crate::register::asks_for_length(said) {
                 SAFETY_SENTENCES
+            } else if register == crate::register::Register::Chatting {
+                crate::register::CHAT_SENTENCES
             } else {
                 persona.max_spoken_sentences.max(1)
             }),
@@ -1214,7 +1227,7 @@ impl<'a> Daemon<'a> {
             crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
             let path = root.join(piece.key_path());
             let dir = crate::roots::config_dir();
-            let mut prefs = crate::preferences::Preferences::load(&dir);
+            let mut prefs = crate::preferences::Preferences::load_checked(&dir).map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
             prefs.set("models.draft", &path.display().to_string());
             prefs.save(&dir).map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
             Ok("The helper model is here and checked. It's used from the next time I start.".into())

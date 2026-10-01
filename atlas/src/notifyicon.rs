@@ -153,8 +153,20 @@ fn hub_note_now() -> Option<String> {
 /// The words the icon should show now.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn tray_tip_now() -> String {
+    if crate::goodbye::asked_to_stop() {
+        return CLOSING_TIP.to_string();
+    }
     tray_tip(tray_says_paused(), hub_note_now().as_deref())
 }
+
+/// The icon's words while Atlas is on its way out: it stays until the way
+/// out has finished (30 Sep 2026: Quit took the icon away at once, while
+/// Atlas was still saving, so it looked gone and could be started again
+/// over a copy still writing).
+pub const CLOSING_TIP: &str = "Atlas — closing, saving your things first…";
+
+/// How long the icon waits for the way out before going anyway.
+pub const CLOSING_WAIT_SECS: u64 = 20;
 
 /// Take the icon away now, from any thread, before the process ends
 /// (28 Sep 2026).
@@ -275,6 +287,8 @@ mod win {
 
     const WM_TRAY: u32 = WM_APP + 1;
     const TIMER: usize = 1;
+    /// When the icon first saw Atlas asked to stop (0: not yet).
+    static STOP_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
     struct Place {
         exe: PathBuf,
@@ -508,9 +522,10 @@ mod win {
                 ShellExecuteW(HWND::default(), w!("open"), &target, PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
             }
             TrayAction::Pause | TrayAction::Resume => tray_ask(a),
+            // The icon goes when the way out has finished (`WM_TIMER`).
             TrayAction::Quit => {
                 crate::goodbye::please_stop();
-                let _ = DestroyWindow(hwnd);
+                update_tip(hwnd);
             }
         }
     }
@@ -536,8 +551,24 @@ mod win {
                 // Asked to stop some other way (the window's Restart, Ctrl-C):
                 // the icon goes first, rather than lingering until the
                 // pointer passes over a dead one.
+                //
+                // 30 Sep 2026: not at once -- when the lock is let go (the
+                // way out's last step), or after `CLOSING_WAIT_SECS`.
                 if crate::goodbye::asked_to_stop() {
-                    let _ = DestroyWindow(hwnd);
+                    let now = crate::store::now();
+                    let since = match STOP_SEEN.load(Ordering::SeqCst) {
+                        0 => {
+                            STOP_SEEN.store(now, Ordering::SeqCst);
+                            now
+                        }
+                        s => s,
+                    };
+                    let lock = crate::onlyone::OnlyOne::at(&crate::roots::data_dir());
+                    if !lock.path().exists() || now.saturating_sub(since) >= CLOSING_WAIT_SECS {
+                        let _ = DestroyWindow(hwnd);
+                    } else {
+                        update_tip(hwnd);
+                    }
                 } else {
                     update_tip(hwnd);
                 }

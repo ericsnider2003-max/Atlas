@@ -190,7 +190,10 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
         let now = crate::store::now();
         if now != last_tick {
             // Once a second: reminders, held messages going out, the brief.
-            let _ = d.tick(now);
+            // What it says is kept for the app to show (30 Sep 2026: it was
+            // dropped here, so reminders never appeared on the phone).
+            let said = d.tick(now);
+            d.keep_said_for_apps(said);
             last_tick = now;
             // The phone's own model, fetched by itself on wifi.
             #[cfg(feature = "phone-llm")]

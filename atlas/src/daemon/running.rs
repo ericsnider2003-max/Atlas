@@ -223,6 +223,12 @@ impl<'a> Daemon<'a> {
         // reading happens on a thread of its own (`warm_the_model`).
         self.keep_model_server(clock());
         let _ = self.warm_the_model(clock());
+        // The hearing model too, when it's here and chosen (`parakeet`):
+        // loading it takes seconds, and the first thing you say shouldn't.
+        let engine = self.tools_ref().map(|t| t.stt_engine.trim().to_lowercase()).unwrap_or_default();
+        if engine != "whisper" {
+            crate::parakeet::warm(&crate::roots::install_root());
+        }
         if !audio_ok {
             self.audio_tools_missing = true;
             if let Some(m) = self.tiers.audio_unavailable() {
@@ -878,6 +884,9 @@ impl<'a> Daemon<'a> {
     /// Public so the test can show a pass returns at once while the thread
     /// is mid-recording.
     pub fn listen_pass(&mut self, ears: &dyn Ears, mouth: &dyn Mouth, clock: &dyn Fn() -> u64) -> bool {
+        if let Some(back) = self.tiers.try_the_wake_word_again(clock()) {
+            self.log.info(&format!("trying the wake word again by itself: {back}"));
+        }
         self.ensure_mic(ears);
         self.steer_mic();
         let heard = self.mic_heard.take().or_else(|| self.mic.as_ref().and_then(|m| m.poll()));
@@ -991,6 +1000,12 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// Whether the microphone's own thread is running: what the Status page
+    /// reads to say whether Atlas can hear you at all.
+    pub(crate) fn mic_running(&self) -> bool {
+        self.mic.is_some()
+    }
+
     /// Is the microphone's thread recording right now? For the tests and the
     /// hub's honesty about Pause.
     pub fn mic_recording_for_test(&self) -> bool {
@@ -1046,6 +1061,8 @@ impl<'a> Daemon<'a> {
         if let Some(mut m) = self.mic.take() {
             m.stop();
         }
+        // The hearing server Atlas started goes with it.
+        crate::parakeet::stop();
         // The typing watcher saves what it learned on the way out.
         self.typing_stop.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Some(h) = self.typing_thread.take() {
@@ -1351,11 +1368,12 @@ impl<'a> Daemon<'a> {
                 break;
             }
             match self.follow_up(ears, window) {
-                // "That's all", "thanks Atlas": the conversation is over, and
-                // Atlas goes back to listening for its name.
-                Some(next) if crate::utterance::is_goodbye(&next) => {
+                // "That's all", "bye", "thanks Atlas": said back briefly, the
+                // floor closes, and Atlas goes back to listening for its name.
+                Some(next) if crate::utterance::is_goodbye(&next) || crate::session::ends_the_conversation(&next) => {
                     self.log.info("the conversation ended: you said so");
-                    self.say(mouth, "Okay.");
+                    self.thread.append(&next, "Anytime.", None, clock());
+                    self.say(mouth, "Anytime.");
                     break;
                 }
                 Some(next) => said = next,

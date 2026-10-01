@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance", "parakeet"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -227,7 +227,8 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "animate", what: "draw a self-contained SVG animation from your description, check it renders and moves to the size and length you asked for, and iterate until it does", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::Background, Needs::JustThinking], modules: &["motion"] },
         Capability { id: "explain", what: "explain code in plain English — a recent build, a change waiting to be implemented, a file or a paste — at the depth you ask for, honest that it can't prove it's right", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["explain"] },
         Capability { id: "workshop", what: "keep a per-project queue of proposed changes you review and implement when ready", area: Files, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["workshop"] },
-        Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when"] },
+        Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when", "keeping"] },
+        Capability { id: "weather", what: "say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account)", area: Time, state: Untested, needs: None, offline: false, added: 42, runs: &[Needs::JustThinking], modules: &["weather"] },
         // 23 Sep 2026, the GitHub ports: an .ics invite from anyone, "the last
         // Friday of every month", a repeat that can be written to a file.
         Capability { id: "vformat", what: "read an .ics invite or calendar from anyone into yours, and write yours out as .ics", area: Time, state: Untested, needs: None, offline: true, added: 31, runs: &[Needs::Files], modules: &["vformat", "calendar"] },
@@ -305,7 +306,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "timebox", what: "stop before you have to ask what's taking so long", area: Thinking, state: Working, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["timebox"] },
         Capability { id: "chain", what: "do something that crosses several apps", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 19, runs: &[Needs::ActInApps], modules: &["chain"] },
         Capability { id: "person", what: "learn how you work", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["person"] },
-        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain"] },
+        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain", "freeonline"] },
 
         Capability { id: "selfwork", what: "change its own code and test it", area: Itself, state: Off, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["selfwork", "pipeline", "sandbox", "mend", "selfgrant"] },
         Capability { id: "plainchange", what: "explain a change it staged as behaviour, not code — what will now happen and what it no longer promises, read from the tests it adds and drops", area: Itself, state: Untested, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["plainchange"] },
@@ -935,8 +936,10 @@ pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
 /// a few catalogue lines with their states, and the rule that it never says
 /// it lacks one of them.
 pub fn abilities_for_prompt(said: &str, research_on: bool, most: usize) -> String {
-    let found = find_abilities(said, research_on, most);
+    // At most `most` lines in all, pages first: each line is paid for on
+    // every turn that carries it (the prompt diet, 30 Sep 2026).
     let pages = hub_pages_for(said, most);
+    let found = find_abilities(said, research_on, most.saturating_sub(pages.len()).max(1));
     let mut out = format!(
         "About Atlas (you) -- true, so never say you lack one of these; for a setting, name its hub page. Web research: {}.\n",
         if research_on { "on" } else { "off -- Settings turns it on" }
@@ -1532,7 +1535,13 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 431 -> 434 (30 Sep 2026): `meaningroute` and `meaningnative` (tools by
 // meaning, part of `router`), and `used` (what gets used, part of
 // `selfaudit`). 434 -> 435: `imagemake` (pictures made on this machine). 435 -> 436: `selftest`. 436 -> 437: `operate`.
-pub const MODULES_IN_TREE: usize = 437;
+// Merged 30 Sep 2026 with the other chat's 30 Sep work: `freeonline`
+// (the free online models, second to this machine's -- part of `reason`),
+// `talkbench` (Atlas's conversation timed against a model), `parakeet`
+// (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
+// `keeping` (reminders, timers, events moved -- part of `calendar`) and
+// `weather` (Open-Meteo). 437 -> 442.
+pub const MODULES_IN_TREE: usize = 442;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1552,6 +1561,7 @@ pub const MODULES_IN_TREE: usize = 437;
 pub const PLUMBING: &[(&str, &str)] = &[
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
     ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),
+    ("talkbench", "times Atlas's own conversation against a model (`atlas talk-bench`), for choosing which model this machine runs"),
     ("backends", "picks which mechanism touches a window per request; the window capabilities are what it serves"),
     ("bars", "the price-bar type and the view that cannot see the future, which every market reading is built on"),
     ("checkup", "the fast on-device self-check doctor and setup run, not something you ask for by itself"),

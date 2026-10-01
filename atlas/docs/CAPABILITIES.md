@@ -27,7 +27,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
-| hear a wake word and listen | waiting on whisper | `hearing` `voice` `utterance` | ready | would | would | **no** | would | **no** |
+| hear a wake word and listen | waiting on whisper | `hearing` `voice` `utterance` `parakeet` | ready | would | would | **no** | would | **no** |
 | stop listening when you stop talking | waiting on ffmpeg, for audio in | `endpoint` | ready | would | would | would | would | would |
 | type what you say into a window | waiting on whisper | `dictate` | ready | catch | would | **no** | catch | **no** |
 | notice when it's mishearing you and offer a better model | waiting on whisper | `language` | ready | would | would | would | would | would |
@@ -193,7 +193,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | stop before you have to ask what's taking so long | working | `timebox` | ready | ready | ready | ready | ready | ready |
 | do something that crosses several apps | built, never run for real | `chain` | ready | catch | would | **no** | catch | **no** |
 | learn how you work | working | `person` | ready | ready | ready | ready | ready | ready |
-| reason properly rather than following rules | waiting on a language model | `brain` `infer` `models` `deepbrain` | ready | ready | ready | ready | ready | ready |
+| reason properly rather than following rules | waiting on a language model | `brain` `infer` `models` `deepbrain` `freeonline` | ready | ready | ready | ready | ready | ready |
 | catch a thought in one step -- said, or a key chord on whatever's selected -- dated when it said a time so it comes up that day, and gone back over once a week | built, never run for real | `capture` | ready | ready | ready | catch | would | catch |
 | remember what you'd want to about the people you deal with, who you meant to keep in touch with, and their birthdays | built, never run for real | `people` | ready | ready | ready | catch | would | catch |
 | flashcards that come back just before you'd forget them (FSRS) | built, never run for real | `srs` | ready | ready | ready | catch | would | catch |
@@ -312,7 +312,8 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 |---|---|---|---|---|---|---|---|---|
 | keep where your time went — which app, for how long, your longest stretch of focus, and what you were in the middle of when you come back from a break — on this machine only | built, never run for real | `worklog` `awareness` | ready | catch | catch | **no** | catch | **no** |
 | read a time the way you'd say it — "in 20 minutes", "next Tuesday afternoon", "the 14th at noon", "Oct 3 from 2 to 4pm" — and ask when the words could mean two things | working | `when` `calendar` | ready | ready | ready | ready | ready | ready |
-| keep your own calendar, and tell you what's on | working | `calendar` `recur` `civil` `when` | ready | ready | ready | catch | would | catch |
+| keep your own calendar, and tell you what's on | working | `calendar` `recur` `civil` `when` `keeping` | ready | ready | ready | catch | would | catch |
+| say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account) | built, never run for real | `weather` | ready | ready | ready | ready | ready | ready |
 | read an .ics invite or calendar from anyone into yours, and write yours out as .ics | built, never run for real | `vformat` `calendar` | ready | ready | ready | catch | would | catch |
 | keep your tasks, and say which to do first and why | built, never run for real | `shared_task` `urgency` | ready | ready | ready | catch | would | catch |
 | keep time on your clock — "at 7" is 7 where you are, a weekly meeting stays at 9 through the clock change, and an invite from another time zone lands at the right hour | built, never run for real | `tz` `calendar` `vformat` `scheduler` | ready | ready | ready | ready | ready | ready |
@@ -357,4 +358,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-238 things, across 402 of 437 source files. The other 35 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+239 things, across 406 of 442 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

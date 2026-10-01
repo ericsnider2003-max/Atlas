@@ -205,6 +205,10 @@ fn mail_source() -> Source {
 /// The most lines a brief may be. Past this it stops being read.
 pub const MAX_LINES: usize = 12;
 
+/// How many more of the things needing you the spoken brief names after the
+/// first; the rest are counted.
+pub const ALSO_NAMED: usize = 3;
+
 /// Nothing in this module may send. Stated as a constant so the guard in
 /// `tests/guards.rs` has something to check, and so deleting the separation
 /// requires deleting something named.
@@ -350,6 +354,21 @@ pub fn spoken(b: &Brief) -> String {
     let mut out = Vec::new();
     if let Some(s) = &b.start_with {
         out.push(format!("Start with {s}."));
+    }
+    // 30 Sep 2026: the rest of what needs you was never said -- a brief with
+    // six things in it spoke one ("Start with ...") and a count. The next few
+    // are named, and the remainder counted.
+    let rest: Vec<String> = b
+        .yours
+        .iter()
+        .map(|i| i.headline())
+        .filter(|h| b.start_with.as_deref() != Some(h.as_str()))
+        .collect();
+    if !rest.is_empty() {
+        let named: Vec<&str> = rest.iter().take(ALSO_NAMED).map(|s| s.trim_end_matches('.')).collect();
+        let more = rest.len().saturating_sub(ALSO_NAMED);
+        let tail = if more > 0 { format!(", and {more} more on the hub") } else { String::new() };
+        out.push(format!("Also: {}{tail}.", named.join("; ")));
     }
     if let Some(bl) = &b.blocking {
         out.push(format!("{bl}."));

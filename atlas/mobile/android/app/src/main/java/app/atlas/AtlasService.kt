@@ -21,6 +21,9 @@ class AtlasService : Service() {
     private val thread = HandlerThread("atlas-live").apply { start() }
     private val h = Handler(thread.looper)
     private var lastReady = ""
+    /** The last of Atlas's own lines shown (live.json "said"), so each
+     *  reminder or finished job is shown once (30 Sep 2026). */
+    private var lastSaid = 0L
     /** The 5-second loop is posted once: every onStartCommand used to post
      *  another, so each start of the service added a loop (28 Sep 2026). */
     private var polling = false
@@ -37,6 +40,7 @@ class AtlasService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("live", "What Atlas is doing", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel("ready", "Ready for you", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel("said", "Reminders and news from Atlas", NotificationManager.IMPORTANCE_HIGH))
         startForeground(1, live("Atlas", "Here when you need it", false))
         // Off the main thread, as the app does; the loop copes until it's up.
         AtlasCore.ensureAsync(this) {}
@@ -70,6 +74,22 @@ class AtlasService : Service() {
             nm.notify(1, live("Working: " + w.optString("title"), w.optString("step"), true))
         } else {
             nm.notify(1, live("Atlas", s.optString("status", "Here when you need it"), false))
+        }
+        // What Atlas said in the background: reminders, finished work.
+        val said = s.optJSONArray("said")
+        if (said != null) {
+            for (i in 0 until said.length()) {
+                val o = said.optJSONObject(i) ?: continue
+                val id = o.optLong("id")
+                if (id <= lastSaid) continue
+                lastSaid = id
+                nm.notify(1000 + (id % 1000).toInt(), Notification.Builder(this, "said")
+                    .setSmallIcon(R.drawable.ic_stat_atlas)
+                    .setContentTitle("Atlas").setContentText(o.optString("text"))
+                    .setStyle(Notification.BigTextStyle().bigText(o.optString("text")))
+                    .setContentIntent(open("/talk")).setAutoCancel(true)
+                    .build())
+            }
         }
         val ready = s.optJSONArray("ready")?.optJSONObject(0)
         val title = ready?.optString("title").orEmpty()

@@ -1329,7 +1329,9 @@ impl<'a> Daemon<'a> {
         let mut record: Vec<crate::tune::Moved> = self.store.load(crate::tune::MOVED_RECORD);
         // Settings follow the folders, so Atlas still finds its models.
         let dir = crate::roots::config_dir();
-        let mut prefs = crate::preferences::Preferences::load(&dir);
+        let prefs_read = crate::preferences::Preferences::load_checked(&dir);
+        let settings_unreadable = prefs_read.as_ref().err().cloned();
+        let mut prefs = prefs_read.unwrap_or_default();
         for m in &done {
             if m.from.ends_with("models") {
                 prefs.set("models.dir", &m.to);
@@ -1339,7 +1341,12 @@ impl<'a> Daemon<'a> {
             self.journal.record_at(Act::Upkeep, &format!("moved {} to {}", m.from, m.to), true, crate::store::now());
             record.push(m.clone());
         }
-        let _ = prefs.save(&dir);
+        // Checked (30 Sep 2026): "Moved" was said when the new place wasn't
+        // saved, and after a restart Atlas couldn't find its models.
+        let settings_kept = match &settings_unreadable {
+            Some(e) => Err(e.clone()),
+            None => prefs.save(&dir).map_err(|e| e.to_string()),
+        };
         let _ = self.store.save(crate::tune::MOVED_RECORD, &record);
         let mut said = if done.is_empty() {
             "Nothing moved.".to_string()
@@ -1351,6 +1358,9 @@ impl<'a> Daemon<'a> {
                 if done.len() == 1 { "" } else { "s" }
             )
         };
+        if let (Err(e), false) = (&settings_kept, done.is_empty()) {
+            said.push_str(&format!(" But I couldn't note the new place in your settings ({e}) -- set it on the Settings page, or I won't find them after a restart."));
+        }
         if let Some(f) = failed.first() {
             said.push_str(&format!(" One didn't: {f}."));
         }
@@ -1496,6 +1506,32 @@ impl<'a> Daemon<'a> {
     fn file_meant(&self, said: &str, exts: &[&str]) -> Option<String> {
         if let Some(p) = crate::files::path_in(said, exts) {
             return Some(p);
+        }
+        // From the list a search just gave: "read number 2", "read the second
+        // one", "read the lease" (30 Sep 2026: only open/show/merge/sign took a
+        // number, and read said "Which file? Give me its path").
+        let listed = self.files_last_listed();
+        let fits = |p: &String| exts.iter().any(|e| p.to_lowercase().ends_with(&format!(".{e}")));
+        if !listed.is_empty() {
+            let low = said.to_lowercase();
+            let as_open = low.splitn(2, ' ').nth(1).map(|rest| format!("open {rest}")).unwrap_or_default();
+            if let Some(i) = crate::findfile::which(&as_open, listed.len()) {
+                if let Some(p) = listed.get(i).filter(|p| fits(p)) {
+                    return Some(p.clone());
+                }
+            }
+            let words: Vec<&str> = low
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|w| w.len() > 2 && !["read", "the", "that", "this", "file", "pdf", "document", "summarise", "summarize", "open", "me", "what", "does", "say"].contains(w))
+                .collect();
+            if !words.is_empty() {
+                if let Some(p) = listed.iter().filter(|p| fits(p)).find(|p| {
+                    let name = std::path::Path::new(p.as_str()).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    words.iter().all(|w| name.contains(w))
+                }) {
+                    return Some(p.clone());
+                }
+            }
         }
         self.tray
             .items
