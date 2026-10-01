@@ -545,6 +545,13 @@ impl<'a> Daemon<'a> {
             (Intent::Say(s), brain::Reached::Yes) if !s.trim().is_empty() => s.trim().to_string(),
             _ => return ask.written,
         };
+        // The rewording may only say what the result said: a claim of work
+        // that the written result doesn't make is the model's invention.
+        let claims = |t: &str| crate::repeating::sentences(t).iter().any(|s| crate::backed::claims_work_started(s));
+        if claims(&worded) && !claims(&ask.written) {
+            self.log.info("the reworded reply claimed work the result didn't -- said as written");
+            return ask.written;
+        }
         if !ask.keep_written {
             if let Some(e) = self.thread.recent.iter_mut().rev().find(|e| e.reply == ask.written) {
                 e.reply = worded.clone();

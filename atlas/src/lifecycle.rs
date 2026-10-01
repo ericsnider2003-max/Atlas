@@ -316,6 +316,47 @@ impl Helpers {
         self.sup.is_running(name)
     }
 
+    /// A one-shot model run (the picture reader, the picture maker): judged
+    /// by what the machine has free (`room`), never by the helpers' budget.
+    ///
+    /// That budget is 600 MB, sized for a browser and a camera, and a 3.6 GB
+    /// picture reader was refused by it every time -- "picture reader needs
+    /// 3600MB, budget is 600MB" on the laptop's self-test (30 Sep 2026), with
+    /// gigabytes free. `room` is asked twice at most: once as things are, and
+    /// once after the talking model's server -- if it is warm and not
+    /// answering anything -- is shut down to make space. It starts again on
+    /// the next question. `Err` is the refusal, in a sentence.
+    pub fn want_heavy(
+        &mut self,
+        name: &str,
+        memory_mb: u64,
+        t: u64,
+        room: &mut dyn FnMut() -> u64,
+    ) -> std::result::Result<Vec<String>, String> {
+        let mut said = Vec::new();
+        let mut free = room();
+        if free < memory_mb {
+            let idle_server = self.sup.running.iter().any(|h| h.name == "model-server" && !h.in_use);
+            if idle_server {
+                self.finished("model-server");
+                said.push(format!("stopped the talking model to make room for the {name}; it starts again on the next question"));
+                free = room();
+            }
+        }
+        if free < memory_mb {
+            return Err(format!(
+                "the {name} needs about {:.1} GB and only {:.1} GB is free -- closing a big app would make room",
+                memory_mb as f64 / 1024.0,
+                free as f64 / 1024.0
+            ));
+        }
+        self.sup.running.retain(|h| h.name != name);
+        // On the books at nothing, like the model server: it was judged by the
+        // machine, and must not crowd the small helpers out of their budget.
+        self.sup.running.push(Helper { name: name.into(), memory_mb: 0, started: t, last_used: t, in_use: true });
+        Ok(said)
+    }
+
     /// Helpers that exited on their own since the last look. Taken off the
     /// books as they are found, so the next `want` starts them again instead
     /// of answering `Reuse` for a process that is gone — which is what
@@ -358,5 +399,35 @@ impl Drop for Helpers {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+#[cfg(test)]
+mod heavy_tests {
+    use super::*;
+
+    #[test]
+    fn a_picture_reader_is_judged_by_free_memory_not_the_helper_budget() {
+        let mut h = Helpers::new(LifecycleConfig::default());
+        assert!(h.want_heavy("picture reader", 3600, 1, &mut || 8000).is_ok());
+        // On the books at nothing: a camera still fits the small budget.
+        assert!(h.want("camera", 60, 2, || Ok(None)).is_ok());
+    }
+
+    #[test]
+    fn the_idle_talking_model_makes_room_and_a_busy_one_does_not() {
+        let mut h = Helpers::new(LifecycleConfig::default());
+        h.want("model-server", 0, 1, || Ok(None)).unwrap();
+        h.done("model-server", 1);
+        let mut frees = vec![2000u64, 6000].into_iter();
+        let said = h.want_heavy("picture reader", 3600, 2, &mut || frees.next().unwrap()).unwrap();
+        assert_eq!(said.len(), 1);
+        assert!(!h.is_running("model-server"));
+
+        let mut h = Helpers::new(LifecycleConfig::default());
+        h.want("model-server", 0, 1, || Ok(None)).unwrap();
+        let why = h.want_heavy("picture reader", 3600, 2, &mut || 2000).unwrap_err();
+        assert!(why.contains("only 2.0 GB is free"), "{why}");
+        assert!(h.is_running("model-server"));
     }
 }

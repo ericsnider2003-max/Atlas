@@ -320,7 +320,7 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
 
 /// What one reply says about the command, from its words, the time it took,
 /// where it was routed and where it should have gone.
-pub fn judge_reply(reply: &str, ms: u64, reached: &str, expected: Option<&str>, would_start: bool) -> Verdict {
+fn judge_reply(reply: &str, ms: u64, reached: &str, expected: Option<&str>, would_start: bool) -> Verdict {
     if let Some(want) = expected {
         if reached != want {
             return Verdict::WrongTool(format!("{reached} (wanted {want})"));
@@ -469,6 +469,22 @@ pub fn run_all(
         let mut v = judge_reply(&reply, ms, &reached, expected.as_deref(), started_bg);
         if llm.is_none() && expected.is_some() && reached == "unknown" {
             v = Verdict::NeedsTheModel;
+        }
+        // An error said as the answer is a fault -- except an app the
+        // stand-in screen was asked to start and so never showed: that is
+        // the test, not Atlas.
+        let starts_an_app = would.iter().any(|w| w.starts_with("start "));
+        if reply.trim_start().to_lowercase().starts_with("error") && !(tier == Tier::StandIn && starts_an_app) && !v.is_a_fault() {
+            v = Verdict::Broken("an error said as the answer".into());
+        }
+        // Says it did something when nothing was done or started: the
+        // failure Eric hears as "it doesn't actually do it".
+        if would.is_empty()
+            && d.last_reached().is_none()
+            && crate::repeating::sentences(&reply).iter().any(|s| crate::backed::claims_work_started(s))
+            && !v.is_a_fault()
+        {
+            v = Verdict::Broken("says it did something it didn't".into());
         }
         let row = Row { command, said, reached, tier, verdict: v, reply, ms, would };
         on_row(&row);
@@ -622,3 +638,24 @@ mod tests {
         assert_eq!(tier("clock"), Tier::Run);
     }
 }
+
+/// Set on the test's own process and everything it starts.
+pub const IN_A_TEST: &str = "ATLAS_SELFTEST";
+
+/// Said when something in a test would have started another Atlas.
+pub const NO_SECOND_ATLAS: &str = "this is the self-test's copy of Atlas, which never starts another Atlas";
+
+/// Is this process (or the one that started it) the self-test?
+///
+/// The test runs on a copy of the install (`ATLAS_HOME` pointed at it), and
+/// "show me settings" there opened Atlas's window -- which, finding no Atlas
+/// running *in the copy*, started a background one there (30 Sep 2026). It
+/// outlived the test: a second Atlas with its own hub, typing box,
+/// microphone and model server, answering Eric from the temp folder while
+/// the real one ran beside it, and the settings he changed went into the
+/// copy. Starting another Atlas (`firstlaunch::spawn_quietly`,
+/// `open_atlas_window`) is refused while this is set.
+pub fn in_a_test() -> bool {
+    std::env::var_os(IN_A_TEST).is_some_and(|v| !v.is_empty())
+}
+

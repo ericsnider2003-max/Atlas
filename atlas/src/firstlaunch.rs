@@ -477,6 +477,9 @@ pub fn open_atlas_window(first: &First) -> Result<(), String> {
     if !is_atlas {
         return Err("I'm not running as the Atlas program, so there's no window of mine to open".into());
     }
+    if crate::selftest::in_a_test() {
+        return Err(crate::selftest::NO_SECOND_ATLAS.into());
+    }
     let words = first.words();
     let args: Vec<&str> = words.iter().map(|w| w.as_str()).collect();
     let child = spawn_quietly(&exe, &args).map_err(|e| e.to_string())?;
@@ -488,6 +491,9 @@ pub fn open_atlas_window(first: &First) -> Result<(), String> {
 /// Its output goes nowhere: it runs for days, and a pipe nobody reads would
 /// fill and stall it.
 pub fn spawn_quietly(exe: &Path, args: &[&str]) -> std::io::Result<std::process::Child> {
+    if crate::selftest::in_a_test() {
+        return Err(std::io::Error::other(crate::selftest::NO_SECOND_ATLAS));
+    }
     hidden_command(exe, args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

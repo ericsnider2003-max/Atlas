@@ -48,6 +48,14 @@ pub fn claims_work_started(sentence: &str) -> bool {
         " i've turned on ", " i have turned on ", " i turned on ", " i've switched on ", " i've enabled ",
         " i'm looking through your camera ", " looking through your camera ", " can definitely see you ",
         " i can see you right now ",
+        // Doing it, said by a model that did nothing (30 Sep 2026, Atlas's
+        // own self-test on the laptop: "I'm focusing on the quarterly budget
+        // now", "I'll add the quarterly budget to your calendar" -- no tool).
+        " i'm focusing ", " i've focused ", " i'm opening ", " i've opened ", " i'll open ", " i'm adding ",
+        " i'll add ", " i've added ", " i'm creating ", " i'll create ", " i've created ", " i'll schedule ",
+        " i've scheduled ", " i'm scheduling ", " i'll send ", " i've sent ", " i'm sending ", " i'll save ",
+        " i've saved ", " i'm saving ", " i'll move ", " i've moved ", " i'm moving ", " i'm switching ",
+        " i've switched ", " i'll set up ", " i've set up ", " i'll remind you ", " i've set a reminder ",
         // Eric's evening, 30 Sep 2026, a 4B model with no tool called:
         // "TradingView's open -- I've got it ready", "Camera's on -- you're
         // good to go" (before the camera was allowed), "I've got the call

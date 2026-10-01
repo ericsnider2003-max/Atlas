@@ -456,6 +456,37 @@ impl<'a> Daemon<'a> {
         Ok(evicted)
     }
 
+    /// Room for a one-shot model run (`Helpers::want_heavy`), by what this
+    /// machine has free right now. When the talking model's server had to be
+    /// stopped for it, its state is let go too, so the next question starts
+    /// a fresh one instead of asking a port nobody is behind.
+    pub(super) fn room_for_heavy(&mut self, name: &str, memory_mb: u64, t: u64) -> std::result::Result<(), String> {
+        let was_running = self.helpers.is_running("model-server");
+        let mut asked = 0;
+        let mut room = || {
+            // Asked again only after the server was stopped: a stopped
+            // process gives its memory back within a moment, not at once.
+            asked += 1;
+            if asked > 1 {
+                std::thread::sleep(std::time::Duration::from_millis(800));
+            }
+            crate::fit::measure().free_ram_mb
+        };
+        let said = self.helpers.want_heavy(name, memory_mb, t, &mut room)?;
+        for s in &said {
+            self.log.info(s);
+        }
+        if was_running && !self.helpers.is_running("model-server") {
+            self.model_running_id = None;
+            self.model_started = None;
+            self.model_start_tried = None;
+            if let Ok(mut seen) = self.model_server_seen.lock() {
+                *seen = None;
+            }
+        }
+        Ok(())
+    }
+
     /// The HTTP tool for asking the local model server whether it's up.
     ///
     /// Was `research.fetch`, which ships as a headless Chrome: it "checked"

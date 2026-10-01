@@ -29,7 +29,7 @@ pub enum AtlasError {
     UnknownLayout(String),
     #[error("no monitor could be assigned to role '{0}'")]
     NoMonitorForRole(String),
-    #[error("window for '{0}' never appeared after {1} attempts")]
+    #[error("I started {0}, but its window didn't show up (I looked {1} times)")]
     WindowNeverAppeared(String, u32),
     #[error("platform: {0}")]
     Platform(String),
