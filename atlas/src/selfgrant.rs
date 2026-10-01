@@ -89,6 +89,13 @@ const ITS_OWN_LIMITS: &[&str] = &[
     // And the struct those settings parse into. Adding a field with a
     // permissive default changes a limit without touching the YAML.
     "voice.rs",
+    // What judges its own fixes: `mend.rs` refuses a paper-over (a fix that
+    // hides the symptom), `selfwork.rs` holds `may_edit` and the shipped
+    // never-touch list, `sandbox.rs` is where the proof runs and its time
+    // limit, `selftest.rs` is what reports how it's doing. A self-fix that
+    // could edit any of these could weaken the check on itself (research
+    // report, 30 Sep 2026, Stage 1 item 2).
+    "mend.rs", "selfwork.rs", "sandbox.rs", "selftest.rs",
 ];
 
 /// Tests Atlas may edit.

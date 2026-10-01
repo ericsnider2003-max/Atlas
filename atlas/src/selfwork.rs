@@ -574,6 +574,9 @@ pub enum ProofToday {
 /// take it.
 pub const PROOF_BUDGET_SECS: u64 = 120;
 
+/// How long the whole suite may take in a sandbox copy (`run_tests`).
+pub const SUITE_LIMIT_SECS: u64 = 45 * 60;
+
 /// Run the proving test against the project as it stands.
 ///
 /// Against the real tree rather than a sandbox on purpose: the question is
@@ -707,6 +710,9 @@ pub fn run_tests(sandbox: &mut Sandbox, cfg: &SelfWorkConfig) -> Tried {
     let tool = crate::tools::ExternalTool {
         command: cfg.test_command.split_whitespace().next().unwrap_or("cargo").into(),
         args: cfg.test_command.split_whitespace().skip(1).map(String::from).collect(),
+        // A cold build of the whole tree plus the suite, on a laptop. Past
+        // this it is stuck, and is stopped rather than waited on for ever.
+        timeout_secs: SUITE_LIMIT_SECS,
         ..Default::default()
     };
     let attempt = sandbox.run(&tool, &Default::default(), 20_000);

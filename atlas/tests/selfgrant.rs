@@ -415,7 +415,11 @@ fn the_config_file_that_holds_its_own_limits_is_not_ordinary_config() {
 
 #[test]
 fn the_self_work_machinery_is_not_editable_under_an_ordinary_grant() {
-    assert_eq!(reach_of("src/selfwork.rs"), Reach::WhatItTouches);
+    // `selfwork.rs` holds `may_edit` and the shipped never-touch list: editing
+    // it is widening what self-work may edit, so it's its own limits (1 Oct
+    // 2026, with `mend.rs`, `sandbox.rs` and `selftest.rs`).
+    assert_eq!(reach_of("src/selfwork.rs"), Reach::ItsOwnLimits);
+    assert_eq!(reach_of("src/mend.rs"), Reach::ItsOwnLimits);
     assert_eq!(reach_of("src/pipeline.rs"), Reach::ItsOwnLimits);
     assert_eq!(reach_of("src/selfaudit.rs"), Reach::WhatItTouches);
 }

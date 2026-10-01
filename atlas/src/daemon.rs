@@ -699,6 +699,9 @@ pub struct Daemon<'a> {
     /// Held between the build and the landing because `sandbox::plan` calls
     /// itself the preview and nothing ever turned a preview into a landing.
     pub pending_landing: Vec<crate::sandbox::Change>,
+    /// A self-fix drafted and proven on the crew, waiting to be taken in
+    /// when its errand ends (`on_itself::finish_own_fix`).
+    self_fix_done: std::sync::Arc<std::sync::Mutex<Option<on_itself::SelfFixDone>>>,
     /// The piece of work Atlas is doing on itself, if any.
     ///
     /// Held rather than rebuilt: `Session::new` on every turn meant the five
@@ -1652,6 +1655,7 @@ impl<'a> Daemon<'a> {
             mending: store_for_load.load("mending"),
             selfwork: store_for_load.load("selfwork"),
             pending_landing: Vec::new(),
+            self_fix_done: Default::default(),
             pending_correction: None,
             last_said: String::new(),
             pending_edit: None,

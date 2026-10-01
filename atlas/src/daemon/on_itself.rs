@@ -362,6 +362,16 @@ impl<'a> Daemon<'a> {
         if !cfg.enabled {
             return "Working on myself is switched off.".into();
         }
+        // The Self-repair switch in Settings is `self_work.enabled`. Until 1
+        // Oct 2026 only `pipeline.enabled` was read here, so switching
+        // Self-repair off left it running cargo and drafting fixes (research
+        // report, Stage 1 item 2). Every way in -- asked, the weekly look,
+        // the hub's "Have a go" -- comes through here.
+        if !self.tools_cfg().self_work.enabled {
+            return "Self-repair is switched off in Settings, so I'm not working on my own code. \
+                    Turn it on there and ask again -- nothing I change lands without your yes."
+                .into();
+        }
 
         // Dropping it. Before anything else, because a person who has
         // changed their mind is otherwise answering the next question in a
@@ -603,15 +613,46 @@ impl<'a> Daemon<'a> {
                 .into();
         };
 
-        // Draft a candidate.
-        let candidate = match crate::selfwork::draft_fix(&thought, instruction, &current, llm.as_ref()) {
-            Ok(c) => c,
-            Err(why) => return format!("I couldn't draft a fix for that yet: {why}."),
-        };
+        // Drafting the fix and proving it -- a model call, then the whole
+        // suite twice in a copy of the tree -- is minutes of work. It ran
+        // here, on the loop, until 1 Oct 2026: Atlas stopped listening for
+        // as long as it took, and one hung test hung Atlas (research report,
+        // Stage 1 item 1). Now it's an errand on the crew; the result is taken
+        // in when it ends (`finish_own_fix`).
+        let slot = self.self_fix_done.clone();
+        let instruction = instruction.to_string();
+        let symptom = thought.symptom.clone();
+        let work: crate::crew::Work = Box::new(move |c: &crate::crew::Control| {
+            let candidate = crate::selfwork::draft_fix(&thought, &instruction, &current, llm.as_ref())
+                .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
+            if c.stopping() {
+                return Err("stopped before proving the fix".into());
+            }
+            let proved = prove_in_a_copy(&thought, &candidate, &scfg, &root);
+            let ok = proved.is_ok();
+            if let Ok(mut s) = slot.lock() {
+                *s = Some(SelfFixDone { thought, current, candidate, proved });
+            }
+            if ok { Ok("the fix is proven".into()) } else { Ok("the draft didn't hold".into()) }
+        });
+        let t = crate::store::now();
+        if self.hand_off("self-fix", t, work, Some(symptom.clone()), super::SpeakPolicy::Always) {
+            format!(
+                "Working on a fix for \"{symptom}\" in the background: drafting it, then proving it in a \
+                 copy of my code (the whole test suite, so it takes a while). I'll tell you when it's \
+                 ready -- nothing lands without your yes."
+            )
+        } else {
+            "I'm already working on a fix -- I'll tell you when it's ready.".into()
+        }
+    }
 
-        // Prove it in a copy of the tree: the named test passes now, and
-        // nothing else broke. Real toolchain, real suite, a scratch copy.
-        match self.prove_in_a_copy(&thought, &current, &candidate, &scfg, &root) {
+    /// A self-fix errand ended: take in what it found, and say it.
+    pub(super) fn finish_own_fix(&mut self) -> Option<String> {
+        let done = self.self_fix_done.lock().ok()?.take()?;
+        let scfg = self.tools_cfg().self_work.clone();
+        let SelfFixDone { thought, current, candidate, proved } = done;
+        Some(match proved {
             Ok((build, changes)) => {
                 let passing = build.tests_after;
                 let touched = crate::selfwork::lines_touched(&current, &candidate);
@@ -634,10 +675,11 @@ impl<'a> Daemon<'a> {
                 self.pending_change_effect = Some(effect);
                 if let Some(s) = self.selfwork.as_mut() {
                     if let Err(why) = s.work.record_build(build) {
-                        return format!("The fix built but didn't hold up: {why}.");
+                        return Some(format!("The fix built but didn't hold up: {why}."));
                     }
                     let _ = s.work.record_review(review);
                 }
+                self.persist();
                 if clean {
                     let size = if touched > scfg.large_change_lines {
                         format!(" It's a big change ({touched} lines) — worth reading first.")
@@ -663,84 +705,7 @@ impl<'a> Daemon<'a> {
                 "That draft didn't hold: {why}. The diagnosis still stands — I'll try another angle \
                  next time you set me on it."
             ),
-        }
-    }
-
-    /// Write a candidate into a copy of the tree, run the proving test and the
-    /// suite there, and report back a `Build` plus the `Change`s that would
-    /// land. The real files are never touched.
-    ///
-    /// Real hardware only: a cold compile of the whole tree. There is no unit
-    /// test for it for the same reason `run_the_proof` has none — it *is* the
-    /// toolchain — and the pieces it leans on (`draft_fix`, `files_named`,
-    /// `pipeline::review`, `land`) are each tested on their own.
-    fn prove_in_a_copy(
-        &self,
-        thought: &crate::pipeline::Thought,
-        current: &[crate::selfwork::Edit],
-        candidate: &[crate::selfwork::Edit],
-        scfg: &crate::selfwork::SelfWorkConfig,
-        root: &std::path::Path,
-    ) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>), String> {
-        // Refuse anything the never-list or its own limits protect, before a
-        // single byte is written anywhere.
-        for e in candidate {
-            if let crate::selfwork::Verdict::Refused(why) = crate::selfwork::may_edit(&e.path, scfg) {
-                return Err(format!("I'm not allowed to change {}: {why}", e.path));
-            }
-        }
-
-        let base = crate::roots::tmp_dir().join("selffix");
-        let mut sandbox = crate::sandbox::Sandbox::create(&base, "self-fix")
-            .map_err(|e| format!("couldn't make a copy to work in: {e}"))?;
-
-        // Copy the compile inputs into the sandbox. Not `target/` — a cold
-        // build is the price of isolation.
-        copy_compile_inputs(root, &sandbox.root)
-            .map_err(|e| format!("couldn't copy the tree: {e}"))?;
-
-        // How many tests pass before the change.
-        let before = crate::selfwork::run_tests(&mut sandbox, scfg);
-        let tests_before = before.tests_run;
-
-        // Apply the candidate in the copy.
-        for e in candidate {
-            sandbox
-                .write(&e.path, &e.content)
-                .map_err(|err| format!("couldn't write {} into the copy: {err}", e.path))?;
-        }
-
-        // The proving test passes now?
-        let proof = crate::selfwork::run_the_proof(&thought.proof, scfg, &sandbox.root);
-        let proof_passes = proof == crate::selfwork::ProofToday::PassesAlready;
-
-        // And nothing else broke — the whole suite, in the copy.
-        let after = crate::selfwork::run_tests(&mut sandbox, scfg);
-        let nothing_else_broke = after.passed && after.tests_run + 1 >= tests_before;
-
-        let build = crate::pipeline::Build {
-            touched: candidate.iter().map(|e| e.path.clone()).collect(),
-            tests_before,
-            tests_after: after.tests_run,
-            proof_passes,
-            nothing_else_broke,
-        };
-
-        if !proof_passes {
-            return Err(format!("{} still doesn't pass with the change", thought.proof));
-        }
-        if !nothing_else_broke {
-            return Err("something else in the suite broke".into());
-        }
-
-        // The preview: which sandbox file maps onto which real file.
-        let mapping: Vec<(String, std::path::PathBuf)> =
-            candidate.iter().map(|e| (e.path.clone(), root.join(&e.path))).collect();
-        let changes = sandbox
-            .plan(&mapping)
-            .map_err(|e| format!("couldn't work out what would change: {e}"))?;
-        let _ = current; // the before-state is the sandbox's baseline run above
-        Ok((build, changes))
+        })
     }
 
     /// What the stage a session is in is actually waiting for.
@@ -901,3 +866,87 @@ impl<'a> Daemon<'a> {
         q.spoken(&self.called())
     }
 }
+
+/// What a self-fix errand hands back (`finish_own_fix`).
+pub(crate) struct SelfFixDone {
+    thought: crate::pipeline::Thought,
+    current: Vec<crate::selfwork::Edit>,
+    candidate: Vec<crate::selfwork::Edit>,
+    proved: std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>), String>,
+}
+
+/// Write a candidate into a copy of the tree, run the proving test and the
+/// suite there, and report back a `Build` plus the `Change`s that would
+/// land. The real files are never touched.
+///
+/// Real hardware only: a cold compile of the whole tree. There is no unit
+/// test for it for the same reason `run_the_proof` has none — it *is* the
+/// toolchain — and the pieces it leans on (`draft_fix`, `files_named`,
+/// `pipeline::review`, `land`) are each tested on their own.
+fn prove_in_a_copy(
+    thought: &crate::pipeline::Thought,
+    candidate: &[crate::selfwork::Edit],
+    scfg: &crate::selfwork::SelfWorkConfig,
+    root: &std::path::Path,
+) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>), String> {
+    // Refuse anything the never-list or its own limits protect, before a
+    // single byte is written anywhere.
+    for e in candidate {
+        if let crate::selfwork::Verdict::Refused(why) = crate::selfwork::may_edit(&e.path, scfg) {
+            return Err(format!("I'm not allowed to change {}: {why}", e.path));
+        }
+    }
+
+    let base = crate::roots::tmp_dir().join("selffix");
+    let mut sandbox = crate::sandbox::Sandbox::create(&base, "self-fix")
+        .map_err(|e| format!("couldn't make a copy to work in: {e}"))?;
+
+    // Copy the compile inputs into the sandbox. Not `target/` — a cold
+    // build is the price of isolation.
+    copy_compile_inputs(root, &sandbox.root)
+        .map_err(|e| format!("couldn't copy the tree: {e}"))?;
+
+    // How many tests pass before the change.
+    let before = crate::selfwork::run_tests(&mut sandbox, scfg);
+    let tests_before = before.tests_run;
+
+    // Apply the candidate in the copy.
+    for e in candidate {
+        sandbox
+            .write(&e.path, &e.content)
+            .map_err(|err| format!("couldn't write {} into the copy: {err}", e.path))?;
+    }
+
+    // The proving test passes now?
+    let proof = crate::selfwork::run_the_proof(&thought.proof, scfg, &sandbox.root);
+    let proof_passes = proof == crate::selfwork::ProofToday::PassesAlready;
+
+    // And nothing else broke — the whole suite, in the copy.
+    let after = crate::selfwork::run_tests(&mut sandbox, scfg);
+    let nothing_else_broke = after.passed && after.tests_run + 1 >= tests_before;
+
+    let build = crate::pipeline::Build {
+        touched: candidate.iter().map(|e| e.path.clone()).collect(),
+        tests_before,
+        tests_after: after.tests_run,
+        proof_passes,
+        nothing_else_broke,
+    };
+
+    if !proof_passes {
+        return Err(format!("{} still doesn't pass with the change", thought.proof));
+    }
+    if !nothing_else_broke {
+        return Err("something else in the suite broke".into());
+    }
+
+    // The preview: which sandbox file maps onto which real file.
+    let mapping: Vec<(String, std::path::PathBuf)> =
+        candidate.iter().map(|e| (e.path.clone(), root.join(&e.path))).collect();
+    let changes = sandbox
+        .plan(&mapping)
+        .map_err(|e| format!("couldn't work out what would change: {e}"))?;
+    Ok((build, changes))
+}
+
+

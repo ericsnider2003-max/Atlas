@@ -598,6 +598,17 @@ impl<'a> Daemon<'a> {
                 out.extend(self.after_hub_errand(after, &news.ending, t));
                 continue;
             }
+            // A self-fix drafted and proven on the crew: taken in and said.
+            if link.label == "self-fix" {
+                let said = match (self.finish_own_fix(), &news.ending) {
+                    (Some(said), _) => said,
+                    (None, crew::Ending::Done(Err(e))) => format!("I couldn't work on that fix: {e}"),
+                    (None, _) => "The fix I was working on stopped before it finished.".into(),
+                };
+                self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                out.push(said);
+                continue;
+            }
             // The next step of a job in an app (`operate`).
             if link.label == "operate" {
                 self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
