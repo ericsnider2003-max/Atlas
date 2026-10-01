@@ -3785,7 +3785,7 @@ pub const LEARNED_CHARS: usize = 300;
 /// How many facts you told Atlas go in front of the model every turn.
 /// 30 Sep 2026: 10 -> 4, each cut to 100 characters (the prompt diet);
 /// the rest come in as hints when they bear on what was said.
-pub const FACTS_IN_PROMPT: usize = 4;
+pub const FACTS_IN_PROMPT: usize = 8;
 
 /// A note's score below which it isn't worth putting in front of the model.
 pub const NOTE_HINT_FLOOR: f32 = 0.25;
