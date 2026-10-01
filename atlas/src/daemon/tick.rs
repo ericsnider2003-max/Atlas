@@ -243,6 +243,8 @@ impl<'a> Daemon<'a> {
             let busy = signals.in_conversation || signals.idle_secs < lanes.gap_secs;
             out.extend(self.work_for_you(t, busy));
         }
+        // A job in an app, a step a pass (`operate`).
+        out.extend(self.operate_tick(t));
 
         // Dictation that nobody is feeding stops itself.
         //

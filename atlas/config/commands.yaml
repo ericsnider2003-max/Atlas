@@ -736,6 +736,22 @@ commands:
   # Make a picture on this machine (`imagemake`, 30 Sep 2026): Z-Image Turbo
   # through stable-diffusion.cpp, nothing uploaded. The whole sentence goes
   # through; what to draw is taken from it.
+  # Atlas tries everything it can do on this machine, on a copy of the
+  # install, nothing approved or sent, and writes a report (`selftest`).
+  # Do something in an app, step by step (`operate`, 30 Sep 2026): the
+  # window's controls read, one step chosen at a time, each checked before
+  # and after; anything that can't be taken back is asked about.
+  - intent: operate
+    describe: "Do something in an app on this computer: click through it, fill in boxes, choose options, use its menus -- e.g. make a sheet in Excel, change a setting, fill in a form. arg: the app and what to do there, in the user's words."
+    expose: core
+    phrases: ["in excel", "in word", "in settings", "in outlook", "in notepad", "in file explorer", "in powerpoint",
+              "fill in this form", "fill in the form", "fill out this form", "fill out the form",
+              "click through", "go into the settings and", "do this in", "use the app to", "work the app"]
+  - intent: self_test
+    describe: "Test every command Atlas has on this machine, safely (on a copy; nothing sent, moved or approved), and report what works, what's switched off, what needs installing and what's broken."
+    expose: core
+    phrases: ["test everything", "test yourself", "run a self test", "run the self test", "test all your abilities",
+              "check everything works", "what works and what doesn't", "what doesn't work"]
   - intent: make_picture
     describe: "Make a new picture from a description, on this machine (a local image model; nothing is uploaded), saved in Pictures\\Atlas. Or fetch the picture maker. arg: what to draw, in the user's words."
     expose: core

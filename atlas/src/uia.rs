@@ -84,6 +84,11 @@ pub struct Node {
     pub enabled: bool,
     #[serde(default)]
     pub children: Vec<Node>,
+    /// Where it is on the screen, in pixels (x, y, width, height), when
+    /// Windows says: what a click falls back to when the control has no
+    /// way of being pressed through UI Automation (`operate`).
+    #[serde(default)]
+    pub rect: Option<[i32; 4]>,
 }
 fn yes() -> bool {
     true
@@ -91,7 +96,7 @@ fn yes() -> bool {
 
 impl Node {
     pub fn new(role: Role, name: &str) -> Node {
-        Node { role, name: name.into(), value: String::new(), enabled: true, children: Vec::new() }
+        Node { role, name: name.into(), value: String::new(), enabled: true, children: Vec::new(), rect: None }
     }
 
     pub fn with(mut self, children: Vec<Node>) -> Node {
@@ -101,6 +106,11 @@ impl Node {
 
     pub fn valued(mut self, value: &str) -> Node {
         self.value = value.into();
+        self
+    }
+
+    pub fn at(mut self, x: i32, y: i32, w: i32, h: i32) -> Node {
+        self.rect = Some([x, y, w, h]);
         self
     }
 
@@ -286,6 +296,23 @@ fn write_outline(n: &Node, depth: usize, out: &mut Vec<String>, max: usize) {
     for c in &n.children {
         write_outline(c, depth + 1, out, max);
     }
+}
+
+/// What can be done to one control through UI Automation (`operate`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiAct {
+    /// Press a button, a menu item, a link (Invoke).
+    Invoke,
+    /// Replace an edit box's text (Value).
+    SetValue(String),
+    /// Tick or untick (Toggle).
+    Toggle,
+    /// Pick a list item or a tab (SelectionItem).
+    Select,
+    /// Open a drop-down or a tree branch (ExpandCollapse).
+    Expand,
+    /// Give it the keyboard.
+    Focus,
 }
 
 /// Buttons whose press can't be taken back: asked about first, every time.

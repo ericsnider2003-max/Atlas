@@ -1849,3 +1849,88 @@ pub(super) fn run_catalog(args: &[String]) {
         }
     }
 }
+
+/// `atlas selftest [--no-model]`: Atlas asks itself for everything it can
+/// do, on this machine, without doing anything it can't take back
+/// (`atlas::selftest`). The outer run makes a scratch copy of the install
+/// and runs the test in a child with that copy as its home, so every write
+/// lands in the copy; the report comes back to `data/selftest/`.
+pub(super) fn run_selftest(args: &[String]) {
+    let no_model = args.iter().any(|a| a == "--no-model");
+    let out = args.iter().position(|a| a == "--out").and_then(|i| args.get(i + 1)).map(std::path::PathBuf::from);
+    if !args.iter().any(|a| a == "--inside") {
+        let real = atlas::roots::install_root();
+        let reports = atlas::selftest::reports_dir(&real);
+        let _ = std::fs::create_dir_all(&reports);
+        // The scratch folder lives inside data/, which isn't linked or
+        // copied into itself: copy first, then point the child at it.
+        let tmp = std::env::temp_dir().join(format!("atlas-selftest-{}", std::process::id()));
+        match atlas::selftest::scratch_copy(&real, &tmp) {
+            Ok(missed) => {
+                for m in missed {
+                    println!("note: couldn't link {m} into the test copy; anything in it will read as missing.");
+                }
+            }
+            Err(e) => {
+                eprintln!("I couldn't make the test copy of this install: {e}");
+                leave(1);
+            }
+        }
+        println!("Testing every command on this machine, on a copy of your install. Nothing is sent, moved or approved.");
+        let exe = std::env::current_exe().unwrap_or_else(|_| "atlas".into());
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg("selftest").arg("--inside").arg("--out").arg(&reports).env("ATLAS_HOME", &tmp).env_remove("ATLAS_CONFIG");
+        if no_model {
+            cmd.arg("--no-model");
+        }
+        let status = cmd.status();
+        let _ = std::fs::remove_dir_all(&tmp);
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                eprintln!("The test stopped early ({s}). What it got through is in {}.", reports.display());
+                leave(1);
+            }
+            Err(e) => {
+                eprintln!("I couldn't start the test: {e}");
+                leave(1);
+            }
+        }
+        return;
+    }
+    // Inside: this process's home is the copy.
+    let Some(out) = out else {
+        eprintln!("selftest --inside needs --out <folder>");
+        leave(2);
+    };
+    let cfg = match Config::load(&atlas::roots::config_dir()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("I couldn't read the settings in the test copy: {e}");
+            leave(1);
+        }
+    };
+    let real_plat = atlas::platform::here();
+    let plat = atlas::selftest::SafePlatform::wrapping(real_plat.as_ref());
+    let llm = if no_model { None } else { cfg.tools.as_ref().and_then(model_connection) };
+    let with_model = llm.is_some();
+    let started = atlas::store::now();
+    let state = atlas::roots::state_dir();
+    let total = atlas::selftest::sentences(&atlas::intent::ToolBook::new(&cfg.commands)).len();
+    let mut n = 0;
+    let rows = atlas::selftest::run_all(&cfg, &plat, llm, &state, started, &mut |r| {
+        n += 1;
+        let mark = if r.verdict.is_a_fault() { "!!" } else { "  " };
+        println!("{mark} {n:>3}/{total} {:<22} {}", r.command, r.verdict.plain());
+    });
+    let _ = std::fs::create_dir_all(&out);
+    let stamp = atlas::hubpages::ymd((started / 86_400) as i64);
+    let name = format!("report-{}-{:02}-{:02}-{}", stamp.0, stamp.1, stamp.2, started % 86_400);
+    let md = atlas::selftest::report(&rows, &format!("{}-{:02}-{:02}", stamp.0, stamp.1, stamp.2), with_model);
+    let _ = std::fs::write(out.join(format!("{name}.md")), &md);
+    let _ = std::fs::write(out.join("latest.md"), &md);
+    let _ = std::fs::write(out.join(format!("{name}.json")), serde_json::to_string_pretty(&rows).unwrap_or_default());
+    println!();
+    println!("{}", atlas::selftest::summary(&rows));
+    println!("The report: {}", out.join("latest.md").display());
+}

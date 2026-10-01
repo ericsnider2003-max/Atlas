@@ -908,3 +908,7 @@ mod every_ability_answers;
 mod pictures_are_made_here;
 #[path = "an_old_question_of_its_own_is_dropped.rs"]
 mod an_old_question_of_its_own_is_dropped;
+#[path = "atlas_tests_itself.rs"]
+mod atlas_tests_itself;
+#[path = "atlas_works_an_app.rs"]
+mod atlas_works_an_app;

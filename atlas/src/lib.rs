@@ -81,6 +81,8 @@ pub mod reclaim;
 pub mod meaning;
 pub mod meaningroute;
 pub mod imagemake;
+pub mod selftest;
+pub mod operate;
 pub mod used;
 #[cfg(feature = "onnx")]
 pub mod meaningnative;

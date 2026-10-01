@@ -68,6 +68,7 @@ mod reading;
 mod execute;
 mod turn;
 mod tasks;
+mod operating;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -476,6 +477,16 @@ pub struct Daemon<'a> {
     index_saving: Option<((usize, u64), std::thread::JoinHandle<crate::error::Result<()>>)>,
     /// This save is the tick's sweep: the index may be written behind it.
     index_behind: bool,
+    /// Atlas testing itself (`selftest`): background work isn't started,
+    /// and commands that would touch real files, the network or the install
+    /// are reported as what they'd do (`selftest::tier`).
+    pub rehearsal: bool,
+    /// What a rehearsal held back, since the last look.
+    pub rehearsed: Vec<String>,
+    /// The last command carried out, by kind: where a sentence actually went.
+    last_executed: Option<String>,
+    /// A job being worked in an app, step by step (`operate`).
+    pub operating: Option<crate::operate::Job>,
     /// The index as it is read from disk at start, off this thread
     /// (`index::Loading`, 28 Sep 2026). `settle_index` takes it in.
     index_load: crate::index::Loading,
@@ -1517,6 +1528,10 @@ impl<'a> Daemon<'a> {
             index_on_disk: Some(index.written_as()),
             index_saving: None,
             index_behind: false,
+            rehearsal: false,
+            rehearsed: Vec::new(),
+            last_executed: None,
+            operating: None,
             index,
             index_load,
             awareness: Awareness::default(),

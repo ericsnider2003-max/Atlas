@@ -76,3 +76,17 @@ fn a_real_picture_on_the_processor() {
     assert!(bytes.starts_with(b"\x89PNG"), "not a PNG");
     let _ = std::fs::copy(&path, "/home/claude/imagegen/lighthouse-test.png");
 }
+
+#[test]
+fn everything_is_one_set_with_no_piece_twice() {
+    let (_, all) = atlas::getpieces::set(Some("everything")).expect("`atlas get everything`");
+    let mut keys: Vec<&str> = all.iter().map(|p| p.key_path()).collect();
+    let n = keys.len();
+    keys.sort();
+    keys.dedup();
+    assert_eq!(keys.len(), n, "a piece listed twice");
+    for want in ["models/pictures/z_image_turbo-Q4_0.gguf", "models/all-MiniLM-L6-v2.onnx"] {
+        assert!(keys.iter().any(|k| *k == want || k.ends_with(want.rsplit('/').next().unwrap())), "{want} missing: {keys:?}");
+    }
+    assert!(all.iter().all(|p| p.sha256.len() == 64), "every piece hash-pinned");
+}

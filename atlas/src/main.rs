@@ -58,6 +58,8 @@ const USAGE: &str = "\
 atlas — local workspace assistant
 
   atlas doctor                    inspect this machine, print config to paste
+  atlas selftest [--no-model]     try every command on this machine, safely,
+                                  and write what works to data/selftest/
   atlas \"boot workspace\"          run one command
   atlas                           interactive prompt
   atlas --voice                   voice loop, press Enter to talk
@@ -1172,6 +1174,10 @@ fn main() {
 
     if words.first().map(|s| s.as_str()) == Some("afterme") {
         return run_afterme(&cfg, atlas::cli::tail_after(&argv, "afterme"));
+    }
+
+    if words.first().map(|s| s.as_str()) == Some("selftest") {
+        return run_selftest(atlas::cli::tail_after(&argv, "selftest"));
     }
 
     if words.first().map(|s| s.as_str()) == Some("catalog") {

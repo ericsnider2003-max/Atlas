@@ -538,6 +538,21 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("tor" | "friends") => Some(("Tor, so friends can reach your Atlas from anywhere", tor())),
         Some("photos" | "photo") => Some(("the cut-out models Atlas needs to blur or remove a photo's background", photos())),
         Some("pictures-made" | "picture-maker" | "imagemake") => Some(("what Atlas needs to make pictures on this machine (about 6.5 GB)", picture_making())),
+        // Everything a model or a program for this machine, in one go (30
+        // Sep 2026: "make the picture and meaning model download on
+        // install"). Tor isn't one: it's for reaching friends, not for
+        // anything Atlas does here.
+        Some("everything" | "all") => {
+            let mut all = catalogue();
+            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making()] {
+                for p in more {
+                    if !all.iter().any(|a: &Piece| a.key_path() == p.key_path()) {
+                        all.push(p);
+                    }
+                }
+            }
+            Some(("everything Atlas can use on this machine: voice, understanding, seeing, reading and making pictures (about 11 GB)", all))
+        }
         Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,

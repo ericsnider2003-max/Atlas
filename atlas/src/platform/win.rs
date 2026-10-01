@@ -350,6 +350,64 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// A control found by its place in the tree (`read_window`'s order:
+    /// the control view, children first to last) and acted on through the
+    /// pattern that does what's asked. `Ok(false)` when it has no such
+    /// pattern, so the caller can click it instead.
+    fn act_on(&self, win: WindowId, path: &[usize], act: &crate::uia::UiAct) -> Result<bool> {
+        use crate::uia::UiAct;
+        use windows::Win32::UI::Accessibility::{
+            IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
+            IUIAutomationTogglePattern, IUIAutomationValuePattern, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
+            UIA_SelectionItemPatternId, UIA_TogglePatternId, UIA_ValuePatternId,
+        };
+        unsafe {
+            let ua = automation()?;
+            let mut el = ua
+                .ElementFromHandle(HWND(win.0 as *mut std::ffi::c_void))
+                .map_err(|e| AtlasError::Platform(format!("couldn't read that window: {e}")))?;
+            let walker = ua.ControlViewWalker().map_err(|e| AtlasError::Platform(format!("UI Automation: {e}")))?;
+            for &i in path {
+                let mut child = walker
+                    .GetFirstChildElement(&el)
+                    .map_err(|_| AtlasError::Platform("that control isn't there any more".into()))?;
+                for _ in 0..i {
+                    child = walker
+                        .GetNextSiblingElement(&child)
+                        .map_err(|_| AtlasError::Platform("that control isn't there any more".into()))?;
+                }
+                el = child;
+            }
+            if !el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(false) {
+                return Err(AtlasError::Platform("that control is greyed out".into()));
+            }
+            let done = match act {
+                UiAct::Invoke => match el.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) {
+                    Ok(p) => p.Invoke().is_ok(),
+                    Err(_) => false,
+                },
+                UiAct::SetValue(v) => match el.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId) {
+                    Ok(p) => p.SetValue(&windows::core::BSTR::from(v.as_str())).is_ok(),
+                    Err(_) => false,
+                },
+                UiAct::Toggle => match el.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId) {
+                    Ok(p) => p.Toggle().is_ok(),
+                    Err(_) => false,
+                },
+                UiAct::Select => match el.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId) {
+                    Ok(p) => p.Select().is_ok(),
+                    Err(_) => false,
+                },
+                UiAct::Expand => match el.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId) {
+                    Ok(p) => p.Expand().is_ok(),
+                    Err(_) => false,
+                },
+                UiAct::Focus => el.SetFocus().is_ok(),
+            };
+            Ok(done)
+        }
+    }
+
     fn focused_text(&self) -> Result<Option<String>> {
         use windows::Win32::UI::Accessibility::{IUIAutomationTextPattern, UIA_TextPatternId, UIA_ValueValuePropertyId};
         unsafe {
@@ -777,6 +835,39 @@ impl Platform for WindowsPlatform {
         }
     }
 
+    /// Windows' own recogniser, line by line with where each line is.
+    fn recognise_lines(&self, grab: &super::Grab) -> Result<Vec<(String, super::PixelRect)>> {
+        use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
+        use windows::Media::Ocr::OcrEngine;
+        use windows::Storage::Streams::DataWriter;
+        let run = || -> windows::core::Result<Vec<(String, super::PixelRect)>> {
+            let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
+            let bgra: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let writer = DataWriter::new()?;
+            writer.WriteBytes(&bgra)?;
+            let buffer = writer.DetachBuffer()?;
+            let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, grab.width as i32, grab.height as i32)?;
+            let result = engine.RecognizeAsync(&bitmap)?.get()?;
+            let mut out = Vec::new();
+            for line in result.Lines()? {
+                let text = line.Text()?.to_string();
+                let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for w in line.Words()? {
+                    let r = w.BoundingRect()?;
+                    x0 = x0.min(r.X);
+                    y0 = y0.min(r.Y);
+                    x1 = x1.max(r.X + r.Width);
+                    y1 = y1.max(r.Y + r.Height);
+                }
+                if x1 > x0 && y1 > y0 {
+                    out.push((text, super::PixelRect { x: x0 as i32, y: y0 as i32, width: (x1 - x0) as i32, height: (y1 - y0) as i32 }));
+                }
+            }
+            Ok(out)
+        };
+        run().map_err(|e| AtlasError::Platform(format!("Windows' text recognition didn't run: {e}")))
+    }
+
     fn recognise_image_file(&self, path: &str) -> Result<Option<String>> {
         use windows::Graphics::Imaging::{
             BitmapAlphaMode, BitmapDecoder, BitmapInterpolationMode, BitmapPixelFormat, BitmapTransform,
@@ -1188,6 +1279,11 @@ unsafe fn uia_node(
         .map(|b| b.to_string())
         .unwrap_or_default();
     let enabled = el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(true);
+    let rect = el
+        .CurrentBoundingRectangle()
+        .ok()
+        .filter(|r| r.right > r.left && r.bottom > r.top)
+        .map(|r| [r.left, r.top, r.right - r.left, r.bottom - r.top]);
     let mut children = Vec::new();
     // From the last child backwards: in a chat or a mail thread the newest
     // part is at the end, and when the budget runs out it's the oldest
@@ -1204,5 +1300,5 @@ unsafe fn uia_node(
         }
         children.reverse();
     }
-    crate::uia::Node { role, name, value, enabled, children }
+    crate::uia::Node { role, name, value, enabled, children, rect }
 }

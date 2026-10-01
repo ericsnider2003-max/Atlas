@@ -122,6 +122,8 @@ pub const FOR_KIND: &[(&str, &str)] = &[
     ("edit_media", "edit"),
     ("edit_photo", "photo"),
     ("make_picture", "imagemake"),
+    ("self_test", "selftest"),
+    ("operate", "operate"),
     ("set_key", "vault"),
     ("languages", "accents"),
     ("money_advice", "finance"),

@@ -86,6 +86,10 @@ impl<'a> Daemon<'a> {
         self.pending_decision = None;
         self.pending_mail_sort = false;
         self.answering = None;
+        // A job in an app that asked you something and was never answered.
+        if self.operating.as_ref().is_some_and(|j| j.waiting_on_you) {
+            self.operating = None;
+        }
     }
 
     /// A "what do you know about …" the notes and the fact book have

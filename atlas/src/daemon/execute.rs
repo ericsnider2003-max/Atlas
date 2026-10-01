@@ -42,6 +42,12 @@ impl<'a> Daemon<'a> {
         out
     }
 
+    /// The last command carried out, by kind (`selftest`): where a
+    /// sentence went, whether the phrases or the model chose it.
+    pub fn last_reached(&self) -> Option<String> {
+        self.last_executed.clone()
+    }
+
     pub fn execute(&mut self, intent: &Intent) -> String {
         // The last line, and the one that catches the callers a gate placed
         // in `turn_from` alone never sees.
@@ -68,6 +74,14 @@ impl<'a> Daemon<'a> {
         // than picking.
         if let Some(question) = self.resolve_subject(intent) {
             return question;
+        }
+        self.last_executed = Some(kind_of(intent).to_string());
+        // Testing itself: what would touch real files, the network or the
+        // install is said, not done (`selftest`).
+        if self.rehearsal && crate::selftest::tier(kind_of(intent)) == crate::selftest::Tier::Rehearse {
+            let plain = intent.plain();
+            self.rehearsed.push(plain.clone());
+            return format!("[rehearsed] would be {plain}");
         }
         // Counted against the ability that does it (`used`), so "never used"
         // on the Improvements page is something measured.
@@ -186,6 +200,8 @@ impl<'a> Daemon<'a> {
             Intent::EditMedia(said) => self.edit_media(said, crate::store::now()),
             Intent::EditPhoto(said) => self.edit_photo(said),
             Intent::MakePicture(said) => self.make_picture(said),
+            Intent::SelfTest => self.test_everything(),
+            Intent::Operate(said) => self.start_operating(said),
             Intent::Clock => crate::localclock::spoken_now(crate::store::now(), crate::localclock::offset_secs()),
             Intent::SetKey(said) => self.set_key(said),
             Intent::Languages(_) => self.languages_heard(),
@@ -770,7 +786,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_open_app(&mut self, intent: &Intent, a: &String) -> String {
+    pub(super) fn on_open_app(&mut self, intent: &Intent, a: &String) -> String {
         match self.gate_app(a, "open", intent) {
         AppGate::Ask(q) => q,
         // Not one of your configured apps: found by name among the

@@ -175,6 +175,7 @@ impl MockPlatform {
             value: text.to_string(),
             enabled: true,
             children: Vec::new(),
+            rect: None,
         };
         self.screens.borrow_mut().insert(id, node);
     }

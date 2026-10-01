@@ -46,6 +46,29 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// "Test everything": `atlas selftest` in its own process, on a copy of
+    /// the install, as a crew errand; the summary is said when it ends and
+    /// the report is in data/selftest/latest.md.
+    pub(super) fn test_everything(&mut self) -> String {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "atlas".into());
+        let reports = crate::selftest::reports_dir(&self.store.install_root());
+        let work: crew::Work = Box::new(move |_c| {
+            let out = std::process::Command::new(&exe)
+                .arg("selftest")
+                .stdin(std::process::Stdio::null())
+                .output()
+                .map_err(|e| format!("the test wouldn't start: {e}"))?;
+            let text = String::from_utf8_lossy(&out.stdout);
+            let summary = text.lines().rev().find(|l| l.starts_with("Tested ")).unwrap_or("The test ended without a summary.").to_string();
+            Ok(format!("{summary} The full report is in {}.", reports.join("latest.md").display()))
+        });
+        if self.hand_off("self-test", crate::store::now(), work, None, SpeakPolicy::Always) {
+            "Testing everything I can do, on a copy of your install -- nothing gets sent, moved or approved. It takes a few minutes; I'll tell you what I find.".into()
+        } else {
+            "A test is already going -- I'll tell you when it's done.".into()
+        }
+    }
+
     /// Fetch the picture maker and its three model files, checked, on the crew.
     fn get_picture_maker(&mut self) -> String {
         if self.handover().stance.handed_over() {

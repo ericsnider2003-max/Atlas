@@ -202,6 +202,11 @@ fn parser(cfg: &Config) -> Parser {
 // recovery-codes flag it depends on was unsettable until this same day, so
 // that list was wrong for as long as it existed and nobody saw it.
 const NO_DAEMON_TEST: &[(&str, &str)] = &[
+    // 30 Sep 2026: "test everything" starts `atlas selftest` as its own
+    // process (on a copy of the install), which a test binary can't be;
+    // `tests/atlas_tests_itself.rs` drives what that process does
+    // (`selftest::run_all`) through the daemon for every command.
+    ("self_test", "starts `atlas selftest` in its own process; selftest::run_all is driven through the daemon in tests/atlas_tests_itself.rs"),
     // `capabilities` came off 21 Sep: `tests/what_works_offline.rs` now drives
     // `Intent::Capabilities` through the daemon (the offline-count wiring), so
     // the branch has a real end-to-end test.

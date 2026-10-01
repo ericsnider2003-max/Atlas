@@ -188,6 +188,11 @@ pub fn category_of(intent: &Intent) -> Category {
         Intent::EditPhoto(_) => media_category(MediaOp::Edit, false),
         // Made here, by a model on this machine; nothing is uploaded.
         Intent::MakePicture(_) => media_category(MediaOp::Generate, false),
+        // Runs on a copy of the install; nothing real is touched.
+        Intent::SelfTest => Category::LocalOperational,
+        // Works your apps on this machine; anything that can't be taken
+        // back is asked about step by step (`operate::guard`).
+        Intent::Operate(_) => Category::LocalOperational,
         Intent::Clock => Category::LocalOperational,
         Intent::SetKey(_) => Category::LocalOperational,
         Intent::Languages(_) => Category::LocalOperational,

@@ -187,6 +187,16 @@ impl<'a> Daemon<'a> {
             return String::new();
         }
 
+        // "Stop" while Atlas is working an app ends that job, there and then.
+        if self.operating.is_some() {
+            let l = said.to_lowercase();
+            let l = l.trim().trim_end_matches(['.', '!']);
+            if matches!(l, "stop" | "stop that" | "stop it" | "cancel" | "cancel that" | "never mind" | "stop working on that") {
+                if let Some(s) = self.stop_operating() {
+                    return s;
+                }
+            }
+        }
         // Pause and resume are heard before anything else, so they work even
         // mid-task and mid-sentence.
         match hear(said) {
@@ -217,6 +227,8 @@ impl<'a> Daemon<'a> {
             // just Atlas asking and starting things. The endings still
             // arrive through `settle`, reported rather than swallowed.
             Some(Heard::Panic) => {
+                // A job in an app ends where it is.
+                let _ = self.stop_operating();
                 // A model turn still thinking is stopped too: its answer
                 // would otherwise run its tool when it came back (28 Sep 2026).
                 self.drop_pending_turn(t, "Stopped before I answered -- nothing was done.");
@@ -829,6 +841,10 @@ impl<'a> Daemon<'a> {
                     return "Alright, nothing moved.".into();
                 }
                 return self.carry_out_storage_plan(plan, t);
+            }
+            // A job in an app waiting on you (`operate`).
+            if let Some(answer) = self.operate_answer(said) {
+                return answer;
             }
             // A button that can't be undone (G4).
             if let Some((win, name, app)) = self.pending_press.take() {
