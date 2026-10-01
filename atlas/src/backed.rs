@@ -31,6 +31,11 @@ pub fn claims_work_started(sentence: &str) -> bool {
         " consider it done ", " all done ", " i've done it ", " i have done it ", " done and done ",
         " i'll report back ", " i will report back ", " i'll let you know what i find ", " i'll tell you what i find ",
         " i'll get back to you ", " i'm already doing ", " im already doing ",
+        // An announced look with nothing looked at (30 Sep 2026: "I'll check
+        // your calendar." was a whole reply when the forced ask still called
+        // nothing -- a promise nothing followed).
+        " i'll check ", " ill check ", " let me check ", " i'll look it up ", " let me look it up ",
+        " let me look that up ", " i'll pull up ", " let me pull up ", " i'll find out ",
         // A result claimed with nothing run to get it (30 Sep 2026, a real
         // 2B model: "The machine health check found that the RAM usage has
         // spiked to 85%", no tool called).

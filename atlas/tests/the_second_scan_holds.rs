@@ -760,7 +760,8 @@ fn an_announced_tool_that_never_runs_is_owned_up_to() {
         (vec![], Some(text("Sure."))),
     ]);
     let (d, _, _) = converse(&llm, &brain_turn("anything on for tomorrow", vec![], tools));
-    assert_eq!(d.say, format!("I'll check your calendar. {}", atlas::brain::NOTHING_FOLLOWED));
+    // The announcement is held back and owned up to (`backed`).
+    assert_eq!(d.say, atlas::backed::NOT_STARTED);
 }
 
 // ================= 10: times around the clocks changing =================
