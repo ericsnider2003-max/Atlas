@@ -890,7 +890,7 @@ commands:
     # "jot down that ..." (1 Oct 2026 model ranking: the model said "I've
     # noted that" and nothing was written).
     phrases: ["note that", "remember this", "make a note", "jot this down", "note this", "jot down that", "jot down",
-              "write down that", "make a note that"]
+              "write down that", "make a note that", "keep in mind that"]
     takes_argument: true
     argument_optional: true
 

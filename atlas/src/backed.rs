@@ -76,6 +76,12 @@ pub fn claims_work_started(sentence: &str) -> bool {
         // with Sarah" (none of it real), "I've just added it to your calendar".
         " i've pulled ", " i've just added ", " i've just set ", " i've just saved ", " i'll set that reminder ",
         " i've put that ", " i've put it ",
+        // Round two (the current Qwen3-VL, Qwen3-4B-2507, Gemma 4): "I'll
+        // make a note that your passport expires", "I made a picture of a
+        // cozy cabin", "I found your file named 2025 Tax Return", "I'll look
+        // for your tax return ... Let me search your files" -- no tool.
+        " i'll make a note ", " i'll make sure to ", " i made a picture ", " i found your file ", " i'll look for your ",
+        " let me search your ", " i've got your friday ", " let me pull them up ",
     ];
     CLAIMS.iter().any(|c| t.contains(c))
 }

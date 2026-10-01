@@ -81,3 +81,19 @@ fn atlas_fetches_the_rest_of_what_it_needs_itself() {
         assert!(p.url.starts_with("https://"));
     }
 }
+
+/// "pull up chrome for me" and "show me what jobs you've found" (round two:
+/// "I can't put spotify for me on screen", "...what jobs youve found...").
+#[test]
+fn pulling_up_an_app_or_the_jobs_is_not_a_missing_panel() {
+    let c = cfg();
+    let plat = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let mut d = Daemon::new(&c, &plat, None, Store::new(tmp("pullup")), Proactive::new(ProactiveConfig::default()));
+    let jobs = d.turn("show me what jobs you've found", NOW);
+    assert!(!jobs.contains("on screen"), "{jobs}");
+    let app = c.apps.apps.keys().next().expect("a configured app").clone();
+    let said = d.turn(&format!("pull up {app} for me"), NOW + 60);
+    assert!(!said.contains("for me on screen"), "{said}");
+    let p = Parser::new(&c.commands);
+    assert_eq!(p.parse_named("keep in mind that my passport expires in june").1.as_deref(), Some("capture"));
+}
