@@ -130,6 +130,9 @@ pub struct ToolsConfig {
     /// model that can talk about what it sees (`picture_talk`).
     #[serde(default)]
     pub picture_talk: crate::picture_talk::PictureTalkConfig,
+    /// Making pictures on this machine (`imagemake`).
+    #[serde(default)]
+    pub picture_making: crate::imagemake::PictureMakingConfig,
     /// Smoothing and prediction for the pointer.
     #[serde(default)]
     pub smoothing: crate::handtrack::SmoothConfig,
@@ -1020,7 +1023,7 @@ impl<'a> Voice<'a> {
                     Ok(()) => return Ok(if stop() { None } else { Some(String::new()) }),
                     Err(why) => {
                         if let Some(note) = crate::playout::note_once(&why) {
-                            println!("{note}");
+                            crate::outln!("{note}");
                         }
                     }
                 }
@@ -1164,7 +1167,7 @@ impl<'a> Voice<'a> {
             Ok(s) => s,
             Err(why) => {
                 if let Some(note) = crate::kokoro::note_once(&why) {
-                    println!("{note}");
+                    crate::outln!("{note}");
                 }
                 return Kokoro::Unavailable;
             }
@@ -1195,7 +1198,7 @@ impl<'a> Voice<'a> {
                     // -- only the rest.
                     crate::kokoro::forget();
                     if let Some(note) = crate::kokoro::note_once(&why) {
-                        println!("{note}");
+                        crate::outln!("{note}");
                     }
                     return kokoro_stopped_at(&sentences, i);
                 }
@@ -1650,6 +1653,9 @@ impl VoiceWork {
 }
 
 impl crate::micthread::MicWork for VoiceWork {
+    fn listen_while(&mut self, held: &dyn Fn() -> bool) -> Result<Option<String>> {
+        self.voice().listen_while_held(held)
+    }
     fn wake_once(&mut self, stop: &dyn Fn() -> bool) -> Result<bool> {
         let heard = self.voice().wake_heard_until(stop)?;
         self.said_with_wake = heard.clone().filter(|w| !w.trim().is_empty());

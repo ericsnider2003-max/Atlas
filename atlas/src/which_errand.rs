@@ -216,6 +216,10 @@ pub fn pick(
 pub fn describe(c: &Candidate) -> String {
     let kind = match c.label.as_str() {
         "research" => "the research",
+        // 30 Sep 2026: "One thing: the fold -- running" meant nothing to Eric.
+        "fold" => "tidying up our earlier conversation into a summary",
+        "screen-words" => "reading your screen",
+        "send reply" => "sending a reply",
         "council" => "the council",
         "build" => "the build",
         "improve" => "the project change",

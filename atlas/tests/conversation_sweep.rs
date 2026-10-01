@@ -179,3 +179,63 @@ fn the_voice_lines_are_judged_against_your_own_turns() {
     let r = v.calibration_report(0.15).unwrap();
     assert!(r.contains("saying \"Atlas\" first always works"), "{r}");
 }
+
+/// 30 Sep 2026 logs: "move trading view to my right monitor" was taken as
+/// moving big files to another drive.
+
+#[test]
+fn moving_a_window_to_a_screen_is_understood() {
+    use atlas::workspace::{move_to_screen_asked, ScreenSide};
+    assert_eq!(move_to_screen_asked("Atlas, move trading view to my right monitor."), Some(("trading view".into(), ScreenSide::Right)));
+    assert_eq!(
+        move_to_screen_asked("Atlas, move grading view chrome you opened in Chrome to my right monitor instead of my left monitor."),
+        Some(("grading view chrome".into(), ScreenSide::Right))
+    );
+    assert_eq!(move_to_screen_asked("put it on the other screen"), Some(("it".into(), ScreenSide::Other)));
+    assert_eq!(move_to_screen_asked("move the big files to my other drive"), None);
+    assert_eq!(move_to_screen_asked("move on to the next thing"), None);
+    use atlas::platform::Monitor;
+    use atlas::workspace::screen_for;
+    let screens = [
+        Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1080, primary: false },
+        Monitor { id: 2, x: 1920, y: 0, width: 2560, height: 1440, primary: true },
+    ];
+    assert_eq!(screen_for(ScreenSide::Left, &screens, None, None).map(|m| m.id), Some(1));
+    assert_eq!(screen_for(ScreenSide::Right, &screens, None, None).map(|m| m.id), Some(2));
+    assert_eq!(screen_for(ScreenSide::Primary, &screens, None, None).map(|m| m.id), Some(2));
+    assert_eq!(screen_for(ScreenSide::Other, &screens, None, Some(2)).map(|m| m.id), Some(1));
+    assert_eq!(screen_for(ScreenSide::Laptop, &screens, Some(1), None).map(|m| m.id), Some(1));
+}
+
+#[test]
+fn a_window_goes_to_the_screen_you_name() {
+    use atlas::platform::mock::{Action, MockPlatform};
+    use atlas::platform::{Monitor, PixelRect};
+    let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    let p = MockPlatform::new(vec![
+        Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1080, primary: true },
+        Monitor { id: 2, x: 1920, y: 0, width: 2560, height: 1440, primary: false },
+    ]);
+    let dir = std::env::temp_dir().join(format!("atlas-move-screen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut d = atlas::daemon::Daemon::new(&c, &p, None, atlas::store::Store::new(dir), atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()));
+    d.turn("open chrome", 1_000);
+    let said = d.turn("move chrome to my right monitor", 1_010);
+    assert_eq!(said, "Moved chrome to your right screen.");
+    let placed = p.log.borrow().iter().rev().find_map(|a| match a {
+        Action::Place(_, r) => Some(*r),
+        _ => None,
+    });
+    assert_eq!(placed, Some(PixelRect { x: 1920, y: 0, width: 2560, height: 1440 }));
+    // Nothing open by that name: said plainly. (A fresh Atlas: the stand-in
+    // platform matches any running window by app, not by title.)
+    let dir2 = std::env::temp_dir().join(format!("atlas-move-screen2-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir2);
+    let p2 = MockPlatform::new(vec![
+        Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1080, primary: true },
+        Monitor { id: 2, x: 1920, y: 0, width: 2560, height: 1440, primary: false },
+    ]);
+    let mut d2 = atlas::daemon::Daemon::new(&c, &p2, None, atlas::store::Store::new(dir2), atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()));
+    let none = d2.turn("move notepad to my left monitor", 1_020);
+    assert!(none.starts_with("I couldn't move it"), "{none}");
+}

@@ -178,7 +178,9 @@ fn a_second_question_while_one_is_thinking_takes_the_other_slot() {
     let asked = daemon[aside..].find(".converse_noting(").map(|i| i + aside).expect("converse_noting");
     assert!(aside < asked);
     let brain = source("src/brain.rs");
-    assert_eq!(brain.matches("aside: turn.aside").count(), 2, "the conversation call no longer carries the choice");
+    // Three since 30 Sep 2026: the call made first when a request plainly
+    // wants a tool (`converse_with_tools`) is a conversation call too.
+    assert_eq!(brain.matches("aside: turn.aside").count(), 3, "the conversation call no longer carries the choice");
 }
 
 // ------------------------------------------------------------- the Talk page
@@ -798,6 +800,20 @@ fn have_a_go_hands_over_the_cause_as_the_cause() {
     assert_eq!(s.diagnosing.proof.as_deref(), Some(r.proof.as_str()));
 }
 
+#[test]
+fn a_failed_call_is_said_once_without_the_error_kind() {
+    // The real-model run, 30 Sep 2026: "(platform: platform: I couldn't reach
+    // the model at 127.0.0.1:8093: Connection refused. I'll try again with
+    // your next message), so the answer you asked for is missing. I'll try
+    // again with your next message."
+    let w = atlas::daemon::model_failed_words(
+        "Model unreachable: platform: platform: I couldn't reach the model at 127.0.0.1:8093: Connection refused (os error 111). I'll try again with your next message",
+    );
+    assert_eq!(w.matches("try again").count(), 1, "{w}");
+    assert!(!w.to_lowercase().contains("platform:"), "{w}");
+    assert!(w.contains("Connection refused"), "{w}");
+}
+
 // ---- 30 Sep 2026: offline first, online second, and what was measured.
 
 /// A free online service's answer is read, and a refusal is told apart
@@ -877,9 +893,8 @@ fn talk_is_spoken_length_unless_you_ask_for_more() {
 #[test]
 fn the_prompt_forbids_made_up_history() {
     let c = atlas::persona::Persona::default().character();
-    // 30 Sep 2026 (merged with the prompt diet): its wording.
-    assert!(c.contains("Never invent people, events or stories"), "{c}");
-    assert!(c.contains("Don't remark on the time"));
+    assert!(c.contains("Never invent past events, shared memories"), "{c}");
+    assert!(c.contains("Don't mention the time of day"));
 }
 
 /// The bench's checks catch what a person heard as wrong.
@@ -975,13 +990,15 @@ fn parakeet_hears_real_speech_through_atlas_own_client() {
 fn a_question_is_answered_first_and_talk_is_still_free() {
     let p = atlas::persona::Persona::default();
     let c = p.character();
-    // 30 Sep 2026 (merged with the prompt diet): the same rule, shorter; and
-    // the friend's talk after it is the diet's own "small talk" line.
-    assert!(c.contains("a question's answer comes \
-             first."), "{c}");
-    assert!(c.contains("Small talk: a friend who knows them"), "{c}");
+    assert!(c.contains("A question gets its answer, in your first sentence"), "{c}");
+    assert!(c.contains("Never answer a question with a question"));
+    assert!(c.contains("After that you're free to talk"));
     let chat = p.for_this_turn_on(atlas::register::Register::Chatting, 3, "what's your favourite film", false);
-    assert!(chat.contains("answer like a friend would"), "{chat}");
+    // Merged 30 Sep 2026: answering first is in the turn's own line; the
+    // freedom to talk after is in the character ("After that you're free to
+    // talk"). "Go with a tangent" isn't said: a 4B model on this laptop
+    // answered every sentence with one and three questions (29 Sep 2026).
+    assert!(chat.contains("first"), "{chat}");
     use atlas::talkbench::question_dodged;
     assert!(question_dodged("give me three ideas for dinner tonight", "What's your mood? Something simple?").is_some());
     assert!(question_dodged("give me three ideas for dinner tonight", "Pasta, soup, or eggs. Want the recipe?").is_none());

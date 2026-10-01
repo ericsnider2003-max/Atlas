@@ -497,7 +497,27 @@ fn a_text_is_written_for_your_phone_to_send() {
     assert!(card.contains("href=\"sms:5551234567?&amp;body=I%27m%20running%20late.\""), "{card}");
     // "message Sam saying ..." with no paired Atlas called Sam: a text too.
     let ask = d.turn("message Sam saying on my way", NOW + 30);
-    assert!(ask.contains("it goes as you") && !ask.contains("terms"), "{ask}");
+    assert!(ask.contains("as you") && !ask.contains("terms"), "{ask}");
     let msg = d.turn("yes", NOW + 35);
     assert!(msg.starts_with("Text to Sam:"), "{msg}");
+}
+
+/// Bing's result links (`ck/a?...&u=a1<base64url>`) are read, and Bing's
+/// own furniture isn't taken for a source (30 Sep 2026: DuckDuckGo answered
+/// the laptop with a robot check, so research found "no sources").
+#[test]
+fn bing_results_are_read_through_its_redirect() {
+    let enc = |u: &str| atlas::b64::encode(u.as_bytes()).trim_end_matches('=').replace('+', "-").replace('/', "_");
+    let page = format!(
+        "<link href=\"https://r.bing.com/rs/x.css\"><h2><a href=\"https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u=a1{}&amp;ntb=1\">Canberra</a></h2>\
+         <h2><a href=\"https://www.bing.com/ck/a?!&amp;&amp;p=def&amp;u=a1{}&amp;ntb=1\">B</a></h2><a href=\"https://www.bing.com/images\">x</a>",
+        enc("https://en.wikipedia.org/wiki/Canberra"),
+        enc("https://www.britannica.com/place/Canberra")
+    );
+    assert_eq!(
+        atlas::research::extract_urls(&page, 5),
+        vec!["https://en.wikipedia.org/wiki/Canberra".to_string(), "https://www.britannica.com/place/Canberra".to_string()]
+    );
+    let bing = atlas::research::bing_search();
+    assert!(bing.args.iter().any(|a| a.ends_with("q={query_pct}&form=QBLH")));
 }

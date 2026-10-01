@@ -74,7 +74,8 @@ fn a_capability_that_says_it_works_and_never_ran_is_noticed_but_never_leads() {
         3,
     );
     assert!(recs[0].symptom.contains("keeps failing"));
-    assert!(recs.iter().any(|r| r.symptom.contains("never run")));
+    // 30 Sep 2026: it's about what you haven't asked for (`used`).
+    assert!(recs.iter().any(|r| r.symptom.contains("the overlay")));
 }
 
 #[test]

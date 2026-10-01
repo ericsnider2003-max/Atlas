@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "parakeet", "utterance"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance", "parakeet"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -306,7 +306,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "timebox", what: "stop before you have to ask what's taking so long", area: Thinking, state: Working, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["timebox"] },
         Capability { id: "chain", what: "do something that crosses several apps", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 19, runs: &[Needs::ActInApps], modules: &["chain"] },
         Capability { id: "person", what: "learn how you work", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["person"] },
-        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "freeonline"] },
+        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain", "freeonline"] },
 
         Capability { id: "selfwork", what: "change its own code and test it", area: Itself, state: Off, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["selfwork", "pipeline", "sandbox", "mend", "selfgrant"] },
         Capability { id: "plainchange", what: "explain a change it staged as behaviour, not code — what will now happen and what it no longer promises, read from the tests it adds and drops", area: Itself, state: Untested, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["plainchange"] },
@@ -433,7 +433,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "revise", what: "turn a correction you give it into a change to what it keeps, so you don't have to make it twice", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["revise"] },
         Capability { id: "hollow", what: "notice when its own answer says nothing -- a zero it never measured, a sentence about nothing -- and say so", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["hollow"] },
         Capability { id: "hollowcode", what: "read code for the hollow kind -- compiles, passes, does nothing -- and for dependencies that don't exist", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["hollowcode"] },
-        Capability { id: "selfaudit", what: "look at its own record and say what it should fix about itself, and what it's missing on this machine", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["selfaudit", "signals", "wants"] },
+        Capability { id: "selfaudit", what: "look at its own record and say what it should fix about itself, and what it's missing on this machine", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["selfaudit", "signals", "wants", "used"] },
         Capability { id: "integrations", what: "keep working with the network unplugged, know which of its connections are working right now, and say which one broke", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["integrations", "connectivity"] },
         Capability { id: "health", what: "watch the machine -- a filling disk, memory running short, a backup that stopped, a battery going", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Background], modules: &["health"] },
         Capability { id: "lanes", what: "be busy without making you wait -- work that needs your windows waits for a gap, and a long job says how it's going", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Background], modules: &["lanes", "channel"] },
@@ -467,6 +467,9 @@ pub fn all() -> Vec<Capability> {
         // real here with ffmpeg 9.0 and the two cut-out models in tract;
         // never yet on Eric's laptop, hence untested.
         Capability { id: "photo", what: "edit a photo or a folder of them on a new copy -- brighter, fixed colours, straightened (offered, never forced), cropped for Instagram or a YouTube thumbnail, background blurred or removed -- and take it back", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches; the cut-out models for backgrounds"), offline: true, added: 41, runs: &[Needs::Files], modules: &["photo", "straighten", "cutout"] },
+        Capability { id: "imagemake", what: "make a new picture from a description, on this machine -- nothing uploaded, saved in your Pictures folder", area: Files, state: Blocked, needs: Some("the picture maker: a one-off 6.5 GB download (say \"get the picture maker\")"), offline: true, added: 43, runs: &[Needs::Files], modules: &["imagemake"] },
+        Capability { id: "selftest", what: "try every command on this machine, safely, and report what works, what's off, what needs installing and what's broken", area: Itself, state: Untested, needs: None, offline: true, added: 43, runs: &[Needs::Files, Needs::ReadScreen], modules: &["selftest"] },
+        Capability { id: "operate", what: "do things in your apps -- click through them, fill in boxes, choose options, use their menus -- a step at a time, asking before anything that can't be taken back", area: Windows, state: Untested, needs: Some("the language model; apps that show Windows their controls work best"), offline: true, added: 43, runs: &[Needs::ActInApps, Needs::ReadScreen], modules: &["operate"] },
         Capability { id: "grade", what: "measure a clip's loudness, dialogue and colour, say what a viewer will notice first -- in your words, not the jargon -- and fix it", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["grade", "measure", "plainly"] },
         Capability { id: "voiceover", what: "lay your script over your footage -- where each line lands, the gaps, the music ducked under your voice", area: Files, state: Blocked, needs: Some("piper"), offline: true, added: 40, runs: &[Needs::Files], modules: &["voiceover"] },
         Capability { id: "viewing", what: "watch a video rather than only hear it -- the frames that matter read alongside what's said", area: Seeing, state: Untested, needs: Some("ffmpeg and the picture reader, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["viewing"] },
@@ -494,7 +497,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "wit", what: "be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying \"tone it down\" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else", area: Speaking, state: Working, needs: None, offline: true, added: 41, runs: &[Needs::JustThinking], modules: &["wit", "talkback"] },
         // 30 Sep 2026: Eric's "doesn't know what it's supposed to be doing ...
         // can't use multiple streams of thought ... not completing a task".
-        Capability { id: "router", what: "offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["router"] },
+        Capability { id: "router", what: "offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["router", "meaningroute", "meaningnative"] },
         Capability { id: "taskloop", what: "work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["taskloop"] },
         Capability { id: "streams", what: "do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["streams"] },
         Capability { id: "backed", what: "never say it's on something unless it really started it", area: Speaking, state: Working, needs: None, offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["backed"] },
@@ -934,8 +937,10 @@ pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
 /// a few catalogue lines with their states, and the rule that it never says
 /// it lacks one of them.
 pub fn abilities_for_prompt(said: &str, research_on: bool, most: usize) -> String {
-    let found = find_abilities(said, research_on, most);
+    // At most `most` lines in all, pages first: each line is paid for on
+    // every turn that carries it (the prompt diet, 30 Sep 2026).
     let pages = hub_pages_for(said, most);
+    let found = find_abilities(said, research_on, most.saturating_sub(pages.len()).max(1));
     let mut out = format!(
         "About Atlas (you) -- true, so never say you lack one of these; for a setting, name its hub page. Web research: {}.\n",
         if research_on { "on" } else { "off -- Settings turns it on" }
@@ -1526,10 +1531,18 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // without shouting -- part of `audio`) and `camera_ask` ("can you see me?" --
 // part of `vision`).
 // 427 -> 430 on merging with r8-brain (router, taskloop, backed, streams).
-// 430 -> 435 (30 Sep 2026, merging the sweep): `freeonline` (part of
-// `reason`), `talkbench`, `parakeet` (part of `wake`), `keeping` (part of
-// `calendar`) and `weather`.
-pub const MODULES_IN_TREE: usize = 436;
+// 430 -> 431 (30 Sep 2026): `deepbrain` (the deep model beside the talking
+// one -- part of `reason`).
+// 431 -> 434 (30 Sep 2026): `meaningroute` and `meaningnative` (tools by
+// meaning, part of `router`), and `used` (what gets used, part of
+// `selfaudit`). 434 -> 435: `imagemake` (pictures made on this machine). 435 -> 436: `selftest`. 436 -> 437: `operate`.
+// Merged 30 Sep 2026 with the other chat's 30 Sep work: `freeonline`
+// (the free online models, second to this machine's -- part of `reason`),
+// `talkbench` (Atlas's conversation timed against a model), `parakeet`
+// (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
+// `keeping` (reminders, timers, events moved -- part of `calendar`) and
+// `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`.
+pub const MODULES_IN_TREE: usize = 443;
 
 /// Every module no capability claims, and why it is not one.
 ///

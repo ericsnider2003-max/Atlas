@@ -710,6 +710,7 @@ fn live_llama_server_smoke() {
             skip_phrases: true,
             recent_replies: None,
             research_on: false,
+            wants_a_tool: false,
         };
         let started = std::time::Instant::now();
         let mut first: Option<std::time::Duration> = None;

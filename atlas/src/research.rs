@@ -262,6 +262,7 @@ impl Research {
             v.insert("browser".into(), found.display().to_string());
         }
         v.insert("query".into(), urlencode(topic));
+        v.insert("query_pct".into(), urlencode(topic).replace('+', "%20"));
         v.insert("topic".into(), topic.to_string());
 
         // Your own SearXNG first, when there is one; the search tool when
@@ -277,8 +278,17 @@ impl Research {
                 .search
                 .as_ref()
                 .ok_or_else(|| AtlasError::Config("no search tool configured".into()))?;
-            let results = search.run(&v, None)?;
+            let results = search.run(&v, None).unwrap_or_default();
             urls = extract_urls(&results, self.cfg.max_sources);
+            // DuckDuckGo answers a program with a robot check ("anomaly",
+            // HTTP 202) and no results -- every research run on Eric's
+            // laptop on 30 Sep 2026 ended "no sources found". Bing, asked
+            // the same way, answers; its links are decoded above.
+            if urls.is_empty() && search.args.iter().any(|a| a.contains("duckduckgo.com")) && results.contains("anomaly") {
+                if let Ok(page) = bing_search().run(&v, None) {
+                    urls = extract_urls(&page, self.cfg.max_sources);
+                }
+            }
             if urls.is_empty() {
                 if let Some(bcfg) = &self.browser {
                     if let Some(page) = search_page_url(search, &v) {
@@ -464,6 +474,30 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
             }
         }
     }
+    // Bing's results link through `bing.com/ck/a?...&u=a1<base64url of the
+    // address>`: decoded here, in page order (30 Sep 2026).
+    let mut rest = html;
+    while let Some(i) = rest.find("u=a1") {
+        let tail = &rest[i + 4..];
+        let end = tail.find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_')).unwrap_or(tail.len());
+        let coded = tail[..end].replace('-', "+").replace('_', "/");
+        rest = &tail[end.max(1).min(tail.len())..];
+        let Ok(bytes) = crate::b64::decode(&coded) else { continue };
+        let Ok(target) = String::from_utf8(bytes) else { continue };
+        if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400 {
+            if seen.insert(target.clone(), ()).is_none() {
+                out.push(target);
+                if out.len() >= max {
+                    return out;
+                }
+            }
+        }
+    }
+    // A page that linked through Bing gave its results above; the rest of
+    // it is Bing's own furniture.
+    if html.contains("bing.com/ck/a") {
+        return out;
+    }
     let mut rest = html;
     while let Some(i) = rest.find("http") {
         let tail = &rest[i..];
@@ -560,7 +594,7 @@ fn percent_decode(s: &str) -> String {
 
 fn is_noise(url: &str) -> bool {
     const SKIP: &[&str] = &[
-        "duckduckgo.com", "google.com/search", "bing.com/search", "w3.org",
+        "duckduckgo.com", "google.com/search", "bing.com/", "bing.net", "go.microsoft.com", "msn.com", "w3.org",
         "schema.org", "gstatic.com", "googleapis.com", "cdn.", "/favicon",
         ".css", ".js", ".png", ".jpg", ".svg", ".ico", ".woff",
     ];
@@ -728,6 +762,27 @@ pub fn first_sentences(text: &str, n: usize) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// Bing's results page, fetched as the default search is (curl). `+` for a
+/// space reads to Bing as something else ("speed up llama.cpp" came back as
+/// internet speed tests), so the query goes with `%20` (`query_pct`).
+pub fn bing_search() -> ExternalTool {
+    ExternalTool {
+        command: "curl".into(),
+        args: vec![
+            "-s".into(),
+            "-L".into(),
+            "--max-time".into(),
+            "15".into(),
+            "-A".into(),
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36".into(),
+            "-H".into(),
+            "Accept-Language: en-US,en;q=0.9".into(),
+            "https://www.bing.com/search?q={query_pct}&form=QBLH".into(),
+        ],
+        ..Default::default()
+    }
 }
 
 pub fn urlencode(s: &str) -> String {

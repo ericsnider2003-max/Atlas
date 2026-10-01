@@ -169,7 +169,7 @@ pub fn decide(
     if power.lid_closed && power.lid_action.stops_the_machine() && !power.external_display {
         return (
             Hold::Release,
-            "the lid's shut and this machine sleeps when it is, so I've stopped rather than              keeping it running in a bag"
+            "the lid's shut and this machine sleeps when it is, so I've stopped rather than keeping it running in a bag"
                 .into(),
         );
     }

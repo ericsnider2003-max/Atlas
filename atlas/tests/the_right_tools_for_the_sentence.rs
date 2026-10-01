@@ -235,6 +235,9 @@ fn a_normal_turn_is_under_nine_hundred_tokens_and_starts_the_same_every_time() {
     for (said, m, tl, n, _) in &rows {
         let r = &rows.iter().find(|x| x.0 == *said).unwrap().4;
         let sizes: Vec<String> = r.messages.iter().map(|m| format!("{}{}", &m.role.name()[..1], m.content.chars().count())).collect();
+        if std::env::var_os("DIET_SHOW").is_some() {
+            println!("USER<<{}>>", r.messages.last().map(|m| m.content.clone()).unwrap_or_default());
+        }
         println!("DIET ~{:>4} tokens = {:>4} messages + {:>4} tools ({n} tools) [{}] | {said}", m + tl, m, tl, sizes.join(" "));
         total += m + tl;
         // Before: about 2,800 on average. The ceiling for any one turn: a

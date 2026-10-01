@@ -164,7 +164,7 @@ fn symptom_for(s: &Signal) -> String {
         Kind::YouKeepCorrecting => format!("you keep correcting what I say about {}", s.subject),
         Kind::GotSlower => format!("{} has got slower", s.subject),
         Kind::NotUnderstood => format!("I keep not understanding {}", s.subject),
-        Kind::NeverUsed => format!("{} says it works and has never run", s.subject),
+        Kind::NeverUsed => format!("there's {} in two weeks", s.subject),
         Kind::AskedAgain => format!("you keep asking me {} again", s.subject),
         Kind::NeverFailed => format!("the test for {} has never once failed", s.subject),
     }

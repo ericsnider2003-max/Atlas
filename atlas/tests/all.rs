@@ -872,14 +872,6 @@ mod the_background_atlas_hears_you;
 mod the_overlay_covers_only_its_words;
 #[path = "the_system_recovers_by_itself.rs"]
 mod the_system_recovers_by_itself;
-#[path = "keeping_track.rs"]
-mod keeping_track;
-#[path = "weather_answered.rs"]
-mod weather_answered;
-#[path = "conversation_sweep.rs"]
-mod conversation_sweep;
-#[path = "getting_things_done.rs"]
-mod getting_things_done;
 #[path = "one_evening_on_the_laptop.rs"]
 mod one_evening_on_the_laptop;
 #[path = "the_name_and_the_request_in_one_breath.rs"]
@@ -890,9 +882,41 @@ mod every_screen_is_seen;
 mod the_right_tools_for_the_sentence;
 #[path = "finishing_what_it_starts.rs"]
 mod finishing_what_it_starts;
+#[path = "several_approvals.rs"]
+mod several_approvals;
+#[path = "two_brains.rs"]
+mod two_brains;
 #[path = "a_real_model_answers_him.rs"]
 mod a_real_model_answers_him;
 #[path = "a_normal_voice_is_heard.rs"]
 mod a_normal_voice_is_heard;
 #[path = "atlas_looks_when_you_ask.rs"]
 mod atlas_looks_when_you_ask;
+#[path = "meaning_picks_the_tool.rs"]
+mod meaning_picks_the_tool;
+#[path = "meaning_checks_the_reply.rs"]
+mod meaning_checks_the_reply;
+#[path = "what_gets_used_is_counted.rs"]
+mod what_gets_used_is_counted;
+#[path = "talking_does_not_hold_the_loop.rs"]
+mod talking_does_not_hold_the_loop;
+#[path = "a_quiet_tick_is_quick.rs"]
+mod a_quiet_tick_is_quick;
+#[path = "every_ability_answers.rs"]
+mod every_ability_answers;
+#[path = "pictures_are_made_here.rs"]
+mod pictures_are_made_here;
+#[path = "an_old_question_of_its_own_is_dropped.rs"]
+mod an_old_question_of_its_own_is_dropped;
+#[path = "atlas_tests_itself.rs"]
+mod atlas_tests_itself;
+#[path = "atlas_works_an_app.rs"]
+mod atlas_works_an_app;
+#[path = "keeping_track.rs"]
+mod keeping_track;
+#[path = "weather_answered.rs"]
+mod weather_answered;
+#[path = "conversation_sweep.rs"]
+mod conversation_sweep;
+#[path = "getting_things_done.rs"]
+mod getting_things_done;

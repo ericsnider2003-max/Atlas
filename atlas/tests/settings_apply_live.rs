@@ -122,17 +122,22 @@ fn one_that_needs_a_restart_is_kept_and_says_so() {
     let mut d = Daemon::new(&cfg, &p, None, store("restart"), Proactive::new(ProactiveConfig::default()))
         .watch_settings(dir.clone());
 
-    // 30 Sep 2026: the voice is one that waits for a restart. (The wake word
-    // ships on now, and switches live -- `pick_up_settings` -> `set_wake`.)
+    // 30 Sep 2026: was `wake.enabled`, which now applies live; the voice is
+    // still one that waits for a restart.
     change(&dir, "voice.enabled", "on");
     let said = d.pick_up_settings();
     assert_eq!(said.len(), 1, "{said:?}");
     assert!(said[0].ends_with("will be on when I next start."), "{said:?}");
-    // The wake word, switched off, is off now -- said as such.
+    // And the wake word -- which ships on (29 Sep 2026) -- switched off and
+    // on again applies now, said as such.
     change(&dir, "wake.enabled", "off");
     let said = d.pick_up_settings();
-    assert_eq!(said, vec!["Wake word is now off.".to_string()]);
-    assert!(!d.wake_on(), "the switch didn't reach the running Atlas");
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(!d.wake_on(), "off didn't reach the running Atlas");
+    change(&dir, "wake.enabled", "on");
+    let said = d.pick_up_settings();
+    assert_eq!(said, vec!["Wake word is now on.".to_string()]);
+    assert!(d.wake_on(), "the switch didn't reach the running Atlas");
     let _ = fs::remove_dir_all(&dir);
 }
 

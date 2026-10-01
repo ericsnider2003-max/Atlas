@@ -58,7 +58,13 @@ fn nothing_answers_a_question_from_an_empty_list_it_was_handed() {
 fn asking_about_travel_uses_the_accounts_atlas_actually_holds() {
     let d = code("daemon.rs");
     let at = d.find("Intent::TravelPrep").expect("travel prep is gone");
-    let body = &d[at..at + 700];
+    // The arm names its handler (`execute_inner` as a table, 30 Sep 2026):
+    // the body is the handler's.
+    let at = match d[at..at + 200].find("self.on_travel_prep(") {
+        Some(_) => d.find("fn on_travel_prep(").expect("the travel handler is gone"),
+        None => at,
+    };
+    let body = &d[at..(at + 1500).min(d.len())];
     assert!(
         body.contains("self.accounts.accounts"),
         "the travel answer still does not read your accounts"

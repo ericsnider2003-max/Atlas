@@ -67,11 +67,11 @@ pub fn ask_quietly(prompt: &str) -> Option<String> {
     // promise. Falls through when there is no console to ask.
     #[cfg(windows)]
     if let Some(q) = console::Quiet::start() {
-        print!("{prompt}");
+        crate::out!("{prompt}");
         let _ = std::io::stdout().flush();
         let got = q.read_line();
         drop(q);
-        println!();
+        crate::outln!();
         return got.and_then(clean);
     }
 
@@ -86,15 +86,15 @@ pub fn ask_quietly(prompt: &str) -> Option<String> {
 
     let hidden = hide_typing(true);
     if !hidden {
-        println!("(I can't turn off the echo on this terminal — what you type will show.)");
+        crate::outln!("(I can't turn off the echo on this terminal — what you type will show.)");
     }
-    print!("{prompt}");
+    crate::out!("{prompt}");
     let _ = std::io::stdout().flush();
     let mut line = String::new();
     let read = std::io::stdin().read_line(&mut line);
     if hidden {
         hide_typing(false);
-        println!();
+        crate::outln!();
     }
     match read {
         Ok(0) | Err(_) => None,
@@ -144,7 +144,7 @@ fn masked_read(prompt: &str) -> Option<String> {
     use std::io::Write;
     // Our prompt, on our own console, because PowerShell's own would be
     // swallowed by the pipe we are reading its answer from.
-    print!("{prompt}");
+    crate::out!("{prompt}");
     let _ = std::io::stdout().flush();
 
     let script = "\
@@ -159,7 +159,7 @@ fn masked_read(prompt: &str) -> Option<String> {
         .stderr(std::process::Stdio::null())
         .output()
         .ok()?;
-    println!();
+    crate::outln!();
     if !out.status.success() {
         return None;
     }

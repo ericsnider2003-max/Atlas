@@ -187,6 +187,16 @@ impl<'a> Daemon<'a> {
             return String::new();
         }
 
+        // "Stop" while Atlas is working an app ends that job, there and then.
+        if self.operating.is_some() {
+            let l = said.to_lowercase();
+            let l = l.trim().trim_end_matches(['.', '!']);
+            if matches!(l, "stop" | "stop that" | "stop it" | "cancel" | "cancel that" | "never mind" | "stop working on that") {
+                if let Some(s) = self.stop_operating() {
+                    return s;
+                }
+            }
+        }
         // Pause and resume are heard before anything else, so they work even
         // mid-task and mid-sentence.
         match hear(said) {
@@ -217,9 +227,13 @@ impl<'a> Daemon<'a> {
             // just Atlas asking and starting things. The endings still
             // arrive through `settle`, reported rather than swallowed.
             Some(Heard::Panic) => {
+                // A job in an app ends where it is.
+                let _ = self.stop_operating();
                 // A model turn still thinking is stopped too: its answer
                 // would otherwise run its tool when it came back (28 Sep 2026).
                 self.drop_pending_turn(t, "Stopped before I answered -- nothing was done.");
+                // A request of several steps ends at its next step.
+                self.stop_task_loop();
                 let asked = self.crew.ask_everyone_to_stop();
                 let halted = self.attention.halt(t);
                 // `halt`'s own doc says "queues emptied, work abandoned" —
@@ -259,6 +273,8 @@ impl<'a> Daemon<'a> {
                     self.attention.suspend(id);
                 }
                 self.drop_pending_turn(t, "Paused before I answered -- nothing was done.");
+                // A request of several steps holds before its next step.
+                self.hold_task_loop(true);
                 // "Pause" is total: the errands hold too, at their safe
                 // points, and nothing they have done is lost.
                 let msg = self.attention.pause(self.current_work(), t);
@@ -415,6 +431,15 @@ impl<'a> Daemon<'a> {
         // (30 Sep 2026, `streams`).
         if crate::streams::asks_what_youre_working_on(said) {
             let reply = self.what_im_working_on();
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
+
+        // "Use the better model" / "use the faster model" (30 Sep 2026,
+        // `deepbrain`): which model talks with you.
+        if let Some(better) = crate::deepbrain::asks_for_talk_model(said) {
+            let reply = self.choose_talk_model(better);
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -583,6 +608,12 @@ impl<'a> Daemon<'a> {
         // A parked approval takes precedence: the next thing you say is an
         // answer, not a new command.
         if let Pending::Approval(intent, description) = self.session.pending.clone() {
+            // Several waiting (30 Sep 2026), answered together: "yes to
+            // both", "no to the second".
+            let waiting = self.session.approvals_waiting();
+            if let Some(answers) = crate::session::answers_for_several(said, waiting) {
+                return self.answer_several(said, answers, t);
+            }
             let kind = kind_of(&intent).to_string();
             // A question you were asked is not a question anyone else may
             // answer. Atlas asks "go ahead?", you hand the laptop over, and
@@ -595,7 +626,7 @@ impl<'a> Daemon<'a> {
             // all. A stranger's yes must not teach Atlas anything about what
             // you approve of.
             if let Some(refusal) = self.handed_over_refusal(&intent) {
-                self.session.pending = Pending::Nothing;
+                self.session.drop_approvals();
                 self.pending_job = None;
                 return refusal;
             }
@@ -613,6 +644,7 @@ impl<'a> Daemon<'a> {
                     self.memory.record_approval(&kind, true, None);
                     let reply = self.execute(&intent);
                     self.session.record(said, &intent, &reply);
+                    let reply = self.and_the_next_approval(reply);
                     self.persist();
                     return reply;
                 }
@@ -647,10 +679,15 @@ impl<'a> Daemon<'a> {
                     "Left it alone.".into()
                 };
                 self.session.record(said, &intent, &reply);
+                // The next approval waiting, asked now.
+                let reply = self.and_the_next_approval(reply);
                 self.persist();
                 return reply;
             }
             self.pending_job = None;
+            // Something new instead of an answer: everything that was
+            // waiting is dropped with the question.
+            self.session.queued.clear();
         }
 
         // A workflow paused mid-chain for your yes.
@@ -823,6 +860,10 @@ impl<'a> Daemon<'a> {
                     return "Alright, nothing moved.".into();
                 }
                 return self.carry_out_storage_plan(plan, t);
+            }
+            // A job in an app waiting on you (`operate`).
+            if let Some(answer) = self.operate_answer(said) {
+                return answer;
             }
             // A button that can't be undone (G4).
             if let Some((win, name, app)) = self.pending_press.take() {
@@ -1130,6 +1171,8 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.drafts_help(raw))
             .or_else(|| self.one_message_help(raw))
             .or_else(|| self.text_help(raw))
+            .or_else(|| self.move_window_help(raw))
+            .or_else(|| self.improvements_help(raw))
             .or_else(|| self.compose_help(raw))
             .or_else(|| self.progress_help(raw))
             .or_else(|| self.unsubscribe_help(raw))
@@ -1165,6 +1208,8 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.drafts_help(raw))
             .or_else(|| self.one_message_help(raw))
             .or_else(|| self.text_help(raw))
+            .or_else(|| self.move_window_help(raw))
+            .or_else(|| self.improvements_help(raw))
             .or_else(|| self.compose_help(raw))
             .or_else(|| self.progress_help(raw))
             .or_else(|| self.unsubscribe_help(raw))
@@ -1357,7 +1402,7 @@ impl<'a> Daemon<'a> {
                     turn.skip_phrases = beyond_the_notes;
                     self.by_chat = needs_model && llm.native_chat();
                     match several {
-                        Some(tasks::Several::SideBySide(parts)) => self.work_side_by_side(llm.clone(), parts, _t, register, &persona),
+                        Some(tasks::Several::SideBySide(parts)) => self.work_side_by_side(llm.clone(), said, parts, _t, register, &persona),
                         Some(tasks::Several::StepByStep) => self.work_through(llm.clone(), said, turn, _t),
                         None => {
                     // The Talk page and the voice loop don't wait here: the
@@ -1387,6 +1432,7 @@ impl<'a> Daemon<'a> {
                         p.clear();
                     }
                     let mut also = Vec::new();
+                    let _talking = self.talking_guard();
                     let d = Brain { llm: &*llm, fallback: &self.parser, voice: Some((&persona, register)) }.converse_noting(
                         &turn,
                         &mut |piece| {
@@ -1604,10 +1650,14 @@ impl<'a> Daemon<'a> {
         // Answering, reading and conversation are exempt: "what did I do
         // tonight" is a question, not an instruction to wait, and parking it
         // would make Atlas mute on the word.
+        // Nor a question about the night: "what did you do overnight" was
+        // parked until you were out of the way (the capability sweep, 30 Sep
+        // 2026).
         if !matches!(
             intent,
-            Intent::Unknown(_) | Intent::Ask(_) | Intent::Say(_) | Intent::Why(_)
-        ) {
+            Intent::Unknown(_) | Intent::Ask(_) | Intent::Say(_) | Intent::Why(_) | Intent::Overnight | Intent::Recap
+        ) && !asks_about_what_happened(said)
+        {
             if let Some(blocker) = crate::backlog::asked_to_wait(said) {
                 let id = self.backlog.record(said, blocker, _t);
                 let _ = self.backlog.save(&self.store);
@@ -1764,8 +1814,20 @@ impl<'a> Daemon<'a> {
                         s if s.trim().is_empty() => format!("Just to check -- {}.", intent.plain()),
                         s => s,
                     };
-                    let q = match cat {
-                        crate::categories::Category::LocalOperational | crate::categories::Category::LocalCreative => {
+                    // A message goes out as you, and pairing links two Atlases:
+                    // neither signs you up to anyone's terms, which is what the
+                    // agreement line said for both (the capability sweep, 30
+                    // Sep 2026). And one that names nothing asks what first.
+                    let q = match (&intent, cat) {
+                        (Intent::CreateAccount(w) | Intent::SignIn(w), _) if w.trim().is_empty() => {
+                            return "Which site?".into();
+                        }
+                        (Intent::Message(_), _) => format!("{} -- it goes out as you. Go ahead?", capital_first(&say.trim_end_matches('.').replace("Just to check -- ", ""))),
+                        (Intent::Pair(_) | Intent::AcceptPairing(_), _) => format!(
+                            "{} -- that Atlas and this one could then reach each other. Go ahead?",
+                            capital_first(&say.trim_end_matches('.').replace("Just to check -- ", ""))
+                        ),
+                        (_, crate::categories::Category::LocalOperational | crate::categories::Category::LocalCreative) => {
                             format!("{say} Go ahead?")
                         }
                         _ => crate::categories::consent_line(cat, say.trim_end_matches('.')),
@@ -2150,13 +2212,12 @@ impl<'a> Daemon<'a> {
     /// producing them. A self-audit with an empty input list reports that
     /// everything is fine, which is the most misleading possible answer.
     pub fn refresh_signals(&mut self) {
-        // Nothing records which capabilities a turn used, so there is no
-        // "never used" list to give. This was every capability marked
-        // working -- persona, calendar, thread among them -- shown on the
-        // Improvements page as "nothing has ever called" them, with a "Have a
-        // go" that could never be done (29 Sep 2026). Empty until use is
-        // actually recorded; `signals::from_unused` then says nothing.
-        let never_used: Vec<String> = Vec::new();
+        // What requests have actually used (`used`, 30 Sep 2026). Only
+        // abilities there's a way to ask for, and only after two weeks of
+        // counting: before that it's empty and `from_unused` says nothing
+        // (29 Sep: every working ability was listed as never called, with a
+        // "Have a go" that could never be done).
+        let never_used = self.used.unasked(crate::store::now());
         let total = crate::capability::all().len() as u32;
         self.signals = crate::signals::gather(
             &self.history,
@@ -2700,4 +2761,23 @@ impl<'a> Daemon<'a> {
         }
         answer
     }
+}
+
+/// The first letter a capital.
+fn capital_first(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+/// "What did you do overnight?", "how was tonight's backup?": asking about
+/// something, not asking for it later. "Can you back up tonight?" is a
+/// request, and still waits.
+fn asks_about_what_happened(said: &str) -> bool {
+    const ASKING: &[&str] = &["what", "what's", "whats", "who", "why", "how", "where", "which", "did", "was", "were", "is", "are", "has", "have"];
+    let first = said.split_whitespace().next().unwrap_or("").to_lowercase();
+    let first = first.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
+    ASKING.contains(&first)
 }

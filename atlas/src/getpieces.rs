@@ -297,6 +297,99 @@ pub fn draft_model() -> Piece {
     }
 }
 
+/// "Better answers" (`models.talk: better`, `deepbrain`): Qwen3.5 4B at
+/// Q4_K_M, bartowski's quantisation of Qwen's own weights, pinned to that
+/// repository's commit. Size and SHA-256 are Hugging Face's LFS record of
+/// the file (30 Sep 2026), and the same as Eric's copy, hashed on his laptop.
+/// Its picture encoder (`mmproj-Qwen_Qwen3.5-4B-f16.gguf`, 672 MB) is not
+/// fetched: pictures stay with the Qwen3-VL model (`picture_talk`), because
+/// Qwen3.5's own template thinks out loud unless told not to, and the
+/// picture program isn't told.
+pub fn better_talk_model() -> Piece {
+    Piece {
+        name: "the better model",
+        for_what: "more natural answers",
+        url: "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve/4168f45a16a1290d65a4ec0fa312ae917a4c15d6/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+        sha256: "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+        bytes: 3_013_027_808,
+        lands: Lands::File("models/Qwen_Qwen3.5-4B-Q4_K_M.gguf"),
+    }
+}
+
+/// The shipped talking model, as `pictures` fetches it.
+pub fn faster_talk_model() -> Piece {
+    pictures().into_iter().find(|p| p.name == "the language model").expect("the pictures set has the language model")
+}
+
+/// The deep brain (`models.deep`, `deepbrain`): Qwen3.5 9B at IQ4_XS,
+/// bartowski's, pinned to that repository's commit. Size and SHA-256 as for
+/// `better_talk_model` (Hugging Face's LFS record, 30 Sep 2026; the same as
+/// Eric's copy).
+pub fn deep_model() -> Piece {
+    Piece {
+        name: "the deep brain",
+        for_what: "research, drafts and summaries written with more care",
+        url: "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/182be2fd6c7bc44887d88a91cb03ff009cc9f549/Qwen_Qwen3.5-9B-IQ4_XS.gguf",
+        sha256: "7d977cc96c2e08616016d967f232083e354691a8a16f345b26f7d782ee5c9601",
+        bytes: 5_501_202_464,
+        lands: Lands::File("models/Qwen_Qwen3.5-9B-IQ4_XS.gguf"),
+    }
+}
+
+/// A size as a button says it: "5.1 GB" (binary gigabytes, as Windows shows
+/// a file's size), or megabytes under one.
+pub fn gib_label(bytes: u64) -> String {
+    let gib = bytes as f64 / (1u64 << 30) as f64;
+    if gib >= 1.0 {
+        format!("{gib:.1} GB")
+    } else {
+        format!("{} MB", (bytes + (1 << 20) - 1) >> 20)
+    }
+}
+
+/// Where a model may already be on this computer besides the models folder:
+/// a `model-bench` folder in Atlas's folder or beside it (where Eric
+/// measured them, 30 Sep 2026).
+pub fn places_it_may_be(root: &Path) -> Vec<PathBuf> {
+    let mut out = vec![root.join("model-bench")];
+    if let Some(up) = root.parent() {
+        out.push(up.join("model-bench"));
+    }
+    out
+}
+
+/// A one-file piece already on this computer in one of `places`, with the
+/// right size and SHA-256: moved into place (copied, where it can't be
+/// moved). The folder it came from, or `None` when it isn't anywhere.
+pub fn take_in(p: &Piece, root: &Path, places: &[PathBuf]) -> Result<Option<PathBuf>, String> {
+    let Lands::File(rel) = &p.lands else { return Ok(None) };
+    let Some(file) = Path::new(rel).file_name() else { return Ok(None) };
+    let dest = root.join(rel);
+    for place in places {
+        let found = place.join(file);
+        if found == dest || std::fs::metadata(&found).map(|m| m.len()).ok() != Some(p.bytes) {
+            continue;
+        }
+        let got = crate::digest::sha256_file_hex(&found).map_err(|e| format!("I couldn't read {}: {e}", found.display()))?;
+        if !got.eq_ignore_ascii_case(p.sha256) {
+            continue;
+        }
+        if let Some(d) = dest.parent() {
+            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(&found, &dest)
+            .or_else(|_| {
+                let beside = dest.with_extension("incoming");
+                std::fs::copy(&found, &beside).and_then(|_| std::fs::rename(&beside, &dest)).inspect_err(|_| {
+                    let _ = std::fs::remove_file(&beside);
+                })
+            })
+            .map_err(|e| format!("I couldn't put {} in place: {e}", p.name))?;
+        return Ok(Some(place.clone()));
+    }
+    Ok(None)
+}
+
 /// Tor, for reaching friends from anywhere (`onion`): the Tor Project's own
 /// "expert bundle" -- `tor` and the pluggable transports (`lyrebird`, for the
 /// bridges a network that blocks Tor needs, with their `pt_config.json`).
@@ -367,6 +460,74 @@ pub fn photos() -> Vec<Piece> {
     ]
 }
 
+/// What lets Atlas understand what you mean, not only the words you used
+/// (30 Sep 2026): the meaning model, run inside Atlas (`meaningnative`), and
+/// its word list. Both Hugging Face's own files from the model's page,
+/// hash-checked; 90 MB together. Tools are then chosen by meaning as well as
+/// words, and search by meaning needs no separate program.
+pub fn understanding() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the meaning model",
+            for_what: "understanding what you mean, not only the words you used",
+            url: "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+            sha256: "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452",
+            bytes: 90_405_214,
+            lands: Lands::File("models/understanding/all-MiniLM-L6-v2.onnx"),
+        },
+        Piece {
+            name: "its word list",
+            for_what: "understanding what you mean, not only the words you used",
+            url: "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt",
+            sha256: "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
+            bytes: 231_508,
+            lands: Lands::File("models/understanding/vocab.txt"),
+        },
+    ]
+}
+
+/// The picture maker (`imagemake`, 30 Sep 2026): stable-diffusion.cpp's
+/// Vulkan build for Windows (release master-890-74988b2, MIT), Z-Image Turbo
+/// at 4-bit (Apache 2.0), its Qwen3 4B text encoder (Apache 2.0) and its
+/// decoder. Sizes and SHA-256 from Hugging Face's own records and the
+/// release file, 30 Sep 2026. About 6.5 GB.
+pub fn picture_making() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the picture maker",
+            for_what: "making pictures on this machine",
+            url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-890-74988b2/sd-master-74988b2-bin-win-vulkan-x64.zip",
+            sha256: "744c8f817c66ecfd02fbb9dc8b122e1f29f7240db1f6086dfde2669403c5d896",
+            bytes: 31_932_748,
+            lands: Lands::Zip { inside: "", dir: "tools/sd", key: "tools/sd/sd-cli.exe" },
+        },
+        Piece {
+            name: "its picture model",
+            for_what: "making pictures on this machine",
+            url: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_0.gguf",
+            sha256: "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+            bytes: 3_683_370_944,
+            lands: Lands::File("models/pictures/z_image_turbo-Q4_0.gguf"),
+        },
+        Piece {
+            name: "its text encoder",
+            for_what: "making pictures on this machine",
+            url: "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            sha256: "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+            bytes: 2_497_281_120,
+            lands: Lands::File("models/pictures/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"),
+        },
+        Piece {
+            name: "its decoder",
+            for_what: "making pictures on this machine",
+            url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+            sha256: "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+            bytes: 335_304_388,
+            lands: Lands::File("models/pictures/ae.safetensors"),
+        },
+    ]
+}
+
 /// Better hearing (`parakeet`): sherpa-onnx 1.13.8's server and NVIDIA's
 /// Parakeet TDT 0.6B v2 (int8). Hashes and sizes from downloading each on
 /// 30 Sep 2026; the model and the Linux build were run through Atlas's own
@@ -426,6 +587,23 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("pictures") => Some(("what Atlas needs to read charts and screens (about 3 GB)", pictures())),
         Some("tor" | "friends") => Some(("Tor, so friends can reach your Atlas from anywhere", tor())),
         Some("photos" | "photo") => Some(("the cut-out models Atlas needs to blur or remove a photo's background", photos())),
+        Some("pictures-made" | "picture-maker" | "imagemake") => Some(("what Atlas needs to make pictures on this machine (about 6.5 GB)", picture_making())),
+        // Everything a model or a program for this machine, in one go (30
+        // Sep 2026: "make the picture and meaning model download on
+        // install"). Tor isn't one: it's for reaching friends, not for
+        // anything Atlas does here.
+        Some("everything" | "all") => {
+            let mut all = catalogue();
+            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making(), parakeet_pieces()] {
+                for p in more {
+                    if !all.iter().any(|a: &Piece| a.key_path() == p.key_path()) {
+                        all.push(p);
+                    }
+                }
+            }
+            Some(("everything Atlas can use on this machine: voice, Parakeet hearing, understanding, seeing, reading and making pictures (about 11.5 GB)", all))
+        }
+        Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
         Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better (about 500 MB)", parakeet_pieces())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,

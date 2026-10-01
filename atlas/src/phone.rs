@@ -219,7 +219,7 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
 /// `send`, with a link the notification opens when tapped (ntfy's
 /// `click`): the texts Atlas writes open Messages with them filled in. Only
 /// with detail on -- the link carries the words.
-pub fn send_with_click(note: &crate::notify::Note, cfg: &PhoneConfig, click: &str) -> Result<()> {
+pub(crate) fn send_with_click(note: &crate::notify::Note, cfg: &PhoneConfig, click: &str) -> Result<()> {
     if note.private || !cfg.include_detail {
         return send(note, cfg);
     }

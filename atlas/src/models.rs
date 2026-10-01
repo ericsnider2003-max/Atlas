@@ -104,14 +104,34 @@ pub struct ModelsConfig {
     /// `ngram-map-k4v`, `ngram-cache`). `off` (or empty): off. Helps most when a reply
     /// repeats what it read -- a summary, code, a quoted list.
     pub speculate: String,
-    /// Offline first, online second (Eric, 30 Sep 2026): when the model on
-    /// this machine can't answer, or there isn't one, a free model online
-    /// that needs no account (`freeonline`). `false`: nothing is sent.
-    pub online_second: bool,
     /// How the model picks its words (`Sampling`): sent with every request,
     /// so the server's own defaults -- no penalty for repeating at all --
     /// never apply.
     pub sampling: Sampling,
+    /// The model you talk with (30 Sep 2026, `deepbrain`): `faster` (the
+    /// shipped Qwen3-VL 4B -- also the default, empty), `better` (Qwen3.5
+    /// 4B: more natural replies, about half as quick to read a prompt,
+    /// measured on Eric's laptop), or a model's file name in `dir`. The
+    /// hub's "Better answers" and "use the better model" set it.
+    pub talk: String,
+    /// The model for work nobody is waiting on word by word -- research,
+    /// drafts, summaries, the night's work, a request of several steps --
+    /// run as a second server beside the talking one, started when such
+    /// work comes and stopped when it has been idle (`deepbrain`). Empty:
+    /// Qwen3.5 9B (`deepbrain::DEEP_DEFAULT`) when its file is in `dir`;
+    /// `off`: none, and that work shares the talking model's other slot as
+    /// before; or a model's file name.
+    pub deep: String,
+    /// The deep model's server port. 0: the talking model's port plus one.
+    pub deep_port: u16,
+    /// How long the deep model stays loaded with nothing to do, in seconds.
+    pub deep_idle_secs: u64,
+    /// The deep model's context, in tokens.
+    pub deep_context: u64,
+    /// Offline first, online second (Eric, 30 Sep 2026): when the model on
+    /// this machine can't answer, or there isn't one, a free model online
+    /// that needs no account (`freeonline`). `false`: nothing is sent.
+    pub online_second: bool,
 }
 
 /// How the model picks its next word, sent with every request (29 Sep 2026).
@@ -227,10 +247,31 @@ impl Default for ModelsConfig {
             talk_ceiling_b: 5,
             draft: String::new(),
             speculate: "off".into(),
-            online_second: true,
             sampling: Sampling::default(),
+            talk: String::new(),
+            deep: String::new(),
+            deep_port: 0,
+            deep_idle_secs: 300,
+            deep_context: 8192,
+            online_second: true,
         }
     }
+}
+
+/// The talking model's file name for `models.talk`: `better` and `faster`
+/// named, anything else taken as a file name; `None` for empty (30 Sep 2026).
+pub fn talk_id(cfg: &ModelsConfig) -> Option<String> {
+    match cfg.talk.trim() {
+        "" => None,
+        w if w.eq_ignore_ascii_case("better") => Some(crate::deepbrain::BETTER_TALK.to_string()),
+        w if w.eq_ignore_ascii_case("faster") => Some(crate::deepbrain::FASTER_TALK.to_string()),
+        id => Some(id.trim_end_matches(".gguf").to_string()),
+    }
+}
+
+/// Is the better talking model the one asked for?
+pub fn talks_better(cfg: &ModelsConfig) -> bool {
+    talk_id(cfg).as_deref() == Some(crate::deepbrain::BETTER_TALK)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -334,6 +375,9 @@ impl Registry {
     }
 
     pub fn choose<'a>(&'a self, cfg: &ModelsConfig) -> Option<&'a Model> {
+        if let Some(m) = self.talking_named(cfg) {
+            return Some(m);
+        }
         if !cfg.prefer.is_empty() {
             if let Some(m) = self.get(&cfg.prefer) {
                 return Some(m);
@@ -498,6 +542,13 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
         // 27 Sep 2026. A text-only model gets the benefit.
         "--cache-reuse".into(),
         "256".into(),
+        // The host-memory prompt cache is 8 GB by default in this llama.cpp
+        // build (`--cache-ram`, checked on the laptop's own llama-server
+        // 30 Sep 2026). On a 16 GB laptop beside a browser that's the
+        // memory running at 84-86% all evening; 1 GB holds the two slots'
+        // prompts with room to spare.
+        "--cache-ram".into(),
+        "1024".into(),
     ]
     .into_iter()
     // Speculative decoding, only when set (`models.draft`, `models.speculate`).
@@ -641,6 +692,22 @@ pub fn launch(
     gpu_layers: u32,
     vars: &Vars,
 ) -> Result<std::process::Child> {
+    let child = launch_logging(model, cfg, gpu_layers, vars, "model-server.log")?;
+    LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
+    Ok(child)
+}
+
+/// `launch`, with the server's messages in `data/logs/<log>`, and without
+/// marking the talking model's server as just started -- what the deep
+/// model's server is started with (`deepbrain`), so a question to the
+/// talking model never waits on the other one loading.
+pub fn launch_logging(
+    model: &Model,
+    cfg: &ModelsConfig,
+    gpu_layers: u32,
+    vars: &Vars,
+    log: &str,
+) -> Result<std::process::Child> {
     let tool = server_tool(cfg)
         .ok_or_else(|| AtlasError::Config("no llama-server configured in models.server".into()))?;
     let (cmd, mut args) = tool.resolved(vars);
@@ -665,19 +732,22 @@ pub fn launch(
         // What it says goes to data/logs/model-server.log (29 Sep 2026): a
         // server that died loading its model (a bad file, not enough
         // graphics memory) left no reason anywhere.
-        .stderr(model_server_log())
+        .stderr(model_server_log(log))
         .spawn()
         .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))?;
-    LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
 }
 
 /// Where the model server's own messages go: `data/logs/model-server.log`,
 /// started afresh each launch. Nowhere, when that can't be opened.
-fn model_server_log() -> std::process::Stdio {
+fn model_server_log(name: &str) -> std::process::Stdio {
     let dir = crate::roots::data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
-    match std::fs::File::create(dir.join("model-server.log")) {
+    // The last run's log kept beside it (`.previous`): started afresh, a
+    // server that died and was restarted took the reason with it (30 Sep
+    // 2026: four restarts in an hour on Eric's laptop, none explained).
+    let _ = std::fs::rename(dir.join(name), dir.join(format!("{name}.previous")));
+    match std::fs::File::create(dir.join(name)) {
         Ok(f) => std::process::Stdio::from(f),
         Err(_) => std::process::Stdio::null(),
     }
@@ -855,6 +925,20 @@ pub fn pick<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Mach
     })
 }
 
+impl Registry {
+    /// The model `models.talk` names, when its file is here.
+    ///
+    /// `faster` -- the shipped default -- doesn't override a model named in
+    /// `prefer`; `better` and a file name do.
+    fn talking_named(&self, cfg: &ModelsConfig) -> Option<&Model> {
+        let id = talk_id(cfg)?;
+        if id == crate::deepbrain::FASTER_TALK && !cfg.prefer.trim().is_empty() {
+            return None;
+        }
+        self.get(&id)
+    }
+}
+
 /// The best model that fits a budget worked out from the machine.
 ///
 /// `choose` sizes against the config alone and stays for callers that have no
@@ -873,8 +957,19 @@ impl Registry {
     /// (`prefer`) still gets exactly that one, and `talk_ceiling_b: 0` gives
     /// the old behaviour.
     pub fn choose_for<'a>(&'a self, cfg: &ModelsConfig, budget: u64) -> Option<&'a Model> {
+        if let Some(m) = self.talking_named(cfg) {
+            return Some(m);
+        }
         if !cfg.prefer.is_empty() {
             if let Some(m) = self.get(&cfg.prefer) {
+                return Some(m);
+            }
+        }
+        // Nothing named: the shipped talking model when it's here (30 Sep
+        // 2026) -- a bigger one dropped in the folder, the deep model
+        // included, never takes over talking by being bigger.
+        if cfg.prefer.is_empty() {
+            if let Some(m) = self.get(crate::deepbrain::FASTER_TALK).filter(|m| estimate_memory(m, cfg.context) <= budget) {
                 return Some(m);
             }
         }
@@ -1085,6 +1180,22 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
     }
 }
 
+/// A one-prompt call to a model whose template thinks out loud unless told
+/// not to (30 Sep 2026): Qwen3.5 4B and 9B's own template -- read out of the
+/// published GGUF files -- starts every answer with `<think>` unless
+/// `enable_thinking` is false, and false writes an empty thought instead.
+/// The chat path sends that switch (`chat_body`); `/completion` takes a
+/// prompt written here, so the empty thought is written here. A template
+/// with no such switch (the shipped Qwen3-VL Instruct's) is left alone.
+pub fn no_thinking_prompt(prompt: String, chat_template: Option<&str>) -> String {
+    let switch = chat_template.is_some_and(|t| t.contains("enable_thinking"));
+    if switch && prompt.ends_with("<|im_start|>assistant\n") {
+        prompt + "<think>\n\n</think>\n\n"
+    } else {
+        prompt
+    }
+}
+
 /// The model connection Atlas would build for itself, given a chosen model.
 ///
 /// This is the piece that makes "no Ollama in the path" true rather than
@@ -1099,7 +1210,7 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
 /// substitute, exactly as a hand-written config would.
 pub fn llm_config_for(model: &Model, cfg: &ModelsConfig, http: &ExternalTool) -> crate::brain::LlmConfig {
     let template = Template::detect(model.chat_template.as_deref(), &model.id);
-    let prompt = template.render("{system}", "{user}");
+    let prompt = no_thinking_prompt(template.render("{system}", "{user}"), model.chat_template.as_deref());
     let body = completion_body(&prompt, template, 512, &cfg.sampling);
 
     let mut tool = http.clone();
@@ -1334,7 +1445,29 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     body["chat_template_kwargs"] = json!({ "enable_thinking": false });
     if !req.tools.is_empty() {
         body["tools"] = Value::Array(req.tools.clone());
-        body["tool_choice"] = json!(if req.force_tool { "required" } else { "auto" });
+        body["tool_choice"] = json!("auto");
+        // A call required: llama.cpp (b10456, Qwen3-VL, its own template or
+        // Atlas's) doesn't hold the model to `tool_choice: "required"` --
+        // measured 30 Sep 2026, "tell me a joke" with a call required came
+        // back a joke, and every forced retry that evening came back words
+        // ("Your last YouTube video got 12K views"). A JSON schema is held
+        // to: the reply is `{"name": <one of the tools>, "arg": "..."}`,
+        // made a tool call by `forced_call`.
+        if req.force_tool {
+            let names: Vec<Value> = req
+                .tools
+                .iter()
+                .filter_map(|t| t.pointer("/function/name").cloned())
+                .collect();
+            body["response_format"] = json!({
+                "type": "json_schema",
+                "json_schema": { "name": "call", "schema": {
+                    "type": "object",
+                    "properties": { "name": { "type": "string", "enum": names }, "arg": { "type": "string" } },
+                    "required": ["name", "arg"]
+                }}
+            });
+        }
         // Which tools are the same every turn, for Atlas's own template
         // (`tools_late_template`); any other template never reads it.
         if req.stable_tools > 0 && req.stable_tools < req.tools.len() {
@@ -1350,6 +1483,20 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     }
     body["chat_template_kwargs"]["enable_thinking"] = json!(false);
     body.to_string()
+}
+
+/// A forced call's answer (`chat_body`'s schema) as a tool call: the tool's
+/// name and, for a tool that takes one, its `arg`. `None` when the text isn't
+/// one of the offered tools.
+pub fn forced_call(text: &str, tools: &[serde_json::Value]) -> Option<crate::brain::ToolCall> {
+    use serde_json::{json, Value};
+    let v: Value = serde_json::from_str(text.trim()).ok()?;
+    let name = v.get("name")?.as_str()?.trim().to_string();
+    let spec = tools.iter().find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.as_str()))?;
+    let takes_arg = spec.pointer("/function/parameters/properties/arg").is_some();
+    let arg = v.get("arg").and_then(|a| a.as_str()).unwrap_or("").trim().to_string();
+    let arguments = if takes_arg { json!({ "arg": arg }) } else { json!({}) };
+    Some(crate::brain::ToolCall { name, arguments })
 }
 
 /// The name the chat template knows the number of every-turn tools by.
@@ -1671,11 +1818,25 @@ pub fn chat_call(
     req: &crate::brain::ChatRequest,
     on_text: &mut dyn FnMut(&str) -> bool,
 ) -> Result<crate::brain::ChatReply> {
+    chat_call_until(url, req, on_text, &|| true)
+}
+
+/// `chat_call`, stopped as soon as `keep_going` says so (30 Sep 2026): asked
+/// a few times a second while nothing arrives -- the server still reading the
+/// prompt -- as well as between words. The deep model gives way to a turn
+/// this way even while it reads a long prompt, when no word comes for
+/// `on_text` to stop at (`deepbrain`). What came before the stop is the reply.
+pub fn chat_call_until(
+    url: &str,
+    req: &crate::brain::ChatRequest,
+    on_text: &mut dyn FnMut(&str) -> bool,
+    keep_going: &dyn Fn() -> bool,
+) -> Result<crate::brain::ChatReply> {
     let started = std::time::Instant::now();
     let mut req = req.clone();
     let mut shortened = false;
     loop {
-        match chat_call_once(url, &req, on_text) {
+        match chat_call_once(url, &req, on_text, keep_going) {
             Ok(r) => return Ok(r),
             Err(ChatFail::NoChat(m)) => {
                 chat_failed(url);
@@ -1702,10 +1863,41 @@ fn chat_call_once(
     url: &str,
     req: &crate::brain::ChatRequest,
     on_text: &mut dyn FnMut(&str) -> bool,
+    keep_going: &dyn Fn() -> bool,
 ) -> std::result::Result<crate::brain::ChatReply, ChatFail> {
-    match chat_call_io(url, req, on_text) {
+    match chat_call_io(url, req, on_text, keep_going) {
         Ok(r) => r,
         Err(e) => Err(ChatFail::Other(e.to_string())),
+    }
+}
+
+/// How often a read with nothing arriving stops to ask `keep_going`.
+const READ_SLICE_MS: u64 = 200;
+
+/// One read, in slices of `READ_SLICE_MS`, asking `keep_going` between them.
+/// `Ok(None)`: told to stop. A read that times out altogether (nothing for
+/// `timeout`) is the error it always was.
+fn read_or_stop(
+    s: &mut std::net::TcpStream,
+    buf: &mut [u8],
+    keep_going: &dyn Fn() -> bool,
+    timeout: std::time::Duration,
+) -> std::io::Result<Option<usize>> {
+    use std::io::Read;
+    let began = std::time::Instant::now();
+    loop {
+        match s.read(buf) {
+            Ok(n) => return Ok(Some(n)),
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+                if !keep_going() {
+                    return Ok(None);
+                }
+                if began.elapsed() >= timeout {
+                    return Err(e);
+                }
+            }
+            Err(e) => return Err(e),
+        }
     }
 }
 
@@ -1713,8 +1905,9 @@ fn chat_call_io(
     url: &str,
     req: &crate::brain::ChatRequest,
     on_text: &mut dyn FnMut(&str) -> bool,
+    keep_going: &dyn Fn() -> bool,
 ) -> Result<std::result::Result<crate::brain::ChatReply, ChatFail>> {
-    use std::io::{Read, Write};
+    use std::io::Write;
     let rest = url
         .strip_prefix("http://")
         .ok_or_else(|| AtlasError::Platform(format!("not a plain http address: {url}")))?;
@@ -1743,7 +1936,7 @@ fn chat_call_io(
             reach().map_err(|why| AtlasError::Platform(unreachable_words(&host, &why)))?
         }
     };
-    s.set_read_timeout(Some(timeout))?;
+    s.set_read_timeout(Some(std::time::Duration::from_millis(READ_SLICE_MS)))?;
     s.set_write_timeout(Some(timeout))?;
     let body = chat_body(req, true);
     s.write_all(crate::http::build_request("POST", &host, path, Some(&body)).as_bytes())?;
@@ -1755,7 +1948,11 @@ fn chat_call_io(
         if let Some(i) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
             break i;
         }
-        let n = s.read(&mut buf)?;
+        // Told to stop before the server has answered at all (still reading
+        // the prompt): nothing was said, and the connection is closed.
+        let Some(n) = read_or_stop(&mut s, &mut buf, keep_going, timeout)? else {
+            return Ok(Ok(crate::brain::ChatReply::default()));
+        };
         if n == 0 {
             return Err(AtlasError::Platform("the model server closed the connection".into()));
         }
@@ -1819,7 +2016,10 @@ fn chat_call_io(
         if status != 200 && !chunked && error_len.is_some_and(|l| body_bytes.len() >= l) {
             break;
         }
-        let n = s.read(&mut buf)?;
+        let Some(n) = read_or_stop(&mut s, &mut buf, keep_going, timeout)? else {
+            stopped = true;
+            break;
+        };
         if n == 0 {
             break;
         }

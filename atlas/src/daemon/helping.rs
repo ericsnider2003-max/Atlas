@@ -495,7 +495,8 @@ impl<'a> Daemon<'a> {
         self.deciding = Some(crate::decide::Decision::new(said, weight));
         // With a model, the whole pass is drafted at once and a lean comes
         // back as news; without one, it's worked with you, a move a turn.
-        if let Some(llm) = self.llm.clone() {
+        // Drafted in the background: the deep model's work (`deepbrain`).
+        if let Some(llm) = self.background_llm() {
             let about = said.to_string();
             let work: crew::Work = Box::new(move |_ctl| {
                 llm.complete(crate::decide::DRAFTER_PROMPT, &about).map_err(|e| e.to_string())

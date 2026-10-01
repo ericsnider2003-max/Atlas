@@ -93,13 +93,17 @@ pub fn from_misunderstandings(
 /// Not a fault on its own — you may simply not need it. It becomes one when
 /// the list is long, because a system advertising forty things you never touch
 /// is a system whose inventory you have stopped reading.
+/// What the "never used" signal is about (`used`). Its "Have a go" shows
+/// how to ask for each one rather than starting work on Atlas's code.
+pub const UNUSED: &str = "what I can do that you haven't asked for yet";
+
 pub fn from_unused(never_used: &[String], total_capabilities: u32) -> Option<Signal> {
     if never_used.is_empty() || total_capabilities == 0 {
         return None;
     }
     Some(Signal {
         kind: Kind::NeverUsed,
-        subject: "capabilities nothing has ever called".into(),
+        subject: UNUSED.into(),
         seen: never_used.len() as u32,
         of: total_capabilities,
         example: never_used.join(", "),

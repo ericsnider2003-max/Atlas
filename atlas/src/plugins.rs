@@ -268,6 +268,9 @@ pub const NEVER: &[(&str, &str)] = &[
     // for job alerts and keeps your list; wit changes how Atlas talks from
     // now on, as `got_it_wrong` does.
     ("edit_photo", "it writes files beside yours"),
+    ("make_picture", "it writes into your Pictures folder and can download 6.5 GB"),
+    ("self_test", "it copies your settings and state to test with"),
+    ("operate", "it clicks and types in your apps"),
     ("social", "it reads your own accounts and fetches from the web as you"),
     ("opportunities", "it reads your mail for job alerts and keeps your own list"),
     ("wit", "it changes how Atlas behaves from now on"),

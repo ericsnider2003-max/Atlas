@@ -329,7 +329,8 @@ impl<'a> Daemon<'a> {
         }
 
         let store = self.store.clone();
-        let llm = self.llm.clone();
+        // Drafting replies is background work (`deepbrain`).
+        let llm = self.background_llm();
         let draft_cfg = self.tools_cfg().draft.clone();
         let may_email_clients = cfg.may_email_clients;
 
@@ -1122,7 +1123,7 @@ impl<'a> Daemon<'a> {
         let Some(account) = cfg.accounts.first().cloned() else {
             return "I don't have any mail accounts set up yet.".into();
         };
-        let Some(llm) = self.llm.clone() else {
+        let Some(llm) = self.background_llm() else {
             return "I need a model to draft that, and I haven't got one configured.".into();
         };
         let now = crate::store::now();

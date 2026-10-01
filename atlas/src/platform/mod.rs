@@ -404,6 +404,21 @@ pub trait Platform {
         Ok(false)
     }
 
+    /// Do `act` to the control at `path` in the window's tree -- each number
+    /// a child's place among its parent's children, as `read_window` gave
+    /// them. `Ok(false)`: that control doesn't do that (the caller clicks
+    /// it instead); `Err`: the tree couldn't be reached.
+    fn act_on(&self, _win: WindowId, _path: &[usize], _act: &crate::uia::UiAct) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// The words on a picture of a window, line by line, each with where it
+    /// is in the picture: what can be clicked in an app that doesn't show
+    /// its controls to Windows (`operate`).
+    fn recognise_lines(&self, _grab: &Grab) -> Result<Vec<(String, PixelRect)>> {
+        Ok(Vec::new())
+    }
+
     /// The text of the box you're typing in, when it can be read. Never a
     /// password box: `None` for one, and `None` when it can't tell.
     fn focused_text(&self) -> Result<Option<String>> {

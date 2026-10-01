@@ -83,13 +83,13 @@ pub fn bind_address(reachable_from: &str) -> std::result::Result<std::net::IpAdd
                 || o[0] == 127;
             if v4.is_unspecified() {
                 return Err(
-                    "0.0.0.0 means every network this machine is on, including whatever wifi                      you are on next week. Give the one address you reach it by."
+                    "0.0.0.0 means every network this machine is on, including whatever wifi you are on next week. Give the one address you reach it by."
                         .into(),
                 );
             }
             if !private {
                 return Err(format!(
-                    "`{want}` is a public address. This is a personal assistant with your                      notes in it; put it on your own network or a VPN and give me that                      address instead."
+                    "`{want}` is a public address. This is a personal assistant with your notes in it; put it on your own network or a VPN and give me that address instead."
                 ));
             }
             Ok(addr)
@@ -103,7 +103,7 @@ pub fn bind_address(reachable_from: &str) -> std::result::Result<std::net::IpAdd
             let private = (s & 0xfe00) == 0xfc00 || (s & 0xffc0) == 0xfe80 || v6.is_loopback();
             if !private {
                 return Err(format!(
-                    "`{want}` is a public address. Put it on your own network or a VPN and                      give me that address instead."
+                    "`{want}` is a public address. Put it on your own network or a VPN and give me that address instead."
                 ));
             }
             Ok(addr)
@@ -1076,7 +1076,7 @@ pub fn route(r: &Request) -> Option<Action> {
         (
             "POST",
             "/hub/messages" | "/hub/tasks" | "/hub/clients" | "/hub/sound" | "/hub/trusted" | "/hub/give"
-            | "/hub/talk" | "/hub/help" | "/hub/workshop" | "/hub/updates" | "/hub/feedback" | "/hub/phonemodel" | "/hub/documents" | "/hub/phone" | "/hub/mcp" | "/hub/draftmodel"
+            | "/hub/talk" | "/hub/help" | "/hub/workshop" | "/hub/updates" | "/hub/feedback" | "/hub/phonemodel" | "/hub/documents" | "/hub/phone" | "/hub/mcp" | "/hub/draftmodel" | "/hub/brains"
             | "/hub/recommendations/go" | "/hub/reclaim" | "/hub/sync-setup" | "/hub/social" | "/hub/opportunities",
         ) => Some(Action::HubPost { path: r.path.clone(), fields: crate::hub::form_fields(&r.body) }),
         ("POST", "/hub/pause") => match crate::hub::form_field(&r.body, "what").as_deref() {
@@ -1941,7 +1941,7 @@ impl Server {
                 // A form that posts somewhere nothing answers: the fault is
                 // Atlas's, so say so in words, with the way back.
                 if req.method == "POST" && req.path.starts_with("/hub") {
-                    eprintln!("atlas: nothing answers a form at {}", req.path);
+                    crate::errln!("atlas: nothing answers a form at {}", req.path);
                     Reply::not_found_page(&req.path)
                 } else {
                     Reply::not_found()
@@ -1966,7 +1966,7 @@ impl Server {
         // Something in Atlas failed while answering a page or a form:
         // said in words with the way back, never a bare JSON error.
         if r.status >= 500 && r.kind == Body::Json && path.starts_with("/hub") && !path.contains('.') {
-            eprintln!("atlas: {} {} failed: {}", method, path, r.body);
+            crate::errln!("atlas: {} {} failed: {}", method, path, r.body);
             r = Reply::failed_page();
         }
         // Every page, from the one place that knows the token — the

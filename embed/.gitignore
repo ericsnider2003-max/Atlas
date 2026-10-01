@@ -1,0 +1,3 @@
+# The model is fetched (models/GET_THE_MODEL.md), never committed: 86 MB.
+models/*.onnx
+target/

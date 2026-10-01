@@ -294,6 +294,13 @@ impl Hotkeys {
         self.gate.lock().map(|g| g.is_talking()).unwrap_or(false)
     }
 
+    /// `held`, to hand to another thread (the microphone's, which records
+    /// while the key is down).
+    pub fn held_fn(&self) -> std::sync::Arc<dyn Fn() -> bool + Send + Sync> {
+        let gate = self.gate.clone();
+        std::sync::Arc::new(move || gate.lock().map(|g| g.is_talking()).unwrap_or(false))
+    }
+
     /// For tests and for a platform that feeds keys some other way.
     pub fn from_parts(rx: Receiver<Pressed>, gate: Arc<Mutex<Gate>>) -> Hotkeys {
         Hotkeys { rx, gate, problems: Vec::new() }

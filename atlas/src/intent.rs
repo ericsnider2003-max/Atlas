@@ -102,6 +102,12 @@ pub enum Intent {
     EditMedia(String),
     /// Edit a photo, or every photo in a folder, on a new copy (`photo`). The whole utterance.
     EditPhoto(String),
+    /// Make a picture on this machine (`imagemake`): "draw me a lighthouse".
+    MakePicture(String),
+    /// Atlas tries everything it can do, safely, and reports (`selftest`).
+    SelfTest,
+    /// Do something in an app, step by step (`operate`): "in Excel, ...".
+    Operate(String),
     /// What time and day it is, from this machine's clock.
     Clock,
     /// Change the push-to-talk key or the typing-box key by saying it (Eric,
@@ -549,6 +555,9 @@ impl Intent {
             Intent::UseMic(m) => format!("listening with the {m} microphone"),
             Intent::EditMedia(_) => "editing your video on a copy".to_string(),
             Intent::EditPhoto(_) => "editing your photo on a copy".to_string(),
+            Intent::MakePicture(_) => "making a picture on this machine".to_string(),
+            Intent::SelfTest => "testing everything Atlas can do".to_string(),
+            Intent::Operate(_) => "working an app step by step".to_string(),
             Intent::Clock => "the time and date".to_string(),
             Intent::SetKey(_) => "changing your push-to-talk or typing-box key".to_string(),
             Intent::Languages(_) => "which languages Atlas can hear".to_string(),
@@ -1337,6 +1346,9 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "use_mic" => Intent::UseMic(arg),
         "edit_media" => Intent::EditMedia(raw.trim().to_string()),
         "edit_photo" => Intent::EditPhoto(raw.trim().to_string()),
+        "make_picture" => Intent::MakePicture(raw.trim().to_string()),
+        "self_test" => Intent::SelfTest,
+        "operate" => Intent::Operate(raw.trim().to_string()),
         "clock" => Intent::Clock,
         "set_key" => Intent::SetKey(raw.trim().to_string()),
         "languages" => Intent::Languages(raw.trim().to_string()),

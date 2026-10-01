@@ -259,6 +259,15 @@ impl<'a> Daemon<'a> {
         topic: Option<String>,
         speak: SpeakPolicy,
     ) -> Option<u64> {
+        // Testing itself: background work is named, not started (`selftest`).
+        if self.rehearsal {
+            drop(work);
+            self.rehearsed.push(match &topic {
+                Some(t) => format!("start {name} ({t}) in the background"),
+                None => format!("start {name} in the background"),
+            });
+            return Some(u64::MAX - self.rehearsed.len() as u64);
+        }
         let job = crew_job(name, topic.as_deref(), &speak);
         let crew_id = match self.crew.hand_job(job, t, work) {
             Ok(crew::Taken::Joined(crew_id)) => {
@@ -587,6 +596,14 @@ impl<'a> Daemon<'a> {
             if let Some(after) = self.hub_after.remove(&news.id) {
                 self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
                 out.extend(self.after_hub_errand(after, &news.ending, t));
+                continue;
+            }
+            // The next step of a job in an app (`operate`).
+            if link.label == "operate" {
+                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                if let Some(said) = self.operate_news(news.id, &news.ending) {
+                    out.push(said);
+                }
                 continue;
             }
             // A call written up: its envelope unpacked into what's said,

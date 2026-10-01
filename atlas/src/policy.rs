@@ -301,6 +301,12 @@ pub fn classify(intent: &Intent) -> Decision {
         | Intent::EditMedia(_)
         // Writes a new file beside the original, never over it.
         | Intent::EditPhoto(_)
+        // A new picture in its own folder; nothing of yours is touched.
+        | Intent::MakePicture(_)
+        // Works on a copy; approves nothing.
+        | Intent::SelfTest
+        // Asks itself before any press that can't be taken back (`operate::guard`).
+        | Intent::Operate(_)
         | Intent::Clock
         | Intent::SetKey(_)
         | Intent::Languages(_)

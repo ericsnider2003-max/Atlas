@@ -398,6 +398,64 @@ impl<'a> Daemon<'a> {
     /// delivery is. The person may be asleep, their laptop may be shut, the
     /// link may not exist yet -- none of that is a reason to refuse to write
     /// something down with your name and your clock on it. See `chat.rs`.
+    /// "Where are we on the improvement list?", "what's pending on your
+    /// self-improvement list?", "free wins": read from the Improvements and
+    /// Ideas pages themselves. 30 Sep 2026: the model answered these from
+    /// nothing -- "the list is active, we're tracking progress" and four
+    /// pending items it made up.
+    pub(super) fn improvements_help(&mut self, said: &str) -> Option<String> {
+        let t = said.to_lowercase();
+        let about_list = ["improvement list", "improvements list", "self-improvement", "self improvement", "free wins", "free win", "your improvements", "the improvements"]
+            .iter()
+            .any(|k| t.contains(k));
+        if !about_list {
+            return None;
+        }
+        self.refresh_signals();
+        let most = self.tools_cfg().self_audit.most_at_once;
+        let recs = self.recommendations_shown(most);
+        let wins = self.free_wins();
+        let not_here: Vec<&crate::hub::FreeWin> = wins.iter().filter(|w| w.here != "On here.").collect();
+        let mut out = String::new();
+        if recs.is_empty() {
+            out.push_str("Nothing on the improvement list right now -- I haven't seen anything going wrong often enough to suggest a fix.");
+        } else {
+            out.push_str(&format!("{} on the improvement list: ", recs.len()));
+            out.push_str(&recs.iter().map(|r| r.symptom.trim_end_matches('.').to_string()).collect::<Vec<_>>().join("; "));
+            out.push_str(". Each is on the Improvements page with \"Have a go\" or \"Not worth it\".");
+        }
+        if wins.is_empty() {
+        } else if not_here.is_empty() {
+            out.push_str(&format!(" All {} free wins are on here.", wins.len()));
+        } else {
+            out.push_str(&format!(
+                " Free wins: {} of {} on; not yet: {}.",
+                wins.len() - not_here.len(),
+                wins.len(),
+                not_here.iter().map(|w| format!("{} ({})", w.what.trim_end_matches('.'), w.here.trim_end_matches('.').to_lowercase())).collect::<Vec<_>>().join("; ")
+            ));
+        }
+        Some(out)
+    }
+
+    /// "move TradingView to my right monitor", "put it on the other screen".
+    pub(super) fn move_window_help(&mut self, said: &str) -> Option<String> {
+        let (what, side) = crate::workspace::move_to_screen_asked(said)?;
+        let name = match what.as_str() {
+            "it" | "that" | "this" | "this window" | "that window" | "the window" | "window" => self.referents.last_app.clone(),
+            w => Some(w.to_string()),
+        };
+        Some(match crate::workspace::move_to_screen(self.cfg, self.plat, name.as_deref(), side) {
+            Ok(done) => {
+                if let Some(n) = &name {
+                    self.referents.last_app = Some(n.clone());
+                }
+                done
+            }
+            Err(why) => format!("I couldn't move it: {why}."),
+        })
+    }
+
     /// "text Sam saying I'm running late": written for your phone to send
     /// (`texting`). `None` when it wasn't asked.
     pub(super) fn text_help(&mut self, said: &str) -> Option<String> {

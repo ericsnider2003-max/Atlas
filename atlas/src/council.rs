@@ -486,27 +486,27 @@ pub fn build_room() -> Council {
     Council::new(vec![
         Seat::new(
             "demand",
-            "someone who needs evidence that a specific person urgently wants this — a name, a              complaint, money already spent on a worse fix — and says so when there is none",
+            "someone who needs evidence that a specific person urgently wants this — a name, a complaint, money already spent on a worse fix — and says so when there is none",
             Disposition::Sceptic,
         ),
         Seat::new(
             "first user",
-            "the person it is for, trying it once: can they tell what it is and why it matters              in one sentence, and would they come back next week",
+            "the person it is for, trying it once: can they tell what it is and why it matters in one sentence, and would they come back next week",
             Disposition::Customer,
         ),
         Seat::new(
             "money",
-            "someone who asks who pays, how much, and whether that covers the hours it takes              to build and keep running",
+            "someone who asks who pays, how much, and whether that covers the hours it takes to build and keep running",
             Disposition::Operator,
         ),
         Seat::new(
             "reach",
-            "someone who wants it out in front of people this month and asks how anyone would              hear about it, again and again, not just once",
+            "someone who wants it out in front of people this month and asks how anyone would hear about it, again and again, not just once",
             Disposition::Bias,
         ),
         Seat::new(
             "trust",
-            "whoever maintains it and answers for it in a year: what data it touches, what              people must trust it with, and what breaks for them if it goes away",
+            "whoever maintains it and answers for it in a year: what data it touches, what people must trust it with, and what breaks for them if it goes away",
             Disposition::Steward,
         )
         .breaks_ties(),
@@ -537,27 +537,27 @@ pub fn security_room() -> Council {
     Council::new(vec![
         Seat::new(
             "impostor",
-            "someone who tries to pass as you or as a device you trust — a stolen token, a              copied cookie, a look-alike sign-in page — and asks what stops them",
+            "someone who tries to pass as you or as a device you trust — a stolen token, a copied cookie, a look-alike sign-in page — and asks what stops them",
             Disposition::Sceptic,
         ),
         Seat::new(
             "tamperer",
-            "someone who wants to change what shouldn't change — a setting, a file, a message              in transit, a record after the fact — and asks whether anyone would notice",
+            "someone who wants to change what shouldn't change — a setting, a file, a message in transit, a record after the fact — and asks whether anyone would notice",
             Disposition::Steward,
         ),
         Seat::new(
             "eavesdropper",
-            "someone who only wants to see: what leaves the machine, what sits unencrypted,              what a log or a backup quietly keeps",
+            "someone who only wants to see: what leaves the machine, what sits unencrypted, what a log or a backup quietly keeps",
             Disposition::Customer,
         ),
         Seat::new(
             "wrecker",
-            "someone who just wants it to stop working, and asks what one bad input or a              flood of them costs you",
+            "someone who just wants it to stop working, and asks what one bad input or a flood of them costs you",
             Disposition::Operator,
         ),
         Seat::new(
             "climber",
-            "someone who has a little access and wants more — a guest who becomes the owner,              a helper that gets the keys — and wants to move fast before it is noticed",
+            "someone who has a little access and wants more — a guest who becomes the owner, a helper that gets the keys — and wants to move fast before it is noticed",
             Disposition::Bias,
         )
         .breaks_ties(),

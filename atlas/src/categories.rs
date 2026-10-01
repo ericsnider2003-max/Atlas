@@ -186,6 +186,13 @@ pub fn category_of(intent: &Intent) -> Category {
         Intent::EditMedia(_) => media_category(MediaOp::Edit, false),
         // A new file beside the original; the original is only read.
         Intent::EditPhoto(_) => media_category(MediaOp::Edit, false),
+        // Made here, by a model on this machine; nothing is uploaded.
+        Intent::MakePicture(_) => media_category(MediaOp::Generate, false),
+        // Runs on a copy of the install; nothing real is touched.
+        Intent::SelfTest => Category::LocalOperational,
+        // Works your apps on this machine; anything that can't be taken
+        // back is asked about step by step (`operate::guard`).
+        Intent::Operate(_) => Category::LocalOperational,
         Intent::Clock => Category::LocalOperational,
         Intent::SetKey(_) => Category::LocalOperational,
         Intent::Languages(_) => Category::LocalOperational,
@@ -296,11 +303,6 @@ pub fn consent_line(cat: Category, what: &str) -> String {
     match cat {
         Category::ExternalAiCreative => {
             format!("{what} would send your content to an outside AI service. Go ahead?")
-        }
-        // A message is sent as you; it signs you up to nothing (30 Sep 2026:
-        // "message Sam saying on my way" was asked about agreeing to terms).
-        Category::AgreementExternal if what.to_lowercase().contains("sending a message") => {
-            format!("{what} -- it goes as you. Go ahead?")
         }
         Category::AgreementExternal => {
             format!("{what} would sign you up and agree to their terms as you. Go ahead?")

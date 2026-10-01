@@ -243,7 +243,7 @@ pub fn send_args(account: &str) -> Vec<String> {
 /// (30 Sep 2026 sweep: with `backend: himalaya` mail was read through it but
 /// sent over Atlas's own SMTP with a vault password that isn't there, so
 /// every send failed).
-pub fn send(program: &str, account: &str, message: &str) -> Result<(), String> {
+pub(crate) fn send(program: &str, account: &str, message: &str) -> Result<(), String> {
     use std::io::Write;
     let mut child = crate::tools::command(program)
         .args(send_args(account))

@@ -66,6 +66,7 @@ impl<'a> Daemon<'a> {
                 let model = model.clone();
                 match self.start_model_server(&model, &cfg, layers, mb) {
                     Ok(evicted) => {
+                        self.model_running_id = Some(model.id.clone());
                         said.push_str(&format!(
                             " It wasn't running, so I've started it with {layers} layers on \
                              the graphics, taking about {mb}MB."
@@ -79,6 +80,41 @@ impl<'a> Daemon<'a> {
             }
         }
         said
+    }
+
+    /// The model for work nobody is waiting on word by word -- research,
+    /// drafts, summaries, the night's work, a request of several steps
+    /// (30 Sep 2026): the deep model when one is set up (`deepbrain`), which
+    /// falls back to the talking model's other slot whenever it can't run;
+    /// the talking model itself when there's none. `None` with no model.
+    pub(crate) fn background_llm(&self) -> Option<std::sync::Arc<dyn Llm>> {
+        let talk = self.llm.clone()?;
+        Some(self.deep.for_background(talk))
+    }
+
+    /// Give this Atlas a deep model (the tests' scripted one; the running
+    /// Atlas sets up its own from the settings, `keep_model_server`).
+    pub fn use_deep_brain_for_test(&mut self, deep: crate::deepbrain::DeepBrain) {
+        self.deep = deep;
+    }
+
+    /// Where the deep model is and what it has done, for the tests.
+    pub fn deep_gate_for_test(&self) -> std::sync::Arc<crate::deepbrain::Gate> {
+        self.deep.gate.clone()
+    }
+
+    /// A turn is being answered while this is held: the deep model gives
+    /// way (`deepbrain`).
+    pub(crate) fn talking_guard(&self) -> crate::deepbrain::TalkGuard {
+        self.deep.gate.talk()
+    }
+
+    /// The deep model, looked after once a pass: started for waiting work
+    /// when there's room, stopped once idle. What it did goes in the log.
+    pub(super) fn keep_deep_brain(&mut self) {
+        for line in self.deep.keep() {
+            self.log.info(&line);
+        }
     }
 
     /// Make sure the model server Atlas's own connection talks to is up, or
@@ -205,6 +241,20 @@ impl<'a> Daemon<'a> {
         if !self.starts_model_server || self.llm.is_none() {
             return;
         }
+        // The deep model beside it, once its file is in the models folder
+        // (looked for once a minute: "Get the deep brain" fetches it while
+        // Atlas runs).
+        if !self.deep.is_set_up() && t >= self.deep_look_at {
+            self.deep_look_at = t + 60;
+            if let Some(tc) = self.tools_ref().cloned() {
+                self.deep = crate::deepbrain::for_settings(&tc);
+                if self.deep.is_set_up() {
+                    self.log.info(&self.deep.describe());
+                }
+            }
+        }
+        // "Better answers" switched: the server follows the setting.
+        self.follow_the_talk_setting();
         let Some(tc) = self.tools_ref() else { return };
         if tc.llm.is_some() || tc.models.server.is_none() {
             return;
@@ -288,6 +338,12 @@ impl<'a> Daemon<'a> {
             }
             return;
         };
+        // One was started before and isn't running now: why, from its own
+        // log, before that log is replaced.
+        if let Some(was) = &self.model_running_id {
+            let words = crate::models::model_server_last_words().unwrap_or_else(|| "its log says nothing".into());
+            self.log.warn(&format!("the model server ({was}) isn't running any more; its last words: {words}"));
+        }
         let layers = crate::models::layers_here(&model, &cfg, &machine);
         let mb = crate::models::footprint_mb(&model, &cfg);
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
@@ -298,6 +354,7 @@ impl<'a> Daemon<'a> {
                 // start that dies young is caught by `model_server_died`.
                 self.model_start_tried = None;
                 self.model_started = Some(std::time::Instant::now());
+                self.model_running_id = Some(model.id.clone());
                 None
             }
             Err(why) => Some(why),
@@ -425,7 +482,8 @@ impl<'a> Daemon<'a> {
         if q.is_empty() {
             return "Ask the room what?".into();
         }
-        let Some(llm) = self.llm.clone() else {
+        // Five seats, asked in the background: the deep model's work.
+        let Some(llm) = self.background_llm() else {
             return "A council is five different answers to the same question, and I need a \
                     model to get them. I haven't got one configured."
                 .into();
@@ -801,6 +859,9 @@ impl<'a> Daemon<'a> {
         if !cfg.semantic {
             return None;
         }
+        if let Some(v) = self.meaning_route.as_ref().and_then(|m| m.text(question)) {
+            return Some(v);
+        }
         let mcfg = self.meaning_cfg();
         let vars = self.tool_vars();
         if !crate::meaning::available(&mcfg, &vars) {
@@ -837,12 +898,39 @@ impl<'a> Daemon<'a> {
         if recent.is_empty() {
             return None;
         }
+        if let Some(v) = self.meaning_route.as_ref().and_then(|m| m.text(&recent.join("\n"))) {
+            return Some(v);
+        }
         let mcfg = self.meaning_cfg();
         let vars = self.tool_vars();
         if !crate::meaning::available(&mcfg, &vars) {
             return None;
         }
         crate::meaning::embed(&mcfg, &vars, &recent.join("\n")).ok()
+    }
+
+    /// Start the resident encoder once, if one is installed: tool choice by
+    /// meaning, and recall without starting the encoder per question.
+    pub(super) fn start_meaning_route(&mut self) {
+        if self.meaning_route.is_some() {
+            return;
+        }
+        // Tried once already: again only after the meaning model was asked
+        // for and has now landed.
+        if self.meaning_route_tried {
+            let landed = crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &self.store.install_root()));
+            if !(self.meaning_route_retry && landed) {
+                return;
+            }
+            self.meaning_route_retry = false;
+        }
+        self.meaning_route_tried = true;
+        let (mcfg, vars) = (self.meaning_cfg(), self.tool_vars());
+        let root = self.store.install_root();
+        self.meaning_route = crate::meaningroute::Route::start(&mcfg, &vars, Some(&root), self.router.texts().to_vec());
+        if self.meaning_route.is_some() {
+            self.log.info("meaning: the encoder is running; tools are chosen by meaning as well as words");
+        }
     }
 
     fn meaning_cfg(&self) -> crate::meaning::MeaningConfig {
@@ -1009,7 +1097,14 @@ impl<'a> Daemon<'a> {
             return Some(reply);
         }
         let may_ask = self.tools_ref().map(|t| t.wanted.ask_when_unclear).unwrap_or(true);
-        if reading.wanted == crate::wanted::Wanted::Unclear && may_ask {
+        // Not for a command Atlas couldn't carry out: "close the quarterly
+        // budget" starts the way a command does, and isn't something to think
+        // through together or be listened to about (the capability sweep, 30
+        // Sep 2026: every short unknown command got this question when the
+        // model was down).
+        let a_command = self.router.shortlist(raw, 1).first().map(|(_, s)| *s == f64::MAX).unwrap_or(false);
+        let about_you = !a_command;
+        if reading.wanted == crate::wanted::Wanted::Unclear && may_ask && about_you {
             self.pending_wanted = Some(raw.to_string());
             let q = crate::wanted::ask_which().to_string();
             self.session.ask(&q);
@@ -1378,5 +1473,261 @@ impl<'a> Daemon<'a> {
         self.tools_ref()
             .map(|t| t.browser.clone())
             .unwrap_or_default()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Two brains, and "better answers" (30 Sep 2026, `deepbrain`).
+// ---------------------------------------------------------------------------
+
+impl<'a> Daemon<'a> {
+    /// "Use the better model" / "use the faster model": `models.talk`
+    /// changed, kept in your settings the way the hub keeps it, and the
+    /// talking model's server started again on the new one
+    /// (`follow_the_talk_setting`).
+    pub(super) fn choose_talk_model(&mut self, better: bool) -> String {
+        if self.handover().stance.handed_over() {
+            return "That's the owner's setting to change, not mine to change for you.".into();
+        }
+        let cfg = self.tools_cfg().models.clone();
+        let root = self.store.install_root();
+        let piece = if better { crate::getpieces::better_talk_model() } else { crate::getpieces::faster_talk_model() };
+        let here = crate::getpieces::have(&piece, &root)
+            || crate::models::Registry::dir_for(&cfg).join(format!("{}.gguf", if better { crate::deepbrain::BETTER_TALK } else { crate::deepbrain::FASTER_TALK })).is_file();
+        if crate::models::talks_better(&cfg) == better && here {
+            return if better {
+                "I'm already using the better model.".into()
+            } else {
+                "I'm already using the faster model.".into()
+            };
+        }
+        if !here {
+            return if better {
+                format!(
+                    "The better model isn't on this computer yet. The Connections page can fetch it ({}), or it's picked up \
+                     from the models folder if you put it there.",
+                    crate::getpieces::gib_label(piece.bytes)
+                )
+            } else {
+                "The faster model isn't on this computer -- setup fetches it with the rest.".into()
+            };
+        }
+        let word = if better { "better" } else { "faster" };
+        let Some(dir) = self.settings_dir() else {
+            return "I can't keep that change: I'm not watching a settings folder.".into();
+        };
+        let mut settings = crate::settings::registry(&self.tools_cfg());
+        let kept = settings.set_and_keep("models.talk", word, &dir);
+        if kept.starts_with("I couldn't keep") || kept.starts_with("no setting") {
+            return kept;
+        }
+        let _ = self.pick_up_settings();
+        self.follow_the_talk_setting();
+        if better {
+            "Switching to the better model: more natural answers, a second or two slower each. It takes a few seconds to load."
+                .into()
+        } else {
+            "Switching to the faster model: quicker answers, a little plainer. It takes a few seconds to load.".into()
+        }
+    }
+
+    /// The talking model's server runs the model `models.talk` asks for:
+    /// when the setting changed since it was started, it is stopped and the
+    /// connection rebuilt, and the next pass starts it on the new one.
+    pub(super) fn follow_the_talk_setting(&mut self) {
+        let Some(tc) = self.tools_ref().cloned() else { return };
+        let asked = tc.models.talk.trim().to_ascii_lowercase();
+        let before = self.talk_setting_seen.replace(asked.clone());
+        // The first look only notes it: the server is started on it anyway.
+        if before.is_none() || before.as_deref() == Some(asked.as_str()) || !self.starts_model_server || tc.llm.is_some() {
+            return;
+        }
+        let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
+        let wanted = registry.choose_for(&tc.models, u64::MAX).map(|m| m.id.clone());
+        if wanted.is_none() || wanted == self.model_running_id {
+            return;
+        }
+        if self.helpers.is_running("model-server") {
+            self.helpers.finished("model-server");
+            self.log.info(&format!(
+                "switching the talking model to {} -- stopped {}",
+                wanted.as_deref().unwrap_or("?"),
+                self.model_running_id.as_deref().unwrap_or("the one running")
+            ));
+        }
+        self.model_running_id = None;
+        self.model_started = None;
+        self.model_start_tried = None;
+        if let Ok(mut seen) = self.model_server_seen.lock() {
+            *seen = None;
+        }
+        // Built for the new model (its own template), once its server is up.
+        self.llm = crate::models::connection(&tc);
+    }
+
+    /// The Connections page's section on the two models: which one talks
+    /// ("Better answers"), the deep model, and the buttons that fetch them.
+    pub(crate) fn brains_block(&self) -> String {
+        let cfg = self.tools_cfg().models.clone();
+        let root = self.store.install_root();
+        let better = crate::getpieces::better_talk_model();
+        let deep = crate::getpieces::deep_model();
+        let better_here = crate::getpieces::have(&better, &root);
+        let deep_here = crate::getpieces::have(&deep, &root) || self.deep.is_set_up();
+        let talking = if crate::models::talks_better(&cfg) {
+            "Better answers are on: Qwen3.5 4B talks with you -- more natural, a second or two slower a reply. \
+             Pictures are still read by the Qwen3-VL model."
+        } else {
+            "Faster answers: the Qwen3-VL 4B model talks with you (answers in 1 to 3 seconds on this laptop)."
+        };
+        let mut buttons = String::new();
+        if better_here {
+            let (what, label) = if crate::models::talks_better(&cfg) { ("faster", "Use the faster model") } else { ("better", "Use the better model") };
+            buttons.push_str(&format!("<button name=what value={what}>{label}</button>"));
+        } else {
+            buttons.push_str(&format!(
+                "<button name=what value=get-better>Get the better model \u{b7} {}</button>",
+                crate::getpieces::gib_label(better.bytes)
+            ));
+        }
+        if !deep_here {
+            buttons.push_str(&format!(
+                "<button name=what value=get-deep>Get the deep brain \u{b7} {}</button>",
+                crate::getpieces::gib_label(deep.bytes)
+            ));
+        }
+        let deep_line = if deep_here {
+            self.deep.describe()
+        } else {
+            "No deep model yet: research, drafts, summaries and the night's work share the talking model. The deep \
+             brain (Qwen3.5 9B) writes better and runs beside it only while there's such work, giving way whenever \
+             you're talking."
+                .to_string()
+        };
+        format!(
+            "<section aria-labelledby=brains-h><h2 id=brains-h>Two brains</h2><p>{}</p><p>{}</p>\
+             <form method=post action=/hub/brains>{buttons}</form></section>",
+            crate::hub::esc(talking),
+            crate::hub::esc(&deep_line)
+        )
+    }
+
+    /// A button in that section.
+    pub(crate) fn brains_button(&mut self, what: &str) -> String {
+        match what {
+            "better" => self.choose_talk_model(true),
+            "faster" => self.choose_talk_model(false),
+            "get-better" => self.get_model_piece(crate::getpieces::better_talk_model(), "the better model"),
+            "get-deep" => self.get_model_piece(crate::getpieces::deep_model(), "the deep brain"),
+            "get-understanding" => self.get_understanding(),
+            _ => "That button isn't wired to anything, so nothing changed.".into(),
+        }
+    }
+
+    /// The Ideas page's free wins, each with whether it's on here and, when
+    /// it isn't, the button that does it.
+    pub(crate) fn free_wins(&self) -> Vec<crate::hub::FreeWin> {
+        use crate::improve::Gain;
+        let root = self.store.install_root();
+        let deep_here = crate::getpieces::have(&crate::getpieces::deep_model(), &root) || self.deep.is_set_up();
+        let understanding = self.understanding_here();
+        crate::improve::automatic()
+            .into_iter()
+            .map(|m| {
+                let (here, get) = match m.gain {
+                    Gain::Precomputed if !understanding => (
+                        "Not here yet: it needs the meaning model.".to_string(),
+                        Some(("Get the meaning model (91 MB)".to_string(), "get-understanding".to_string())),
+                    ),
+                    Gain::WarmModel if self.llm.is_none() => ("Not here yet: no model is set up.".into(), None),
+                    Gain::RightSizedModel if !deep_here => (
+                        "Half here: the talking model is, the deep one isn't.".into(),
+                        Some(("Get the deep model".into(), "get-deep".into())),
+                    ),
+                    _ => ("On here.".into(), None),
+                };
+                crate::hub::FreeWin { what: m.what, worth: m.worth.to_string(), here, get }
+            })
+            .collect()
+    }
+
+    /// Can this Atlas understand meaning: the model inside Atlas, or a
+    /// configured encoder program?
+    fn understanding_here(&self) -> bool {
+        let root = self.store.install_root();
+        crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &root))
+            || crate::meaning::available(&self.meaning_cfg(), &self.tool_vars())
+    }
+
+    /// Fetch the meaning model and its word list on the crew (`atlas get
+    /// understanding` from a button). The tick starts the encoder once
+    /// they're here.
+    fn get_understanding(&mut self) -> String {
+        if self.handover().stance.handed_over() {
+            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+        }
+        if self.understanding_here() {
+            return "The meaning model is already here.".into();
+        }
+        let root = self.store.install_root();
+        let pieces = crate::getpieces::understanding();
+        let mb: u64 = pieces.iter().map(|p| p.megabytes()).sum();
+        let work: crew::Work = Box::new(move |_ctl| {
+            for p in &pieces {
+                if !crate::getpieces::have(p, &root) {
+                    crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                }
+            }
+            Ok("The meaning model is here and checked. I'll understand what you mean, not only the words, from now on.".into())
+        });
+        if self.hand_off("model-piece", crate::store::now(), work, Some("the meaning model".into()), SpeakPolicy::Always) {
+            self.meaning_route_retry = true;
+            format!("Getting the meaning model ({mb} MB) -- I'll say when it's ready.")
+        } else {
+            "I've too much going on to start that download now. Try again in a minute.".into()
+        }
+    }
+
+    /// Fetch one of the two models on the crew -- or take it in from where
+    /// it already is on this computer (the models folder, or a `model-bench`
+    /// folder beside it), checked against its SHA-256 either way. Never while
+    /// handed over: it's the owner's machine.
+    fn get_model_piece(&mut self, piece: crate::getpieces::Piece, name: &'static str) -> String {
+        if self.handover().stance.handed_over() {
+            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+        }
+        let root = self.store.install_root();
+        if crate::getpieces::have(&piece, &root) {
+            return format!("{} is already here.", capital(name));
+        }
+        let label = crate::getpieces::gib_label(piece.bytes);
+        let work: crew::Work = Box::new(move |_ctl| {
+            let places = crate::getpieces::places_it_may_be(&root);
+            let taken = crate::getpieces::take_in(&piece, &root, &places)?;
+            if taken.is_none() {
+                crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+            }
+            Ok(match taken {
+                Some(from) => format!("{} was already on this computer ({}); I checked it and moved it into my models folder.", capital(name), from.display()),
+                None => format!("{} is here and checked.", capital(name)),
+            })
+        });
+        // Keyed by which model: "get the better model" and "get the deep
+        // brain" are two downloads, not one asked twice (both were
+        // "model-piece" with nothing to tell them apart, so the second
+        // joined the first and never ran).
+        if self.hand_off("model-piece", crate::store::now(), work, Some(name.to_string()), SpeakPolicy::Always) {
+            format!("Getting {name} ({label}) -- I'll say when it's ready.")
+        } else {
+            "I've too much going on to start that download now. Try again in a minute.".into()
+        }
+    }
+}
+
+fn capital(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
     }
 }

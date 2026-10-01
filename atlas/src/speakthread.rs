@@ -56,6 +56,20 @@ pub const CUT_IN_WAIT: Duration = Duration::from_secs(20);
 /// `Daemon::say` waits for none rather than talk over a reply.
 static QUEUED: AtomicUsize = AtomicUsize::new(0);
 
+/// One voice at a time, whoever is speaking: a reply's player thread and
+/// the loop's own lines (`Daemon::say`) each hold this for the length of a
+/// sentence. Before it, `say` waited at most 30 seconds for a reply to
+/// finish and then spoke anyway -- and on Eric's laptop a reply took up to
+/// 45 seconds to say (30 Sep 2026: "why are you talking over yourself? It's
+/// like you have two language models running at once").
+pub(crate) static ONE_VOICE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Hold the voice for one sentence. A poisoned lock (a panic mid-sentence)
+/// is still a lock.
+pub(crate) fn hold_voice() -> std::sync::MutexGuard<'static, ()> {
+    ONE_VOICE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 /// Is a reply playing on its own thread?
 fn playing() -> bool {
     QUEUED.load(Ordering::SeqCst) > 0
@@ -120,7 +134,10 @@ impl Player {
                     }
                     let _ = ev.send(Event::Started(i));
                     // Caught: a panic in the voice costs the reply, not Atlas.
-                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work.speak(&text)));
+                    let r = {
+                        let _voice = hold_voice();
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work.speak(&text)))
+                    };
                     let o = if is_cut() {
                         Outcome::Cut
                     } else if matches!(r, Ok(Ok(()))) {
@@ -475,7 +492,10 @@ impl<'m> Saying<'m> {
             host.between();
             return;
         }
-        let ok = self.mouth.speak(&crate::spoken_form::for_speech(&chunk)).is_ok();
+        let ok = {
+            let _voice = hold_voice();
+            self.mouth.speak(&crate::spoken_form::for_speech(&chunk)).is_ok()
+        };
         // Stopped by your voice while it played (the microphone's thread
         // stopped the player): not said. Asked of this Atlas's microphone,
         // not the process-wide stop switch.

@@ -66,8 +66,45 @@ impl<'a> Daemon<'a> {
         note(&mut failed, "proposals", self.store.save("proposals", &self.proposals));
         note(&mut failed, "memory", self.memory.save(&self.store));
         note(&mut failed, "scheduler", self.scheduler.save(&self.store));
-        // Only when it changed (`index_on_disk`).
-        if self.index_on_disk != Some(self.index.written_as()) {
+        // Only when it changed (`index_on_disk`), and written on a thread of
+        // its own (30 Sep 2026): the whole file index is turned into text and
+        // written, which on a real disk of files took the loop -- the hub, the
+        // talk key -- half a second or more every half hour, once each walk
+        // of your folders came in. The copy is made here; the writing isn't.
+        // How the last write went is taken on the next pass.
+        if let Some(h) = self.index_saving.take_if(|h| h.1.is_finished()) {
+            match h.1.join() {
+                Ok(Ok(())) => self.index_on_disk = Some(h.0),
+                Ok(Err(e)) => note(&mut failed, "index", Err(e)),
+                Err(_) => note(&mut failed, "index", Err(crate::error::AtlasError::Platform("writing the file index stopped unexpectedly".into()))),
+            }
+        }
+        // Anything but the sweep: wait for a write still going, so what's on
+        // disk is what's here when this returns (a turn, stopping, a test).
+        if !self.index_behind {
+            if let Some(h) = self.index_saving.take() {
+                if let Ok(Ok(())) = h.1.join() {
+                    self.index_on_disk = Some(h.0);
+                }
+            }
+        }
+        if self.index_behind && self.index_saving.is_none() && self.index_on_disk != Some(self.index.written_as()) {
+            let snapshot = self.index.clone();
+            let store = self.store.clone();
+            let mark = snapshot.written_as();
+            match std::thread::Builder::new().name("atlas-index-save".into()).spawn(move || snapshot.save(&store)) {
+                Ok(h) => self.index_saving = Some((mark, h)),
+                // No thread to be had: written here, as it always was.
+                Err(_) => {
+                    let r = self.index.save(&self.store);
+                    if r.is_ok() {
+                        self.index_on_disk = Some(self.index.written_as());
+                    }
+                    note(&mut failed, "index", r);
+                }
+            }
+        }
+        if !self.index_behind && self.index_on_disk != Some(self.index.written_as()) {
             let r = self.index.save(&self.store);
             if r.is_ok() {
                 self.index_on_disk = Some(self.index.written_as());
@@ -195,7 +232,7 @@ impl<'a> Daemon<'a> {
         if !audio_ok {
             self.audio_tools_missing = true;
             if let Some(m) = self.tiers.audio_unavailable() {
-                println!("{m}");
+                crate::outln!("{m}");
                 // Written down too: this program has no console window.
                 self.log.warn(&m);
             }
@@ -301,7 +338,10 @@ impl<'a> Daemon<'a> {
             // written down, so where the time goes can be seen.
             let tick_ms = tick_started.elapsed().as_millis() as u64;
             if tick_ms >= SLOW_TICK_MS {
-                self.log.info(&format!("timing: tick took {tick_ms}ms"));
+                // Which parts took it, so the next look at a log says where
+                // the time went (30 Sep 2026: the laptop's said only "1777ms").
+                self.tick_laps.mark("the rest");
+                self.log.info(&format!("timing: tick took {tick_ms}ms ({})", self.tick_laps.plain(3)));
             }
             // A tick that ran long (a render, a sweep) is Atlas busy, not
             // you gone: the next break check measures from when it finished.
@@ -345,6 +385,16 @@ impl<'a> Daemon<'a> {
             if let Some(ev) = self.hotkeys.as_ref().and_then(|h| h.poll()) {
                 self.log.info(&format!("key: {}", ev.plain()));
                 match ev {
+                    // With the microphone on its own thread, the recording
+                    // is done there and the loop carries on -- the hub, the
+                    // typing box, everything -- while you talk; the words
+                    // come back as `Heard::Talk` (30 Sep 2026: this held the
+                    // loop for the whole recording and its transcription).
+                    crate::hotkeys::Pressed::TalkStart if self.mic.is_some() => {
+                        if let (Some(m), Some(h)) = (self.mic.as_ref(), self.hotkeys.as_ref()) {
+                            m.talk(h.held_fn());
+                        }
+                    }
                     crate::hotkeys::Pressed::TalkStart => {
                         // The wake word's recorder lets go of the microphone
                         // while the key is held.
@@ -527,6 +577,7 @@ impl<'a> Daemon<'a> {
             // started once the first check answers, not at the first thing
             // you say (29 Sep 2026).
             self.keep_model_server_waiting(clock(), std::time::Duration::ZERO, false);
+            self.keep_deep_brain();
             self.look_again_at_audio(ears, clock());
             self.look_again_at_the_microphone(clock());
             self.back_to_the_wake_word(mouth, clock());
@@ -554,7 +605,9 @@ impl<'a> Daemon<'a> {
             // after one otherwise sat empty for up to two seconds. Only when
             // something could actually start — work blocked behind a render
             // is not a reason to spin.
-            let nap_ms = if self.crew.wants_attention() { CREW_NAP_MS } else { nap.min(MAX_SLEEP_SECS) * 1000 };
+            // And while a request of several steps is under way: its worker
+            // waits on the tick for each step (`take_task_loop_news`).
+            let nap_ms = if self.crew.wants_attention() || self.working_through_steps() { CREW_NAP_MS } else { nap.min(MAX_SLEEP_SECS) * 1000 };
             // Not asleep, though (27 Sep 2026): the nap is spent answering
             // the hub the moment a request arrives, and watching for typing,
             // which ends it. Two seconds with the hub unanswered and the
@@ -865,18 +918,36 @@ impl<'a> Daemon<'a> {
                 self.degrade(mouth);
             }
             crate::micthread::Heard::FollowUp(..) => {}
+            // The talk key, recorded on the microphone's thread.
+            crate::micthread::Heard::Talk(got, held_secs) => {
+                self.mic_busy(false);
+                match got {
+                    Ok(Some(said)) => {
+                        if let Some(m) = self.tiers.heard_you() {
+                            self.log.info(&m);
+                        }
+                        self.heard_through_this_ear(&said);
+                        self.converse(&said, ears, mouth, clock);
+                    }
+                    // A tap is not a question; a key held a second or more
+                    // with no words is said, not swallowed.
+                    Ok(None) if held_secs >= 1.0 => {
+                        self.log.info(&format!("push-to-talk: no words in {held_secs:.1}s of recording"));
+                        self.say(mouth, "I didn't catch anything that time. Hold the key while you talk, and I'll listen until you let go.");
+                    }
+                    Ok(None) => {}
+                    Err(why) => {
+                        self.log.info(&format!("push-to-talk: {why}"));
+                        self.say(mouth, &format!("I couldn't listen just then: {why}"));
+                    }
+                }
+            }
         }
         if let Some(m) = self.mic.as_ref() {
             m.rearm();
         }
         self.steer_mic();
         true
-    }
-
-    /// Whether the microphone's own thread is running: what the Status page
-    /// reads to say whether Atlas can hear you at all.
-    pub(crate) fn mic_running(&self) -> bool {
-        self.mic.is_some()
     }
 
     /// Your name said on its own: "Yes?", then listen for the rest -- after
@@ -927,6 +998,12 @@ impl<'a> Daemon<'a> {
             self.mic_probe_at = t + MIC_PROBE_EVERY_SECS;
             m.probe();
         }
+    }
+
+    /// Whether the microphone's own thread is running: what the Status page
+    /// reads to say whether Atlas can hear you at all.
+    pub(crate) fn mic_running(&self) -> bool {
+        self.mic.is_some()
     }
 
     /// Is the microphone's thread recording right now? For the tests and the
@@ -1304,13 +1381,12 @@ impl<'a> Daemon<'a> {
                 break;
             }
             match self.follow_up(ears, window) {
-                // "That's all", "thanks Atlas", "bye": the conversation is
-                // over, said back briefly, and Atlas goes back to listening
-                // for its name.
+                // "That's all", "bye", "thanks Atlas": said back briefly, the
+                // floor closes, and Atlas goes back to listening for its name.
                 Some(next) if crate::utterance::is_goodbye(&next) || crate::session::ends_the_conversation(&next) => {
                     self.log.info("the conversation ended: you said so");
-                    self.thread.append(&next, "Okay.", None, clock());
-                    self.say(mouth, "Okay.");
+                    self.thread.append(&next, "Anytime.", None, clock());
+                    self.say(mouth, "Anytime.");
                     break;
                 }
                 Some(next) => said = next,
@@ -1415,10 +1491,12 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn say(&self, mouth: &dyn Mouth, line: &str) {
-        println!("{line}");
+        crate::outln!("{line}");
         self.log.info(line);
         // Never over a reply still playing on its own thread.
-        crate::speakthread::wait_quiet(std::time::Duration::from_secs(30));
+        // The whole reply, not 30 seconds of it: a long reply on a busy
+        // machine took 45 (30 Sep 2026), and the two then played at once.
+        crate::speakthread::wait_quiet(std::time::Duration::from_secs(180));
         // Paused means quiet, not blind: the line is still printed and
         // logged, but the speaker stays silent. `may_speak` existed to
         // answer exactly this and `say` never asked, so a scheduled job
@@ -1428,6 +1506,7 @@ impl<'a> Daemon<'a> {
             // The screen got the line as written; the speaker gets it as
             // said. "$2.35" reads as words, "mph" is spoken not spelled,
             // a stray markdown marker is dropped rather than pronounced.
+            let _voice = crate::speakthread::hold_voice();
             if let Err(e) = mouth.speak(&crate::spoken_form::for_speech(line)) {
                 // Written down: a reply that failed to play was silence with
                 // no reason anywhere (29 Sep 2026).

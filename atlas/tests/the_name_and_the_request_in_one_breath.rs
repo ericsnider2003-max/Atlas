@@ -413,7 +413,7 @@ fn hands_free_the_conversation_stays_open_until_you_say_thats_all() {
     let clock = || 1_790_735_149u64;
     d.converse("what time is it", &ears, &mouth, &clock);
     let said = mouth.0.lock().unwrap().clone();
-    assert_eq!(said.last().map(String::as_str), Some("Okay."), "{said:?}");
+    assert_eq!(said.last().map(String::as_str), Some("Anytime."), "{said:?}");
     // Two follow-ups taken, no key and no wake word; the third never asked.
     let secs = ears.briefly_secs.lock().unwrap().clone();
     assert_eq!(secs.len(), 2, "{secs:?}");
@@ -429,7 +429,7 @@ fn hands_free_ends_on_silence() {
     let mouth = Speaker::default();
     d.converse("what time is it", &ears, &mouth, &|| 1_790_735_149u64);
     assert_eq!(ears.briefly_secs.lock().unwrap().len(), 1);
-    assert_ne!(mouth.0.lock().unwrap().last().map(String::as_str), Some("Okay."));
+    assert_ne!(mouth.0.lock().unwrap().last().map(String::as_str), Some("Anytime."));
 }
 
 #[test]

@@ -73,6 +73,7 @@ mod reading;
 mod execute;
 mod turn;
 mod tasks;
+mod operating;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,6 +251,8 @@ fn crew_job(name: &str, topic: Option<&str>, speak: &SpeakPolicy) -> crew::Job {
         // A compiler, the whole council's model calls, the self-improvement
         // loop: each saturates every core on its own.
         "build" | "improve" | "council" => TheWholeMachine,
+        // A picture being made keeps the graphics and every core busy.
+        "make-picture" => TheWholeMachine,
         // Disk and network: copying files, talking to a mail server.
         "backup" | "mail" | "unsubscribe" | "outlook-connect" | "outreach" | "reclaim" | "mcp" | "draft-model" => MostlyWaiting,
         // Hub buttons that wait on the network (`hubjobs`), and the knock on
@@ -482,6 +485,21 @@ pub struct Daemon<'a> {
     /// turn the whole index into text after every turn -- 30 MB for 68,000
     /// files -- only for the store to find the bytes unchanged.
     index_on_disk: Option<(usize, u64)>,
+    /// The file index being written on its own thread, and what it was
+    /// when the copy was taken.
+    index_saving: Option<((usize, u64), std::thread::JoinHandle<crate::error::Result<()>>)>,
+    /// This save is the tick's sweep: the index may be written behind it.
+    index_behind: bool,
+    /// Atlas testing itself (`selftest`): background work isn't started,
+    /// and commands that would touch real files, the network or the install
+    /// are reported as what they'd do (`selftest::tier`).
+    pub rehearsal: bool,
+    /// What a rehearsal held back, since the last look.
+    pub rehearsed: Vec<String>,
+    /// The last command carried out, by kind: where a sentence actually went.
+    last_executed: Option<String>,
+    /// A job being worked in an app, step by step (`operate`).
+    pub operating: Option<crate::operate::Job>,
     /// The index as it is read from disk at start, off this thread
     /// (`index::Loading`, 28 Sep 2026). `settle_index` takes it in.
     index_load: crate::index::Loading,
@@ -980,6 +998,20 @@ pub struct Daemon<'a> {
     /// loop -- the hub, the ticks -- carries on while the model thinks
     /// (27 Sep 2026: the whole hub hung for as long as a Talk reply took).
     pending_turn: Option<PendingTurn>,
+    /// The deep model for background work, beside the talking one
+    /// (`deepbrain`, 30 Sep 2026): started when such work comes, stopped
+    /// when idle, giving way to every turn.
+    pub(crate) deep: crate::deepbrain::DeepBrain,
+    /// When to look for the deep model's file again.
+    deep_look_at: u64,
+    /// A request of several steps being worked through on a worker
+    /// (`tasks::work_through`, 30 Sep 2026): its steps are carried out and
+    /// said by the tick.
+    task_loop: Option<tasks::TaskLoop>,
+    /// `models.talk` as last followed (`follow_the_talk_setting`), and the
+    /// model the talking server was started on.
+    talk_setting_seen: Option<String>,
+    model_running_id: Option<String>,
     /// The last id given to a `pending_turn`, so a caller can tell the turn
     /// it started from one that was already waiting (28 Sep 2026: a voice
     /// turn took over a Talk page turn still thinking).
@@ -1035,6 +1067,17 @@ pub struct Daemon<'a> {
     last_spoke_at: u64,
     /// The few of them a sentence needs (`router`, 30 Sep 2026).
     router: crate::router::Router,
+    /// The meaning encoder, resident, and every tool's vector (`meaningroute`).
+    /// Started once from the tick when an encoder is installed.
+    meaning_route: Option<crate::meaningroute::Route>,
+    meaning_route_tried: bool,
+    /// Where the last tick spent its time (`timing::Laps`).
+    tick_laps: crate::timing::Laps,
+    /// Which abilities requests have used (`used`), and when it was last saved.
+    pub(crate) used: crate::used::Used,
+    used_saved: u64,
+    /// The meaning model was asked for: start the encoder once it lands.
+    meaning_route_retry: bool,
     /// The parts of the last request of several parts, and where each
     /// stands (`streams`), for "what are you working on".
     streams: Vec<crate::streams::Stream>,
@@ -1524,6 +1567,12 @@ impl<'a> Daemon<'a> {
             // "(0, 0)": the empty index isn't written over the one on disk
             // while that one is still being read.
             index_on_disk: Some(index.written_as()),
+            index_saving: None,
+            index_behind: false,
+            rehearsal: false,
+            rehearsed: Vec::new(),
+            last_executed: None,
+            operating: None,
             index,
             index_load,
             awareness: Awareness::default(),
@@ -1723,6 +1772,11 @@ impl<'a> Daemon<'a> {
             audio_tools_missing: false,
             talk_queue: Vec::new(),
             pending_turn: None,
+            deep: crate::deepbrain::DeepBrain::none(),
+            deep_look_at: 0,
+            task_loop: None,
+            talk_setting_seen: None,
+            model_running_id: None,
             pending_seq: 0,
             also_asked: Vec::new(),
             rephrase_ok: false,
@@ -1743,6 +1797,12 @@ impl<'a> Daemon<'a> {
             pending_stamp: None,
             last_spoke_at: 0,
             router: crate::router::Router::new(&crate::intent::ToolBook::new(&cfg.commands)),
+            meaning_route: None,
+            meaning_route_tried: false,
+            tick_laps: crate::timing::Laps::start(),
+            used: store_for_load.load(crate::used::KEY),
+            used_saved: 0,
+            meaning_route_retry: false,
             streams: Vec::new(),
             first_words_ms: std::cell::Cell::new(None),
             by_chat: false,
@@ -1988,7 +2048,7 @@ fn key_cut_in(
 /// A reply being said, as the loop sees it (`speakthread`).
 impl crate::speakthread::Host for Daemon<'_> {
     fn line(&mut self, chunk: &str) {
-        println!("{chunk}");
+        crate::outln!("{chunk}");
         self.log.info(chunk);
     }
     fn between(&mut self) {
@@ -3910,7 +3970,17 @@ fn opens_with_deciding(said: &str) -> bool {
 /// A failed model call, in words: what went wrong and that the next message
 /// tries again (`brain` puts "Model unreachable: <why>" in `say`).
 pub fn model_failed_words(why: &str) -> String {
-    let why = why.trim().trim_start_matches("Model unreachable:").trim().trim_end_matches('.');
+    let mut why = why.trim().trim_start_matches("Model unreachable:").trim().to_string();
+    // The error's kind, once or twice over ("platform: platform: I couldn't
+    // reach..."), and the promise to try again, said twice (the real-model
+    // run, 30 Sep 2026): once each, in words.
+    while let Some(rest) = why.strip_prefix("platform:").or_else(|| why.strip_prefix("Platform:")) {
+        why = rest.trim().to_string();
+    }
+    for again in ["I'll try again with your next message.", "I'll try again with your next message"] {
+        why = why.replace(again, "");
+    }
+    let why = why.trim().trim_end_matches(['.', ' ']);
     // Names the source the way the connections board does
     // (`integrations::MODEL`) and says what it cost: the answer is missing.
     let model = crate::integrations::MODEL;

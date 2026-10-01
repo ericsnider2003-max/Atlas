@@ -1,3 +1,35 @@
+/// `println!` that never panics. The background Atlas has no console, and
+/// `println!` panics when stdout is a closed pipe ("failed printing to
+/// stdout: The pipe is being closed", 30 Sep 2026: Atlas stopped twice that
+/// evening). Lost output is fine; a crash isn't.
+#[macro_export]
+macro_rules! outln {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($t)*);
+    }};
+}
+
+/// `eprintln!` that never panics (see `outln!`).
+#[macro_export]
+macro_rules! errln {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr(), $($t)*);
+    }};
+}
+
+/// `print!` that never panics (see `outln!`).
+#[macro_export]
+macro_rules! out {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let mut o = std::io::stdout();
+        let _ = write!(o, $($t)*);
+        let _ = o.flush();
+    }};
+}
+
 pub mod browser;
 pub mod cdp;
 pub mod chat;
@@ -80,6 +112,13 @@ pub mod quickinput;
 pub mod reach;
 pub mod reclaim;
 pub mod meaning;
+pub mod meaningroute;
+pub mod imagemake;
+pub mod selftest;
+pub mod operate;
+pub mod used;
+#[cfg(feature = "onnx")]
+pub mod meaningnative;
 pub mod recall;
 pub mod recovery;
 pub mod reference;
@@ -304,6 +343,8 @@ pub mod nearby;
 pub mod metrics;
 pub mod mind;
 pub mod models;
+/// Two brains: the talking model and a deeper one for background work (30 Sep 2026).
+pub mod deepbrain;
 pub mod modes;
 pub mod scheduler;
 pub mod selfaudit;

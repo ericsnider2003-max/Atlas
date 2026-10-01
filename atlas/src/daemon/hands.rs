@@ -444,13 +444,19 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
+        // The camera's picture is taken on the crew with the rest (30 Sep
+        // 2026): opening a webcam takes a second or two on Windows, and that
+        // was the loop -- the hub, the talk key -- standing still.
+        let mut capture_later: Option<(crate::tools::ExternalTool, crate::tools::Vars)> = None;
         if !taken_here {
             let Some(tool) = tool else {
                 return format!("There's no {word} capture set up on this machine.");
             };
             let mut vars = tools.vars.clone();
             vars.insert("out_png".into(), shot.display().to_string());
-            if let crate::probe::Target::App(app) = &target {
+            if matches!(what, Capture::Camera) {
+                capture_later = Some((tool.clone(), vars.clone()));
+            } else if let crate::probe::Target::App(app) = &target {
                 if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
                     return format!(
                         "You're in the middle of something, so I won't move your windows to look at {app}. \
@@ -470,7 +476,8 @@ impl<'a> Daemon<'a> {
                 return format!("I couldn't take the picture: {e}");
             }
         }
-        let small = crate::picture_talk::smaller(&shot);
+        // Made smaller for the reader now, or on the crew once it's taken.
+        let small = if capture_later.is_some() { None } else { crate::picture_talk::smaller(&shot) };
         // About 3 GB while it runs, so the memory budget gets a say first,
         // and a refusal is a sentence rather than a laptop that swaps.
         let name = "picture reader";
@@ -499,6 +506,16 @@ impl<'a> Daemon<'a> {
         let small_again = small.clone();
         let work: crew::Work = Box::new(move |c: &crew::Control| {
             let started = std::time::Instant::now();
+            let mut small = small;
+            if let Some((tool, vars)) = &capture_later {
+                if let Err(e) = tool.run(vars, None) {
+                    // A capture that failed partway can leave a half-written file.
+                    let _ = std::fs::remove_file(&shot);
+                    let o = PictureOutcome { took_ms: 0, prompt_chars: 0, answer: String::new(), failed: Some(format!("the camera didn't give me a picture ({e})")) };
+                    return serde_json::to_string(&o).map_err(|e| e.to_string());
+                }
+                small = crate::picture_talk::smaller(&shot);
+            }
             let answer =
                 crate::picture_talk::ask_until(&cfg, &root, small.as_deref().unwrap_or(&shot), &question, &|| c.stopping());
             let _ = std::fs::remove_file(&shot);
@@ -573,7 +590,8 @@ impl<'a> Daemon<'a> {
         if let Some(done) = said.to_transcribe {
             let tools = self.tools_cfg();
             let notes_dir = self.notes_dir();
-            let llm = self.llm.clone();
+            // The call's summary is background work (`deepbrain`).
+            let llm = self.background_llm();
             let mut vars = tools.vars.clone();
             self.add_language_vars(&mut vars);
             match tools.stt_timed.clone() {

@@ -237,6 +237,15 @@ pub trait Llm: Send + Sync {
         chat_by_flattening(self, req, on_text)
     }
 
+    /// `chat`, stopped as soon as `keep_going` says so -- asked while the
+    /// model is still reading the prompt too, when no word has come for
+    /// `on_text` to stop at (30 Sep 2026, `deepbrain`: the deep model gives
+    /// way to a turn). A model that can't be stopped mid-call just answers.
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+        let _ = keep_going;
+        self.chat(req, on_text)
+    }
+
     /// Complete a task worth escalating to a stronger model when one is
     /// configured — a self-fix draft, code from a description. A single model
     /// has nothing stronger to reach for, so the default is just `complete`;
@@ -575,6 +584,13 @@ impl Llm for ShellLlm {
             return chat_by_flattening(self, req, on_text);
         };
         crate::models::chat_call(&url, req, on_text)
+    }
+
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+        let Some(url) = crate::models::chat_url_beside(&self.cfg) else {
+            return chat_by_flattening(self, req, on_text);
+        };
+        crate::models::chat_call_until(&url, req, on_text, keep_going)
     }
 
     fn complete(&self, system: &str, user: &str) -> Result<String> {
@@ -1021,6 +1037,12 @@ pub struct Turn {
     /// Web research is turned on in Settings: what a reply that says Atlas
     /// can't research is corrected with (`backed::denies_an_ability`).
     pub research_on: bool,
+    /// The sentence reads plainly like one of the offered tools (`router::
+    /// Router::sure_of`): a reply that calls none is asked again with a call
+    /// required (30 Sep 2026: "my laptop is running slow, what's eating the
+    /// memory" got "Memory usage is at 78%... I'll start clearing some" from
+    /// a real 4B model, with nothing measured and nothing started).
+    pub wants_a_tool: bool,
 }
 
 /// Roughly how many tokens `text` is: three and a half characters to a
@@ -1228,6 +1250,34 @@ impl<'a> Brain<'a> {
     /// The chat call. `None` when it failed before anything was passed on,
     /// and the one-prompt path should answer instead.
     fn converse_with_tools(&self, turn: &Turn, on_text: &mut dyn FnMut(&str) -> bool, also: &mut Vec<String>) -> Option<Decision> {
+        // A sentence that plainly asks for one of the tools (`Turn::
+        // wants_a_tool`): the call first, held to one of them, before the
+        // model can talk around it (30 Sep 2026, a real 4B model: "how did my
+        // last youtube video do" was answered "12K views and 470 likes" --
+        // said aloud, invented -- before any retry could call the tool). A
+        // call is ~20 tokens; one that doesn't come back as a call falls
+        // through to the ordinary reply.
+        if turn.wants_a_tool && turn.tools.len() > turn.stable_tools {
+            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: FORCED_TOOL_TOKENS, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
+            if let Ok(mut first) = self.llm.chat(&req, &mut |_| true) {
+                if first.tool_calls.is_empty() {
+                    if let Some(call) = crate::models::forced_call(&first.text, &req.tools) {
+                        first.tool_calls.push(call);
+                        first.text.clear();
+                    }
+                }
+                // The capabilities tool isn't the work: asked for, it's the
+                // model not knowing which; the ordinary reply decides then.
+                if first.tool_calls.iter().any(|c| c.name != crate::router::META_TOOL) {
+                    let mut more = Vec::new();
+                    let d = decision_from_chat_noting(&first, &turn.said, &turn.tools, &mut more);
+                    if !matches!(d.intent, Intent::Say(_)) {
+                        also.extend(more);
+                        return Some(d);
+                    }
+                }
+            }
+        }
         let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
         // What a new reply is checked against: the last replies in full
         // (`Turn::recent_replies`), or, when the caller gave none, what the
@@ -1320,13 +1370,23 @@ impl<'a> Brain<'a> {
         // And for "I can't -- I don't have access to your files" when a tool
         // that does it was offered: the tool, not the denial.
         let denied_with_a_tool = gate.denied.is_some() && turn.tools.len() > turn.stable_tools;
-        if reply.tool_calls.is_empty() && !turn.tools.is_empty() && (gate.claimed || denied_with_a_tool || announces_an_action(&reply.text)) {
+        if reply.tool_calls.is_empty()
+            && !turn.tools.is_empty()
+            && (gate.claimed || denied_with_a_tool || announces_an_action(&reply.text) || turn.wants_a_tool)
+        {
             // A tool call is short: capped, so a small model that can't find
             // one doesn't write for half a minute instead (30 Sep 2026, a real
             // 0.8B model: 450 tokens, 37 s; at 120 a 2B one still wrote for 20 s on
             // this machine's processor -- a call is 20-40 tokens).
             let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens.min(FORCED_TOOL_TOKENS), force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
-            if let Ok(forced) = self.llm.chat(&req, &mut |_| true) {
+            if let Ok(mut forced) = self.llm.chat(&req, &mut |_| true) {
+                // The call comes back as the schema's JSON (`models::chat_body`).
+                if forced.tool_calls.is_empty() {
+                    if let Some(call) = crate::models::forced_call(&forced.text, &req.tools) {
+                        forced.tool_calls.push(call);
+                        forced.text.clear();
+                    }
+                }
                 let mut more = Vec::new();
                 let f = decision_from_chat_noting(&forced, &turn.said, &turn.tools, &mut more);
                 if !matches!(f.intent, Intent::Say(_)) {
@@ -1572,6 +1632,17 @@ impl SpeechGate {
                 if let Some(ability) = crate::backed::denies_an_ability(sentence) {
                     ok = false;
                     self.denied = Some(ability);
+                }
+            }
+            // A denial by meaning, for the ways of saying it the list doesn't
+            // have (`backed::check_meaning`, when the encoder runs).
+            if ok {
+                match crate::backed::check_meaning(sentence) {
+                    crate::backed::Meant::Denial(ability) => {
+                        ok = false;
+                        self.denied = Some(ability);
+                    }
+                    crate::backed::Meant::Neither => {}
                 }
             }
             if ok && !self.known.is_empty() && crate::backed::invents_someone(sentence, &self.known) {
@@ -2013,6 +2084,9 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         "use_mic" => Intent::UseMic(arg),
         "edit_media" => Intent::EditMedia(arg),
         "edit_photo" => Intent::EditPhoto(arg),
+        "make_picture" => Intent::MakePicture(arg),
+        "self_test" => Intent::SelfTest,
+        "operate" => Intent::Operate(arg),
         "clock" => Intent::Clock,
         "languages" => Intent::Languages(arg),
         "teach_gesture" => Intent::TeachGesture(arg),
@@ -2298,6 +2372,9 @@ pub fn default_say(i: &Intent) -> String {
         Intent::UseMic(_) => String::new(),
         Intent::EditMedia(_) => String::new(),
         Intent::EditPhoto(_) => String::new(),
+        Intent::MakePicture(_) => String::new(),
+        Intent::SelfTest => String::new(),
+        Intent::Operate(_) => String::new(),
         Intent::Clock => String::new(),
         Intent::SetKey(_) => String::new(),
         Intent::Languages(_) => String::new(),

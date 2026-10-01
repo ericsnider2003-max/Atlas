@@ -270,7 +270,8 @@ fn dismissing_takes_it_away_without_a_word() {
 fn asking_for_something_that_isnt_a_panel_says_so() {
     let (c, p) = (conf(), mock(two_screens()));
     let mut d = daemon(&c, &p, "nope");
-    assert!(d.turn("pull up the weather", 100).contains("don't have"));
+    let said = d.turn("pull up the weather", 100);
+    assert!(said.contains("can't put") && said.contains("open an app by name"), "{said}");
 }
 
 #[test]

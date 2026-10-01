@@ -99,7 +99,8 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // (Daemon::refile_note) reaches it -- "file that under the roof job" /
     // "that's actually a task" rewrites a captured note's kind or adds a handle
     // and marks it confirmed. Capture only ever added notes until now.
-    "cdp::scroll",
+    // cdp::scroll left 30 Sep 2026: `operate` calls `Platform::scroll`,
+    // the same bare name, so this scan can no longer tell them apart.
     // `cdp::url` came off 21 Sep 2026, but by bare-name collision rather than by
     // being wired: `motion.rs`'s animation sniffer holds the CSS token
     // `"url(http"` as a string literal, and the scan reads `url(` there without

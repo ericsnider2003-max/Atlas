@@ -26,13 +26,19 @@ impl<'a> Daemon<'a> {
     /// stamped when first seen here -- at the next tick or turn after it is
     /// asked -- and dropped once it is older than that.
     pub(super) fn expire_stale_question(&mut self, t: u64) {
-        if !self.session.is_waiting() {
-            self.pending_stamp = None;
-            return;
-        }
-        // Which question, by its words: a new one restarts the clock.
+        // Which question, by its words: a new one restarts the clock. A
+        // question Atlas left in one of its own slots with nothing asked
+        // through the session ("shall I move these?" kept in
+        // `pending_desktop`) counts too: those were only dropped when a
+        // session question happened to be open, so one could sit for days
+        // and take an unrelated sentence as its answer (30 Sep 2026, §5 of
+        // the split plan).
         let which = match &self.session.pending {
-            Pending::Nothing => String::new(),
+            Pending::Nothing if self.a_slot_is_open() => "a question of Atlas's own".to_string(),
+            Pending::Nothing => {
+                self.pending_stamp = None;
+                return;
+            }
             Pending::Clarification(q) => format!("asked: {q}"),
             Pending::Approval(i, d) => format!("approve: {} / {d}", kind_of(i)),
         };
@@ -40,33 +46,49 @@ impl<'a> Daemon<'a> {
             Some((at, k)) if *k == which => {
                 if t.saturating_sub(*at) > QUESTION_LIFETIME_SECS {
                     self.log.info("a question went unanswered for ten minutes -- dropped it");
-                    self.session.pending = Pending::Nothing;
-                    self.pending_stamp = None;
-                    self.pending_job = None;
-                    self.pending_offer = None;
-                    self.pending_wanted = None;
-                    self.pending_backlog = None;
-                    self.pending_bring_back = None;
-                    self.pending_unscanned = None;
-                    self.pending_media_keep = None;
-                    self.pending_media_original = None;
-                    self.pending_undo = None;
-                    self.pending_storage = None;
-                    self.pending_desktop = None;
-                    self.pending_press = None;
-                    self.pending_post_approval = None;
-                    self.pending_post_when = None;
-                    self.pending_mail_sort = false;
-                    self.pending_security = None;
-                    self.pending_signin = None;
-                    self.pending_window_confirm = None;
-                    self.pending_panel = None;
-                    self.pending_correction = None;
-                    self.pending_decision = None;
-                    self.answering = None;
+                    self.drop_open_questions();
                 }
             }
             _ => self.pending_stamp = Some((t, which)),
+        }
+    }
+
+    /// Is a question Atlas asked still waiting in one of its slots?
+    pub(super) fn a_slot_is_open(&self) -> bool {
+        self.pending_job.is_some() || self.pending_offer.is_some() || self.pending_wanted.is_some() || self.pending_backlog.is_some() || self.pending_bring_back.is_some() || self.pending_unscanned.is_some() || self.pending_media_keep.is_some() || self.pending_media_original.is_some() || self.pending_undo.is_some() || self.pending_storage.is_some() || self.pending_desktop.is_some() || self.pending_press.is_some() || self.pending_post_approval.is_some() || self.pending_post_when.is_some() || self.pending_security.is_some() || self.pending_signin.is_some() || self.pending_window_confirm.is_some() || self.pending_panel.is_some() || self.pending_correction.is_some() || self.pending_decision.is_some() || self.pending_mail_sort
+    }
+
+    /// Every open question dropped, in one place: the session's and each
+    /// slot's.
+    pub(super) fn drop_open_questions(&mut self) {
+        self.session.pending = Pending::Nothing;
+        self.session.queued.clear();
+        self.pending_stamp = None;
+        self.pending_job = None;
+        self.pending_offer = None;
+        self.pending_wanted = None;
+        self.pending_backlog = None;
+        self.pending_bring_back = None;
+        self.pending_unscanned = None;
+        self.pending_media_keep = None;
+        self.pending_media_original = None;
+        self.pending_undo = None;
+        self.pending_storage = None;
+        self.pending_desktop = None;
+        self.pending_press = None;
+        self.pending_post_approval = None;
+        self.pending_post_when = None;
+        self.pending_security = None;
+        self.pending_signin = None;
+        self.pending_window_confirm = None;
+        self.pending_panel = None;
+        self.pending_correction = None;
+        self.pending_decision = None;
+        self.pending_mail_sort = false;
+        self.answering = None;
+        // A job in an app that asked you something and was never answered.
+        if self.operating.as_ref().is_some_and(|j| j.waiting_on_you) {
+            self.operating = None;
         }
     }
 
@@ -306,14 +328,14 @@ impl<'a> Daemon<'a> {
             // count: a story or a poem runs past eight sentences, and was cut
             // off mid-line at two (27 Sep 2026). A task still stops at its
             // count.
-            // 30 Sep 2026, measured on the laptop (`atlas talk-bench`): left
-            // to their token budget, every model answered small talk in five
-            // to seven sentences, 8-26 s each, and the longer ones were where
-            // they made things up. Talk stops at a spoken length unless you
-            // asked for something long (`asks_for_length`).
+            // Out loud, what was asked for, one past it (a model counts
+            // "Sure." as one). Otherwise, 30 Sep 2026, measured on the laptop
+            // (`atlas talk-bench`): left to their token budget, every model
+            // answered small talk in five to seven sentences, 8-26 s each, and
+            // the longer ones were where they made things up. Talk stops at a
+            // spoken length unless you asked for something long
+            // (`asks_for_length`).
             max_sentences: Some(if short_spoken {
-                // One past what was asked: the stream stops at a sentence's
-                // end, and a model counts "Sure." as one.
                 sentences.max(1) + 1
             } else if register == crate::register::Register::Chatting && crate::register::asks_for_length(said) {
                 SAFETY_SENTENCES
@@ -325,6 +347,7 @@ impl<'a> Daemon<'a> {
             one_prompt: one_prompt.to_string(),
             skip_phrases: false,
             research_on: self.tools_ref().is_some_and(|tc| tc.research.enabled),
+            wants_a_tool: !handed_over && !about_atlas && self.router.sure_of(said, None),
             // The same question asked again may get the same answer: its
             // earlier answer isn't counted as a repeat.
             recent_replies: Some(match self.thread.said_earlier(said) {
@@ -417,7 +440,10 @@ impl<'a> Daemon<'a> {
         let by_chat = llm.native_chat();
         let msgs = turn.messages();
         let kept_llm = llm.clone();
+        // A turn is being answered: the deep model gives way until it is.
+        let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
+            let _talking = talking;
             let brain = Brain { llm: &*llm, fallback: &parser, voice: Some((&persona, register)) };
             let mut sentences = brain::Sentences::default();
             let mut also = Vec::new();
@@ -479,7 +505,9 @@ impl<'a> Daemon<'a> {
         )));
         let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false };
         let llm = p.llm.clone();
+        let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
+            let _talking = talking;
             let mut sentences = brain::Sentences::default();
             let r = llm.chat(&req, &mut |piece| {
                 if let Ok(mut pp) = partial.lock() {
@@ -968,9 +996,16 @@ impl<'a> Daemon<'a> {
         let goal = self.thread.current_goal_where(|_| true);
         let apps: Vec<String> = self.cfg.apps.apps.keys().cloned().collect();
         let apps_note = (!apps.is_empty()).then(|| format!("One of: {}.", apps.join(", ")));
+        // Meaning as well as words, when the encoder is running and quick
+        // enough (`meaningroute`); words alone otherwise.
+        let q = self.meaning_route.as_ref().and_then(|m| m.sentence(said));
+        let meaning = match (&q, self.meaning_route.as_ref().and_then(|m| m.tools())) {
+            (Some(q), Some(t)) => Some((q.as_slice(), t)),
+            _ => None,
+        };
         let picked: Vec<serde_json::Value> = self
             .router
-            .for_turn(said, goal.as_deref(), crate::router::SHORTLIST)
+            .for_turn_meaning(said, goal.as_deref(), crate::router::SHORTLIST, meaning)
             .into_iter()
             .map(|e| {
                 let note = matches!(e.name.as_str(), "open_app" | "close_app" | "focus_app").then(|| apps_note.as_deref()).flatten();

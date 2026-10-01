@@ -1856,7 +1856,7 @@ mod tests {
             .status()
             .is_ok_and(|s| s.success());
         if !zipped {
-            println!("SKIP: no zip tool here");
+            crate::outln!("SKIP: no zip tool here");
             return;
         }
         std::fs::remove_dir_all(&work).unwrap();

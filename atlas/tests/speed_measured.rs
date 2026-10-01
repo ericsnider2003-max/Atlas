@@ -408,12 +408,12 @@ fn each_request_says_which_tools_are_the_every_turn_ones() {
     assert_eq!(b["chat_template_kwargs"][atlas::models::STABLE_TOOLS_KWARG], 2, "{b}");
     assert_eq!(b["tools"].as_array().unwrap().len(), 3, "every tool is still offered");
     // Not said when it isn't known, or when every tool is an every-turn one.
-    // 30 Sep 2026: every request now carries `enable_thinking: false` (Qwen3
-    // thinks before answering otherwise), so the kwargs are always there;
-    // the stable-tools count still only when it is known and not all of them.
+    // (30 Sep 2026: the kwargs are always sent now, carrying
+    // `enable_thinking: false`, so the check is on the one key.)
     assert!(sent(0)["chat_template_kwargs"].get(atlas::models::STABLE_TOOLS_KWARG).is_none());
     assert!(sent(3)["chat_template_kwargs"].get(atlas::models::STABLE_TOOLS_KWARG).is_none());
-    assert_eq!(sent(3)["chat_template_kwargs"]["enable_thinking"], false);
+    // Nothing thought out loud before the answer.
+    assert_eq!(sent(0)["chat_template_kwargs"]["enable_thinking"], false);
     // A call beside the conversation goes to the other slot, so the
     // conversation's slot keeps what it has read.
     assert_eq!(sent_as(2, true)["id_slot"], 1);

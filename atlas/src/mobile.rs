@@ -113,7 +113,7 @@ pub fn start_once(home: std::path::PathBuf, port: u16, wait: std::time::Duration
         set_phase(generation, match r {
             Ok(()) => Phase::Stopped,
             Err(why) => {
-                eprintln!("atlas: {why}");
+                crate::errln!("atlas: {why}");
                 Phase::Failed(why)
             }
         });
@@ -229,7 +229,7 @@ fn phone_llm(tools: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn cra
         if let Some((path, _)) = crate::phonemodel::present(&dir) {
             std::thread::spawn(move || {
                 if let Err(why) = crate::phonemodel::attach(&path) {
-                    eprintln!("atlas: the phone's model didn't load: {why}");
+                    crate::errln!("atlas: the phone's model didn't load: {why}");
                 }
             });
         }
@@ -261,7 +261,7 @@ pub unsafe extern "C" fn atlas_mobile_start(home: *const std::os::raw::c_char, p
         Started::AlreadyRunning(_) => 1,
         Started::Starting => {
             if crate::mobile::starts() == before {
-                eprintln!("atlas: already starting (start {before}); not starting another");
+                crate::errln!("atlas: already starting (start {before}); not starting another");
             }
             2
         }

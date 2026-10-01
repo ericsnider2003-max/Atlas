@@ -251,7 +251,12 @@ impl Index {
                 c.removed.push(path.clone());
             }
         }
-        self.entries = fresh.entries;
+        // The old map is let go of on another thread: tens of thousands of
+        // paths freed one by one was part of the half-second (30 Sep 2026).
+        let old = std::mem::replace(&mut self.entries, fresh.entries);
+        if old.len() > 5_000 {
+            let _ = std::thread::Builder::new().name("atlas-index-free".into()).spawn(move || drop(old));
+        }
         self.last_scan = fresh.last_scan;
         c
     }
