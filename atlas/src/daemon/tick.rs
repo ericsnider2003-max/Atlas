@@ -6,6 +6,11 @@
 
 use super::*;
 
+/// No folder and no device named to reach directly.
+const NOWHERE_TO_SYNC: &str = "I've nowhere to put it — there's no cloud folder on this machine, and no other device \
+     of yours named to reach directly. Set `sync.folder` to a folder both machines can see, or name your \
+     other device, and I'll carry it.";
+
 /// How often `sync.automatic` carries your things (seconds).
 pub const AUTO_SYNC_EVERY_SECS: u64 = 900;
 
@@ -648,11 +653,12 @@ impl<'a> Daemon<'a> {
         // `sync.automatic` was on by default and read by nothing: syncing
         // happened only when you said "sync" (30 Sep 2026 sweep). Only once
         // you've chosen a folder -- nothing is put in a cloud folder you
-        // didn't pick -- and every quarter of an hour, quietly; what it did
+        // didn't pick -- or named another device to reach directly (over
+        // your tailnet; 1 Oct 2026), and every quarter of an hour, quietly; what it did
         // is in the log, and saying "sync" still tells you.
         if sync_cfg.enabled
             && sync_cfg.automatic
-            && !sync_cfg.folder.trim().is_empty()
+            && (!sync_cfg.folder.trim().is_empty() || self.has_named_peers())
             && t.saturating_sub(self.last_auto_sync) >= AUTO_SYNC_EVERY_SECS
         {
             self.last_auto_sync = t;
@@ -1701,6 +1707,31 @@ impl<'a> Daemon<'a> {
     /// pass, so a device that is both on the same wifi *and* named by tailnet
     /// address doesn't get sent to twice. The bundle is re-made per peer so a
     /// single pass carries forward whatever the previous peer just handed us.
+    /// Devices of yours named by address (`elsewhere.known`), reachable
+    /// without a folder.
+    pub(super) fn has_named_peers(&self) -> bool {
+        self.tools_cfg().elsewhere.known.iter().any(|p| !p.name.trim().is_empty() && !p.host.trim().is_empty())
+    }
+
+    /// Sync with no folder: straight to each device you've named, over the
+    /// tailnet or this network (research report, Stage 1 item 10: a shared
+    /// folder was required even when the phone could be reached directly).
+    /// Silent about a device that's asleep -- the next pass tries again.
+    fn carry_direct_only(&mut self, cfg: &crate::sync::SyncConfig, now: u64) -> String {
+        let kept: crate::sync::KeptKey = self.store.load(crate::sync::KEY_FILE);
+        let key: Option<Vec<u8>> = if kept.is_set() {
+            kept.phrase().and_then(|p| crate::sync::key_from_phrase(&p)).ok()
+        } else {
+            None
+        };
+        let lines = self.dial_configured_peers(cfg, key.as_deref(), now, &[]);
+        if lines.is_empty() {
+            "No folder to sync through, and none of your other devices answered directly this time -- I'll try again.".into()
+        } else {
+            format!("Synced straight to your other devices, no folder needed. {}", lines.join(" "))
+        }
+    }
+
     fn dial_configured_peers(
         &mut self,
         cfg: &crate::sync::SyncConfig,
@@ -1913,12 +1944,9 @@ impl<'a> Daemon<'a> {
         if dir.is_empty() {
             match crate::sync::best_folder() {
                 Some((p, _)) => dir = p.display().to_string(),
-                None => {
-                    return "I've nowhere to put it — there's no cloud folder on this machine. Set \
-                            `sync.folder` to a folder both machines can see (a share, or a USB stick \
-                            you plug in) and I'll carry it through there."
-                        .into();
-                }
+                // No folder: straight to your named devices (`carry_direct_only`).
+                None if self.has_named_peers() => return self.carry_direct_only(&cfg, now),
+                None => return NOWHERE_TO_SYNC.into(),
             }
         }
         let (_carry, route) = crate::sync::route_of(std::path::Path::new(&dir));

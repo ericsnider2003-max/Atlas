@@ -558,3 +558,43 @@ fn a_failed_push_waits_longer_each_time_and_survives_a_restart() {
     let d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
     assert_eq!(d.phone_to_retry.len(), 1, "still waiting after a restart");
 }
+
+/// Research report, Stage 1 item 10: with no shared folder, syncing gave up
+/// even when your other device could be reached directly by its address.
+#[test]
+fn with_no_folder_sync_goes_straight_to_your_named_devices() {
+    if atlas::sync::best_folder().is_some() {
+        return; // a cloud folder on this machine: the folder route is taken, not this one
+    }
+    // The "phone": something listening that takes the connection and hangs
+    // up without a bundle. That it was dialled at all is the point.
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    let dialled = std::thread::spawn(move || {
+        l.set_nonblocking(true).unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < until {
+            if let Ok((s, _)) = l.accept() {
+                drop(s);
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        false
+    });
+    let (mut c, p) = (cfg(), plat());
+    let tools = c.tools.as_mut().unwrap();
+    tools.sync.enabled = true;
+    tools.sync.folder = String::new();
+    tools.elsewhere.known = vec![atlas::elsewhere::Elsewhere {
+        name: "phone".into(),
+        host: "127.0.0.1".into(),
+        port: 1,
+        sync_port: Some(port),
+        ..Default::default()
+    }];
+    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("sync-direct")), Proactive::new(ProactiveConfig::default()));
+    let said = d.execute(&atlas::intent::Intent::Sync(String::new()));
+    assert!(dialled.join().unwrap(), "the named device was never dialled: {said}");
+    assert!(!said.contains("nowhere to put it"), "{said}");
+}

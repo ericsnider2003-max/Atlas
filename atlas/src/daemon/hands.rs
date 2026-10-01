@@ -1123,7 +1123,29 @@ impl<'a> Daemon<'a> {
         // Says how many views it has, because one view is a system that
         // recognises you in one light and at one angle, and knowing that is
         // what makes someone show it again.
-        format!("Got it — {}. Show me again from another angle and I'll be surer.", views)
+        //
+        // In words, not the album's own line: "this is me" was answered "Got
+        // it — me — thing, 1 view." (self-test, 1 Oct 2026). Who it is comes
+        // first, then how many looks it has had.
+        let count: usize = views
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .find(|w| w[1].starts_with("view"))
+            .and_then(|w| w[0].trim_matches(|c: char| !c.is_ascii_digit()).parse().ok())
+            .unwrap_or(1);
+        let your_face = self.tools_cfg().vision.your_face.clone();
+        let is_you = ["me", "myself", "i"].contains(&name.trim().to_lowercase().as_str())
+            || (!your_face.trim().is_empty() && name.trim().eq_ignore_ascii_case(your_face.trim()));
+        let who = if is_you {
+            "you".to_string()
+        } else if face.is_some() {
+            name.trim().to_string()
+        } else {
+            format!("your {}", name.trim().trim_start_matches("the ").trim_start_matches("my "))
+        };
+        let looks = if count <= 1 { "That's one look so far".to_string() } else { format!("That's {count} looks now") };
+        format!("Got it — I'll know {who}. {looks}; show me again from another angle and I'll be surer.")
     }
 
     pub(super) fn build_eyes(&self, models: &std::path::Path) -> Option<Box<dyn crate::handloop::Eyes>> {
