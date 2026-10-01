@@ -870,7 +870,11 @@ impl<'a> Daemon<'a> {
             }
 
             if link.label == "outlook-connect" && ok {
-                if let Some(address) = &link.topic {
+                let (address, client_id) = match link.topic.as_deref().map(|t| t.split_once(' ').unwrap_or((t, ""))) {
+                    Some((a, c)) => (Some(a.to_string()), c.to_string()),
+                    None => (None, String::new()),
+                };
+                if let Some(address) = &address {
                     let vault_name = format!("outlook {address}");
                     let now = crate::store::now();
                     match self
@@ -882,11 +886,13 @@ impl<'a> Daemon<'a> {
                                 .map_err(|e| format!("sealed it but couldn't write it: {e}"))
                         }) {
                         Ok(()) => {
-                            result = format!(
-                                "Connected {address}. Add this account under mail.accounts in \
-                                 config/tools.yaml: address: {address}, oauth: true, client_id: \
-                                 <the one you used to connect>, password_from_vault: \"{vault_name}\"."
-                            );
+                            result = match self.add_connected_account(address, &client_id, &vault_name) {
+                                Ok(on) if on => format!("Connected {address}. I'll read it with your other mail from now on."),
+                                Ok(_) => format!(
+                                    "Connected {address}. Reading your mail is switched off, though -- turn it on in Settings, under Mail, and I'll read this one too."
+                                ),
+                                Err(e) => format!("Connected {address}, but I couldn't add it to your accounts ({e}), so I won't read it yet."),
+                            };
                         }
                         Err(e) => {
                             result =
@@ -1036,5 +1042,31 @@ impl<'a> Daemon<'a> {
         out.extend(self.long_work.to_report(&self.watching_cfg(), t));
         self.long_work.prune(&self.watching_cfg(), t);
         out
+    }
+}
+
+/// Mail accounts Atlas connected itself (Outlook's sign-in), kept apart from
+/// tools.yaml -- which `atlas update` replaces -- and laid over it when the
+/// settings are resolved (`resolve_tools`).
+pub const CONNECTED_ACCOUNTS: &str = "mail_accounts_connected";
+
+impl Daemon<'_> {
+    /// Add an account that has just been connected, and use it now. Returns
+    /// whether reading mail is switched on.
+    fn add_connected_account(&mut self, address: &str, client_id: &str, vault_name: &str) -> std::result::Result<bool, String> {
+        let mut kept: Vec<crate::mail::Account> = self.store.load(CONNECTED_ACCOUNTS);
+        kept.retain(|a| !a.address.eq_ignore_ascii_case(address));
+        let name = address.split('@').next().unwrap_or(address).to_string();
+        kept.push(crate::mail::Account {
+            name,
+            address: address.to_string(),
+            password_from_vault: vault_name.to_string(),
+            oauth: true,
+            client_id: client_id.to_string(),
+            ..Default::default()
+        });
+        self.store.save(CONNECTED_ACCOUNTS, &kept).map_err(|e| e.to_string())?;
+        self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
+        Ok(self.tools_cfg().mail.enabled)
     }
 }

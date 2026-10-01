@@ -59,6 +59,9 @@ mod errands;
 mod helping;
 mod messages;
 mod hands;
+pub use hands::{PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
+pub use errands::CONNECTED_ACCOUNTS;
+pub use tick::moment_clock;
 mod away;
 mod tick;
 mod inbox;
@@ -202,6 +205,14 @@ fn resolve_tools(tools: Option<&crate::voice::ToolsConfig>, store: &Store) -> cr
         let d = std::path::PathBuf::from(&t.work_dir);
         if d.is_relative() {
             t.work_dir = store.install_root().join(d).to_string_lossy().into_owned();
+        }
+    }
+    // Mail accounts Atlas connected itself (`errands::CONNECTED_ACCOUNTS`),
+    // after the ones you listed; one you listed by the same address wins.
+    let connected: Vec<crate::mail::Account> = store.load(errands::CONNECTED_ACCOUNTS);
+    for a in connected {
+        if !t.mail.accounts.iter().any(|b| b.address.eq_ignore_ascii_case(&a.address)) {
+            t.mail.accounts.push(a);
         }
     }
     t
@@ -773,6 +784,17 @@ pub struct Daemon<'a> {
     pub vault: crate::vault::Vault,
     /// The last reminder said when it came due, and when (`keeping`: "snooze").
     pub last_reminder_fired: Option<(String, u64)>,
+    /// Notes a push to your phone failed for, tried again every few minutes
+    /// while you're still away (`tick`). 30 Sep 2026: one failed push -- a
+    /// phone on a lift, the push server restarting -- meant the note waited
+    /// until you were back at the desk, which is what the phone was for.
+    pub phone_to_retry: Vec<crate::notify::Note>,
+    /// What the background said, numbered, for an app on the phone to show
+    /// as notifications (`/hub/live.json`'s `said`). The phone has no
+    /// speaker loop: its tick output was dropped (30 Sep 2026), so a
+    /// reminder set on the phone never appeared.
+    pub said_for_apps: Vec<(u64, String)>,
+    pub phone_retry_at: u64,
     /// The last reminder or timer set ("cancel that reminder").
     pub last_reminder_set: Option<u64>,
     /// "Remind me to X" with no time: X, until you say when.
@@ -1595,6 +1617,9 @@ impl<'a> Daemon<'a> {
                 crate::vault::Vault::load(&store_for_vault)
             },
             last_reminder_fired: None,
+            phone_to_retry: Vec::new(),
+            said_for_apps: Vec::new(),
+            phone_retry_at: 0,
             last_reminder_set: None,
             reminder_waiting_for_a_time: None,
             weather_place: None,

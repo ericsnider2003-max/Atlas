@@ -2067,6 +2067,9 @@ impl<'a> Daemon<'a> {
                     self.connect_outlook_from_request(what)
                 } else if !cfg.enabled {
                     "Reading your email is switched off.".into()
+                } else if crate::unsub::go_ahead(what) || crate::unsub::go_ahead(&self.last_said.clone()) {
+                    // The go-ahead after the report, not another look.
+                    self.unsubscribe_help("unsubscribe from those").unwrap_or_default()
                 } else if what.contains("clear") || what.contains("unsubscribe") {
                     self.check_unsubscribe()
                 } else if what.contains("outreach") {

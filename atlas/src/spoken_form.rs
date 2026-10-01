@@ -24,12 +24,113 @@
 /// aloud. Idempotent on plain prose: text with no numbers, symbols or markup
 /// comes back unchanged.
 pub fn for_speech(text: &str) -> String {
-    let mut s = strip_unspeakable(text);
+    let mut s = strip_unspeakable(&without_technical_detail(text));
     s = money(&s);
     s = percentages(&s);
     s = units(&s);
     s = symbols(&s);
     collapse_spaces(&s)
+}
+
+/// The technical part of a line, left on the screen and in the log and not
+/// read out (30 Sep 2026: "the reply to Sam didn't go: 535 5.7.8 Username
+/// and Password not accepted (os error 10054)" was read aloud whole).
+///
+/// - a bracketed aside that reads as machinery -- an error code, a path, a
+///   status, `key=value` -- is dropped;
+/// - a web address is said as its site;
+/// - a file path is said as its file name;
+/// - after the first colon of a "couldn't/didn't/failed" sentence, a reason
+///   that is mostly codes and symbols is cut, and "-- the details are on the
+///   screen" said instead.
+pub fn without_technical_detail(text: &str) -> String {
+    // Bracketed machinery.
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '(' {
+            if let Some(len) = chars[i + 1..].iter().position(|c| *c == ')') {
+                let inside: String = chars[i + 1..i + 1 + len].iter().collect();
+                if looks_technical(&inside) {
+                    // Drop the space before it too.
+                    while out.ends_with(' ') {
+                        out.pop();
+                    }
+                    i += len + 2;
+                    continue;
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    // Addresses and paths, word by word.
+    let words: Vec<String> = out
+        .split(' ')
+        .map(|w| {
+            let core = w.trim_end_matches(['.', ',', ';', ':', ')', '"', '\'']);
+            let tail = &w[core.len()..];
+            if let Some(rest) = core.strip_prefix("https://").or_else(|| core.strip_prefix("http://")) {
+                let host = rest.split('/').next().unwrap_or(rest).trim_start_matches("www.");
+                return format!("{host}{tail}");
+            }
+            let pathy = (core.contains('\\') && core.len() > 3) || (core.starts_with('/') && core[1..].contains('/'));
+            if pathy {
+                let name = core.rsplit(['\\', '/']).find(|p| !p.is_empty()).unwrap_or(core);
+                return format!("{name}{tail}");
+            }
+            w.to_string()
+        })
+        .collect();
+    let mut out = words.join(" ");
+    // A failure's reason that is mostly codes.
+    let low = out.to_lowercase();
+    let failed = ["couldn't", "could not", "didn't", "did not", "failed", "wasn't able", "can't"].iter().any(|w| low.contains(w));
+    if failed {
+        if let Some(at) = out.find(": ") {
+            let (head, reason) = (&out[..at], &out[at + 2..]);
+            let sentence_end = reason.find(". ").map(|e| e + 1).unwrap_or(reason.len());
+            let (why, after) = reason.split_at(sentence_end);
+            if looks_technical(why) {
+                out = format!("{head} -- the details are on the screen.{}", after.trim_start_matches('.'));
+            }
+        }
+    }
+    out
+}
+
+/// Machinery rather than words: codes, symbols, `key=value`, paths.
+fn looks_technical(s: &str) -> bool {
+    let t = s.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let low = t.to_lowercase();
+    if ["os error", "errno", "exit code", "exit status", "status code", "http/", "0x", "stack", "panicked", "traceback", "hresult"]
+        .iter()
+        .any(|m| low.contains(m))
+    {
+        return true;
+    }
+    if t.contains('=') || t.contains('{') || t.contains("::") || t.contains('\\') || !t.contains(' ') && t.matches('/').count() >= 2 {
+        return true;
+    }
+    let words: Vec<&str> = t.split_whitespace().collect();
+    let codey = words
+        .iter()
+        .filter(|w| {
+            let w = w.trim_matches(|c: char| !c.is_alphanumeric());
+            // Letters and digits mixed ("E0599", "10054ms"), dotted codes
+            // ("5.7.8"), or a shouted constant ("ECONNREFUSED"). Plain
+            // numbers, money and percentages are words to a listener.
+            let mixed = w.chars().any(|c| c.is_ascii_digit()) && w.chars().any(|c| c.is_ascii_alphabetic());
+            let dotted = w.matches('.').count() >= 2 && w.chars().all(|c| c.is_ascii_digit() || c == '.');
+            let constant = w.len() >= 6 && w.chars().all(|c| c.is_ascii_uppercase() || c == '_');
+            !w.is_empty() && (mixed || dotted || constant)
+        })
+        .count();
+    codey * 3 >= words.len().max(1)
 }
 
 /// Markup and glyphs that only mean something on a screen. Read aloud they are

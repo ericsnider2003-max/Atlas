@@ -588,9 +588,13 @@ impl<'a> Daemon<'a> {
         const WINDOW_DAYS: u32 = 60;
         let since = crate::triage::imap_date(WINDOW_DAYS, now);
 
+        let keep_in = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let mut failures = setup_problems;
             let mut per_account_spoken = Vec::new();
+            // What you can say yes to afterwards (30 Sep 2026: the report
+            // ended there, and there was no way to act on it).
+            let mut waiting: Vec<(String, crate::unsub::Cleanup)> = Vec::new();
             let mut total_unsubscribed = 0usize;
             for (account, password) in &jobs {
                 // Between accounts: a pause holds here, nothing half-read.
@@ -636,6 +640,9 @@ impl<'a> Daemon<'a> {
                     failures.extend(send_failures);
                 } else {
                     per_account_spoken.push(crate::unsub::spoken(&cleanup));
+                    if !cleanup.unsubscribe.is_empty() {
+                        waiting.push((account.name.clone(), cleanup));
+                    }
                 }
             }
             let mut said = if unsub_cfg.bulk_without_asking {
@@ -645,6 +652,12 @@ impl<'a> Daemon<'a> {
             } else {
                 per_account_spoken.join(" ")
             };
+            if !waiting.is_empty() {
+                match keep_in.save(crate::unsub::PENDING, &waiting) {
+                    Ok(()) => said.push_str(" Say \"unsubscribe from those\" and I will."),
+                    Err(e) => said.push_str(&format!(" (I couldn't keep the list to act on: {e})")),
+                }
+            }
             if !failures.is_empty() {
                 said.push_str(&format!(
                     " ({} thing{} had trouble: {})",
@@ -661,6 +674,53 @@ impl<'a> Daemon<'a> {
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()
         }
+    }
+
+    /// "Unsubscribe from those", after the report: the one-click
+    /// unsubscribes it found, sent from the mailbox each came to. Blocking
+    /// is left alone -- that's for the mail sorter's rules.
+    pub(super) fn unsubscribe_help(&mut self, said: &str) -> Option<String> {
+        if !crate::unsub::go_ahead(said) {
+            return None;
+        }
+        let waiting: Vec<(String, crate::unsub::Cleanup)> = self.store.load(crate::unsub::PENDING);
+        if waiting.is_empty() {
+            return Some("There's nothing lined up to unsubscribe from. Ask me to clear out your email and I'll look first.".into());
+        }
+        let cfg = self.tools_cfg().mail.clone();
+        let now = crate::store::now();
+        let (jobs, problems) = self.resolve_mail_jobs(&cfg, now);
+        let mut todo: Vec<(crate::unsub::Cleanup, crate::mail::Account, String)> = Vec::new();
+        for (name, cleanup) in waiting {
+            if let Some((a, p)) = jobs.iter().find(|(a, _)| a.name == name) {
+                todo.push((cleanup, a.clone(), p.clone()));
+            }
+        }
+        if todo.is_empty() {
+            return Some(format!("I couldn't get at the mailbox those came to: {}", problems.join("; ")));
+        }
+        let store = self.store.clone();
+        let count: usize = todo.iter().map(|(c, _, _)| c.unsubscribe.len()).sum();
+        let work: crew::Work = Box::new(move |_ctl| {
+            let mut done = 0;
+            let mut failed = Vec::new();
+            for (cleanup, account, password) in &todo {
+                let (d, f) = carry_out_unsubscribes(cleanup, account, password);
+                done += d;
+                failed.extend(f);
+            }
+            let _ = store.save(crate::unsub::PENDING, &Vec::<(String, crate::unsub::Cleanup)>::new());
+            Ok(if failed.is_empty() {
+                format!("Unsubscribed from {done}.")
+            } else {
+                format!("Unsubscribed from {done}; {} didn't go: {}.", failed.len(), failed.join("; "))
+            })
+        });
+        Some(if self.hand_off("unsubscribe", now, work, None, SpeakPolicy::Always) {
+            format!("Unsubscribing from {count} now.")
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        })
     }
 
     /// "Connect my outlook account me@outlook.com with client id
@@ -734,7 +794,9 @@ impl<'a> Daemon<'a> {
             }
         });
 
-        if self.hand_off("outlook-connect", now, work, Some(address.to_string()), SpeakPolicy::Always) {
+        // The client id travels with the address, so the account can be
+        // added once connected (30 Sep 2026: it ended "edit tools.yaml").
+        if self.hand_off("outlook-connect", now, work, Some(format!("{address} {client_id}")), SpeakPolicy::Always) {
             dc.message
         } else {
             "I'm swamped with background work right now — try connecting that account again in a moment."
@@ -812,6 +874,66 @@ impl<'a> Daemon<'a> {
             return Some(self.discard_draft(&who));
         }
         None
+    }
+
+    /// "Email Sam saying I'll be late": a draft to them, held until you say
+    /// "send it" -- never sent on its own (30 Sep 2026: nothing started an
+    /// email; the model claimed to have sent one). The address is what you
+    /// said, or the one you gave for them ("Sam's email is ..."), or the one
+    /// your mail has with them; a name that could be two people is asked
+    /// about, not guessed.
+    pub(super) fn compose_help(&mut self, said: &str) -> Option<String> {
+        let (who, message) = crate::outbox::email_asked(said)?;
+        let cfg = self.tools_cfg().mail.clone();
+        let Some(account) = cfg.accounts.first().cloned() else {
+            return Some(format!(
+                "I can't email {who} yet -- there's no mail account set up. Add one in Settings, under Mail, and ask me again."
+            ));
+        };
+        let (name, address) = if who.contains('@') {
+            (who.clone(), who.to_lowercase())
+        } else {
+            let people = self.people_known().clone();
+            let known = match people.find(&who) {
+                crate::people::Found::One(k) => people.by_key.get(k).and_then(|c| c.emails.first().map(|e| (c.name.clone(), e.clone()))),
+                crate::people::Found::Several(names) => {
+                    return Some(format!("Which {who}? {}.", names.join(" or ")));
+                }
+                crate::people::Found::None => None,
+            };
+            match known.or_else(|| {
+                let book: crate::mailbook::MailBook = self.store.load(crate::mailbook::MailBook::FILE);
+                address_in_mail(&book, &who).map(|a| (who.clone(), a))
+            }) {
+                Some(found) => found,
+                None => {
+                    return Some(format!(
+                        "I don't have an email address for {who}. Tell me \"{who}'s email is\" and the address, then ask again."
+                    ))
+                }
+            }
+        };
+        let body = crate::outbox::body_from_spoken(&message);
+        let now = crate::store::now();
+        let draft = crate::outbox::PendingReply {
+            id: crate::outbox::Outbox::make_id(&account.name, &address, now),
+            account: account.name.clone(),
+            to_address: address.clone(),
+            to_name: name.clone(),
+            subject: crate::outbox::subject_from_body(&body),
+            body: body.clone(),
+            kind: crate::outbox::Kind::Client,
+            critique: Vec::new(),
+            created_at: now,
+            status: crate::outbox::Status::Waiting,
+        };
+        let mut outbox = crate::outbox::Outbox::load(&self.store);
+        outbox.add(draft);
+        if let Err(e) = outbox.save(&self.store) {
+            return Some(format!("I wrote it but couldn't keep the draft ({e}), so nothing's waiting to send."));
+        }
+        self.draft_last_read = Some(address.clone());
+        Some(format!("To {name} ({address}): \"{body}\" Say \"send it\" and it goes, or \"scrap the draft to {name}\"."))
     }
 
     /// Send a waiting draft: to `who` (a name or address), or the only one
@@ -1006,4 +1128,16 @@ impl<'a> Daemon<'a> {
             "I'm swamped with background work right now — ask me again in a moment.".into()
         }
     }
+}
+
+/// The address your mail has with someone of this name: the latest letter
+/// from them, or to them.
+fn address_in_mail(book: &crate::mailbook::MailBook, who: &str) -> Option<String> {
+    let w = who.to_lowercase();
+    book.letters.iter().rev().find_map(|l| {
+        if !l.mine && (l.from_name.to_lowercase() == w || l.from_name.to_lowercase().split_whitespace().next() == Some(w.as_str()) && !w.contains(' ')) {
+            return Some(l.from.clone());
+        }
+        None
+    })
 }

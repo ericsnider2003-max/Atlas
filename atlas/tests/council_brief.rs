@@ -351,3 +351,22 @@ fn a_brief_with_only_drafts_still_tells_you_where_to_start() {
     let b: Brief = run(&[it], &[], &c);
     assert_eq!(b.start_with.as_deref(), Some("approve the reply to Sam"));
 }
+
+/// 30 Sep 2026: the spoken brief named the first thing needing you and none
+/// of the rest; the next few are named, and the remainder counted.
+#[test]
+fn the_spoken_brief_names_more_than_the_first_thing() {
+    let items: Vec<Item> = ["Priya", "Sam", "Jo", "Lee", "Max", "Ana"]
+        .iter()
+        .enumerate()
+        .map(|(i, who)| item(&i.to_string(), who, Weight::Urgent, Outcome::Yours))
+        .collect();
+    let b = run(&items, &[], &cfg_on());
+    let s = spoken(&b);
+    let first = b.start_with.clone().unwrap();
+    assert!(s.starts_with(&format!("Start with {first}.")), "{s}");
+    let also = s.split("Also: ").nth(1).expect("the rest named").split('.').next().unwrap();
+    assert_eq!(also.split("; ").count(), atlas::brief::ALSO_NAMED, "{also}");
+    assert!(also.ends_with(", and 2 more on the hub"), "{also}");
+    assert!(!also.contains(first.as_str()), "the first isn't named twice: {s}");
+}

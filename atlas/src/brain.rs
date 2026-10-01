@@ -1249,6 +1249,13 @@ impl<'a> Brain<'a> {
                     return Some(f);
                 }
             }
+            // 30 Sep 2026: the forced ask failed or still called nothing,
+            // and "I'll check your calendar" was the whole reply -- a promise
+            // nothing followed. Said plainly instead, after what was said.
+            if matches!(d.intent, Intent::Say(_)) {
+                let say = format!("{} {}", reply.text.trim(), NOTHING_FOLLOWED);
+                return Some(Decision { intent: Intent::Say(say.clone()), say, model: d.model });
+            }
         }
         Some(d)
     }
@@ -1265,6 +1272,10 @@ fn partial_or_none(sent: &str) -> Option<Decision> {
     let say = format!("{sent} -- that's as far as I got; my language model stopped partway.");
     Some(Decision { intent: Intent::Say(say.clone()), say, model: Reached::Yes })
 }
+
+/// Said after "I'll check ..." when the check couldn't be made.
+pub const NOTHING_FOLLOWED: &str =
+    "Actually, I couldn't get that to run just now, so nothing's been checked -- ask me again, or say exactly what to open.";
 
 /// Does a reply only say it is about to do something ("I'll check your
 /// calendar", "let me look") instead of doing it?

@@ -35,6 +35,7 @@ impl<'a> Daemon<'a> {
         // route only wrote a log line, so a message for you while you sat at
         // the desk was never heard).
         out.append(&mut self.to_say_aloud);
+        self.retry_phone(t);
         if let Some(line) = self.model_warmed.lock().ok().and_then(|mut w| w.take()) {
             self.log.info(&line);
         }
@@ -661,9 +662,25 @@ impl<'a> Daemon<'a> {
         }
 
         // --- Work prepared before you ask for it ---
+        // 30 Sep 2026: the clock, the calendar and your return were left at
+        // their defaults here -- midnight on a Monday, no event, never back
+        // -- so every rule but a file appearing or the machine idling could
+        // never fire.
+        let local = t as i64 + crate::localclock::offset_secs();
+        let (minutes_of_day, weekday) = moment_clock(local);
+        let minutes_to_event = self
+            .calendar
+            .occurrences_between(t, t + 86_400)
+            .iter()
+            .filter(|e| e.start >= t)
+            .map(|e| (e.start - t) / 60)
+            .min();
         let moment = Moment {
+            minutes_of_day,
+            weekday,
+            minutes_to_event,
             new_files: signals.recent_changes.added.clone(),
-            returned: false,
+            returned: self.back_from.is_some(),
             idle_secs: signals.idle_secs,
             last_said: self.thread.last().map(|e| e.said.clone()).unwrap_or_default(),
             // Never prepare anything while you're mid-task; anticipation that
@@ -1191,7 +1208,13 @@ impl<'a> Daemon<'a> {
             let arrival =
                 crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at, t, rolls_at, &dcfg);
 
+            // 30 Sep 2026: and you're actually here. `arriving` compares
+            // your last turn with now, so on the tick it read "a gap and a
+            // new day" at six in the morning with you asleep, and the brief
+            // was said to an empty room -- and marked given.
+            let here_now = self.quiet_for(t) < BRIEF_WHEN_HERE_WITHIN_SECS;
             if bcfg.enabled
+                && here_now
                 && arrival == crate::daily::Arrival::Starting
                 && this_hour >= bcfg.not_before_hour
             {
@@ -2342,4 +2365,17 @@ impl<'a> Daemon<'a> {
             }
         }
     }
+}
+
+/// You count as here for the morning brief when you've typed, moved the mouse
+/// or spoken within this long.
+pub const BRIEF_WHEN_HERE_WITHIN_SECS: u64 = 120;
+
+/// Minutes since local midnight and the weekday (0 = Monday) for a local
+/// time in seconds, as the anticipation rules count them.
+pub fn moment_clock(local_secs: i64) -> (u32, u32) {
+    let minutes = (local_secs.rem_euclid(86_400) / 60) as u32;
+    // 1 January 1970 was a Thursday: day 0 is weekday 3.
+    let weekday = ((local_secs.div_euclid(86_400) + 3).rem_euclid(7)) as u32;
+    (minutes, weekday)
 }

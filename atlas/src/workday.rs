@@ -943,6 +943,12 @@ impl Daemon<'_> {
 
     // -- 12. people -----------------------------------------------------------------------
 
+    /// Who you've told Atlas about, as kept here (the same copy "Sam's
+    /// email is ..." changes): for addressing an email by name.
+    pub(crate) fn people_known(&mut self) -> &crate::people::People {
+        loaded!(self.workday, self.store, people, PEOPLE)
+    }
+
     pub(crate) fn wd_people(&mut self, said: &str, t: u64) -> String {
         use crate::people::{Asked, Refused};
         let book: crate::mailbook::MailBook = self.store.load(crate::mailbook::MailBook::FILE);

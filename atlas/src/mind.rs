@@ -360,3 +360,22 @@ pub fn speak_brief(items: &[Item]) -> String {
     }
     out
 }
+
+/// "How's that going?", "is it done yet?", "what are you working on?":
+/// asking after work already started. 30 Sep 2026: nothing answered these;
+/// they went to the model, which can't see the background work and guessed.
+pub fn asks_how_its_going(said: &str) -> bool {
+    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '\'' { c } else { ' ' }).collect();
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ").replace('\'', "");
+    const ASKS: &[&str] = &[
+        "hows that going", "hows it going with", "how is that going", "hows the", "how is the research", "hows it coming",
+        "how's it coming", "is it done yet", "is that done yet", "is it finished", "is that finished", "are you done yet",
+        "are you finished", "whats running", "what are you working on", "what are you doing right now", "what are you up to",
+        "still working on it", "any progress", "how far along", "status update", "whats the status",
+    ];
+    // "how's the weather" / "how's the market" are not about Atlas's work.
+    if t.starts_with("hows the ") && !["research", "download", "build", "report", "letter", "search", "writing", "job", "task", "update", "backup", "sort"].iter().any(|w| t.contains(w)) {
+        return false;
+    }
+    ASKS.iter().any(|a| t.starts_with(a) || t == *a)
+}

@@ -861,6 +861,12 @@ impl<'a> Daemon<'a> {
         true
     }
 
+    /// Whether the microphone's own thread is running: what the Status page
+    /// reads to say whether Atlas can hear you at all.
+    pub(crate) fn mic_running(&self) -> bool {
+        self.mic.is_some()
+    }
+
     /// Is the microphone's thread recording right now? For the tests and the
     /// hub's honesty about Pause.
     pub fn mic_recording_for_test(&self) -> bool {

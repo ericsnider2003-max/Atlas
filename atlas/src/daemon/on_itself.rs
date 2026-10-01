@@ -440,6 +440,16 @@ impl<'a> Daemon<'a> {
             .selfwork
             .as_ref()
             .is_some_and(|s| s.work.thought.is_none() && s.still_needs().is_none());
+        // 30 Sep 2026: an installed Atlas has no source to change, and ran
+        // cargo in whatever folder it was started from -- often Windows'
+        // own. The diagnosis is kept; the building needs a source checkout.
+        if needs_the_proof && !crate::selfwork::is_a_source_checkout(&root) {
+            return format!(
+                "I've got the diagnosis down, but I'm an installed copy -- there's no source code here for me to change. \
+                 It's kept on the Improvements page, and a fix comes to you as an update. (I looked in {}.)",
+                root.display()
+            );
+        }
         if needs_the_proof {
             let named = self
                 .selfwork

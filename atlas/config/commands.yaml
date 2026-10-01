@@ -857,7 +857,7 @@ commands:
   - intent: mail
     describe: "Check the user's email inbox, or unsubscribe from what they don't read. arg: what, optional."
     phrases: ["what's in my inbox", "check my email", "clear out my email",
-              "unsubscribe from what i don't read"]
+              "unsubscribe from what i don't read", "unsubscribe from those"]
     takes_argument: true
     argument_optional: true
 

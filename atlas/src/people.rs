@@ -417,11 +417,23 @@ pub fn read(said: &str) -> Option<Asked> {
         return Some(Asked::Birthday { who, month: m, day: d });
     }
     // "note about Sam: …" / "note on Sam: …"
-    for lead in ["note about ", "note on ", "remember about "] {
+    // 30 Sep 2026: spoken, there's no colon -- "note about Sam that he's
+    // moving in June" -- so "that" (or a comma) does the same job.
+    for lead in ["note about ", "note on ", "remember about ", "make a note about ", "add a note about "] {
         if let Some(rest) = low.strip_prefix(lead) {
-            let colon = rest.find(':')?;
-            let who = s[lead.len()..lead.len() + colon].trim().to_string();
-            let text = s[lead.len() + colon + 1..].trim().to_string();
+            let (at, skip) = match rest.find(':') {
+                Some(c) => (c, 1),
+                None => {
+                    let m = [" that ", ", "].iter().filter_map(|m| rest.find(m).map(|i| (i, m.len()))).min_by_key(|(i, _)| *i)?;
+                    m
+                }
+            };
+            let who = s[lead.len()..lead.len() + at].trim().to_string();
+            let text = s[lead.len() + at + skip..].trim().to_string();
+            let lw = who.to_ascii_lowercase();
+            if who.split_whitespace().count() > 3 || ["the ", "a ", "an ", "this ", "that "].iter().any(|p| lw.starts_with(p)) || lw == "it" {
+                return None;
+            }
             return (!who.is_empty() && !text.is_empty()).then_some(Asked::Note { who, text });
         }
     }

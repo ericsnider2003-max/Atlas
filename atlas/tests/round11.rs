@@ -509,6 +509,10 @@ mod crm {
     #[test]
     fn sentences_are_read() {
         assert_eq!(read("Remember Sam's daughter is called Leo"), Some(Asked::Note { who: "Sam".into(), text: "Sam's daughter is called Leo".into() }));
+        // 30 Sep 2026: said aloud, there's no colon.
+        assert_eq!(read("note about Sam that he's moving in June"), Some(Asked::Note { who: "Sam".into(), text: "he's moving in June".into() }));
+        assert_eq!(read("note on Priya: prefers mornings"), Some(Asked::Note { who: "Priya".into(), text: "prefers mornings".into() }));
+        assert_eq!(read("note about the fact that it rained all week"), None, "not a person");
         assert_eq!(read("keep in touch with Priya every 3 weeks"), Some(Asked::Every { who: "Priya".into(), days: Some(21) }));
         assert_eq!(read("Jo's birthday is March 4"), Some(Asked::Birthday { who: "Jo".into(), month: 3, day: 4 }));
         assert_eq!(read("who should I catch up with?"), Some(Asked::Due));

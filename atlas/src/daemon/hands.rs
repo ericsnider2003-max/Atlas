@@ -1557,6 +1557,12 @@ impl<'a> Daemon<'a> {
                 // A push that did not land must not vanish. Held, so it still
                 // reaches you at the machine.
                 Err(e) => {
+                    if self.phone_to_retry.len() < PHONE_RETRY_MOST {
+                        self.phone_to_retry.push(note.clone());
+                        if self.phone_retry_at <= t {
+                            self.phone_retry_at = t + PHONE_RETRY_EVERY_SECS;
+                        }
+                    }
                     self.outbox.hold(note, &cfg);
                     Sent::Failed(e.to_string())
                 }
@@ -1743,5 +1749,59 @@ impl<'a> Daemon<'a> {
                 self.log.warn(&format!("couldn't open the {} panel: {e}", panel.heading()));
             }
         }
+    }
+}
+
+/// How often a failed push to the phone is tried again, while you're away.
+pub const PHONE_RETRY_EVERY_SECS: u64 = 300;
+/// The most notes kept for another try: past this they wait for the desk.
+pub const PHONE_RETRY_MOST: usize = 20;
+
+impl Daemon<'_> {
+    /// Try the phone again for notes whose push failed (`reach_you`). Only
+    /// while you're still away -- back at the machine, the held copy is what
+    /// you get. A push that lands takes the note off the held list too, so
+    /// it isn't said again when you return.
+    pub fn retry_phone(&mut self, t: u64) {
+        if self.phone_to_retry.is_empty() || t < self.phone_retry_at {
+            return;
+        }
+        if self.quiet_for(t) <= self.away_after {
+            self.phone_to_retry.clear();
+            return;
+        }
+        let phone_cfg = self.phone_cfg();
+        let mut still = Vec::new();
+        for note in std::mem::take(&mut self.phone_to_retry) {
+            if still.is_empty() && crate::phone::send(&note, &phone_cfg).is_ok() {
+                self.outbox.held.retain(|h| *h != note);
+            } else {
+                // One failure is enough to know the phone's still out of
+                // reach this pass; the rest wait with it.
+                still.push(note);
+            }
+        }
+        if let Err(e) = self.outbox.save(&self.store) {
+            self.log.warn(&format!("couldn't save what's held for you: {e}"));
+        }
+        self.phone_to_retry = still;
+        self.phone_retry_at = t + PHONE_RETRY_EVERY_SECS;
+    }
+}
+
+/// How many of the background's lines an app can still collect.
+pub const SAID_FOR_APPS_KEPT: usize = 20;
+
+impl Daemon<'_> {
+    /// Keep what the background just said for an app to show (`said_for_apps`),
+    /// numbered so the app shows each once.
+    pub fn keep_said_for_apps(&mut self, lines: Vec<String>) {
+        let mut next = self.said_for_apps.last().map(|(n, _)| n + 1).unwrap_or(1);
+        for l in lines.into_iter().filter(|l| !l.trim().is_empty()) {
+            self.said_for_apps.push((next, l));
+            next += 1;
+        }
+        let over = self.said_for_apps.len().saturating_sub(SAID_FOR_APPS_KEPT);
+        self.said_for_apps.drain(..over);
     }
 }

@@ -934,3 +934,55 @@ impl<'a> Daemon<'a> {
         s
     }
 }
+
+impl Daemon<'_> {
+    /// "How's that going?": what's running in the background and for how
+    /// long, or -- nothing running -- the last thing that finished and how.
+    pub(super) fn progress_help(&mut self, said: &str) -> Option<String> {
+        if !crate::mind::asks_how_its_going(said) {
+            return None;
+        }
+        let now = crate::store::now();
+        let mins = |from: u64| {
+            let m = now.saturating_sub(from) / 60;
+            if m == 0 { "under a minute".to_string() } else if m == 1 { "a minute".to_string() } else { format!("{m} minutes") }
+        };
+        let mut lines = Vec::new();
+        if !self.mind.active().is_empty() {
+            lines.push(self.mind_summary());
+        }
+        for e in self.crew.errands() {
+            let what = match self.crew_links.get(&e.id).and_then(|l| l.topic.clone()) {
+                Some(topic) => format!("{} ({topic})", e.name),
+                None => e.name.clone(),
+            };
+            lines.push(match e.state {
+                crate::crew::State::Running | crate::crew::State::Pausing => format!("{what}: working on it, {} so far.", mins(e.started)),
+                crate::crew::State::Holding => format!("{what}: paused -- say \"carry on\" to pick it up."),
+                crate::crew::State::Waiting => format!("{what}: queued, waiting for a free hand ({} so far).", mins(e.started)),
+                crate::crew::State::WaitingPaused => format!("{what}: queued and paused."),
+            });
+        }
+        if !lines.is_empty() {
+            return Some(lines.join(" "));
+        }
+        let last = self.long_work.jobs.iter().filter(|j| j.finished.is_some()).max_by_key(|j| j.finished);
+        Some(match last {
+            Some(j) => {
+                let how = match j.outcome {
+                    crate::watching::Outcome::Finished => "finished",
+                    crate::watching::Outcome::Failed => "failed",
+                    crate::watching::Outcome::Vanished => "stopped without a result",
+                    crate::watching::Outcome::Running => "is still going",
+                };
+                let tail = if j.last_line.trim().is_empty() || j.outcome != crate::watching::Outcome::Failed {
+                    String::new()
+                } else {
+                    format!(": {}", j.last_line.trim().trim_end_matches('.'))
+                };
+                format!("Nothing's running now. The last thing, {}, {how} {} ago{tail}.", j.name, mins(j.finished.unwrap_or(now)))
+            }
+            None => "Nothing's running, and nothing has run yet this session.".into(),
+        })
+    }
+}

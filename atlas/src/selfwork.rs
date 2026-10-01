@@ -602,6 +602,7 @@ pub fn run_the_proof(
         Ok(c) => c,
         Err(e) => return ProofToday::CouldNotRun(format!("could not start {program}: {e}")),
     };
+    let output = drain(&mut child);
 
     let deadline = std::time::Instant::now()
         + std::time::Duration::from_secs(PROOF_BUDGET_SECS);
@@ -630,13 +631,34 @@ pub fn run_the_proof(
         crate::goodbye::nap(200);
     }
 
-    let out = match child.wait_with_output() {
-        Ok(o) => o,
-        Err(e) => return ProofToday::CouldNotRun(format!("could not read the test run: {e}")),
+    if let Err(e) = child.wait() {
+        return ProofToday::CouldNotRun(format!("could not read the test run: {e}"));
+    }
+    read_a_proof_run(&output())
+}
+
+/// Read a child's output as it comes, on threads of their own (30 Sep 2026:
+/// both runs below waited on the process with its pipes unread, so a build
+/// that printed more than the pipe holds -- any real cargo run -- blocked on
+/// writing and sat there until the budget killed it).
+fn drain(child: &mut std::process::Child) -> impl FnOnce() -> String {
+    use std::io::Read;
+    let take = |r: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut r) = r {
+                let _ = r.read_to_end(&mut buf);
+            }
+            buf
+        })
     };
-    let mut text = String::from_utf8_lossy(&out.stdout).to_string();
-    text.push_str(&String::from_utf8_lossy(&out.stderr));
-    read_a_proof_run(&text)
+    let out = take(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+    let err = take(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+    move || {
+        let mut text = String::from_utf8_lossy(&out.join().unwrap_or_default()).to_string();
+        text.push_str(&String::from_utf8_lossy(&err.join().unwrap_or_default()));
+        text
+    }
 }
 
 /// Read a test run's output. Separated from running it so the reading is
@@ -1146,6 +1168,7 @@ fn run_bounded(
     cmd.args(parts).current_dir(dir);
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("could not start {program}: {e}"))?;
+    let output = drain(&mut child);
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(budget_secs);
     loop {
@@ -1166,8 +1189,17 @@ fn run_bounded(
         }
         crate::goodbye::nap(200);
     }
-    let out = child.wait_with_output().map_err(|e| format!("could not read the run: {e}"))?;
-    let mut text = String::from_utf8_lossy(&out.stdout).to_string();
-    text.push_str(&String::from_utf8_lossy(&out.stderr));
-    Ok(text)
+    child.wait().map_err(|e| format!("could not read the run: {e}"))?;
+    Ok(output())
+}
+
+/// Is this folder Atlas's own source -- a `Cargo.toml` naming the `atlas`
+/// package -- rather than wherever an installed copy was started from?
+pub fn is_a_source_checkout(root: &std::path::Path) -> bool {
+    std::fs::read_to_string(root.join("Cargo.toml"))
+        .map(|t| t.lines().any(|l| {
+            let l = l.replace(' ', "");
+            l == "name=\"atlas\""
+        }))
+        .unwrap_or(false)
 }
