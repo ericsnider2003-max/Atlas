@@ -1066,10 +1066,26 @@ impl<'a> Daemon<'a> {
         if std::fs::metadata(arg).map(|m| m.is_dir()).unwrap_or(false) {
             return self.learn_folder(arg, now);
         }
-        // A readable file path, or the text itself.
-        let (text, whence) = match std::fs::read_to_string(arg) {
-            Ok(t) => (t, format!("\"{arg}\"")),
-            Err(_) => (arg.to_string(), "what you gave me".to_string()),
+        // A readable file, or the text itself. A PDF or Word file is read for
+        // its words; a name that looks like a file but can't be read is said
+        // so -- until 1 Oct 2026 "learn from book.pdf" failed to read as text
+        // and the path itself was learned as a fact (research report §10).
+        let lower = arg.to_lowercase();
+        let looks_like_a_file = std::path::Path::new(arg).is_file()
+            || ((arg.contains('/') || arg.contains('\\') || std::path::Path::new(arg).extension().is_some()) && !arg.contains(' '));
+        let read: Option<std::result::Result<String, String>> = if lower.ends_with(".pdf") {
+            Some(std::fs::read(arg).map_err(|e| e.to_string()).and_then(|b| crate::pdftext::read(&b).map(|p| p.text)))
+        } else if lower.ends_with(".docx") {
+            Some(crate::unpack::docx_text(std::path::Path::new(arg)))
+        } else if looks_like_a_file {
+            Some(std::fs::read_to_string(arg).map_err(|e| e.to_string()))
+        } else {
+            None
+        };
+        let (text, whence) = match read {
+            Some(Ok(t)) => (t, format!("\"{arg}\"")),
+            Some(Err(why)) => return format!("I couldn't read {arg}: {why}. Nothing was learned."),
+            None => (arg.to_string(), "what you gave me".to_string()),
         };
         let chunks = crate::facts::into_facts(&text);
         if chunks.is_empty() {

@@ -402,7 +402,7 @@ fn stop_tree(child: &mut std::process::Child) {
 
 /// Compilers produce megabytes. Keep the head and the tail — the head has the
 /// first error and the tail has the summary — and, from the middle, every
-/// `test result:` line and every failed test's name.
+/// `test result:` line, every failed test's name, and every error and panic.
 ///
 /// The middle used to go whole: on a 7,500-test suite run as 36 binaries,
 /// most `test result:` lines were in it, so the count of tests that ran --
@@ -419,7 +419,15 @@ pub fn trim_output(text: &str, max: usize) -> String {
     let kept: Vec<&str> = middle
         .lines()
         .map(str::trim)
-        .filter(|l| l.starts_with("test result:") || (l.starts_with("test ") && l.ends_with("FAILED")))
+        .filter(|l| {
+            l.starts_with("test result:")
+                || (l.starts_with("test ") && l.ends_with("FAILED"))
+                // Errors are never the part cut (research report §10, from
+                // OmniRoute's output trimming): a compiler's second error or
+                // a panic's message is what says what went wrong.
+                || l.starts_with("error")
+                || l.contains("panicked at")
+        })
         .take(2000)
         .collect();
     let kept = if kept.is_empty() { String::new() } else { format!("{}\n", kept.join("\n")) };
@@ -453,5 +461,14 @@ mod limits {
         assert!(trimmed.len() < text.len());
         assert_eq!(crate::selfwork::count_passing(&trimmed), 4000);
         assert!(trimmed.contains("something::broke ... FAILED"));
+    }
+
+    #[test]
+    fn an_error_in_the_middle_survives_the_trim() {
+        let mut text = "x\n".repeat(3000);
+        text.push_str("error[E0308]: mismatched types\n");
+        text.push_str(&"y\n".repeat(3000));
+        let trimmed = trim_output(&text, 1000);
+        assert!(trimmed.contains("error[E0308]: mismatched types"), "{trimmed}");
     }
 }

@@ -67,3 +67,17 @@ fn a_correction_is_kept_as_a_case_the_self_test_says_again() {
         "{cases:?}"
     );
 }
+
+#[test]
+fn a_file_that_cant_be_read_is_never_learned_as_a_fact() {
+    // Research report §10 (Book to Skill): "learn from book.pdf" failed to
+    // read as text and the path itself became a fact.
+    let c: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
+    let p = plat();
+    let dir = scratch("learn-missing");
+    let mut d = Daemon::new(c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let before = d.facts.facts.len();
+    let said = d.execute(&atlas::intent::Intent::Learn("C:/books/missing-book.pdf".into()));
+    assert!(said.contains("couldn't read"), "{said}");
+    assert_eq!(d.facts.facts.len(), before, "the path was learned as a fact");
+}

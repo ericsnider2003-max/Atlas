@@ -703,6 +703,8 @@ pub struct Daemon<'a> {
     /// A self-fix drafted and proven on the crew, waiting to be taken in
     /// when its errand ends (`on_itself::finish_own_fix`).
     self_fix_done: std::sync::Arc<std::sync::Mutex<Option<on_itself::SelfFixDone>>>,
+    /// The proving test's run, from the crew (`finish_proof_check`).
+    proof_check_done: std::sync::Arc<std::sync::Mutex<Option<(String, crate::selfwork::ProofToday)>>>,
     /// The piece of work Atlas is doing on itself, if any.
     ///
     /// Held rather than rebuilt: `Session::new` on every turn meant the five
@@ -1664,6 +1666,7 @@ impl<'a> Daemon<'a> {
             selfwork: store_for_load.load("selfwork"),
             pending_landing: Vec::new(),
             self_fix_done: Default::default(),
+            proof_check_done: Default::default(),
             pending_correction: None,
             last_said: String::new(),
             pending_edit: None,

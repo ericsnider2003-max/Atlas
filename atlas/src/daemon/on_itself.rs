@@ -498,44 +498,33 @@ impl<'a> Daemon<'a> {
                 .as_ref()
                 .and_then(|s| s.proving_test().map(str::to_string))
                 .unwrap_or_default();
-            let outcome = crate::selfwork::run_the_proof(&named, &scfg, &root);
-            let Some(session) = self.selfwork.as_mut() else {
-                return "Nothing to work on.".into();
-            };
-            match outcome {
-                crate::selfwork::ProofToday::PassesAlready => {
-                    // Not stored as a diagnosis, and the cause is not rewound
-                    // either: the answers are fine and the *proof* is the
-                    // wrong one.
-                    session.diagnosing.proof = None;
-                    return format!(
-                        "{named} passes already, so it isn't testing this — whatever the fix \
-                         turns out to be, that test would stay green through it. What would \
-                         fail right now?"
-                    );
+            // On the crew, not the loop (research report, 1 Oct 2026: this
+            // ran cargo on the daemon thread for up to two minutes). Waited
+            // on briefly, so a quick answer still comes back in this reply;
+            // a slow one is said when it lands (`finish_proof_check`).
+            let slot = self.proof_check_done.clone();
+            if let Ok(mut s) = slot.lock() {
+                *s = None;
+            }
+            let (n2, scfg2, root2, slot2) = (named.clone(), scfg.clone(), root.clone(), slot.clone());
+            let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
+                let outcome = crate::selfwork::run_the_proof(&n2, &scfg2, &root2);
+                if let Ok(mut s) = slot2.lock() {
+                    *s = Some((n2, outcome));
                 }
-                crate::selfwork::ProofToday::CouldNotRun(why) => {
-                    return format!("I couldn't find out whether {named} fails: {why}.");
-                }
-                crate::selfwork::ProofToday::Fails
-                | crate::selfwork::ProofToday::NotWrittenYet => {
-                    let not_there =
-                        outcome == crate::selfwork::ProofToday::NotWrittenYet;
-                    if let Err(why) = session.accept_diagnosis(true) {
-                        return format!("That doesn't hold up yet: {why}");
-                    }
-                    let mut said = if not_there {
-                        format!(
-                            "{named} doesn't exist yet, so there's nothing passing — writing it \
-                             and watching it fail is the first thing I'd do. "
-                        )
-                    } else {
-                        format!("{named} fails now, so it's testing the right thing. ")
-                    };
-                    said.push_str(&self.what_the_stage_needs());
+                Ok(String::new())
+            });
+            if !self.hand_off("proof-check", crate::store::now(), work, Some(named.clone()), super::SpeakPolicy::ViaWatcher) {
+                return "I'm already checking that test -- I'll tell you what it shows.".into();
+            }
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(PROOF_WAIT_SECS);
+            while std::time::Instant::now() < until {
+                if let Some(said) = self.finish_proof_check() {
                     return said;
                 }
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
+            return format!("Checking whether {named} fails right now -- that runs the test, so it takes a minute. I'll tell you what it shows.");
         }
 
         // Past the diagnosis. The stage machine decides.
@@ -765,6 +754,49 @@ impl<'a> Daemon<'a> {
         let _ = self.hand_off("mutation-sweep", t, work, None, super::SpeakPolicy::ViaWatcher);
     }
 
+    /// The proving test's run came back: what it means for the diagnosis,
+    /// said. `None` while it's still running (or already said).
+    pub(super) fn finish_proof_check(&mut self) -> Option<String> {
+        let (named, outcome) = self.proof_check_done.lock().ok()?.take()?;
+            let Some(session) = self.selfwork.as_mut() else {
+                return Some("Nothing to work on.".into());
+            };
+            match outcome {
+                crate::selfwork::ProofToday::PassesAlready => {
+                    // Not stored as a diagnosis, and the cause is not rewound
+                    // either: the answers are fine and the *proof* is the
+                    // wrong one.
+                    session.diagnosing.proof = None;
+                    return Some(format!(
+                        "{named} passes already, so it isn't testing this — whatever the fix \
+                         turns out to be, that test would stay green through it. What would \
+                         fail right now?"
+                    ));
+                }
+                crate::selfwork::ProofToday::CouldNotRun(why) => {
+                    return Some(format!("I couldn't find out whether {named} fails: {why}."));
+                }
+                crate::selfwork::ProofToday::Fails
+                | crate::selfwork::ProofToday::NotWrittenYet => {
+                    let not_there =
+                        outcome == crate::selfwork::ProofToday::NotWrittenYet;
+                    if let Err(why) = session.accept_diagnosis(true) {
+                        return Some(format!("That doesn't hold up yet: {why}"));
+                    }
+                    let mut said = if not_there {
+                        format!(
+                            "{named} doesn't exist yet, so there's nothing passing — writing it \
+                             and watching it fail is the first thing I'd do. "
+                        )
+                    } else {
+                        format!("{named} fails now, so it's testing the right thing. ")
+                    };
+                    said.push_str(&self.what_the_stage_needs());
+                    Some(said)
+                }
+            }
+    }
+
     /// A self-fix errand ended: take in what it found, and say it.
     pub(super) fn finish_own_fix(&mut self) -> Option<String> {
         let done = self.self_fix_done.lock().ok()?.take()?;
@@ -985,6 +1017,10 @@ impl<'a> Daemon<'a> {
         q.spoken(&self.called())
     }
 }
+
+/// How long a "work on yourself" turn waits for the proving test before
+/// saying it'll report back.
+const PROOF_WAIT_SECS: u64 = 3;
 
 /// What a self-fix errand hands back (`finish_own_fix`).
 pub(crate) struct SelfFixDone {

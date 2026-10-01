@@ -620,6 +620,14 @@ impl<'a> Daemon<'a> {
                 out.extend(self.after_hub_errand(after, &news.ending, t));
                 continue;
             }
+            // The proving test's run, when it outlasted the turn that asked.
+            if link.label == "proof-check" {
+                if let Some(said) = self.finish_proof_check() {
+                    self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                    out.push(said);
+                }
+                continue;
+            }
             // A self-fix drafted and proven on the crew: taken in and said.
             if link.label == "self-fix" {
                 let said = match (self.finish_own_fix(), &news.ending) {
