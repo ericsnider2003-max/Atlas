@@ -128,6 +128,7 @@ pub mod freeonline;
 pub mod parakeet;
 pub mod kws;
 pub mod report;
+pub mod mcpserve;
 pub mod keeping;
 pub mod weather;
 pub mod register;

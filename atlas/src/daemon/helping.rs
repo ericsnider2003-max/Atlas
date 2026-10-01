@@ -325,7 +325,12 @@ impl<'a> Daemon<'a> {
         // phrase, which booked an event called "a reminder" and lost the rest.)
         let low0 = said.to_lowercase();
         let restated;
-        let said = match ["set a reminder for ", "set a reminder ", "set reminder for ", "set reminder ", "add a reminder for ", "add a reminder "]
+        // "give me a nudge at 4 to call the dentist" (1 Oct 2026 model
+        // ranking: the model reached for signing in somewhere).
+        let said = match [
+            "set a reminder for ", "set a reminder ", "set reminder for ", "set reminder ", "add a reminder for ", "add a reminder ",
+            "give me a nudge ", "nudge me ", "ping me ", "give me a shout ", "give me a reminder ", "send me a reminder ",
+        ]
             .iter()
             .find(|p| low0.starts_with(**p))
         {

@@ -1423,11 +1423,22 @@ impl<'a> Daemon<'a> {
                 // "explain code the quarterly budget" isn't code: the model
                 // explained it anyway, as if it were (the laptop's self-test,
                 // 30 Sep 2026). A path that isn't there is said as such.
-                return if looks_like_path {
-                    format!("I can't find a file called {arg}. Give me its full path, or paste the code.")
-                } else {
-                    format!("\"{arg}\" doesn't look like code. Point me at a file -- \"explain src/foo.rs\" -- or paste the code.")
-                };
+                if looks_like_path {
+                    return format!("I can't find a file called {arg}. Give me its full path, or paste the code.");
+                }
+                // "explain how a heat pump works" reached here by the
+                // model's choice (1 Oct 2026 model ranking): it's a question,
+                // so it's answered as one rather than refused as not-code.
+                if let Some(llm) = self.llm.clone() {
+                    let system = "Answer the question plainly in two or three spoken sentences. No lists, no markdown, no follow-up question.";
+                    if let Ok(text) = llm.complete(system, &format!("Explain {arg}")) {
+                        let text = crate::phonemodel::without_thinking(&text).trim().to_string();
+                        if !text.is_empty() {
+                            return text;
+                        }
+                    }
+                }
+                return format!("\"{arg}\" doesn't look like code. Point me at a file -- \"explain src/foo.rs\" -- or paste the code.");
             } else {
                 (arg.to_string(), "the code you gave me".to_string())
             }

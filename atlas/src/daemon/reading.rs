@@ -126,6 +126,20 @@ impl<'a> Daemon<'a> {
                 _ => t,
             }
         };
+        // "dig into X and write it up for me": the write-up is what research
+        // does anyway, not part of what to look up (1 Oct 2026).
+        let topic = {
+            let low = topic.to_lowercase();
+            let cut = [" and write it up", " and write up", " and give me a write up", " and report back"]
+                .iter()
+                .filter_map(|p| low.find(p))
+                .min();
+            let t = match cut {
+                Some(i) if i > 0 => topic[..i].trim_end(),
+                _ => topic,
+            };
+            t.strip_suffix(" for me").unwrap_or(t)
+        };
         let fresh = topic.to_lowercase().split_whitespace().any(|w| w == "again");
         let cleaned: String = topic.split_whitespace().filter(|w| !w.eq_ignore_ascii_case("again")).collect::<Vec<_>>().join(" ");
         let topic = cleaned.as_str();

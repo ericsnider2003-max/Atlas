@@ -925,3 +925,7 @@ mod voices_told_apart;
 mod wake_by_sound;
 #[path = "reports_as_files.rs"]
 mod reports_as_files;
+#[path = "mcp_server.rs"]
+mod mcp_server;
+#[path = "what_the_model_ranking_found.rs"]
+mod what_the_model_ranking_found;

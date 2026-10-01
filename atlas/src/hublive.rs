@@ -114,6 +114,19 @@ impl Daemon<'_> {
                 let now = crate::store::now();
                 Reply::ok(&self.phone_calendar(&body, now).to_string())
             }
+            Action::TalkJson => {
+                let recent: Vec<serde_json::Value> = self
+                    .thread
+                    .recent
+                    .iter()
+                    .rev()
+                    .take(12)
+                    .rev()
+                    .map(|e| serde_json::json!({ "said": e.said, "reply": e.reply }))
+                    .collect();
+                let pending: Vec<&String> = self.talk_queue.iter().map(|(s, _)| s).collect();
+                Reply::ok(&serde_json::json!({ "recent": recent, "pending": pending, "thinking": self.talk_is_thinking() }).to_string())
+            }
             Action::GlanceJson => {
                 let now = crate::store::now();
                 let g = self.glance(now);

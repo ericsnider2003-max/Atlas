@@ -398,7 +398,7 @@ pub fn all() -> Vec<Capability> {
         // 28 Sep 2026: Atlas as a Model Context Protocol client. Tested
         // against a stand-in server; no real one (Filesystem, Playwright,
         // Terminator) has run on Eric's laptop, hence `Untested`.
-        Capability { id: "mcp", what: "use tools from other programs you connect -- your folders, a separate browser, Windows apps -- found by what you ask, and asked about before each use", area: Thinking, state: Untested, needs: Some("a program that offers tools, installed and turned on in the settings"), offline: true, added: 38, runs: &[Needs::Background], modules: &["mcp"] },
+        Capability { id: "mcp", what: "use tools from other programs you connect -- your folders, a separate browser, Windows apps -- found by what you ask, and asked about before each use; and `atlas mcp` lets your other AI tools see what Atlas is doing and ask it things, never approve", area: Thinking, state: Untested, needs: Some("a program that offers tools, installed and turned on in the settings"), offline: true, added: 38, runs: &[Needs::Background], modules: &["mcp", "mcpserve"] },
         Capability { id: "phonemodel", what: "think on the phone itself: a small language model inside the phone app (the right size for the phone's memory), fetched when you ask, with nothing you say leaving the phone", area: Thinking, state: Untested, needs: Some("a real phone, to measure its speed and battery"), offline: true, added: 37, runs: &[Needs::Files], modules: &["phonemodel"] },
         Capability { id: "phonelink", what: "put Atlas on your phone with a code to scan, as an app on your home screen", area: Keeping, state: Untested, needs: Some("Tailscale on the laptop and the phone"), offline: false, added: 30, runs: &[Needs::Background], modules: &["phonelink", "phoneadd", "ota"] },
         // 28 Sep 2026, the whole tree accounted for. Eric asked for the full
@@ -1542,7 +1542,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 446;
+pub const MODULES_IN_TREE: usize = 447;
 
 /// Every module no capability claims, and why it is not one.
 ///
