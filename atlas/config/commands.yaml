@@ -259,7 +259,7 @@ commands:
     anchored: true
 
   - intent: show_panel
-    describe: "Put a panel on screen, such as the task list or Atlas's thinking. arg: which panel."
+    describe: "Put one of Atlas's own panels on screen: the outstanding list, what Atlas is working on, or the settings. Not for apps, websites, notes or files. arg: which panel."
     phrases: ["show me", "pull up", "put up", "bring up", "let me see"]
     takes_argument: true
 

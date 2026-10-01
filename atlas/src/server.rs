@@ -1941,7 +1941,7 @@ impl Server {
                 // A form that posts somewhere nothing answers: the fault is
                 // Atlas's, so say so in words, with the way back.
                 if req.method == "POST" && req.path.starts_with("/hub") {
-                    eprintln!("atlas: nothing answers a form at {}", req.path);
+                    crate::errln!("atlas: nothing answers a form at {}", req.path);
                     Reply::not_found_page(&req.path)
                 } else {
                     Reply::not_found()
@@ -1966,7 +1966,7 @@ impl Server {
         // Something in Atlas failed while answering a page or a form:
         // said in words with the way back, never a bare JSON error.
         if r.status >= 500 && r.kind == Body::Json && path.starts_with("/hub") && !path.contains('.') {
-            eprintln!("atlas: {} {} failed: {}", method, path, r.body);
+            crate::errln!("atlas: {} {} failed: {}", method, path, r.body);
             r = Reply::failed_page();
         }
         // Every page, from the one place that knows the token — the

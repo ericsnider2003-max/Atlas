@@ -352,3 +352,172 @@ fn anticipation_reads_the_real_clock() {
     assert_eq!(moment_clock(wed as i64), (14 * 60 + 35, 2));
     assert_eq!(moment_clock(0), (0, 3), "the epoch was a Thursday");
 }
+
+/// One message you were sent can be read, and answered (30 Sep 2026 sweep:
+/// mail was summarised and drafted to, never read or replied to one by one).
+#[test]
+fn one_email_can_be_read_and_replied_to() {
+    use atlas::daemon::{one_message_asked, OneMessage};
+    assert_eq!(one_message_asked("read me the email from Sam"), Some(OneMessage::Read("Sam".into())));
+    assert_eq!(one_message_asked("what did Sam's email say?"), Some(OneMessage::Read("Sam".into())));
+    assert_eq!(
+        one_message_asked("reply to Sam saying I'll be there at six"),
+        Some(OneMessage::Reply("Sam".into(), "I'll be there at six".into()))
+    );
+    assert_eq!(one_message_asked("reply to him saying ok then"), None);
+    assert_eq!(one_message_asked("read me a story"), None);
+
+    let (mut c, p) = (cfg(), plat());
+    c.tools.as_mut().unwrap().mail.accounts = vec![atlas::mail::Account {
+        name: "personal".into(),
+        address: "me@example.com".into(),
+        password_from_vault: "mail personal".into(),
+        ..Default::default()
+    }];
+    let store = Store::new(tmp("one-email"));
+    let book = atlas::mailbook::MailBook {
+        letters: vec![atlas::mailbook::Letter {
+            id: "a1@example.com".into(),
+            in_reply_to: None,
+            refs: vec![],
+            from_name: "Sam Ortiz".into(),
+            from: "sam@example.com".into(),
+            to: vec!["me@example.com".into()],
+            subject: "Dinner Friday".into(),
+            at: NOW - 3 * 3600,
+            dated: true,
+            mine: false,
+            excerpt: "Are you still on for dinner Friday at seven?".into(),
+        }],
+        checked: Default::default(),
+    };
+    store.save(atlas::mailbook::MailBook::FILE, &book).unwrap();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let read = d.turn("read me the email from Sam", NOW);
+    assert!(read.contains("From Sam Ortiz") && read.contains("Dinner Friday") && read.contains("still on for dinner"), "{read}");
+    let reply = d.turn("reply to Sam saying yes, see you at seven", NOW + 10);
+    assert!(reply.contains("Re: Dinner Friday"), "{reply}");
+    let outbox = atlas::outbox::Outbox::load(&store);
+    let held = outbox.waiting_for("sam@example.com").expect("held as a draft, not sent");
+    assert_eq!(held.subject, "Re: Dinner Friday");
+    assert!(held.body.to_lowercase().contains("see you at seven"), "{}", held.body);
+    // Nobody fetched from that sender: said, not guessed.
+    let none = d.turn("read me the email from Priya", NOW + 20);
+    assert!(none.contains("haven't got an email from Priya"), "{none}");
+}
+
+/// A sent message carries a date, an id and its character set, and a
+/// subject that isn't plain ASCII is encoded (30 Sep 2026 sweep).
+#[test]
+fn a_sent_message_is_a_proper_message() {
+    let m = atlas::smtp::message_text("me@example.com", "sam@example.com", "Café Friday", "See you there\nat six", 1_790_776_800);
+    assert!(m.starts_with("Date: "), "{m}");
+    assert!(m.contains("\r\nMessage-ID: <") && m.contains("@example.com>\r\n"), "{m}");
+    assert!(m.contains("Content-Type: text/plain; charset=utf-8\r\n"), "{m}");
+    assert!(m.contains("Subject: =?UTF-8?B?"), "{m}");
+    assert!(m.ends_with("\r\n\r\nSee you there\r\nat six"), "{m}");
+    assert_eq!(atlas::smtp::rfc2822_date(0), "Thu, 01 Jan 1970 00:00:00 +0000");
+    assert_eq!(atlas::smtp::rfc2822_date(1_790_776_800), "Wed, 30 Sep 2026 14:00:00 +0000");
+}
+
+/// With `mail.backend: himalaya`, a draft goes out through Himalaya with its
+/// own account, not over Atlas's SMTP with a vault password that isn't there.
+#[cfg(unix)]
+#[test]
+fn with_himalaya_a_draft_is_sent_through_himalaya() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmp("himalaya-send");
+    let got = dir.join("sent.eml");
+    let args = dir.join("args.txt");
+    let fake = dir.join("himalaya");
+    std::fs::write(&fake, format!("#!/bin/sh\necho \"$@\" > '{}'\ncat > '{}'\n", args.display(), got.display())).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(atlas::himalaya::send_args("work"), vec!["--account", "work", "message", "send"]);
+
+    let (mut c, p) = (cfg(), plat());
+    let mail = &mut c.tools.as_mut().unwrap().mail;
+    mail.backend = "himalaya".into();
+    mail.himalaya = fake.display().to_string();
+    mail.accounts = vec![atlas::mail::Account {
+        name: "personal".into(),
+        address: "me@example.com".into(),
+        himalaya_account: "gmail".into(),
+        ..Default::default()
+    }];
+    let store = Store::new(tmp("himalaya-send-store"));
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    d.turn("Sam's email is sam@example.com", NOW);
+    let drafted = d.turn("email Sam saying see you at six", NOW + 10);
+    assert!(drafted.contains("send it"), "{drafted}");
+    let sending = d.turn("send it", NOW + 20);
+    assert!(sending.contains("Sending the reply to Sam"), "{sending}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut t = NOW + 21;
+    while std::time::Instant::now() < deadline && atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_some() {
+        d.tick(t);
+        t += 1;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_none(), "still waiting: never sent");
+    assert_eq!(std::fs::read_to_string(&args).unwrap().trim(), "--account gmail message send");
+    let sent = std::fs::read_to_string(&got).unwrap();
+    assert!(sent.contains("To: sam@example.com") && sent.contains("See you at six"), "{sent}");
+}
+
+/// Texts (30 Sep 2026 ruling: messaging goes where the conversations are).
+/// Atlas writes it; the phone sends it. Never said to be sent.
+#[test]
+fn a_text_is_written_for_your_phone_to_send() {
+    use atlas::texting::{sms_link, text_asked};
+    assert_eq!(text_asked("text Sam saying I'm running late"), Some(("Sam".into(), "I'm running late".into())));
+    assert_eq!(text_asked("send Sam a text saying see you at six"), Some(("Sam".into(), "see you at six".into())));
+    assert_eq!(text_asked("send a text to my wife saying love you lots"), Some(("my wife".into(), "love you lots".into())));
+    assert_eq!(text_asked("send the report to Sam, please do"), None);
+    assert_eq!(text_asked("text me when it's done"), None);
+    assert_eq!(sms_link("+15551234567", "I'm late"), "sms:+15551234567?&body=I%27m%20late");
+    assert_eq!(atlas::people::phone_number("(555) 123-4567"), Some("5551234567".into()));
+    assert_eq!(atlas::people::phone_number("+44 7700 900123"), Some("+447700900123".into()));
+    assert_eq!(atlas::people::phone_number("next tuesday"), None);
+
+    let (c, p) = (cfg(), plat());
+    let store = Store::new(tmp("texting"));
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let none = d.turn("text Sam saying I'm running late", NOW);
+    assert!(none.contains("don't have a number for Sam"), "{none}");
+    let kept = d.turn("Sam's number is (555) 123-4567", NOW + 5);
+    assert!(kept.contains("Sam's number"), "{kept}");
+    let wrote = d.turn("text Sam saying I'm running late", NOW + 10);
+    assert!(wrote.starts_with("Text to Sam: \"I'm running late.\""), "{wrote}");
+    assert!(!wrote.to_lowercase().contains("sent"), "never claims it was sent: {wrote}");
+    let texts = atlas::texting::Texts::load(&store);
+    assert_eq!(texts.waiting.len(), 1);
+    assert_eq!(texts.waiting[0].number, "5551234567");
+    let card = atlas::texting::card(&texts.current(NOW + 20));
+    assert!(card.contains("href=\"sms:5551234567?&amp;body=I%27m%20running%20late.\""), "{card}");
+    // "message Sam saying ..." with no paired Atlas called Sam: a text too.
+    let ask = d.turn("message Sam saying on my way", NOW + 30);
+    assert!(ask.contains("as you") && !ask.contains("terms"), "{ask}");
+    let msg = d.turn("yes", NOW + 35);
+    assert!(msg.starts_with("Text to Sam:"), "{msg}");
+}
+
+/// Bing's result links (`ck/a?...&u=a1<base64url>`) are read, and Bing's
+/// own furniture isn't taken for a source (30 Sep 2026: DuckDuckGo answered
+/// the laptop with a robot check, so research found "no sources").
+#[test]
+fn bing_results_are_read_through_its_redirect() {
+    let enc = |u: &str| atlas::b64::encode(u.as_bytes()).trim_end_matches('=').replace('+', "-").replace('/', "_");
+    let page = format!(
+        "<link href=\"https://r.bing.com/rs/x.css\"><h2><a href=\"https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u=a1{}&amp;ntb=1\">Canberra</a></h2>\
+         <h2><a href=\"https://www.bing.com/ck/a?!&amp;&amp;p=def&amp;u=a1{}&amp;ntb=1\">B</a></h2><a href=\"https://www.bing.com/images\">x</a>",
+        enc("https://en.wikipedia.org/wiki/Canberra"),
+        enc("https://www.britannica.com/place/Canberra")
+    );
+    assert_eq!(
+        atlas::research::extract_urls(&page, 5),
+        vec!["https://en.wikipedia.org/wiki/Canberra".to_string(), "https://www.britannica.com/place/Canberra".to_string()]
+    );
+    let bing = atlas::research::bing_search();
+    assert!(bing.args.iter().any(|a| a.ends_with("q={query_pct}&form=QBLH")));
+}

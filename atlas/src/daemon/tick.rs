@@ -6,7 +6,23 @@
 
 use super::*;
 
+/// How often `sync.automatic` carries your things (seconds).
+pub const AUTO_SYNC_EVERY_SECS: u64 = 900;
+
 impl<'a> Daemon<'a> {
+    /// Something timely, said at the desk; away from it, sent the way any
+    /// note is (the phone, a notification, or held for when you're back).
+    /// 30 Sep 2026: reminders went straight into the room, so one that
+    /// fired while you'd stepped out was said to nobody.
+    fn tell_where_you_are(&mut self, out: &mut Vec<String>, title: &str, line: String, t: u64) {
+        if self.quiet_for(t) > self.away_after {
+            let note = crate::notify::Note::new(title, &line, crate::notify::Urgency::Routine, t);
+            let _ = self.reach_you(note, t);
+        } else {
+            out.push(line);
+        }
+    }
+
     pub(super) fn readings(&self) -> Readings {
         crate::health::read_machine()
     }
@@ -352,7 +368,11 @@ impl<'a> Daemon<'a> {
             // runs as "say this", which proceeds by itself, so a reminder
             // that went fine was never said, printed or logged).
             if call != Decision::AutoProceed || !ok || matches!(intent, Intent::Say(_)) {
-                out.push(result);
+                if ok && matches!(intent, Intent::Say(_)) {
+                    self.tell_where_you_are(&mut out, "Reminder", result, t);
+                } else {
+                    out.push(result);
+                }
             }
         }
 
@@ -515,7 +535,9 @@ impl<'a> Daemon<'a> {
                 };
                 let note = crate::notify::Note::new("Atlas — your machine", &f.say, urgency, t);
                 let sent = self.reach_you(note, t);
-                if sent.reached_you() {
+                // Spoken by `reach_you` already (on the next pass): pushed
+                // here only when it went elsewhere, or it is said twice.
+                if sent.reached_you() && !matches!(sent, crate::notify::Sent::Spoken) {
                     out.push(f.say.clone());
                 }
                 // Recorded as offered only when it actually went somewhere a
@@ -619,6 +641,23 @@ impl<'a> Daemon<'a> {
                 self.log.warn(&say);
                 out.push(say);
             }
+        }
+
+        // --- Carrying your things to your other devices, by itself ---
+        //
+        // `sync.automatic` was on by default and read by nothing: syncing
+        // happened only when you said "sync" (30 Sep 2026 sweep). Only once
+        // you've chosen a folder -- nothing is put in a cloud folder you
+        // didn't pick -- and every quarter of an hour, quietly; what it did
+        // is in the log, and saying "sync" still tells you.
+        if sync_cfg.enabled
+            && sync_cfg.automatic
+            && !sync_cfg.folder.trim().is_empty()
+            && t.saturating_sub(self.last_auto_sync) >= AUTO_SYNC_EVERY_SECS
+        {
+            self.last_auto_sync = t;
+            let said = self.carry_to_your_other_devices(t);
+            self.log.info(&format!("automatic sync: {said}"));
         }
 
         // Shared-page edits made from the command line (`atlas doc`)
@@ -772,7 +811,7 @@ impl<'a> Daemon<'a> {
             } else {
                 format!("in {mins_away} minutes")
             };
-            out.push(format!("Reminder: \"{}\" {when}.", occ.title));
+            self.tell_where_you_are(&mut out, "Reminder", format!("Reminder: \"{}\" {when}.", occ.title), t);
             self.reminded.insert(key);
             self.journal.record_at(Act::Offered, &format!("reminder: {}", occ.title), true, t);
         }
@@ -1200,6 +1239,11 @@ impl<'a> Daemon<'a> {
         // said as before; away, it goes the way any note does -- the phone,
         // a notification, or held for when you're back.
         let news = self.take_crew_news(t);
+        // Kept in the conversation either way, so "what did you find?" has
+        // an answer (`Thread::messages` shows the model these).
+        for line in &news {
+            self.thread.append("", line, None, t);
+        }
         if !news.is_empty() && self.quiet_for(t) > self.away_after {
             for line in news {
                 let note = crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);

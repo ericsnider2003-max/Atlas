@@ -77,6 +77,29 @@ pub struct VoiceIdConfig {
     /// measurement every run.
     pub builtin_accept: f32,
     pub builtin_reject: f32,
+    /// The same two lines for the trained speaker model (`speakernet`,
+    /// CAM++). Measured 30 Sep 2026 on 10 LibriSpeech speakers: the same
+    /// voice scored 0.48-0.95 pair against pair, other voices at most 0.48
+    /// (mean 0.13); against an enrolled average a voice scores higher
+    /// still. "You" from 0.45; "not you" only at 0.25 or under -- the open
+    /// floor ignores "not you", so that line sits well below anything your
+    /// own voice scored.
+    pub neural_accept: f32,
+    pub neural_reject: f32,
+}
+
+impl VoiceIdConfig {
+    /// The "you" and "not you" lines for an embedding of this size: each
+    /// encoder scores on its own scale.
+    pub fn lines_for(&self, dims: usize) -> (f32, f32) {
+        if dims == crate::speaker::BUILTIN_DIMS {
+            (self.builtin_accept, self.builtin_reject)
+        } else if dims == crate::speakernet::DIMS {
+            (self.neural_accept, self.neural_reject)
+        } else {
+            (self.accept, self.reject)
+        }
+    }
 }
 
 impl Default for VoiceIdConfig {
@@ -91,6 +114,8 @@ impl Default for VoiceIdConfig {
             adapt: true,
             builtin_accept: 0.30,
             builtin_reject: 0.15,
+            neural_accept: 0.45,
+            neural_reject: 0.25,
         }
     }
 }
@@ -108,6 +133,16 @@ pub struct VoiceId {
     /// is ruled on, Atlas measures and says; it does not move anything.
     #[serde(default)]
     pub accepted: Vec<f32>,
+    /// Scores of every turn that came after the wake word, whatever the
+    /// verdict: in your own home those are nearly always you, so unlike
+    /// `accepted` (only what already passed) they show how low your voice
+    /// really goes on an off day (30 Sep 2026).
+    #[serde(default)]
+    pub after_name: Vec<f32>,
+    /// Scores of open-floor voices judged not you and left unanswered: the
+    /// television, the radio, someone else.
+    #[serde(default)]
+    pub turned_away: Vec<f32>,
 }
 
 impl VoiceId {
@@ -128,14 +163,16 @@ impl VoiceId {
         if embedding.is_empty() {
             return Err(AtlasError::Platform("empty voice embedding".into()));
         }
-        let p = self.print.get_or_insert_with(Voiceprint::default);
-        if let Some(first) = p.samples.first() {
-            if first.len() != embedding.len() {
-                return Err(AtlasError::Platform(
-                    "voice embedding size changed — re-enroll after changing the encoder".into(),
-                ));
-            }
+        // A different encoder (the trained model arriving, 30 Sep 2026)
+        // scores on another scale: the old samples can't be mixed in, so
+        // enrolling starts the print again rather than refusing forever.
+        if self.print.as_ref().and_then(|p| p.samples.first()).is_some_and(|f| f.len() != embedding.len()) {
+            self.print = None;
+            self.accepted.clear();
+            self.after_name.clear();
+            self.turned_away.clear();
         }
+        let p = self.print.get_or_insert_with(Voiceprint::default);
         p.samples.push(embedding.to_vec());
         p.enrolled_at = now();
         p.centroid = mean(&p.samples);
@@ -147,6 +184,8 @@ impl VoiceId {
         // A voice that has been forgotten leaves no score history either —
         // the distribution IS a sketch of the voice.
         self.accepted.clear();
+        self.after_name.clear();
+        self.turned_away.clear();
     }
 
     /// Note the score of a turn that matched. Bounded the same way `adapt`'s
@@ -156,6 +195,53 @@ impl VoiceId {
         if self.accepted.len() > 60 {
             self.accepted.remove(0);
         }
+    }
+
+    /// Note the score of a turn after the wake word (see `after_name`).
+    pub fn note_after_name(&mut self, score: f32) {
+        self.after_name.push(score);
+        if self.after_name.len() > 100 {
+            self.after_name.remove(0);
+        }
+    }
+
+    /// Note the score of a voice turned away on the open floor.
+    pub fn note_turned_away(&mut self, score: f32) {
+        self.turned_away.push(score);
+        if self.turned_away.len() > 100 {
+            self.turned_away.remove(0);
+        }
+    }
+
+    /// The evidence for where the "not you" line should sit, from your own
+    /// turns: how low your voice scored after the wake word, how high the
+    /// voices Atlas turned away scored, and the line between. `None` until
+    /// there are at least ten turns after the wake word. Said, never applied
+    /// by itself: moving the line is your call.
+    pub fn calibration_report(&self, reject: f32) -> Option<String> {
+        if self.after_name.len() < 10 {
+            return None;
+        }
+        let mut yours = self.after_name.clone();
+        yours.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let low = yours[yours.len() / 20]; // the 5th percentile
+        let below = yours.iter().filter(|s| **s <= reject).count();
+        let mut line = format!(
+            "after the wake word ({} turns, nearly always you) your voice scored as low as {low:.2}; {below} of them were at or under the \"not you\" line ({reject:.2})",
+            yours.len()
+        );
+        if let Some(top) = self.turned_away.iter().cloned().fold(None, |m: Option<f32>, s| Some(m.map_or(s, |m| m.max(s)))) {
+            line.push_str(&format!("; the voices turned away scored at most {top:.2}"));
+            if top < low {
+                line.push_str(&format!(", so a line near {:.2} would keep both", (top + low) / 2.0));
+            } else {
+                line.push_str(" -- they overlap with yours, so more enrolment samples would help more than moving the line");
+            }
+        }
+        if below > 0 {
+            line.push_str(". Some of your turns would have been ignored on the open floor; saying \"Atlas\" first always works");
+        }
+        Some(line)
     }
 
     /// Where the fixed thresholds sit against your own accepted scores.
@@ -191,11 +277,7 @@ impl VoiceId {
             return Verdict::NotEnrolled;
         }
         let s = cosine(&p.centroid, embedding);
-        let (accept, reject) = if embedding.len() == crate::speaker::BUILTIN_DIMS {
-            (cfg.builtin_accept, cfg.builtin_reject)
-        } else {
-            (cfg.accept, cfg.reject)
-        };
+        let (accept, reject) = cfg.lines_for(embedding.len());
         if s >= accept {
             Verdict::You(s)
         } else if s <= reject {

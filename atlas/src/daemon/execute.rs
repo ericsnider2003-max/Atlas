@@ -21,7 +21,10 @@ impl<'a> Daemon<'a> {
         // A setting changed since the last thing you asked applies to this
         // one. The voice loop and the typed prompt don't tick, so this is
         // where they pick changes up.
-        let _ = self.pick_up_settings();
+        // A settings file that won't read is said with this answer: the
+        // loop's tick says it too, but the typed console never ticks, and
+        // dropping it here also marked it seen (30 Sep 2026: lost).
+        let warned: Vec<String> = self.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")).collect();
         // Also set here, not only in `turn_from`: the one-shot CLI path
         // (`atlas "..."`) parses and executes without going through a turn at
         // all, and a correction typed at the command line is still a
@@ -39,7 +42,11 @@ impl<'a> Daemon<'a> {
             started.elapsed().as_millis().min(u32::MAX as u128) as u32,
         );
         self.timing.add(timed);
-        out
+        if warned.is_empty() {
+            out
+        } else {
+            format!("{} {out}", warned.join(" "))
+        }
     }
 
     /// The last command carried out, by kind (`selftest`): where a
@@ -1488,7 +1495,28 @@ impl<'a> Daemon<'a> {
             // "I don't have a the budget" (the capability sweep): the
             // thing named as it was said, and what can be shown.
             let w = w.trim_start_matches("the ").trim_start_matches("my ").trim_start_matches("a ");
-            return format!("I don't have {w} to put up -- I can show what's outstanding, what I'm working on, or the settings.");
+            // "pull up chrome" is an app, not a panel (30 Sep 2026: "pull up
+            // TradingView" got "I don't have tradingview to put up").
+            let squashed: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
+            if let Some(app) = self.cfg.apps.apps.keys().find(|k| k.eq_ignore_ascii_case(w) || k.eq_ignore_ascii_case(&squashed)).cloned() {
+                return match crate::workspace::focus_app(self.cfg, self.plat, &app) {
+                    Ok(()) => format!("There's {app}."),
+                    Err(e) => format!("I couldn't bring up {app}: {e}"),
+                };
+            }
+            // A window already open with that in its title ("TradingView" in Chrome).
+            if let Some(win) = self.cfg.apps.apps.values().find_map(|spec| {
+                let mut s = spec.clone();
+                s.title_hints = vec![w.to_string(), squashed.clone()];
+                self.plat.find_window(&s).ok().flatten()
+            }) {
+                let _ = self.plat.focus(win);
+                return format!("There's {w}.");
+            }
+            return format!(
+                "I can't put {w} on screen -- it isn't an app I know or a window that's open. I can open an app by name, \
+                 or show what's outstanding, what I'm working on, or the settings."
+            );
         };
         let monitors = self.plat.monitors().unwrap_or_default();
         match crate::panel::place(panel, &monitors, &self.panel_cfg()) {

@@ -799,12 +799,24 @@ impl Parser {
     /// `improve` is reached by a clear coding verb, or by a general phrase
     /// with a project named ("the Atlas project", a registered name).
     fn improve_is_meant(&self, phrase: &str, rest: &str) -> bool {
-        if matches!(phrase, "improve" | "refactor" | "work on the") {
+        if matches!(phrase, "improve" | "refactor") {
             return true;
         }
+        // "work on the garden", "update the kitchen project", "add to the
+        // shopping list" are not code (30 Sep 2026 sweep): a project of
+        // yours by name, or something that is code, has to be in it.
         let low = rest.to_lowercase();
-        low.split(|c: char| !c.is_alphanumeric()).any(|w| w == "project")
-            || self.projects.iter().any(|p| low.split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_').any(|w| w == p))
+        let words: Vec<&str> = low.split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_').filter(|w| !w.is_empty()).collect();
+        const CODE: &[&str] = &[
+            "code", "codebase", "app", "program", "script", "website", "site", "function", "module", "repo",
+            "repository", "atlas", "bug", "tests", "test", "api", "backend", "frontend", "ui", "cli",
+        ];
+        // "on the <name> project, ..." names a project the way Atlas tells
+        // you to; the everyday verbs need more than the word "project".
+        let everyday = matches!(phrase, "work on the" | "update the" | "change the" | "add to" | "increase");
+        words.iter().any(|w| CODE.contains(w))
+            || self.projects.iter().any(|p| words.iter().any(|w| w == p))
+            || (!everyday && words.contains(&"project"))
     }
 
     pub fn parse(&self, input: &str) -> Intent {
@@ -1213,6 +1225,8 @@ fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
             !matches!(first, "is" | "was" | "me" | "him" | "her" | "them" | "us" | "it" | "that" | "your")
         }
         "open_app" => !matches!(first, "to" | "up" | "minded" | "about" | "with" | "for" | "and"),
+        // "look up to him" is admiring someone, not a search.
+        "research" if phrase.trim() == "look up" && first == "to" => false,
         "research" => !matches!(first, "is" | "was" | "shows" | "showed" | "says" | "said" | "suggests" | "found" | "has" | "have" | "does" | "did" | "keeps" | "isnt" | "wasnt" | "doesnt"),
         "call_they_declined" => words <= 2,
         // A program, a tool, a page -- not a letter or a report.

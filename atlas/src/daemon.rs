@@ -65,7 +65,9 @@ pub use errands::CONNECTED_ACCOUNTS;
 pub use tick::moment_clock;
 mod away;
 mod tick;
+pub use tick::AUTO_SYNC_EVERY_SECS;
 mod inbox;
+pub use inbox::{one_message_asked, OneMessage};
 mod making;
 mod reading;
 mod execute;
@@ -1351,6 +1353,8 @@ pub struct Daemon<'a> {
     /// When the sync folder was last checked for still syncing
     /// (`cloudsync::still_syncing`), so it runs every `check_every_hours`.
     last_sync_check: u64,
+    /// When the last automatic sync pass ran (`sync.automatic`).
+    pub last_auto_sync: u64,
     /// Set when a night ends, cleared once the brief has been said.
     morning_brief: Option<String>,
     /// Where you were while the last stretch of unattended work happened.
@@ -1929,6 +1933,7 @@ impl<'a> Daemon<'a> {
             overnight: store_for_load.load("overnight"),
             last_overnight: 0,
             last_sync_check: 0,
+            last_auto_sync: 0,
             morning_brief: None,
             worked_while: None,
             last_turn_failed: false,
@@ -2043,7 +2048,7 @@ fn key_cut_in(
 /// A reply being said, as the loop sees it (`speakthread`).
 impl crate::speakthread::Host for Daemon<'_> {
     fn line(&mut self, chunk: &str) {
-        println!("{chunk}");
+        crate::outln!("{chunk}");
         self.log.info(chunk);
     }
     fn between(&mut self) {

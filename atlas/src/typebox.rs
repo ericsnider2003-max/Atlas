@@ -207,7 +207,7 @@ impl eframe::App for Box_ {
         let events = ctx.input(|i| i.events.clone());
         let done = match apply_keys(&mut self.q, &events, crate::store::now()) {
             Action::Submit(text) => {
-                println!("{SENT}{text}");
+                crate::outln!("{SENT}{text}");
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
                 true

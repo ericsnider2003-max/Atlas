@@ -273,7 +273,7 @@ impl Tor {
         // A Tor left by an Atlas that didn't get to stop it holds the lock on
         // this data folder, and a new one can't start until it's gone.
         if let Some(pid) = stop_orphan(dir, &binary) {
-            eprintln!("atlas: stopped a Tor (process {pid}) left running by an earlier Atlas");
+            crate::errln!("atlas: stopped a Tor (process {pid}) left running by an earlier Atlas");
         }
         let child = cmd.spawn().map_err(|e| format!("couldn't start Tor ({}): {e}", binary.display()))?;
         let _ = std::fs::write(pid_file(dir), format!("{}\n{}\n", child.id(), binary.display()));

@@ -1510,7 +1510,7 @@ pub(super) fn run_get(which: Option<&str>) {
     let tools = atlas::getpieces::Tools::default();
     let mut problems = 0;
     let Some((what, pieces)) = atlas::getpieces::set(which) else {
-        println!("I don't know that set. `atlas get` (the voice), `atlas get seeing`, `atlas get pictures`, `atlas get photos`, or `atlas get kokoro`.");
+        println!("I don't know that set. `atlas get` (the voice), `atlas get seeing`, `atlas get pictures`, `atlas get photos`, `atlas get hearing`, `atlas get voiceid`, or `atlas get kokoro`.");
         return;
     };
     println!("Getting {what}. Safe to run again —");

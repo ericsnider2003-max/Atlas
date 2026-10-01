@@ -338,6 +338,12 @@ impl<'a> Daemon<'a> {
             }
             return;
         };
+        // One was started before and isn't running now: why, from its own
+        // log, before that log is replaced.
+        if let Some(was) = &self.model_running_id {
+            let words = crate::models::model_server_last_words().unwrap_or_else(|| "its log says nothing".into());
+            self.log.warn(&format!("the model server ({was}) isn't running any more; its last words: {words}"));
+        }
         let layers = crate::models::layers_here(&model, &cfg, &machine);
         let mb = crate::models::footprint_mb(&model, &cfg);
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {

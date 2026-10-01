@@ -398,6 +398,109 @@ impl<'a> Daemon<'a> {
     /// delivery is. The person may be asleep, their laptop may be shut, the
     /// link may not exist yet -- none of that is a reason to refuse to write
     /// something down with your name and your clock on it. See `chat.rs`.
+    /// "Where are we on the improvement list?", "what's pending on your
+    /// self-improvement list?", "free wins": read from the Improvements and
+    /// Ideas pages themselves. 30 Sep 2026: the model answered these from
+    /// nothing -- "the list is active, we're tracking progress" and four
+    /// pending items it made up.
+    pub(super) fn improvements_help(&mut self, said: &str) -> Option<String> {
+        let t = said.to_lowercase();
+        let about_list = ["improvement list", "improvements list", "self-improvement", "self improvement", "free wins", "free win", "your improvements", "the improvements"]
+            .iter()
+            .any(|k| t.contains(k));
+        if !about_list {
+            return None;
+        }
+        self.refresh_signals();
+        let most = self.tools_cfg().self_audit.most_at_once;
+        let recs = self.recommendations_shown(most);
+        let wins = self.free_wins();
+        let not_here: Vec<&crate::hub::FreeWin> = wins.iter().filter(|w| w.here != "On here.").collect();
+        let mut out = String::new();
+        if recs.is_empty() {
+            out.push_str("Nothing on the improvement list right now -- I haven't seen anything going wrong often enough to suggest a fix.");
+        } else {
+            out.push_str(&format!("{} on the improvement list: ", recs.len()));
+            out.push_str(&recs.iter().map(|r| r.symptom.trim_end_matches('.').to_string()).collect::<Vec<_>>().join("; "));
+            out.push_str(". Each is on the Improvements page with \"Have a go\" or \"Not worth it\".");
+        }
+        if wins.is_empty() {
+        } else if not_here.is_empty() {
+            out.push_str(&format!(" All {} free wins are on here.", wins.len()));
+        } else {
+            out.push_str(&format!(
+                " Free wins: {} of {} on; not yet: {}.",
+                wins.len() - not_here.len(),
+                wins.len(),
+                not_here.iter().map(|w| format!("{} ({})", w.what.trim_end_matches('.'), w.here.trim_end_matches('.').to_lowercase())).collect::<Vec<_>>().join("; ")
+            ));
+        }
+        Some(out)
+    }
+
+    /// "move TradingView to my right monitor", "put it on the other screen".
+    pub(super) fn move_window_help(&mut self, said: &str) -> Option<String> {
+        let (what, side) = crate::workspace::move_to_screen_asked(said)?;
+        let name = match what.as_str() {
+            "it" | "that" | "this" | "this window" | "that window" | "the window" | "window" => self.referents.last_app.clone(),
+            w => Some(w.to_string()),
+        };
+        Some(match crate::workspace::move_to_screen(self.cfg, self.plat, name.as_deref(), side) {
+            Ok(done) => {
+                if let Some(n) = &name {
+                    self.referents.last_app = Some(n.clone());
+                }
+                done
+            }
+            Err(why) => format!("I couldn't move it: {why}."),
+        })
+    }
+
+    /// "text Sam saying I'm running late": written for your phone to send
+    /// (`texting`). `None` when it wasn't asked.
+    pub(super) fn text_help(&mut self, said: &str) -> Option<String> {
+        let (who, message) = crate::texting::text_asked(said)?;
+        Some(self.write_a_text(&who, &message))
+    }
+
+    /// A text to `who`, written and offered: on the phone as a notification
+    /// that opens Messages, and on the hub's Talk page. Never said to be sent.
+    pub(super) fn write_a_text(&mut self, who: &str, message: &str) -> String {
+        let people = self.people_known().clone();
+        let (name, number) = match people.find(who) {
+            crate::people::Found::One(k) => match people.by_key.get(k) {
+                Some(c) => match c.phones.first() {
+                    Some(n) => (c.name.clone(), n.clone()),
+                    None => {
+                        return format!("I don't have a number for {}. Tell me \"{}'s number is\" and the number, then ask again.", c.name, c.name)
+                    }
+                },
+                None => return format!("I don't have a number for {who}."),
+            },
+            crate::people::Found::Several(names) => return format!("Which {who}? {}.", names.join(" or ")),
+            crate::people::Found::None => {
+                return format!("I don't have a number for {who}. Tell me \"{who}'s number is\" and the number, then ask again.")
+            }
+        };
+        let body = crate::outbox::body_from_spoken(message);
+        let now = clock();
+        let mut texts = crate::texting::Texts::load(&self.store);
+        texts.add(crate::texting::Waiting { to_name: name.clone(), number: number.clone(), body: body.clone(), at: now });
+        if let Err(e) = texts.save(&self.store) {
+            return format!("I wrote it but couldn't keep it ({e}), so it isn't waiting on your phone.");
+        }
+        let link = crate::texting::sms_link(&number, &body);
+        let note = crate::notify::Note::new(&format!("Text to {name}"), &format!("{body} -- tap to open it in Messages."), crate::notify::Urgency::Routine, now);
+        let phone = self.phone_cfg();
+        let on_phone = phone.enabled && crate::phone::send_with_click(&note, &phone, &link).is_ok();
+        let where_ = if on_phone {
+            "It's on your phone -- tap the notification, then Send."
+        } else {
+            "Open it from Talk on the hub on your phone, then tap Send."
+        };
+        format!("Text to {name}: \"{body}\" {where_}")
+    }
+
     pub(super) fn send_message(&mut self, raw: &str) -> String {
         let (who, body) = split_who_and_what(raw);
         if who.is_empty() {
@@ -458,6 +561,16 @@ impl<'a> Daemon<'a> {
             names.into_iter().partition(|n| pairings.has_peer(n));
         if known.is_empty() {
             let who = unknown.into_iter().next().unwrap_or(who);
+            // Not another Atlas, but someone whose number you've given:
+            // a text, which is where most conversations are (30 Sep 2026).
+            let people = self.people_known().clone();
+            let has_number = match people.find(&who) {
+                crate::people::Found::One(k) => people.by_key.get(k).is_some_and(|c| !c.phones.is_empty()),
+                _ => false,
+            };
+            if has_number {
+                return self.write_a_text(&who, &body);
+            }
             return format!(
                 "I don't know anyone called {who}. Say \"add a friend\", or use the Friends page, to pair with them first."
             );
@@ -1777,7 +1890,11 @@ impl<'a> Daemon<'a> {
                 let said = crate::feedback::heard_feedback(&self.store, &f.from, &f.body).unwrap_or_default();
                 if !said.is_empty() {
                     self.journal.record_at(crate::activity::Kind::Blocked, &said, true, f.at);
-                    let _ = self.reach_you(crate::notify::Note::new("Feedback", &said, crate::notify::Urgency::Routine, f.at), f.at);
+                    // `reach_you` speaks it itself when you're here; said
+                    // again by the caller only when it went elsewhere.
+                    if matches!(self.reach_you(crate::notify::Note::new("Feedback", &said, crate::notify::Urgency::Routine, f.at), f.at), crate::notify::Sent::Spoken) {
+                        return String::new();
+                    }
                 }
                 said
             }
@@ -1785,7 +1902,11 @@ impl<'a> Daemon<'a> {
                 let said = crate::feedback::heard_answer(&self.store, &f.from, &f.body).unwrap_or_default();
                 if !said.is_empty() {
                     self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, f.at);
-                    let _ = self.reach_you(crate::notify::Note::new("Your feedback", &said, crate::notify::Urgency::Routine, f.at), f.at);
+                    // `reach_you` speaks it itself when you're here; said
+                    // again by the caller only when it went elsewhere.
+                    if matches!(self.reach_you(crate::notify::Note::new("Your feedback", &said, crate::notify::Urgency::Routine, f.at), f.at), crate::notify::Sent::Spoken) {
+                        return String::new();
+                    }
                 }
                 said
             }

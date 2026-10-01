@@ -2692,6 +2692,10 @@ impl Daemon<'_> {
                 // which listens on the phone; the laptop has its keys.
                 let pending: Vec<String> = self.talk_queue.iter().map(|(s, _)| s.clone()).collect();
                 let page = crate::hubpages::talk_page(&ex, &pending, false);
+                // Texts Atlas wrote, with the button that opens Messages.
+                let texts = crate::texting::Texts::load(&self.store);
+                let card = crate::texting::card(&texts.current(crate::store::now()));
+                let page = if card.is_empty() { page } else { page.replacen("<form class=compose", &format!("{card}<form class=compose"), 1) };
                 // The reply so far, in place of "thinking…", while the model
                 // is still writing it (27 Sep 2026: replies stream now). The
                 // page already looks again every two seconds.
@@ -3024,7 +3028,7 @@ impl Daemon<'_> {
     }
 
     /// The Improvements page's list, less the ones you said weren't worth it.
-    fn recommendations_shown(&self, most: usize) -> Vec<crate::selfaudit::Recommendation> {
+    pub(crate) fn recommendations_shown(&self, most: usize) -> Vec<crate::selfaudit::Recommendation> {
         let dropped: Vec<String> = self.store.load(RECS_DROPPED);
         crate::selfaudit::recommend(&self.signals, most + dropped.len())
             .into_iter()

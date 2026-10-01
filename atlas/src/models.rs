@@ -542,6 +542,13 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
         // 27 Sep 2026. A text-only model gets the benefit.
         "--cache-reuse".into(),
         "256".into(),
+        // The host-memory prompt cache is 8 GB by default in this llama.cpp
+        // build (`--cache-ram`, checked on the laptop's own llama-server
+        // 30 Sep 2026). On a 16 GB laptop beside a browser that's the
+        // memory running at 84-86% all evening; 1 GB holds the two slots'
+        // prompts with room to spare.
+        "--cache-ram".into(),
+        "1024".into(),
     ]
     .into_iter()
     // Speculative decoding, only when set (`models.draft`, `models.speculate`).
@@ -736,6 +743,10 @@ pub fn launch_logging(
 fn model_server_log(name: &str) -> std::process::Stdio {
     let dir = crate::roots::data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
+    // The last run's log kept beside it (`.previous`): started afresh, a
+    // server that died and was restarted took the reason with it (30 Sep
+    // 2026: four restarts in an hour on Eric's laptop, none explained).
+    let _ = std::fs::rename(dir.join(name), dir.join(format!("{name}.previous")));
     match std::fs::File::create(dir.join(name)) {
         Ok(f) => std::process::Stdio::from(f),
         Err(_) => std::process::Stdio::null(),

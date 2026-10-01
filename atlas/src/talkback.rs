@@ -44,7 +44,10 @@ pub fn said(d: &mut Daemon, said: &str) -> String {
             let kept = settings.set_and_keep("persona.wit", after.word(), &dir);
             // The file is read back in, so the running copy and the file are
             // one reading of one value.
-            let _ = d.pick_up_settings();
+            let warned: Vec<String> = d.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")).collect();
+            if !warned.is_empty() {
+                said_back = format!("{said_back} {}", warned.join(" "));
+            }
             d.persona.wit = after;
             if kept.starts_with("I couldn't keep") {
                 said_back = format!("{said_back} {kept}");

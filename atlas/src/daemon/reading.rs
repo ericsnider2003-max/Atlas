@@ -104,6 +104,15 @@ impl<'a> Daemon<'a> {
     pub(super) fn research(&mut self, topic: &str) -> String {
         // "Research it again": "again" is a request for a fresh look, not
         // part of the topic (30 Sep 2026: it was searched for as a word).
+        // "research Atlas, is there ..." -- the name is who you're talking
+        // to, not part of what to look up (30 Sep 2026 logs).
+        let topic = {
+            let t = topic.trim_start();
+            match t.split_whitespace().next() {
+                Some(w) if w.trim_end_matches([',', '.']).eq_ignore_ascii_case("atlas") => t[w.len()..].trim_start_matches([',', ' ']),
+                _ => t,
+            }
+        };
         let fresh = topic.to_lowercase().split_whitespace().any(|w| w == "again");
         let cleaned: String = topic.split_whitespace().filter(|w| !w.eq_ignore_ascii_case("again")).collect::<Vec<_>>().join(" ");
         let topic = cleaned.as_str();
@@ -125,7 +134,18 @@ impl<'a> Daemon<'a> {
             if let Some(c) = self
                 .known
                 .iter_mut()
-                .find(|c| !c.corrected && crate::consolidate::same_claim(topic, &c.says))
+                // Matched on what was asked (kept as "research: <topic>" on
+                // each confirmation), not on the answer's own wording: a
+                // question and its answer rarely share enough words, so the
+                // cache never answered anything (30 Sep 2026 sweep).
+                .find(|c| {
+                    !c.corrected
+                        && (c.confirmations.iter().any(|f| {
+                            f.source
+                                .strip_prefix("research: ")
+                                .is_some_and(|asked| asked.trim().eq_ignore_ascii_case(topic.trim()) || crate::consolidate::same_claim(topic, asked))
+                        }) || crate::consolidate::same_claim(topic, &c.says))
+                })
             {
                 if !c.worth_rechecking(now_check) {
                     c.asked_about += 1;

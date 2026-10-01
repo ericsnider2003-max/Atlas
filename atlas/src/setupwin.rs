@@ -756,7 +756,7 @@ impl eframe::App for App {
                         let c = r.center();
                         match dot {
                             Dot::Ring => {
-                                ui.painter().circle_stroke(c, 4.5, egui::Stroke::new(1.2, colour));
+                                ui.painter().circle_stroke(c, 4.5, egui::Stroke::new(1.2_f32, colour));
                             }
                             Dot::Filled => {
                                 ui.painter().circle_filled(c, 5.0, colour);

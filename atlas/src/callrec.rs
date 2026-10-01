@@ -271,7 +271,7 @@ fn capture(
     let lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let lost_in = lost.clone();
     let err = move |e: cpal::StreamError| {
-        eprintln!("recording: {e}");
+        crate::errln!("recording: {e}");
         if matches!(e, cpal::StreamError::DeviceNotAvailable) {
             lost_in.store(true, std::sync::atomic::Ordering::Relaxed);
         }
@@ -325,7 +325,7 @@ fn capture(
             break;
         }
         if lost.load(std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("recording: the sound device went away; closing the file");
+            crate::errln!("recording: the sound device went away; closing the file");
             break;
         }
     }

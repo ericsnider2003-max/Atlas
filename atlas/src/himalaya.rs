@@ -227,6 +227,43 @@ pub fn fetch_since(program: &str, account: &str, since: &str) -> Result<Vec<Mess
     fetch(program, account, "inbox", &["after", &day], 500)
 }
 
+/// The arguments to send a whole message read from standard input
+/// (`message send`, which also saves a copy to the Sent folder).
+pub fn send_args(account: &str) -> Vec<String> {
+    let mut a: Vec<String> = Vec::new();
+    if !account.trim().is_empty() {
+        a.push("--account".into());
+        a.push(account.trim().into());
+    }
+    a.extend(["message".into(), "send".into()]);
+    a
+}
+
+/// Send one message through Himalaya, with its own account and password
+/// (30 Sep 2026 sweep: with `backend: himalaya` mail was read through it but
+/// sent over Atlas's own SMTP with a vault password that isn't there, so
+/// every send failed).
+pub(crate) fn send(program: &str, account: &str, message: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = crate::tools::command(program)
+        .args(send_args(account))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't start Himalaya ({program}): {e}"))?;
+    if let Some(mut input) = child.stdin.take() {
+        input.write_all(message.as_bytes()).map_err(|e| format!("couldn't hand Himalaya the message: {e}"))?;
+    }
+    let out = child.wait_with_output().map_err(|e| format!("lost track of Himalaya: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let line = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it stopped with an error").trim().to_string();
+        return Err(format!("Himalaya said: {line}"));
+    }
+    Ok(())
+}
+
 /// The account's mail handed to the crew's mail code with Himalaya as its
 /// "server": the fetch functions that take a host (`connect_and_fetch_inbox`
 /// and `connect_and_fetch_since`) see this and ask Himalaya instead. Nothing

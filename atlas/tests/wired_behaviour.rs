@@ -71,7 +71,7 @@ fn every_phrase_in_the_command_file_parses_to_something_real() {
     let mut dead = Vec::new();
     for c in &cfg.commands.commands {
         for p in &c.phrases {
-            let said = if c.intent == "improve" && !matches!(p.as_str(), "improve" | "refactor" | "work on the") {
+            let said = if c.intent == "improve" && !matches!(p.as_str(), "improve" | "refactor") {
                 // A general phrase ("fix the", "on the") reaches project work
                 // only with a project named (round 10: "change the volume"
                 // was being asked which project it was for).

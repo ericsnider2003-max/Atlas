@@ -974,6 +974,7 @@ impl Daemon<'_> {
             Asked::Talked { who } => p.talked(&who, t).map(|_| format!("Noted -- in touch with {who} today.")),
             Asked::Birthday { who, month, day } => p.birthday(&who, month, day).map(|_| format!("{who}'s birthday noted.")),
             Asked::Email { who, address } => p.email(&who, &address).map(|_| format!("Noted -- mail with {address} counts as being in touch with {who}.")),
+            Asked::Phone { who, number } => p.phone(&who, &number).map(|_| format!("Noted -- {who}'s number. \"Text {who} saying\" and what to say, and I'll write it.")),
         };
         match done {
             Ok(said) => {

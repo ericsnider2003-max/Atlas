@@ -1881,6 +1881,10 @@ impl<'a> Daemon<'a> {
     }
 }
 
+/// How long you've been quiet before a summary may use the talking model
+/// (when the deep one isn't up).
+pub const FOLD_ON_TALK_MODEL_AFTER_SECS: u64 = 20 * 60;
+
 impl<'a> Daemon<'a> {
     /// Fold old conversation when it's due (H12).
     pub(super) fn fold_if_due(&mut self, t: u64) {
@@ -1898,8 +1902,15 @@ impl<'a> Daemon<'a> {
             let old: Vec<crate::thread::Exchange> = self.thread.foldable(&cfg).to_vec();
             let n = old.len();
             let earlier = self.thread.summary.clone();
-            // The running summary is background work: the deep model's.
-            match self.background_llm() {
+            // The running summary is background work: the deep model's. When
+            // the deep model isn't up it would run on the talking model, and
+            // on Eric's laptop that ran 4-13 minutes beside the conversation
+            // while every turn waited 25-130 s (30 Sep 2026 logs): then it's
+            // the plain summary unless you've been away a good while.
+            let deep_up = matches!(self.deep.gate.state(), crate::deepbrain::State::Up | crate::deepbrain::State::Starting);
+            let long_quiet = t.saturating_sub(self.thread.last_active) >= FOLD_ON_TALK_MODEL_AFTER_SECS;
+            let llm = if deep_up || long_quiet { self.background_llm() } else { None };
+            match llm {
                 Some(llm) => {
                     let input = self.thread.fold_input(&cfg);
                     let work: crew::Work = Box::new(move |_ctl| {

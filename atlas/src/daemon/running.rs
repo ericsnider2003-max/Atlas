@@ -232,7 +232,7 @@ impl<'a> Daemon<'a> {
         if !audio_ok {
             self.audio_tools_missing = true;
             if let Some(m) = self.tiers.audio_unavailable() {
-                println!("{m}");
+                crate::outln!("{m}");
                 // Written down too: this program has no console window.
                 self.log.warn(&m);
             }
@@ -1212,6 +1212,19 @@ impl<'a> Daemon<'a> {
             // ended, nothing was answered and nothing was said, so a cold or
             // a new headset read as Atlas being switched off. See
             // `voiceid::handle`'s own doc for why that is gone.
+            // The evidence for where the lines should sit (`calibration_report`).
+            match (&how, &self.last_verdict) {
+                (_, crate::voiceid::Verdict::NotEnrolled) => {}
+                (Arrival::Directed, v) => {
+                    self.voice_id.note_after_name(v.score());
+                    let _ = self.voice_id.save(&self.store);
+                }
+                (Arrival::OpenMic, crate::voiceid::Verdict::NotYou(s)) => {
+                    self.voice_id.note_turned_away(*s);
+                    let _ = self.voice_id.save(&self.store);
+                }
+                _ => {}
+            }
             if matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)) {
                 self.log.info(&format!(
                     "a voice that didn't match yours ({:.2}) -- carrying on, and \
@@ -1478,10 +1491,12 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn say(&self, mouth: &dyn Mouth, line: &str) {
-        println!("{line}");
+        crate::outln!("{line}");
         self.log.info(line);
         // Never over a reply still playing on its own thread.
-        crate::speakthread::wait_quiet(std::time::Duration::from_secs(30));
+        // The whole reply, not 30 seconds of it: a long reply on a busy
+        // machine took 45 (30 Sep 2026), and the two then played at once.
+        crate::speakthread::wait_quiet(std::time::Duration::from_secs(180));
         // Paused means quiet, not blind: the line is still printed and
         // logged, but the speaker stays silent. `may_speak` existed to
         // answer exactly this and `say` never asked, so a scheduled job
@@ -1491,6 +1506,7 @@ impl<'a> Daemon<'a> {
             // The screen got the line as written; the speaker gets it as
             // said. "$2.35" reads as words, "mph" is spoken not spelled,
             // a stray markdown marker is dropped rather than pronounced.
+            let _voice = crate::speakthread::hold_voice();
             if let Err(e) = mouth.speak(&crate::spoken_form::for_speech(line)) {
                 // Written down: a reply that failed to play was silence with
                 // no reason anywhere (29 Sep 2026).

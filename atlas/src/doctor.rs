@@ -405,6 +405,15 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 vid.min_samples
             ),
         )
+    } else if crate::speaker::which(&sp, &vars) == crate::speaker::Encoder::Neural
+        && voice_record.print.as_ref().is_some_and(|p| p.centroid.len() != crate::speakernet::DIMS)
+    {
+        (
+            true,
+            "the trained voice model is here, but your voice was learned with the old encoder -- \
+             run `atlas enrol-voice` again so the new one knows it"
+                .into(),
+        )
     } else if !vid.enabled {
         (true, "I know your voice, but voice-lock is switched off in your settings".into())
     } else {
@@ -412,11 +421,16 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         // against this voice's own accepted scores — the evidence the
         // open adaptive-threshold ruling needs, gathered where the person
         // deciding will actually see it.
-        match voice_record.thresholds_report(&vid) {
-            Some(report) => {
-                (true, format!("voice-lock on, {enrolled} samples enrolled; {report}"))
-            }
-            None => (true, format!("voice-lock on, {enrolled} samples enrolled")),
+        let reject = match crate::speaker::which(&sp, &vars) {
+            crate::speaker::Encoder::BuiltIn => vid.builtin_reject,
+            crate::speaker::Encoder::Neural => vid.neural_reject,
+            crate::speaker::Encoder::External => vid.reject,
+        };
+        let reports: Vec<String> = [voice_record.thresholds_report(&vid), voice_record.calibration_report(reject)].into_iter().flatten().collect();
+        if reports.is_empty() {
+            (true, format!("voice-lock on, {enrolled} samples enrolled"))
+        } else {
+            (true, format!("voice-lock on, {enrolled} samples enrolled; {}", reports.join("; ")))
         }
     };
     let vdetail = if builtin && crate::speaker::available(&sp, &vars) {

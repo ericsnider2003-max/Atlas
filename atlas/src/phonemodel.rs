@@ -525,7 +525,7 @@ mod engine {
         }
         let from = held.len();
         if std::env::var_os("ATLAS_PHONE_DEBUG").is_some() {
-            eprintln!("phone-model: {} of {} prompt tokens already read", from, tokens.len());
+            crate::errln!("phone-model: {} of {} prompt tokens already read", from, tokens.len());
         }
         let mut batch = LlamaBatch::new(512, 1);
         for (start, piece) in tokens[from..].chunks(512).enumerate().map(|(i, c)| (from + i * 512, c)) {

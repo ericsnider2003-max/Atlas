@@ -204,3 +204,31 @@ fn offline_research_speaks_the_shared_deferral_message_not_a_hand_written_copy()
     // No search errand may start while offline -- the request is deferred, not run.
     assert_eq!(d.crew.active(), 0, "an offline research request must not start a lookup");
 }
+
+/// "research it again" means the last topic, not the word "it" (30 Sep 2026
+/// sweep: it searched for "it", or answered "I can't tell what you mean").
+#[test]
+fn researching_it_again_means_the_last_topic() {
+    let c = cfg_researching_locally();
+    let p = plat();
+    let mut d = daemon(&c, &p, "it-again");
+    let first = d.turn("research tide times at Ventura", 100);
+    assert!(first.to_lowercase().contains("looking into"), "{first}");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut t: u64 = 101;
+    while Instant::now() < deadline && d.crew.active() > 0 {
+        d.tick(t);
+        std::thread::sleep(Duration::from_millis(10));
+        t += 1;
+    }
+    // Asked the same way, it's answered from what was found -- the cache
+    // matches what was asked, not the answer's wording.
+    let same = d.turn("research tide times at Ventura", t + 5);
+    assert!(same.contains("From what I found before"), "{same}");
+    // "again" is a fresh look at the last topic, not a search for "it".
+    let again = d.turn("research it again", t + 10);
+    let low = again.to_lowercase();
+    assert!(low.contains("tide times at ventura"), "{again}");
+    assert!(low.contains("looking into"), "a fresh run, not the cache: {again}");
+    assert!(!low.contains("can't tell"), "{again}");
+}

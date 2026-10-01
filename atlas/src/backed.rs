@@ -56,6 +56,16 @@ pub fn claims_work_started(sentence: &str) -> bool {
         " i've scheduled ", " i'm scheduling ", " i'll send ", " i've sent ", " i'm sending ", " i'll save ",
         " i've saved ", " i'm saving ", " i'll move ", " i've moved ", " i'm moving ", " i'm switching ",
         " i've switched ", " i'll set up ", " i've set up ", " i'll remind you ", " i've set a reminder ",
+        // Eric's evening, 30 Sep 2026, a 4B model with no tool called:
+        // "TradingView's open -- I've got it ready", "Camera's on -- you're
+        // good to go" (before the camera was allowed), "I've got the call
+        // notes ... ready for you", "Chrome's self-improvement list is active
+        // -- we're tracking progress", and a made-up list of what's pending.
+        "'s open ", " is open now ", " got it ready ", " got them ready ", " got those ready ", " ready for you ",
+        "camera's on ", " camera is on ", " working through it now ", " i'm working on tweaks ", " im working on tweaks ",
+        " tracking progress ", " still pending on the ", " here's what's still pending ", " got your list ready ",
+        " got the call notes ", " got those call notes ", " got your call notes ", " notes are ready ",
+        " got those notes ready ", " i've got your screen ",
     ];
     CLAIMS.iter().any(|c| t.contains(c))
 }

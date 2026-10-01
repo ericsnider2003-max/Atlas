@@ -9,7 +9,7 @@
 use crate::config::Config;
 use crate::error::{AtlasError, Result};
 use crate::layout::{monitor_for_role, to_pixels};
-use crate::platform::Platform;
+use crate::platform::{Monitor, PixelRect, Platform};
 
 /// How long a whole bring-up may take, however many apps are in it.
 ///
@@ -272,4 +272,118 @@ pub fn workspace_off(cfg: &Config, plat: &dyn Platform) -> Result<Report> {
         }
     }
     Ok(report)
+}
+
+/// Which screen "my right monitor" means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreenSide {
+    Left,
+    Right,
+    Primary,
+    /// The built-in (laptop) screen.
+    Laptop,
+    /// Whichever one the window isn't on.
+    Other,
+}
+
+/// "move TradingView to my right monitor", "put chrome on the left screen",
+/// "move it to my other monitor": the window named and the screen. `None`
+/// for anything else (30 Sep 2026: "move trading view to my right monitor"
+/// reached the model, which picked "move big files to another drive").
+pub fn move_to_screen_asked(said: &str) -> Option<(String, ScreenSide)> {
+    let low = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
+    let low = low.strip_prefix("atlas").map(|r| r.trim_start_matches([',', ' '])).unwrap_or(&low).to_string();
+    let low = ["can you ", "could you ", "please "].iter().fold(low, |l, p| l.strip_prefix(p).map(str::to_string).unwrap_or(l));
+    let rest = ["move ", "put ", "send ", "throw ", "drag "].iter().find_map(|v| low.strip_prefix(v))?;
+    let at = [" to my ", " to the ", " onto my ", " onto the ", " on my ", " on the ", " over to my ", " over to the "]
+        .iter()
+        .filter_map(|m| rest.find(m).map(|i| (i, m.len())))
+        .min_by_key(|(i, _)| *i)?;
+    let what = rest[..at.0].trim();
+    let place = &rest[at.0 + at.1..];
+    let mut words = place.split_whitespace();
+    let side_word = words.next()?;
+    let noun = words.next().unwrap_or("");
+    if !matches!(noun.trim_end_matches(','), "monitor" | "screen" | "display") {
+        return None;
+    }
+    let side = match side_word {
+        "left" => ScreenSide::Left,
+        "right" => ScreenSide::Right,
+        "main" | "primary" => ScreenSide::Primary,
+        "laptop" | "built-in" | "builtin" => ScreenSide::Laptop,
+        "other" | "second" | "next" => ScreenSide::Other,
+        _ => return None,
+    };
+    // "the chrome you opened in Chrome": the words after the thing named
+    // are about it, not part of its name.
+    let what = what.split(" you ").next().unwrap_or(what).split(" that ").next().unwrap_or(what);
+    let what = what.trim_start_matches("the ").trim_start_matches("my ").trim();
+    if what.is_empty() || what.split_whitespace().count() > 5 {
+        return None;
+    }
+    Some((what.to_string(), side))
+}
+
+/// The screen meant, from the monitors this machine has.
+pub fn screen_for(side: ScreenSide, monitors: &[Monitor], built_in: Option<u32>, now_on: Option<u32>) -> Option<Monitor> {
+    if monitors.is_empty() {
+        return None;
+    }
+    let pick = match side {
+        ScreenSide::Left => monitors.iter().min_by_key(|m| m.x),
+        ScreenSide::Right => monitors.iter().max_by_key(|m| m.x + m.width),
+        ScreenSide::Primary => monitors.iter().find(|m| m.primary),
+        ScreenSide::Laptop => built_in.and_then(|b| monitors.iter().find(|m| m.id == b)),
+        ScreenSide::Other => monitors.iter().find(|m| Some(m.id) != now_on),
+    };
+    pick.copied()
+}
+
+/// Move a window to a screen, filling it. `name` is an app in apps.yaml, or
+/// words in a window's title ("TradingView" in Chrome); `None` means the
+/// window in front. Says what it did, or plainly why not.
+pub(crate) fn move_to_screen(cfg: &Config, plat: &dyn Platform, name: Option<&str>, side: ScreenSide) -> std::result::Result<String, String> {
+    let monitors = plat.monitors().map_err(|e| e.to_string())?;
+    if monitors.len() < 2 && side != ScreenSide::Primary {
+        return Err("there's only one screen connected".into());
+    }
+    let (win, called) = match name {
+        None => {
+            let w = plat.active_window_id().map_err(|e| e.to_string())?.ok_or("there's no window in front")?;
+            (w, "that window".to_string())
+        }
+        Some(n) => {
+            let squashed: String = n.chars().filter(|c| !c.is_whitespace()).collect();
+            let found = match cfg.apps.get(n) {
+                Ok(spec) => plat.find_window(spec).ok().flatten(),
+                Err(_) => None,
+            }
+            .or_else(|| {
+                // Words in a title, in any app Atlas knows: "trading view"
+                // finds Chrome's "TradingView" tab.
+                cfg.apps.apps.values().find_map(|spec| {
+                    let mut s = spec.clone();
+                    s.title_hints = vec![n.to_string(), squashed.clone()];
+                    plat.find_window(&s).ok().flatten()
+                })
+            });
+            (found.ok_or_else(|| format!("I can't find a window for {n} -- is it open?"))?, n.to_string())
+        }
+    };
+    let now_on = plat.rect_of(win).ok().and_then(|r| crate::platform::monitor_under(&monitors, r));
+    let to = screen_for(side, &monitors, plat.built_in_monitor(), now_on).ok_or("I can't tell which screen that is")?;
+    if now_on == Some(to.id) && side != ScreenSide::Other {
+        return Ok(format!("{called} is already on that screen."));
+    }
+    plat.place(win, PixelRect { x: to.x, y: to.y, width: to.width, height: to.height }).map_err(|e| e.to_string())?;
+    let _ = plat.focus(win);
+    let which = match side {
+        ScreenSide::Left => "your left screen",
+        ScreenSide::Right => "your right screen",
+        ScreenSide::Primary => "your main screen",
+        ScreenSide::Laptop => "the laptop screen",
+        ScreenSide::Other => "your other screen",
+    };
+    Ok(format!("Moved {called} to {which}."))
 }

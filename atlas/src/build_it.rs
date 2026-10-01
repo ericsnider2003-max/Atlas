@@ -341,8 +341,8 @@ mod tests {
 
     #[test]
     fn extract_code_takes_the_largest_block_over_a_stray_snippet() {
-        let reply = "Use `foo`:\n```\nfoo\n```\nThe file:\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```";
-        assert_eq!(extract_code(reply), "fn main() {\n    println!(\"hi\");\n}");
+        let reply = "Use `foo`:\n```\nfoo\n```\nThe file:\n```rust\nfn main() {\n    crate::outln!(\"hi\");\n}\n```";
+        assert_eq!(extract_code(reply), "fn main() {\n    crate::outln!(\"hi\");\n}");
     }
 
     #[test]

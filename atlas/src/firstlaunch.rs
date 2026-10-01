@@ -252,7 +252,7 @@ pub fn show_problem(text: &str) {
             return;
         }
     }
-    eprintln!("{text}");
+    crate::errln!("{text}");
 }
 
 /// Ask a yes-or-no question: a message box when double-clicked, the terminal
@@ -264,7 +264,7 @@ pub fn ask_yes_no(text: &str) -> bool {
             return message_box(text, true);
         }
     }
-    print!("{text} Type yes to go ahead: ");
+    crate::out!("{text} Type yes to go ahead: ");
     let _ = std::io::Write::flush(&mut std::io::stdout());
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("yes")

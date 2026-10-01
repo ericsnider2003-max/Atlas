@@ -1023,7 +1023,7 @@ impl<'a> Voice<'a> {
                     Ok(()) => return Ok(if stop() { None } else { Some(String::new()) }),
                     Err(why) => {
                         if let Some(note) = crate::playout::note_once(&why) {
-                            println!("{note}");
+                            crate::outln!("{note}");
                         }
                     }
                 }
@@ -1167,7 +1167,7 @@ impl<'a> Voice<'a> {
             Ok(s) => s,
             Err(why) => {
                 if let Some(note) = crate::kokoro::note_once(&why) {
-                    println!("{note}");
+                    crate::outln!("{note}");
                 }
                 return Kokoro::Unavailable;
             }
@@ -1198,7 +1198,7 @@ impl<'a> Voice<'a> {
                     // -- only the rest.
                     crate::kokoro::forget();
                     if let Some(note) = crate::kokoro::note_once(&why) {
-                        println!("{note}");
+                        crate::outln!("{note}");
                     }
                     return kokoro_stopped_at(&sentences, i);
                 }
