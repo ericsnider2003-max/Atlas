@@ -513,6 +513,34 @@ impl<'a> Daemon<'a> {
             if !doing.is_empty() {
                 out.push(format!("I was partway through {} when I stopped. Ask again and I'll start it fresh.", doing.join(" and ")));
             }
+            // A workflow in hand. One waiting on your yes is put back and
+            // asked again -- the step is checked afresh when you answer
+            // (`approved_flow_step`); one that was running is named, not
+            // carried on, since its next step may be one to ask about.
+            let flow: Option<crate::flow::Run> = self.store.load(super::running::FLOW_LEFT);
+            let _ = self.store.save(super::running::FLOW_LEFT, &None::<crate::flow::Run>);
+            if let Some(run) = flow.filter(|r| t.saturating_sub(r.started) < 86_400 && !r.finished()) {
+                match run.state {
+                    crate::flow::RunState::AwaitingApproval if self.current_flow.is_none() => {
+                        let step = run.current().map(|s| s.command.clone()).unwrap_or_default();
+                        let q = format!(
+                            "Before I restarted, the \"{}\" workflow was waiting for your yes to: {step}. Go ahead?",
+                            run.workflow
+                        );
+                        self.current_flow = Some(run);
+                        self.session.ask(&q);
+                        out.push(q);
+                    }
+                    crate::flow::RunState::Running => out.push(format!(
+                        "I was on step {} of {} of the \"{}\" workflow when I stopped. Say \"run {}\" to start it again.",
+                        run.position + 1,
+                        run.steps.len(),
+                        run.workflow,
+                        run.workflow
+                    )),
+                    _ => {}
+                }
+            }
         }
         // Windows first: a conversation you left Atlas carrying on is picked
         // back up if its window is still open. You set it going; a restart

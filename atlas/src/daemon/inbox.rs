@@ -492,7 +492,8 @@ impl<'a> Daemon<'a> {
                                                     ),
                                                 };
                                                 if may_email_clients {
-                                                    match send_reply(
+                                                    match send_reply_routed(
+                                                        crate::himalaya::route(&account.imap_host).as_ref(),
                                                         &pending,
                                                         &account.address,
                                                         password,
@@ -1133,13 +1134,19 @@ impl<'a> Daemon<'a> {
             return "I need a model to draft that, and I haven't got one configured.".into();
         };
         let now = crate::store::now();
-        let vault_name = match crate::mail::credential_source(&account) {
-            Ok(n) => n.to_string(),
-            Err(e) => return format!("Can't draft from {}: {e}", account.name),
-        };
-        let password = match self.vault.get(&vault_name, now) {
-            Ok(p) => p,
-            Err(e) => return format!("Can't draft from {}: {e}", account.name),
+        // Himalaya keeps its own password: nothing to take from the vault.
+        let himalaya = cfg.by_himalaya().then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
+        let password = if himalaya.is_some() {
+            String::new()
+        } else {
+            match crate::mail::credential_source(&account)
+                .map(|n| n.to_string())
+                .map_err(|e| e.to_string())
+                .and_then(|n| self.vault.get(&n, now).map_err(|e| e.to_string()))
+            {
+                Ok(p) => p,
+                Err(e) => return format!("Can't draft from {}: {e}", account.name),
+            }
         };
 
         let store = self.store.clone();
@@ -1195,7 +1202,8 @@ impl<'a> Daemon<'a> {
                      ({daily_cap}) is already reached."
                 )
             } else {
-                match send_reply(
+                match send_reply_routed(
+                    himalaya.as_ref(),
                     &pending,
                     &account.address,
                     &password,

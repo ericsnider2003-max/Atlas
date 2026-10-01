@@ -469,6 +469,51 @@ fn with_himalaya_a_draft_is_sent_through_himalaya() {
     assert!(sent.contains("To: sam@example.com") && sent.contains("See you at six"), "{sent}");
 }
 
+/// With Himalaya, a mailto: unsubscribe goes through it too (1 Oct 2026:
+/// it was tried over SMTP with the empty password Himalaya mode carries).
+#[cfg(unix)]
+#[test]
+fn with_himalaya_an_unsubscribe_email_goes_through_himalaya() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmp("himalaya-unsub");
+    let got = dir.join("sent.eml");
+    let fake = dir.join("himalaya");
+    std::fs::write(&fake, format!("#!/bin/sh\ncat > '{}'\n", got.display())).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let (mut c, p) = (cfg(), plat());
+    let mail = &mut c.tools.as_mut().unwrap().mail;
+    mail.enabled = true;
+    mail.backend = "himalaya".into();
+    mail.himalaya = fake.display().to_string();
+    mail.accounts = vec![atlas::mail::Account {
+        name: "personal".into(),
+        address: "me@example.com".into(),
+        himalaya_account: "gmail".into(),
+        ..Default::default()
+    }];
+    let store = Store::new(tmp("himalaya-unsub-store"));
+    let cleanup = atlas::unsub::Cleanup {
+        unsubscribe: vec![("Deals Weekly".into(), "<mailto:leave@deals.example?subject=unsubscribe>".into())],
+        ..Default::default()
+    };
+    store.save(atlas::unsub::PENDING, &vec![("personal".to_string(), cleanup)]).unwrap();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    let said = d.turn("unsubscribe from those", NOW);
+    assert!(!said.contains("couldn't get at the mailbox"), "{said}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut t = NOW + 1;
+    while std::time::Instant::now() < deadline && !got.exists() {
+        d.tick(t);
+        t += 1;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let sent = std::fs::read_to_string(&got).expect("Himalaya was never asked to send");
+    assert!(sent.contains("To: leave@deals.example") && sent.contains("Subject: unsubscribe"), "{sent}");
+    assert_eq!(sent.matches("To: leave@deals.example\r\n").count(), 1, "the address, without the ?subject part: {sent}");
+}
+
 /// Texts (30 Sep 2026 ruling: messaging goes where the conversations are).
 /// Atlas writes it; the phone sends it. Never said to be sent.
 #[test]

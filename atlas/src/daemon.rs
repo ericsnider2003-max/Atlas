@@ -2871,7 +2871,14 @@ fn carry_out_unsubscribes(
             post_one_click(url, extra)
         } else if let Some(to) = target.strip_prefix("mailto:") {
             let to = to.split('?').next().unwrap_or(to);
-            match smtp_host {
+            match crate::himalaya::route(&account.imap_host) {
+                // Himalaya mode: its own account and password, never an
+                // SMTP login with the empty one this path was handed.
+                Some((program, name)) => {
+                    let text = crate::smtp::message_text_in(&account.address, to, "unsubscribe", "", crate::store::now(), &Default::default());
+                    crate::himalaya::send(&program, &name, &text)
+                }
+                None => match smtp_host {
                 Some(h) => send_unsubscribe_email(
                     provider.smtp_port(),
                     h,
@@ -2881,6 +2888,7 @@ fn carry_out_unsubscribes(
                     account.oauth.then_some(account.client_id.as_str()),
                 ),
                 None => Err("no SMTP server known for this provider".into()),
+                },
             }
         } else {
             Err(format!("unrecognised unsubscribe method: {target}"))
@@ -2974,6 +2982,28 @@ fn send_unsubscribe_email(
 /// unsubscribe's `mailto:` case, just with a real subject and body
 /// instead of an empty message. `from_address`'s own provider decides
 /// the SMTP host, the same lookup `check_unsubscribe` already uses.
+/// `send_reply`, but through Himalaya when that's how this account's mail
+/// goes (`route` from `himalaya::route` or the config). Himalaya keeps its
+/// own password, so the empty one the vault-free path carries is never
+/// tried against SMTP (1 Oct 2026: auto-replies and outreach both failed
+/// that way in Himalaya mode).
+fn send_reply_routed(
+    route: Option<&(String, String)>,
+    pending: &crate::outbox::PendingReply,
+    from_address: &str,
+    from_password: &str,
+    oauth_client_id: Option<&str>,
+) -> std::result::Result<(), String> {
+    match route {
+        Some((program, name)) => {
+            crate::smtp::may_send(from_address, crate::store::now().saturating_mul(1000))?;
+            let text = crate::smtp::message_text_in(from_address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
+            crate::himalaya::send(program, name, &text)
+        }
+        None => send_reply(pending, from_address, from_password, oauth_client_id),
+    }
+}
+
 fn send_reply(
     pending: &crate::outbox::PendingReply,
     from_address: &str,

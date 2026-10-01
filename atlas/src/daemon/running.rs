@@ -128,6 +128,10 @@ impl<'a> Daemon<'a> {
                 waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
             }
             note(&mut failed, "left_waiting", self.store.save(LEFT_WAITING, &waiting));
+            // A workflow, whole, so one waiting on your yes is asked again
+            // after a restart rather than lost (research report, Stage 1
+            // item 6: `current_flow` was never saved).
+            note(&mut failed, "current_flow", self.store.save(FLOW_LEFT, &self.current_flow));
         }
         // What research taught it. Absent from this list when `learned`
         // gained its first caller, which would have made the knowledge
@@ -1660,6 +1664,9 @@ impl Drop for Daemon<'_> {
         self.persist();
     }
 }
+
+/// Where `persist` keeps the workflow in hand.
+pub(super) const FLOW_LEFT: &str = "current_flow";
 
 /// Where `persist` keeps what a restart would cut off.
 pub(super) const LEFT_WAITING: &str = "left_waiting";
