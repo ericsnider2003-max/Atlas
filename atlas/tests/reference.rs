@@ -63,8 +63,19 @@ fn numbers_never_come_from_the_model_alone_and_that_is_not_configurable() {
         .find("Intent::Ask(q) =>")
         .expect("the catch-all Ask arm is gone");
     assert!(model_arm > 0, "the shelf arm has to come first or it never matches");
+    // The arm names its handler (`execute_inner` as a table, 30 Sep 2026).
+    let arm = &d[shelf_arm..shelf_arm + model_arm];
+    let handler = match arm.find("self.on_") {
+        Some(i) => {
+            let name: String = arm[i + 5..].chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let at = d.find(&format!("fn {name}(")).expect("the shelf's handler is gone");
+            let end = d[at..].find("\n    }\n").map(|e| at + e).unwrap_or(d.len());
+            d[at..end].to_string()
+        }
+        None => arm.to_string(),
+    };
     assert!(
-        d[shelf_arm..shelf_arm + model_arm].contains("nothing_found"),
+        handler.contains("nothing_found"),
         "the shelf arm no longer refuses -- it would fall through to the model"
     );
 

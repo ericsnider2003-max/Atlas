@@ -26,13 +26,19 @@ impl<'a> Daemon<'a> {
     /// stamped when first seen here -- at the next tick or turn after it is
     /// asked -- and dropped once it is older than that.
     pub(super) fn expire_stale_question(&mut self, t: u64) {
-        if !self.session.is_waiting() {
-            self.pending_stamp = None;
-            return;
-        }
-        // Which question, by its words: a new one restarts the clock.
+        // Which question, by its words: a new one restarts the clock. A
+        // question Atlas left in one of its own slots with nothing asked
+        // through the session ("shall I move these?" kept in
+        // `pending_desktop`) counts too: those were only dropped when a
+        // session question happened to be open, so one could sit for days
+        // and take an unrelated sentence as its answer (30 Sep 2026, §5 of
+        // the split plan).
         let which = match &self.session.pending {
-            Pending::Nothing => String::new(),
+            Pending::Nothing if self.a_slot_is_open() => "a question of Atlas's own".to_string(),
+            Pending::Nothing => {
+                self.pending_stamp = None;
+                return;
+            }
             Pending::Clarification(q) => format!("asked: {q}"),
             Pending::Approval(i, d) => format!("approve: {} / {d}", kind_of(i)),
         };
@@ -40,35 +46,46 @@ impl<'a> Daemon<'a> {
             Some((at, k)) if *k == which => {
                 if t.saturating_sub(*at) > QUESTION_LIFETIME_SECS {
                     self.log.info("a question went unanswered for ten minutes -- dropped it");
-                    self.session.pending = Pending::Nothing;
-                    self.session.queued.clear();
-                    self.pending_stamp = None;
-                    self.pending_job = None;
-                    self.pending_offer = None;
-                    self.pending_wanted = None;
-                    self.pending_backlog = None;
-                    self.pending_bring_back = None;
-                    self.pending_unscanned = None;
-                    self.pending_media_keep = None;
-                    self.pending_media_original = None;
-                    self.pending_undo = None;
-                    self.pending_storage = None;
-                    self.pending_desktop = None;
-                    self.pending_press = None;
-                    self.pending_post_approval = None;
-                    self.pending_post_when = None;
-                    self.pending_mail_sort = false;
-                    self.pending_security = None;
-                    self.pending_signin = None;
-                    self.pending_window_confirm = None;
-                    self.pending_panel = None;
-                    self.pending_correction = None;
-                    self.pending_decision = None;
-                    self.answering = None;
+                    self.drop_open_questions();
                 }
             }
             _ => self.pending_stamp = Some((t, which)),
         }
+    }
+
+    /// Is a question Atlas asked still waiting in one of its slots?
+    pub(super) fn a_slot_is_open(&self) -> bool {
+        self.pending_job.is_some() || self.pending_offer.is_some() || self.pending_wanted.is_some() || self.pending_backlog.is_some() || self.pending_bring_back.is_some() || self.pending_unscanned.is_some() || self.pending_media_keep.is_some() || self.pending_media_original.is_some() || self.pending_undo.is_some() || self.pending_storage.is_some() || self.pending_desktop.is_some() || self.pending_press.is_some() || self.pending_post_approval.is_some() || self.pending_post_when.is_some() || self.pending_security.is_some() || self.pending_signin.is_some() || self.pending_window_confirm.is_some() || self.pending_panel.is_some() || self.pending_correction.is_some() || self.pending_decision.is_some() || self.pending_mail_sort
+    }
+
+    /// Every open question dropped, in one place: the session's and each
+    /// slot's.
+    pub(super) fn drop_open_questions(&mut self) {
+        self.session.pending = Pending::Nothing;
+        self.session.queued.clear();
+        self.pending_stamp = None;
+        self.pending_job = None;
+        self.pending_offer = None;
+        self.pending_wanted = None;
+        self.pending_backlog = None;
+        self.pending_bring_back = None;
+        self.pending_unscanned = None;
+        self.pending_media_keep = None;
+        self.pending_media_original = None;
+        self.pending_undo = None;
+        self.pending_storage = None;
+        self.pending_desktop = None;
+        self.pending_press = None;
+        self.pending_post_approval = None;
+        self.pending_post_when = None;
+        self.pending_security = None;
+        self.pending_signin = None;
+        self.pending_window_confirm = None;
+        self.pending_panel = None;
+        self.pending_correction = None;
+        self.pending_decision = None;
+        self.pending_mail_sort = false;
+        self.answering = None;
     }
 
     /// A "what do you know about …" the notes and the fact book have

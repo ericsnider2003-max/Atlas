@@ -906,3 +906,5 @@ mod a_quiet_tick_is_quick;
 mod every_ability_answers;
 #[path = "pictures_are_made_here.rs"]
 mod pictures_are_made_here;
+#[path = "an_old_question_of_its_own_is_dropped.rs"]
+mod an_old_question_of_its_own_is_dropped;

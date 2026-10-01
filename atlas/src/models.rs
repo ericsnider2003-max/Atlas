@@ -1867,7 +1867,7 @@ fn chat_call_io(
     on_text: &mut dyn FnMut(&str) -> bool,
     keep_going: &dyn Fn() -> bool,
 ) -> Result<std::result::Result<crate::brain::ChatReply, ChatFail>> {
-    use std::io::{Read, Write};
+    use std::io::Write;
     let rest = url
         .strip_prefix("http://")
         .ok_or_else(|| AtlasError::Platform(format!("not a plain http address: {url}")))?;
