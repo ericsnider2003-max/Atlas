@@ -1368,6 +1368,9 @@ pub struct Daemon<'a> {
     last_sync_check: u64,
     /// When the last automatic sync pass ran (`sync.automatic`).
     pub last_auto_sync: u64,
+    /// When Atlas last looked for missing downloads to fetch itself
+    /// (`keep_everything_here`); 0 until it has.
+    pub last_top_up: u64,
     /// Set when a night ends, cleared once the brief has been said.
     morning_brief: Option<String>,
     /// Where you were while the last stretch of unattended work happened.
@@ -1953,6 +1956,7 @@ impl<'a> Daemon<'a> {
             last_overnight: 0,
             last_sync_check: 0,
             last_auto_sync: 0,
+            last_top_up: 0,
             morning_brief: None,
             worked_while: None,
             last_turn_failed: false,
@@ -2436,7 +2440,13 @@ fn read_project_context(folder: &str) -> String {
     }
     // Bound the whole thing so a big file can't blow the prompt.
     if out.len() > 6000 {
-        out.truncate(6000);
+        // On a character boundary: source files hold "—" and the like, and
+        // truncating inside one panics.
+        let mut cut = 6000;
+        while !out.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        out.truncate(cut);
     }
     out
 }
@@ -2530,9 +2540,16 @@ fn check_draft_in_sandbox(
         // Build a runnable tool from the gate's command line.
         let mut parts = gate.command.split_whitespace();
         let Some(program) = parts.next() else { continue };
-        let args: Vec<String> = parts.map(str::to_string).collect();
+        let mut args: Vec<String> = parts.map(str::to_string).collect();
+        // npm, prettier and tsc are node scripts (`.cmd` on Windows, which
+        // can't be started directly): run by the node Atlas fetched.
+        let mut program = program.to_string();
+        if let Some((node, script)) = crate::codetools::by_node(&program, &crate::roots::install_root()) {
+            args.insert(0, script.to_string_lossy().into_owned());
+            program = node.to_string_lossy().into_owned();
+        }
         let tool = crate::tools::ExternalTool {
-            command: program.to_string(),
+            command: program,
             args,
             stdin_text: false,
             result_file: None,
@@ -2557,6 +2574,7 @@ fn check_draft_in_sandbox(
         Next::Good => crate::build_it::Check::Passed(vec![]),
         Next::WorksWithNotes(notes) => crate::build_it::Check::Passed(notes),
         Next::Fix { output, .. } => crate::build_it::Check::Failed(output),
+        Next::CannotCheck { program, .. } => crate::build_it::Check::CannotCheck(program),
     }
 }
 
@@ -3853,7 +3871,7 @@ pub const LEARNED_CHARS: usize = 300;
 /// How many facts you told Atlas go in front of the model every turn.
 /// 30 Sep 2026: 10 -> 4, each cut to 100 characters (the prompt diet);
 /// the rest come in as hints when they bear on what was said.
-pub const FACTS_IN_PROMPT: usize = 4;
+pub const FACTS_IN_PROMPT: usize = 8;
 
 /// A note's score below which it isn't worth putting in front of the model.
 pub const NOTE_HINT_FLOOR: f32 = 0.25;

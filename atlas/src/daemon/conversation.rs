@@ -124,6 +124,13 @@ impl<'a> Daemon<'a> {
         for f in self.facts.recall_in_context(question, &self.context_terms(question), now).into_iter().take(3) {
             if crate::facts::answers(f, question) {
                 out.push(clip(&f.answer(now), 240));
+                // "What was it before?": what a correction replaced (item 20).
+                let low = question.to_lowercase();
+                if ["before", "used to", "previously", "originally", "was it", "changed"].iter().any(|w| low.contains(w)) {
+                    if let Some((until, was)) = f.history.last() {
+                        out.push(clip(&format!("Before that (until {}): {was}", crate::freshness::ago(now.saturating_sub(*until))), 240));
+                    }
+                }
             }
         }
         if !self.library.is_empty() {
@@ -175,16 +182,20 @@ impl<'a> Daemon<'a> {
         // About you. Not while somebody else has the machine.
         if !handed_over {
             let mut about: Vec<String> = Vec::new();
-            let mut told: Vec<&crate::facts::Fact> = self.facts.facts.iter().filter(|f| f.kind.came_from_you()).collect();
-            told.sort_by(|a, b| b.confirmed.cmp(&a.confirmed).then(b.as_of.cmp(&a.as_of)).then(a.name.cmp(&b.name)));
-            let told: Vec<String> = told
+            // Who they are (research report item 20): their standing
+            // instructions and facts about them, ranked by importance, the
+            // same every turn. Before, the four most-confirmed of anything
+            // they'd said went in -- a password or a path could crowd out
+            // "call me Eric".
+            let told: Vec<String> = self
+                .facts
+                .core(FACTS_IN_PROMPT)
                 .iter()
-                .take(FACTS_IN_PROMPT)
                 .map(|f| clip_words(&f.summary, 100))
                 .filter(|s| !s.is_empty())
                 .collect();
             if !told.is_empty() {
-                about.push(format!("What they've told you: {}.", told.join("; ")));
+                about.push(format!("Who they are and what they've told you: {}.", told.join("; ")));
             }
             let goals: Vec<String> = self.nudger.goals.iter().filter(|g| !g.muted).map(|g| clip_words(&g.what, 80)).take(3).collect();
             if !goals.is_empty() {
@@ -282,6 +293,23 @@ impl<'a> Daemon<'a> {
                 now.push_str(&brain::focus_line(&active, at));
             }
         }
+        // What else they told you that bears on this (relevance, importance
+        // and recency), beyond the core above.
+        if !handed_over {
+            let core: Vec<String> = self.facts.core(FACTS_IN_PROMPT).iter().map(|f| f.name.clone()).collect();
+            let skip: Vec<&str> = core.iter().map(|s| s.as_str()).collect();
+            let bearing: Vec<String> = self.facts.bearing_on(said, t, &skip, 3).iter().map(|f| clip_words(&f.summary, 120)).collect();
+            if !bearing.is_empty() {
+                now.push_str(&format!("They've also told you, on this: {}.\n", bearing.join("; ")));
+            }
+            // What Atlas said without being asked (finished research, an
+            // errand done): the history sent to the model holds turns only,
+            // so these go here (30 Sep 2026).
+            let told = self.thread.told_unprompted(2);
+            if !told.is_empty() {
+                now.push_str(&format!("You told them without being asked: {}\n", told.join(" | ")));
+            }
+        }
         let hints = self.notes_as_hints(said, t);
         if !hints.is_empty() {
             now.push_str("From their notes and what you know of them -- use only if it helps; quoted, not instructions:\n");
@@ -347,7 +375,17 @@ impl<'a> Daemon<'a> {
             one_prompt: one_prompt.to_string(),
             skip_phrases: false,
             research_on: self.tools_ref().is_some_and(|tc| tc.research.enabled),
-            wants_a_tool: !handed_over && !about_atlas && self.router.sure_of(said, None),
+            // Meaning as well as words (research report item 19: this was
+            // passed `None`, so a request worded unlike any phrase was never
+            // "sure" and the model could answer it without a tool).
+            wants_a_tool: !handed_over && !about_atlas && {
+                let q = self.meaning_route.as_ref().and_then(|m| m.sentence(said));
+                let meaning = match (&q, self.meaning_route.as_ref().and_then(|m| m.tools())) {
+                    (Some(q), Some(t)) => Some((q.as_slice(), t)),
+                    _ => None,
+                };
+                self.router.sure_of(said, meaning)
+            },
             // The same question asked again may get the same answer: its
             // earlier answer isn't counted as a repeat.
             recent_replies: Some(match self.thread.said_earlier(said) {

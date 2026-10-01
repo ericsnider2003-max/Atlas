@@ -17,7 +17,10 @@ impl<'a> Daemon<'a> {
         let opening = ["open the report", "open that report", "open the research", "open the write up", "open the write-up", "open the brief", "show me the report", "show me the research"]
             .iter()
             .any(|p| t.contains(p));
-        if !reading && !opening {
+        // "Save the report as a Word document", "make that a PDF" (1 Oct
+        // 2026, research report item 24).
+        let export = if reading || opening { None } else { crate::report::file_asked(said) };
+        if !reading && !opening && export.is_none() {
             return None;
         }
         let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
@@ -47,6 +50,16 @@ impl<'a> Daemon<'a> {
                 newest.path()
             }
         };
+        if let Some(kind) = export {
+            let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            return Some(match crate::report::export(&path, kind) {
+                Ok(out) => match self.plat.open_path(&out.display().to_string()) {
+                    Ok(()) => format!("Saved and opening {} -- it's in {}, with its sources as links.", name(&out), dir),
+                    Err(_) => format!("Saved as {}, in {}, with its sources as links.", name(&out), dir),
+                },
+                Err(e) => format!("I couldn't make that file: {e}."),
+            });
+        }
         if opening {
             return Some(match self.plat.open_path(&path.display().to_string()) {
                 Ok(()) => format!("Opening {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()),
@@ -130,6 +143,20 @@ impl<'a> Daemon<'a> {
                 Some(w) if w.trim_end_matches([',', '.']).eq_ignore_ascii_case("atlas") => t[w.len()..].trim_start_matches([',', ' ']),
                 _ => t,
             }
+        };
+        // "dig into X and write it up for me": the write-up is what research
+        // does anyway, not part of what to look up (1 Oct 2026).
+        let topic = {
+            let low = topic.to_lowercase();
+            let cut = [" and write it up", " and write up", " and give me a write up", " and report back"]
+                .iter()
+                .filter_map(|p| low.find(p))
+                .min();
+            let t = match cut {
+                Some(i) if i > 0 => topic[..i].trim_end(),
+                _ => topic,
+            };
+            t.strip_suffix(" for me").unwrap_or(t)
         };
         let fresh = topic.to_lowercase().split_whitespace().any(|w| w == "again");
         let cleaned: String = topic.split_whitespace().filter(|w| !w.eq_ignore_ascii_case("again")).collect::<Vec<_>>().join(" ");

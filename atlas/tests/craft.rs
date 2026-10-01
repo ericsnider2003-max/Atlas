@@ -216,3 +216,88 @@ fn a_path_tells_you_which_ladder_to_use() {
     assert_eq!(Lang::of_path("app/thing.py"), Some(Lang::Python));
     assert_eq!(Lang::of_path("notes.md"), None);
 }
+
+// --- C++, missing tools, and builds that can reach Built (1 Oct 2026) -------
+
+#[test]
+fn cpp_has_a_ladder_of_its_own() {
+    assert_eq!(Lang::of_path("src/engine.cpp"), Some(Lang::Cpp));
+    assert_eq!(Lang::of_path("include/engine.hpp"), Some(Lang::Cpp));
+    let l = ladder(Lang::Cpp);
+    for t in [Tells::Shape, Tells::Sound, Tells::Style, Tells::Behaviour] {
+        assert!(l.iter().any(|g| g.tells == t), "C++ has no {t:?} check");
+    }
+    assert!(l.iter().any(|g| g.command.starts_with("clang++") && g.command.contains("-fsyntax-only")));
+    // Built before it's run: the gate runner has no `&&`.
+    let build = l.iter().position(|g| g.command.contains(" -o ")).unwrap();
+    let run = l.iter().position(|g| g.tells == Tells::Behaviour).unwrap();
+    assert!(build < run);
+    assert_eq!(Lang::Cpp.draft_files("int main() { return 0; }")[0].0, "main.cpp");
+}
+
+#[test]
+fn a_cpp_request_is_built_in_cpp_even_when_called_a_script() {
+    assert_eq!(atlas::build_it::lang_from_words("write a C++ script that sorts numbers", Lang::Rust), Lang::Cpp);
+    assert_eq!(atlas::build_it::lang_from_words("a cpp function to parse dates", Lang::Rust), Lang::Cpp);
+    assert_eq!(atlas::build_it::lang_from_words("write me a script to rename files", Lang::Rust), Lang::Python);
+}
+
+#[test]
+fn a_cpp_project_is_known_by_its_build_file() {
+    let dir = std::env::temp_dir().join(format!("atlas-craft-cpp-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("CMakeLists.txt"), "project(x)").unwrap();
+    assert_eq!(lang_of_dir(&dir), Some(Lang::Cpp));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_missing_checker_is_reported_as_missing_not_as_a_bug_to_fix() {
+    let r = vec![
+        ran("ruff format .", Tells::Shape, false, "could not start ruff: program not found"),
+        ran("python -m compileall -q .", Tells::Sound, true, ""),
+        ran("mypy .", Tells::Sound, false, "could not start mypy: No such file or directory (os error 2)"),
+    ];
+    match read_ladder(Lang::Python, &r) {
+        Next::CannotCheck { program, .. } => assert_eq!(program, "mypy"),
+        other => panic!("{other:?}"),
+    }
+    // A real type error is still a fix.
+    let r = vec![ran("mypy .", Tells::Sound, false, "main.py:3: error: Incompatible types in assignment")];
+    assert!(matches!(read_ladder(Lang::Python, &r), Next::Fix { .. }));
+    // A missing linter is not a note about the code.
+    let r = vec![ran("cargo clippy --all-targets -- -D warnings", Tells::Style, false, "could not start cargo: not found")];
+    assert_eq!(read_ladder(Lang::Rust, &r), Next::Good);
+}
+
+#[test]
+fn python_and_javascript_drafts_carry_a_test_so_they_can_pass() {
+    // pytest with nothing to collect exits 5 and `npm test` with no script
+    // fails: before 1 Oct 2026 no Python or JavaScript build could be Built.
+    let py = Lang::Python.draft_files("print('hi')");
+    assert!(py.iter().any(|(p, c)| p == "test_main.py" && c.contains("import_module(\"main\")")));
+    let js = Lang::JavaScript.draft_files("console.log('hi')");
+    assert!(js.iter().any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
+    assert!(js.iter().any(|(p, c)| p == "main.test.js" && c.contains("require('./main.js')")));
+    // The draft itself is still laid down whole, beside its test.
+    assert_eq!(py.iter().find(|(p, _)| p == "main.py").map(|(_, c)| c.as_str()), Some("print('hi')"));
+    assert_eq!(js.len(), 3);
+}
+
+#[test]
+fn an_unchecked_build_says_so_and_is_never_called_built() {
+    let llm = atlas::brain::MockLlm("```cpp\nint main() { return 0; }\n```".into());
+    let o = atlas::build_it::build_loop("a C++ hello", Lang::Cpp, &llm, 3, |_| atlas::build_it::Check::CannotCheck("clang++".into()));
+    assert!(!o.is_built());
+    assert!(o.code().is_some());
+    let said = o.spoken(Lang::Cpp);
+    assert!(said.contains("clang++ isn't installed") && said.contains("untested"), "{said}");
+}
+
+#[test]
+fn a_typescript_draft_carries_a_test_node_can_run() {
+    let ts = Lang::TypeScript.draft_files("export const x = 1;");
+    assert!(ts.iter().any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
+    assert!(ts.iter().any(|(p, c)| p == "main.test.ts" && c.contains("import('./main.ts')")));
+    assert!(!ladder(Lang::TypeScript).iter().any(|g| g.command.starts_with("eslint")), "eslint can't run on a fresh draft");
+}

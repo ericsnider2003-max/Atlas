@@ -310,6 +310,19 @@ impl Thread {
         out
     }
 
+    /// The last `n` things Atlas said without being asked (an exchange with
+    /// nothing said by you), shortened, oldest first.
+    pub fn told_unprompted(&self, n: usize) -> Vec<String> {
+        let told: Vec<String> = self
+            .recent
+            .iter()
+            .filter(|e| e.said.trim().is_empty() && !e.reply.trim().is_empty())
+            .map(|e| crate::repeating::for_history(&e.reply, HISTORY_SENTENCES))
+            .filter(|r| !r.trim().is_empty())
+            .collect();
+        told[told.len().saturating_sub(n)..].to_vec()
+    }
+
     /// Atlas's last `n` replies in full, oldest first: what a new reply is
     /// checked against for saying the same again (`brain::Turn::recent_replies`).
     pub fn recent_replies(&self, n: usize) -> Vec<String> {

@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance", "parakeet"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance", "parakeet", "kws"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -220,9 +220,9 @@ pub fn all() -> Vec<Capability> {
         // a business reaching his own Atlas is not policed at all.
         Capability { id: "firewall", what: "keep your own work out of anything you share", area: Files, state: Untested, needs: None, offline: true, added: 26, runs: &[Needs::Files], modules: &["firewall"] },
 
-        Capability { id: "research", what: "look something up", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable"] },
+        Capability { id: "research", what: "look something up, and save the write-up as a Word or PDF file with its sources as links", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable", "report"] },
         Capability { id: "delegate_online", what: "hand heavy background work to an online worker and check what comes back", area: Web, state: Blocked, needs: Some("a Cloudflare account and token"), offline: false, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["online"] },
-        Capability { id: "build_it", what: "write code from your description and check it against the compiler and tests before trusting it", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["build_it", "craft", "goal"] },
+        Capability { id: "build_it", what: "write code from your description and check it against the compiler and tests before trusting it -- in Rust, Python, Go, JavaScript, TypeScript or C++, with the checkers Atlas downloads itself", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["build_it", "craft", "goal", "codetools"] },
         Capability { id: "design", what: "review a page's design against a house style — spacing, colour tokens, accessibility — and say what's off, honestly not claiming to judge whether it looks good; also gate a page it builds against the same rules", area: Thinking, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["taste"] },
         Capability { id: "animate", what: "draw a self-contained SVG animation from your description, check it renders and moves to the size and length you asked for, and iterate until it does", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::Background, Needs::JustThinking], modules: &["motion"] },
         Capability { id: "explain", what: "explain code in plain English — a recent build, a change waiting to be implemented, a file or a paste — at the depth you ask for, honest that it can't prove it's right", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["explain"] },
@@ -398,7 +398,7 @@ pub fn all() -> Vec<Capability> {
         // 28 Sep 2026: Atlas as a Model Context Protocol client. Tested
         // against a stand-in server; no real one (Filesystem, Playwright,
         // Terminator) has run on Eric's laptop, hence `Untested`.
-        Capability { id: "mcp", what: "use tools from other programs you connect -- your folders, a separate browser, Windows apps -- found by what you ask, and asked about before each use", area: Thinking, state: Untested, needs: Some("a program that offers tools, installed and turned on in the settings"), offline: true, added: 38, runs: &[Needs::Background], modules: &["mcp"] },
+        Capability { id: "mcp", what: "use tools from other programs you connect -- your folders, a separate browser, Windows apps -- found by what you ask, and asked about before each use; and `atlas mcp` lets your other AI tools see what Atlas is doing and ask it things, never approve", area: Thinking, state: Untested, needs: Some("a program that offers tools, installed and turned on in the settings"), offline: true, added: 38, runs: &[Needs::Background], modules: &["mcp", "mcpserve"] },
         Capability { id: "phonemodel", what: "think on the phone itself: a small language model inside the phone app (the right size for the phone's memory), fetched when you ask, with nothing you say leaving the phone", area: Thinking, state: Untested, needs: Some("a real phone, to measure its speed and battery"), offline: true, added: 37, runs: &[Needs::Files], modules: &["phonemodel"] },
         Capability { id: "phonelink", what: "put Atlas on your phone with a code to scan, as an app on your home screen", area: Keeping, state: Untested, needs: Some("Tailscale on the laptop and the phone"), offline: false, added: 30, runs: &[Needs::Background], modules: &["phonelink", "phoneadd", "ota"] },
         // 28 Sep 2026, the whole tree accounted for. Eric asked for the full
@@ -1542,7 +1542,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 448;
+pub const MODULES_IN_TREE: usize = 452;
 
 /// Every module no capability claims, and why it is not one.
 ///

@@ -66,6 +66,22 @@ pub fn claims_work_started(sentence: &str) -> bool {
         " tracking progress ", " still pending on the ", " here's what's still pending ", " got your list ready ",
         " got the call notes ", " got those call notes ", " got your call notes ", " notes are ready ",
         " got those notes ready ", " i've got your screen ",
+        // 1 Oct 2026 model ranking (Qwen3-4B-2507, no tool called): "I've
+        // noted that your car insurance renews in March", and a made-up job
+        // "check out this one: [link]".
+        " i've noted ", " i have noted ", " i've made a note ", " noted that ", " i've written that down ",
+        " i've jotted ", " i found a few ", " check out this one ",
+        // Qwen3.5-4B, same run, its tool calls failing: "I've pulled your
+        // Friday schedule. You have a team sync at ten and a client call
+        // with Sarah" (none of it real), "I've just added it to your calendar".
+        " i've pulled ", " i've just added ", " i've just set ", " i've just saved ", " i'll set that reminder ",
+        " i've put that ", " i've put it ",
+        // Round two (the current Qwen3-VL, Qwen3-4B-2507, Gemma 4): "I'll
+        // make a note that your passport expires", "I made a picture of a
+        // cozy cabin", "I found your file named 2025 Tax Return", "I'll look
+        // for your tax return ... Let me search your files" -- no tool.
+        " i'll make a note ", " i'll make sure to ", " i made a picture ", " i found your file ", " i'll look for your ",
+        " let me search your ", " i've got your friday ", " let me pull them up ",
     ];
     CLAIMS.iter().any(|c| t.contains(c))
 }

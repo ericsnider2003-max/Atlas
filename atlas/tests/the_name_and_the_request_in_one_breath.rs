@@ -147,6 +147,9 @@ struct Scripted {
     follow_secs: Arc<Mutex<Vec<u32>>>,
     /// The microphone can't be opened while this is true.
     broken: Arc<AtomicBool>,
+    /// What listening by sound says (`MicWork::name_by_sound`).
+    sound: Arc<Mutex<Option<bool>>>,
+    sound_asked: Arc<AtomicUsize>,
 }
 
 impl Scripted {
@@ -160,6 +163,8 @@ impl Scripted {
             follow: Arc::default(),
             follow_secs: Arc::default(),
             broken: Arc::default(),
+            sound: Arc::default(),
+            sound_asked: Arc::default(),
         }
     }
     fn handles(&self) -> Scripted {
@@ -172,6 +177,8 @@ impl Scripted {
             follow: self.follow.clone(),
             follow_secs: self.follow_secs.clone(),
             broken: self.broken.clone(),
+            sound: self.sound.clone(),
+            sound_asked: self.sound_asked.clone(),
         }
     }
 }
@@ -230,6 +237,10 @@ impl MicWork for Scripted {
     }
     fn hears_name_in_audio(&self) -> bool {
         true
+    }
+    fn name_by_sound(&mut self, _samples: &[i16]) -> Option<bool> {
+        self.sound_asked.fetch_add(1, Ordering::SeqCst);
+        *self.sound.lock().unwrap()
     }
     fn name_in(&mut self, samples: &[i16]) -> atlas::error::Result<NameCheck> {
         self.asked.lock().unwrap().push(samples.len());
@@ -322,12 +333,39 @@ fn talk_without_the_name_wakes_nothing() {
     assert_eq!(h.asked.lock().unwrap().len(), 1, "the quiet room went through the speech engine");
 }
 
+/// Listening for the name by its sound first (`wake.listen_first`, 1 Oct
+/// 2026): talk the spotter says has no name in it is never written out.
+#[test]
+fn talk_the_spotter_rules_out_is_never_transcribed() {
+    let audio = then(&[room(700, 16), wake_clip("what_time"), room(2000, 17)]);
+    let mic = Scripted::new(audio, vec![NameCheck::Named("what time is it".into())]);
+    *mic.sound.lock().unwrap() = Some(false);
+    let h = mic.handles();
+    let m = MicThread::start(Box::new(mic));
+    m.set_wake(true);
+    assert_eq!(first_heard(&m, Duration::from_secs(2)), None);
+    assert!(h.sound_asked.load(Ordering::SeqCst) >= 1, "the spotter wasn't asked");
+    assert!(h.asked.lock().unwrap().is_empty(), "speech without the name went to the speech engine");
+}
+
+/// ...and when it hears the name, the speech engine still writes out the
+/// request, as before.
+#[test]
+fn the_spotter_hearing_the_name_lets_the_request_through() {
+    let audio = then(&[room(700, 7), wake_clip("atlas_what_time"), room(3000, 8)]);
+    let mic = Scripted::new(audio, vec![NameCheck::Named("what time is it?".into())]);
+    *mic.sound.lock().unwrap() = Some(true);
+    let m = MicThread::start(Box::new(mic));
+    m.set_wake(true);
+    assert_eq!(first_heard(&m, Duration::from_secs(5)), Some(Heard::Wake(Ok("what time is it?".into()))));
+}
+
 // ================= the daemon: "Yes?", hands-free, coming back =================
 
 fn cfg() -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
     let t = c.tools.get_or_insert_with(Default::default);
-    t.wake = Some(atlas::voice::WakeConfig { enabled: true, phrase: "atlas".into(), clip_seconds: 3, detector: None });
+    t.wake = Some(atlas::voice::WakeConfig { enabled: true, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
     c
 }
 

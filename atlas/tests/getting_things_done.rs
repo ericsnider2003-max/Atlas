@@ -643,3 +643,14 @@ fn with_no_folder_sync_goes_straight_to_your_named_devices() {
     assert!(dialled.join().unwrap(), "the named device was never dialled: {said}");
     assert!(!said.contains("nowhere to put it"), "{said}");
 }
+
+/// A feed whose text has a multi-byte character just after an `&` must not
+/// stop Atlas (30 Sep 2026: "end byte index 12 is not a char boundary",
+/// a job feed with "&#x2F;CD.\n• Frontend").
+#[test]
+fn a_feed_with_a_bullet_after_an_ampersand_is_read() {
+    let xml = "<rss><channel><title>Jobs</title><item><title>SRE</title><description>CI&#x2F;CD &amp;\n\u{2022} Frontend &\u{2022}\u{2022}\u{2022}\u{2022} ok</description><link>https://example.com/a</link></item></channel></rss>";
+    let parsed = atlas::feeds::parse(xml).unwrap();
+    assert_eq!(parsed.items.len(), 1);
+    let _ = atlas::feeds::text_of("x &\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} y");
+}

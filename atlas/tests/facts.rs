@@ -452,3 +452,45 @@ fn a_confirmed_guess_is_no_longer_evictable() {
     b.trim(10, 400 * DAY);
     assert_eq!(b.get("guess").unwrap().body.len(), before, "a confirmed guess is protected like a stated fact");
 }
+
+// --- the core memory (research report item 20) ------------------------------
+
+#[test]
+fn a_correction_keeps_what_it_replaced() {
+    let mut b = Book::default();
+    b.learn(Fact::stated("my car is a Honda", 100), 100);
+    b.learn(Fact::stated("my car is a Toyota", 200), 200);
+    let car = b.facts.iter().find(|f| f.summary.contains("Toyota")).expect("the newer value wins");
+    assert_eq!(car.history, vec![(100, "my car is a Honda".to_string())], "the old value is kept, not lost");
+    // Saying the same thing again isn't history.
+    b.learn(Fact::stated("my car is a Toyota", 300), 300);
+    let car = b.facts.iter().find(|f| f.summary.contains("Toyota")).unwrap();
+    assert_eq!(car.history.len(), 1);
+}
+
+#[test]
+fn who_you_are_leads_with_your_instructions_and_never_carries_a_secret() {
+    let mut b = Book::default();
+    b.learn(Fact::stated("I trade forex for a living", 100), 100);
+    b.learn(Fact::stated("always answer my question first", 110), 110);
+    b.learn(Fact::stated("the wifi password is hunter2pass", 120), 120);
+    b.learn(Fact::stated("the backups live at D:/backups", 130), 130);
+    let core: Vec<&str> = b.core(8).iter().map(|f| f.summary.as_str()).collect();
+    assert_eq!(core.first(), Some(&"always answer my question first"), "{core:?}");
+    assert!(core.contains(&"I trade forex for a living"), "{core:?}");
+    assert!(!core.iter().any(|s| s.contains("password") || s.contains("backups")), "pointers and secrets stay out: {core:?}");
+    // The same order every time, for the model server's cache.
+    let again: Vec<&str> = b.core(8).iter().map(|f| f.summary.as_str()).collect();
+    assert_eq!(core, again);
+}
+
+#[test]
+fn what_bears_on_the_question_is_found_by_relevance_and_kept_from_secrets() {
+    let mut b = Book::default();
+    b.learn(Fact::new("rack", "the homelab rack is 10 inch", "the homelab rack is 10 inch", Kind::Project, 100), 100);
+    b.learn(Fact::new("gym", "my gym is Northside Fitness", "my gym is Northside Fitness", Kind::Reference, 100), 100);
+    b.learn(Fact::stated("the wifi password is hunter2pass", 100), 100);
+    let hits: Vec<&str> = b.bearing_on("what is my gym, and the wifi password", 100 + DAY, &[], 3).iter().map(|f| f.summary.as_str()).collect();
+    assert_eq!(hits, vec!["my gym is Northside Fitness"], "{hits:?}");
+    assert!(b.bearing_on("how are you today", 100, &[], 3).is_empty());
+}

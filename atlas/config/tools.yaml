@@ -1597,7 +1597,7 @@ worklog:
 
 returning:
   enabled: true
-  address: ""             # "Eric", or "sir", or leave empty
+  address: ""             # your name, or "sir", or leave empty
   address_as: name        # name | title
   offer_first: true
   name_at_most: 2
@@ -1883,7 +1883,7 @@ companion:
 # wifi, your cloud folder, a cable, or AirDrop. No server anywhere.
 sync:
   enabled: true
-  name: ""                  # "Eric's laptop" -- names the bundle you leave
+  name: ""                  # "Sam's laptop" -- names the bundle you leave
   kind: full
   automatic: true
   apart_warning_days: 30
@@ -2410,7 +2410,7 @@ desktop:
 gaze:
   enabled: false
   min_confidence: 0.6          # below this a reading is absent, not negative
-  min_identity_confidence: 0.85 # a much higher bar for "that is Eric"
+  min_identity_confidence: 0.85 # a much higher bar for "that is you"
   every_secs: 20
   # May Atlas look while you're talking to it? Off even when the camera is on:
   # "sometimes I want Atlas to see me when talking" is not "watch every

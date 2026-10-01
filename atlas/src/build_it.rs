@@ -96,6 +96,10 @@ pub enum Outcome {
     Struggled { code: String, rounds: u32, last_failure: String },
     /// Could not even get a first draft (no model, or the model errored).
     NoDraft(String),
+    /// Written, but a check that decides whether it works couldn't run: its
+    /// program isn't on this computer. Handed over as unchecked, never as
+    /// built, and never "fixed" for a missing tool.
+    Unchecked { code: String, rounds: u32, missing: String },
 }
 
 impl Outcome {
@@ -129,6 +133,11 @@ impl Outcome {
                 first_line(last_failure)
             ),
             Outcome::NoDraft(why) => format!("I couldn't build that: {why}"),
+            Outcome::Unchecked { missing, .. } => format!(
+                "I wrote it in {}, but I couldn't check it: {missing} isn't installed on this computer, \
+                 so it's untested. Install {missing} and I can run the checks.",
+                lang.plain()
+            ),
         }
     }
 
@@ -164,6 +173,7 @@ impl Outcome {
                  point, not a finished change."
             ),
             Outcome::NoDraft(_) => detail,
+            Outcome::Unchecked { .. } => format!("Queued \"{title}\" on {project} as an unchecked draft. {detail}"),
         }
     }
 
@@ -171,7 +181,7 @@ impl Outcome {
     /// produces a best draft worth keeping.
     pub fn code(&self) -> Option<&str> {
         match self {
-            Outcome::Built { code, .. } | Outcome::Struggled { code, .. } => Some(code),
+            Outcome::Built { code, .. } | Outcome::Struggled { code, .. } | Outcome::Unchecked { code, .. } => Some(code),
             Outcome::NoDraft(_) => None,
         }
     }
@@ -183,6 +193,8 @@ impl Outcome {
 pub enum Check {
     Passed(Vec<String>),
     Failed(String),
+    /// A deciding check's program isn't on this computer (its name).
+    CannotCheck(String),
 }
 
 /// The whole generate → check → fix loop, with the checking injected so the
@@ -207,6 +219,7 @@ pub fn build_loop(
     loop {
         match check(&code) {
             Check::Passed(notes) => return Outcome::Built { code, rounds, notes },
+            Check::CannotCheck(missing) => return Outcome::Unchecked { code, rounds, missing },
             Check::Failed(output) => {
                 if rounds >= max_rounds {
                     return Outcome::Struggled { code, rounds, last_failure: output };
@@ -313,7 +326,10 @@ pub fn lang_from_words(description: &str, default: Lang) -> Lang {
     // and "js" are close), and the compiled languages by their unambiguous
     // names. "script" alone still means Python, the way it did before — that
     // is the common "write me a script" case.
-    if d.contains("typescript") || d.contains(".ts") || d.contains(".tsx") {
+    let cpp = d.contains("c++") || d.contains("cpp") || d.contains(".hpp") || d.contains(".cc ") || d.split(|c: char| !c.is_alphanumeric() && c != '+').any(|w| w == "c++");
+    if cpp {
+        Lang::Cpp
+    } else if d.contains("typescript") || d.contains(".ts") || d.contains(".tsx") {
         Lang::TypeScript
     } else if d.contains("javascript") || d.contains(".js") || d.contains("node") {
         Lang::JavaScript
@@ -518,6 +534,12 @@ pub fn keep_building(
                     failure = out;
                     Attempt { n: 0, passed: vec![], failed: vec![ladder.clone()], changed }
                 }
+                // Nothing to fix in the code: the checker isn't here. Kept
+                // as the failure so it's what gets said, not a compiler error.
+                Check::CannotCheck(missing) => {
+                    failure = format!("couldn't check it: {missing} isn't installed on this computer");
+                    Attempt { n: 0, passed: vec![], failed: vec![ladder.clone()], changed }
+                }
             }
         },
         stop,
@@ -588,6 +610,10 @@ pub fn ask_for_help(
                 Check::Failed(out) => (
                     Outcome::Struggled { code, rounds: rounds + 1, last_failure: out },
                     "I asked the bigger model for help; its fix still fails the checks here, so I've kept it as a draft.".into(),
+                ),
+                Check::CannotCheck(missing) => (
+                    Outcome::Unchecked { code, rounds: rounds + 1, missing: missing.clone() },
+                    format!("The bigger model sent a fix, but I couldn't check it here: {missing} isn't installed."),
                 ),
             }
         }

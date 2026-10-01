@@ -951,7 +951,8 @@ fn parakeet_is_installed_only_when_every_file_is_there() {
 #[test]
 fn getting_hearing_fetches_the_server_and_the_model_pinned() {
     let (_, pieces) = atlas::getpieces::set(Some("hearing")).expect("a set called hearing");
-    assert_eq!(pieces.len(), 2);
+    // Parakeet's server and model, and the wake-word spotter (1 Oct 2026).
+    assert_eq!(pieces.len(), 3);
     assert!(pieces.iter().all(|p| p.sha256.len() == 64 && p.url.starts_with("https://github.com/k2-fsa/sherpa-onnx/releases/download/")));
     assert!(pieces.iter().any(|p| p.key_path() == "models/parakeet/encoder.int8.onnx"));
     assert!(pieces.iter().any(|p| p.key_path().starts_with("tools/sherpa/bin/sherpa-onnx-offline-websocket-server")));

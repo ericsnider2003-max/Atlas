@@ -185,7 +185,6 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // was `setupwin::setup_pieces`, and that moved into `getpieces` so the
     // phone builds compile (69b6aba). `tts` and `palette` also define a
     // `catalogue`, which is all this scan can see.
-    "getpieces::catalogue",
     "grading::check",
     "grading::spoken",
     "handoff::should_ask",

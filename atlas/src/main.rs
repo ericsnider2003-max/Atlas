@@ -1182,6 +1182,22 @@ fn main() {
         return run_afterme(&cfg, atlas::cli::tail_after(&argv, "afterme"));
     }
 
+    // `atlas mcp`: other AI tools reach the running Atlas (`mcpserve`).
+    if words.first().map(|s| s.as_str()) == Some("mcp") {
+        let store = atlas::roots::store();
+        let token = match atlas::server::token_for(&store) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("I couldn't read the hub token: {e}");
+                leave(2);
+            }
+        };
+        let configured = cfg.tools.as_ref().map(|t| t.server.port).unwrap_or(8787);
+        let port = atlas::server::hub_port(&atlas::roots::state_dir(), configured);
+        let hub = atlas::mcpserve::LocalHub { port, token };
+        atlas::mcpserve::serve(std::io::stdin().lock(), std::io::stdout().lock(), &hub);
+        return;
+    }
     if words.first().map(|s| s.as_str()) == Some("selftest") {
         return run_selftest(atlas::cli::tail_after(&argv, "selftest"));
     }

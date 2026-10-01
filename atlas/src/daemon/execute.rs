@@ -1495,6 +1495,14 @@ impl<'a> Daemon<'a> {
             // "I don't have a the budget" (the capability sweep): the
             // thing named as it was said, and what can be shown.
             let w = w.trim_start_matches("the ").trim_start_matches("my ").trim_start_matches("a ");
+            // "pull up spotify for me" (1 Oct 2026: "I can't put spotify for
+            // me on screen"): the politeness off the end.
+            let tidied = crate::intent::without_fillers(w);
+            let w = tidied.as_str();
+            // "show me what jobs you've found": the opportunities, not a panel.
+            if ["job", "gig", "opportunit"].iter().any(|k| w.contains(k)) {
+                return crate::hunting::said(self, "show me the opportunities", clock());
+            }
             // "pull up chrome" is an app, not a panel (30 Sep 2026: "pull up
             // TradingView" got "I don't have tradingview to put up").
             let squashed: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
@@ -1512,6 +1520,26 @@ impl<'a> Daemon<'a> {
             }) {
                 let _ = self.plat.focus(win);
                 return format!("There's {w}.");
+            }
+            // Not configured and not open: an app by its Start-menu name, as
+            // "open" does -- asked about first, the same gate.
+            let shortcut_found = !w.is_empty()
+                && w.split_whitespace().count() <= 3
+                && matches!(
+                    crate::launcher::pick(w, &crate::launcher::shortcuts(&crate::launcher::start_menu_dirs()), &Default::default(), clock()),
+                    crate::launcher::Pick::Open(_)
+                );
+            if shortcut_found {
+                let intent = Intent::OpenApp(w.to_string());
+                match self.gate_app(w, "open", &intent) {
+                    AppGate::Ask(q) => return q,
+                    AppGate::Go => {
+                        let launched = self.wd_launch(&format!("start up {w}"), clock());
+                        if !launched.starts_with("I can't find") {
+                            return launched;
+                        }
+                    }
+                }
             }
             return format!(
                 "I can't put {w} on screen -- it isn't an app I know or a window that's open. I can open an app by name, \

@@ -4129,7 +4129,7 @@ pub fn sync_page_with(
                  then invite the others from this page.</p>\
                  <form method=post action=/hub/sync><input type=hidden name=what value=init>\
                  <label for=hh-name>What to call it</label>\
-                 <input id=hh-name name=name autocomplete=off size=24 placeholder=\"Eric's devices\" required>\
+                 <input id=hh-name name=name autocomplete=off size=24 placeholder=\"My devices\" required>\
                  <label for=hh-device>What to call this device</label>\
                  <input id=hh-device name=device autocomplete=off size=24 value=\"{}\">\
                  <label><input type=checkbox name=key value=yes checked> Make a household key too, so what \

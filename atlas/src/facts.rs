@@ -149,7 +149,27 @@ pub struct Fact {
     /// question about the subject is answered with.
     #[serde(default)]
     pub value: Option<String>,
+    /// What it said before a correction replaced it, oldest first: (when it
+    /// was true until, what it said). A correction keeps its history
+    /// (research report item 20) -- "it used to be X" is still knowable, and
+    /// a wrong correction can be undone. At most `HISTORY_KEPT`.
+    #[serde(default)]
+    pub history: Vec<(u64, String)>,
 }
+
+/// A password, a code, a key: never carried into a prompt unasked, whether
+/// or not its value looks like one (`redact` judges values; "the wifi
+/// password is hunter2pass" names what it is).
+fn reads_as_secret(text: &str) -> bool {
+    let low = text.to_lowercase();
+    !crate::redact::secrets_in(text).is_empty()
+        || ["password", "passcode", "passphrase", "pin is", "pin number", "api key", "secret", "token", "access code", "recovery key", "seed phrase", "account number", "card number"]
+            .iter()
+            .any(|w| low.contains(w))
+}
+
+/// Earlier wordings kept per fact.
+pub const HISTORY_KEPT: usize = 5;
 
 /// Turn a title into a link name.
 ///
@@ -352,6 +372,7 @@ impl Fact {
             subject,
             attribute,
             value,
+            history: Vec::new(),
         }
     }
 
@@ -392,7 +413,7 @@ impl Fact {
             Kind::Instruction
         } else if is(&[
             "password", "passcode", "api key", "key is", "token", "access code", "account number",
-            "serial number", "license key", "the path", "located at", "lives at", "ip is", "http",
+            "serial number", "license key", "the path", "located at", "lives at", " live at ", "stored at", "saved in", "ip is", "http",
             "www.", "my address",
         ]) {
             Kind::Reference
@@ -923,6 +944,13 @@ impl Book {
                 // richer wording. Tags only ever grow, so association doesn't
                 // shrink when a fact is updated.
                 if new_wins {
+                    // A different statement replaces it; the old one is kept.
+                    if existing.summary.trim() != f.summary.trim() && !existing.summary.trim().is_empty() {
+                        let was = (existing.as_of, existing.summary.clone());
+                        existing.history.push(was);
+                        let extra = existing.history.len().saturating_sub(HISTORY_KEPT);
+                        existing.history.drain(..extra);
+                    }
                     existing.summary = f.summary;
                     existing.body = f.body;
                     existing.links = f.links;
@@ -1241,6 +1269,69 @@ impl Book {
     }
 
     /// Facts of a kind, newest first.
+    /// Who you are, at a glance: what's always in front of the model
+    /// (research report item 20, "a who-Eric-is core memory"). Your standing
+    /// instructions first, then facts about you; within each, the ones
+    /// you've confirmed more, then the newer. Never a pointer (a path, an
+    /// address, a password -- those are looked up when asked, not carried in
+    /// every prompt) and never anything that reads as a secret. The order is
+    /// fixed for the same facts, so the model server can reuse it turn after
+    /// turn.
+    pub fn core(&self, most: usize) -> Vec<&Fact> {
+        let mut c: Vec<&Fact> = self
+            .facts
+            .iter()
+            .filter(|f| matches!(f.kind, Kind::Instruction | Kind::You))
+            .filter(|f| !f.summary.trim().is_empty() && !reads_as_secret(&f.summary))
+            .collect();
+        c.sort_by(|a, b| {
+            b.kind
+                .weight()
+                .cmp(&a.kind.weight())
+                .then(b.confirmed.min(5).cmp(&a.confirmed.min(5)))
+                .then(b.as_of.cmp(&a.as_of))
+                .then(a.name.cmp(&b.name))
+        });
+        c.truncate(most);
+        c
+    }
+
+    /// Everything else you told it that bears on what was just said, best
+    /// first: how well it matches (relevance), what kind it is (importance),
+    /// and how recently it was true (recency) -- the three-part ranking
+    /// generative-agent memory uses. Leaves out the core (already in front of
+    /// the model) and anything that reads as a secret.
+    pub fn bearing_on(&self, said: &str, now: u64, skip: &[&str], most: usize) -> Vec<&Fact> {
+        let words = terms(said);
+        if words.is_empty() {
+            return Vec::new();
+        }
+        let mut scored: Vec<(f64, &Fact)> = self
+            .facts
+            .iter()
+            .filter(|f| f.kind.came_from_you() && !skip.contains(&f.name.as_str()))
+            .filter(|f| !reads_as_secret(&f.summary))
+            .filter_map(|f| {
+                let hay = format!("{} {}", f.summary.to_lowercase(), f.tags.join(" "));
+                let hits = words.iter().filter(|w| hay.contains(w.as_str())).count();
+                if hits == 0 {
+                    return None;
+                }
+                let relevance = hits as f64 / words.len() as f64;
+                let importance = 1.0 + f.kind.weight() as f64 / 4.0 + (f.confirmed.min(5) as f64) / 10.0;
+                let days = now.saturating_sub(f.as_of) as f64 / 86_400.0;
+                let recency = match f.kind.shelf() {
+                    crate::freshness::Shelf::Yours => 1.0,
+                    _ => 0.5f64.powf(days / 30.0).max(0.2),
+                };
+                Some((relevance * importance * recency, f))
+            })
+            .filter(|(s, _)| *s >= 0.3)
+            .collect();
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.name.cmp(&b.1.name)));
+        scored.into_iter().take(most).map(|(_, f)| f).collect()
+    }
+
     pub fn of_kind(&self, kind: Kind) -> Vec<&Fact> {
         let mut v: Vec<&Fact> = self.facts.iter().filter(|f| f.kind == kind).collect();
         v.sort_by(|a, b| b.as_of.cmp(&a.as_of));

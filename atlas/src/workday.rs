@@ -763,7 +763,7 @@ impl Daemon<'_> {
                 }
                 Err(crate::snippets::Refused::Secret(kinds)) => format!("That holds what looks like a {} -- keep it in the vault, not a snippet.", kinds.join(" and a ")),
                 Err(crate::snippets::Refused::TooLong) => format!("That's over {} characters; a snippet is for text you type often.", crate::snippets::MAX_CHARS),
-                Err(crate::snippets::Refused::Empty) => "Say it as \"save snippet ;sig as Best, Eric\".".into(),
+                Err(crate::snippets::Refused::Empty) => "Say it as \"save snippet ;sig as Best, Sam\".".into(),
             };
         }
         for lead in ["delete snippet ", "forget snippet ", "remove snippet "] {
@@ -793,7 +793,7 @@ impl Daemon<'_> {
             }
             _ => {
                 if s.by_trigger.is_empty() {
-                    "No snippets yet. \"Save snippet ;sig as Best, Eric\" makes one.".into()
+                    "No snippets yet. \"Save snippet ;sig as Best, Sam\" makes one.".into()
                 } else {
                     format!("Your snippets: {}.", s.by_trigger.keys().cloned().collect::<Vec<_>>().join(", "))
                 }

@@ -272,7 +272,7 @@ fn with_wake(enabled: bool, marker: &std::path::Path) -> ToolsConfig {
         format!("touch '{}' && cp '{}' '{{in_wav}}'", marker.display(), fixture.display())
     };
     cfg.record = sh(&script, false, None);
-    cfg.wake = Some(atlas::voice::WakeConfig { enabled, phrase: "boot".into(), clip_seconds: 1, detector: None });
+    cfg.wake = Some(atlas::voice::WakeConfig { enabled, phrase: "boot".into(), clip_seconds: 1, detector: None, listen_first: false });
     cfg
 }
 

@@ -511,6 +511,13 @@ pub struct WakeConfig {
     /// polling the speech-to-text engine on short clips — which works with no
     /// extra install but keeps a CPU core busy.
     pub detector: Option<ExternalTool>,
+    /// Listen for the name by its sound before writing anything out (the
+    /// spotter in `kws`, when it's downloaded and the phrase is "Atlas"):
+    /// speech without the name is never transcribed. Off by default -- it
+    /// missed 2 of 63 requests Parakeet heard, on synthetic voices (1 Oct
+    /// 2026); worth turning on once measured on your own voice.
+    #[serde(default)]
+    pub listen_first: bool,
 }
 fn d_clip() -> u32 {
     3
@@ -1685,6 +1692,13 @@ impl crate::micthread::MicWork for VoiceWork {
         let Some(wake) = self.cfg.wake.as_ref() else { return false };
         wake.enabled && wake.detector.is_none() && self.cfg.endpoint.enabled && !microphone_now(&self.cfg).1.trim().is_empty()
     }
+    fn name_by_sound(&mut self, samples: &[i16]) -> Option<bool> {
+        let wake = self.cfg.wake.as_ref()?;
+        if !wake.listen_first || !crate::kws::knows(&wake.phrase) {
+            return None;
+        }
+        crate::kws::heard_name(&crate::roots::install_root(), samples)
+    }
     fn name_in(&mut self, samples: &[i16]) -> Result<crate::micthread::NameCheck> {
         use crate::micthread::NameCheck;
         let phrase = self.cfg.wake.as_ref().map(|w| w.phrase.clone()).unwrap_or_else(|| "atlas".into());
@@ -1699,6 +1713,15 @@ impl crate::micthread::MicWork for VoiceWork {
         let words = self.voice().transcribe_samples(samples)?;
         Ok(match words_after_name(&words, &phrase) {
             Some(rest) => NameCheck::Named(rest),
+            // Misheard: Parakeet wrote "Alice, what time is it?" -- but the
+            // spotter heard the name by its sound (`kws`, measured 1 Oct).
+            None if taught.is_none()
+                && crate::kws::knows(&phrase)
+                && crate::kws::soundalike_at_start(&words).is_some()
+                && crate::kws::heard_name(&crate::roots::install_root(), samples) == Some(true) =>
+            {
+                NameCheck::Named(crate::kws::soundalike_at_start(&words).unwrap_or_default())
+            }
             // Heard by its sound and not written as the phrase: what was said
             // after the phrase's own number of words.
             None if taught.is_some() => {

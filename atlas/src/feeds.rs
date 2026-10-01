@@ -58,7 +58,14 @@ fn unescape_xml(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
-        let Some(semi) = tail[..tail.len().min(12)].find(';') else {
+        // At most 12 bytes on, cut back to a character boundary: a bullet
+        // "•" straddling byte 12 panicked here and stopped Atlas (30 Sep
+        // 2026, a job feed).
+        let mut lim = tail.len().min(12);
+        while !tail.is_char_boundary(lim) {
+            lim -= 1;
+        }
+        let Some(semi) = tail[..lim].find(';') else {
             out.push('&');
             rest = &tail[1..];
             continue;

@@ -964,7 +964,7 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Weight::Preference,
         group: "Sound".into(),
     });
-    let wake = t.wake.clone().unwrap_or(crate::voice::WakeConfig { enabled: false, phrase: "atlas".into(), clip_seconds: 3, detector: None });
+    let wake = t.wake.clone().unwrap_or(crate::voice::WakeConfig { enabled: false, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
     items.push(Setting {
         key: "wake.phrase".into(),
         name: "Wake phrase".into(),
@@ -1084,7 +1084,7 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         name: "Better answers".into(),
         what: "Which model talks with you: faster (Qwen3-VL 4B) or better (Qwen3.5 4B, more natural replies). Pictures are read by the Qwen3-VL model either way."
             .into(),
-        cost: "Better reads a prompt at about half the speed: 2 to 5 seconds a reply on Eric's laptop where faster takes 1 to 3. The same memory. Better needs its 2.8 GB file (the Connections page fetches it)."
+        cost: "Better reads a prompt at about half the speed: 2 to 5 seconds a reply on an ordinary laptop where faster takes 1 to 3. The same memory. Better needs its 2.8 GB file (the Connections page fetches it)."
             .into(),
         value: Value::Choice {
             value: if crate::models::talks_better(&t.models) { "better".into() } else { "faster".into() },

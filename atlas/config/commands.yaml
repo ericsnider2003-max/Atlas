@@ -23,13 +23,16 @@ commands:
               "look at all my screens", "look at both my screens", "look at my monitors",
               "look at all my monitors", "what's on all my screens", "whats on all my screens",
               "look at every screen", "look at my laptop screen", "look at my left screen",
-              "look at my right screen", "look at my middle screen"]
+              "look at my right screen", "look at my middle screen",
+              # 1 Oct 2026: "can you see what I've got open" asked for the camera.
+              "can you see what i've got open", "can you see what ive got open", "can you see what i have open",
+              "see what i've got open", "what have i got open", "can you see my screen", "see my screen"]
 
   - intent: research
     describe: "Look a topic up on the web and write a note about it. arg: the topic."
     expose: core
     phrases: ["research", "look into", "find information on", "look up", "search for", "search the web for",
-              "google", "find out about", "look it up"]
+              "google", "find out about", "look it up", "dig into", "read up on"]
     takes_argument: true
 
   - intent: open_app
@@ -884,7 +887,10 @@ commands:
   - intent: capture
     describe: "Write a note of something to remember. arg: what to note."
     expose: core
-    phrases: ["note that", "remember this", "make a note", "jot this down", "note this"]
+    # "jot down that ..." (1 Oct 2026 model ranking: the model said "I've
+    # noted that" and nothing was written).
+    phrases: ["note that", "remember this", "make a note", "jot this down", "note this", "jot down that", "jot down",
+              "write down that", "make a note that", "keep in mind that"]
     takes_argument: true
     argument_optional: true
 
@@ -905,7 +911,10 @@ commands:
 
   - intent: mail
     describe: "Check the user's email inbox, or unsubscribe from what they don't read. arg: what, optional."
-    phrases: ["what's in my inbox", "check my email", "clear out my email",
+    # "has anybody written to me" (1 Oct 2026: went to your notes).
+    phrases: ["what's in my inbox", "check my email", "clear out my email", "has anybody written to me",
+              "has anyone written to me", "has anyone emailed me", "has anybody emailed me", "did anyone email me",
+              "any new emails", "any new email", "any emails",
               "unsubscribe from what i don't read", "unsubscribe from those"]
     takes_argument: true
     argument_optional: true
@@ -1215,7 +1224,10 @@ commands:
     expose: core
     phrases: ["find the file", "find my file", "find file", "find files", "where is my file",
               "where's my file", "find the pdf", "find my pdf", "find the spreadsheet", "find the document",
-              "find my photos", "find the photo", "find the presentation"]
+              "find my photos", "find the photo", "find the presentation",
+              # 1 Oct 2026: "where did I put that lease agreement" got a list
+              # of what Atlas can do.
+              "where did i put", "where did i save", "where have i put", "where's that file", "wheres that file"]
     takes_argument: true
     argument_optional: true
   - intent: pdf

@@ -416,12 +416,12 @@ pub fn android_page(apk: &Apk, apk_url: &str) -> String {
 <ol>
 <li>Open the download (from the notification, or the Files app's Downloads).</li>
 <li>The first time, Android asks to let your browser install apps: turn on <strong>Allow from this source</strong>, then go back.</li>
-<li>Tap <strong>Install</strong>. If Play Protect says the developer is unknown, tap <strong>More details</strong>, then <strong>Install anyway</strong>: this app comes from Eric, not the Play Store.</li>
+<li>Tap <strong>Install</strong>. If Play Protect says the developer is unknown, tap <strong>More details</strong>, then <strong>Install anyway</strong>: this app comes from whoever sent you this link, not the Play Store.</li>
 </ol>
 </section>
 <section>
 <h2>Updates</h2>
-<p>A newer Atlas installs over this one and keeps everything in it, as long as it's signed by the same key. If an update ever says it conflicts with the installed app, don't uninstall: tell Eric.</p>
+<p>A newer Atlas installs over this one and keeps everything in it, as long as it's signed by the same key. If an update ever says it conflicts with the installed app, don't uninstall: tell whoever sent you this link.</p>
 </section>
 </main>
 </body>
@@ -495,7 +495,7 @@ pub fn page(ipa: &Ipa, manifest_url: &str, now_iso: &str) -> String {
     };
     let button = if expired || ipa.devices.is_empty() {
         format!(
-            r#"<p class="warn" role="alert">This build can't be installed: {}. Ask Eric for a new one.</p>"#,
+            r#"<p class="warn" role="alert">This build can't be installed: {}. Ask whoever sent it for a new one.</p>"#,
             if expired { "it has expired" } else { "it lists no devices" }
         )
     } else {
@@ -540,7 +540,7 @@ pub fn page(ipa: &Ipa, manifest_url: &str, now_iso: &str) -> String {
 <h2>If it doesn't install</h2>
 <ul>
 <li>This page has to be open in <strong>Safari</strong>, not inside another app.</li>
-<li>"Unable to install" means this iPhone isn't one of the registered devices. Eric has to register it and make a new build.</li>
+<li>"Unable to install" means this iPhone isn't one of the registered devices. Whoever made the build has to register it and make a new one.</li>
 <li>After it expires, it stops opening until you install a newer build from a page like this one.</li>
 </ul>
 </section>

@@ -45,6 +45,9 @@ pub enum Lang {
     Go,
     JavaScript,
     TypeScript,
+    /// C++, checked with LLVM's tools (clang++, clang-tidy, clang-format;
+    /// research report item 27, 1 Oct 2026).
+    Cpp,
 }
 
 impl Lang {
@@ -62,6 +65,8 @@ impl Lang {
             Some(Lang::TypeScript)
         } else if p.ends_with(".js") || p.ends_with(".mjs") || p.ends_with(".cjs") || p.ends_with(".jsx") {
             Some(Lang::JavaScript)
+        } else if [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"].iter().any(|e| p.ends_with(e)) {
+            Some(Lang::Cpp)
         } else {
             None
         }
@@ -74,6 +79,7 @@ impl Lang {
             Lang::Go => "Go",
             Lang::JavaScript => "JavaScript",
             Lang::TypeScript => "TypeScript",
+            Lang::Cpp => "C++",
         }
     }
 
@@ -85,6 +91,7 @@ impl Lang {
             Lang::Go => "go",
             Lang::JavaScript => "js",
             Lang::TypeScript => "ts",
+            Lang::Cpp => "cpp",
         }
     }
 
@@ -102,14 +109,24 @@ impl Lang {
                 ),
                 ("src/lib.rs".into(), code.to_string()),
             ],
-            Lang::Python => vec![("main.py".into(), code.to_string())],
+            // A test that imports the draft: pytest with no tests exits 5
+            // ("no tests collected") and failed every Python build, so a
+            // Python build could never be Built (report gap 4). Importing it
+            // is the least a working module does -- it proves it loads.
+            Lang::Python => vec![("main.py".into(), code.to_string()), ("test_main.py".into(), PY_SMOKE.into())],
             Lang::Go => vec![
                 ("go.mod".into(), "module build\n\ngo 1.21\n".into()),
                 ("main.go".into(), code.to_string()),
             ],
+            // `npm test` with no test script always failed (report gap 4):
+            // the script is node's own runner, and the test loads the draft.
             Lang::JavaScript => vec![
-                ("package.json".into(), "{\n  \"name\": \"build\",\n  \"version\": \"0.0.0\"\n}\n".into()),
+                (
+                    "package.json".into(),
+                    "{\n  \"name\": \"build\",\n  \"version\": \"0.0.0\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n".into(),
+                ),
                 ("main.js".into(), code.to_string()),
+                ("main.test.js".into(), JS_SMOKE.into()),
             ],
             Lang::TypeScript => vec![
                 (
@@ -117,9 +134,32 @@ impl Lang {
                     "{\n  \"compilerOptions\": { \"noEmit\": true, \"strict\": true },\n  \"files\": [\"main.ts\"]\n}\n".into(),
                 ),
                 ("main.ts".into(), code.to_string()),
+                // node 24 runs TypeScript itself: its test runner loads the
+                // draft, as for JavaScript (`npm test` with no package.json
+                // failed every TypeScript build).
+                (
+                    "package.json".into(),
+                    "{\n  \"name\": \"build\",\n  \"version\": \"0.0.0\",\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n".into(),
+                ),
+                ("main.test.ts".into(), TS_SMOKE.into()),
             ],
+            Lang::Cpp => vec![("main.cpp".into(), code.to_string())],
         }
     }
+}
+
+/// The Python draft's test: it loads.
+const PY_SMOKE: &str = "import importlib\n\n\ndef test_it_loads():\n    importlib.import_module(\"main\")\n";
+
+/// The JavaScript draft's test: it loads.
+const JS_SMOKE: &str = "const test = require('node:test');\n\ntest('it loads', () => {\n  require('./main.js');\n});\n";
+
+/// The TypeScript draft's test: it loads.
+const TS_SMOKE: &str = "import { test } from 'node:test';\n\ntest('it loads', async () => {\n  await import('./main.ts');\n});\n";
+
+/// What the C++ draft is built to, and run as, for its Behaviour gate.
+fn cpp_program() -> &'static str {
+    if cfg!(windows) { "atlas-check.exe" } else { "./atlas-check" }
 }
 
 /// What a check tells you, which decides where it sits in the ladder.
@@ -296,12 +336,10 @@ pub fn ladder(lang: Lang) -> Vec<Gate> {
                 seconds: 15,
                 on_fail: "the types don't line up yet".into(),
             },
-            Gate {
-                tells: Tells::Style,
-                command: "eslint .".into(),
-                seconds: 10,
-                on_fail: "it type-checks, but there are things worth changing".into(),
-            },
+            // No eslint gate (1 Oct 2026): ESLint since v9 refuses to run
+            // without a config file, and can't read TypeScript without a
+            // separate parser package -- on a fresh draft it could only ever
+            // fail. `tsc --strict` is the check that earns its place.
             Gate {
                 tells: Tells::Behaviour,
                 command: "npm test".into(),
@@ -309,7 +347,56 @@ pub fn ladder(lang: Lang) -> Vec<Gate> {
                 on_fail: "it runs and doesn't do the right thing yet".into(),
             },
         ],
+        // C++ (1 Oct 2026, report item 27): LLVM's tools, which the
+        // official Windows installer ships together. The gate runner splits
+        // on spaces and has no `&&`, so building and running are two gates;
+        // a draft that builds and then crashes or returns non-zero fails
+        // the second.
+        Lang::Cpp => vec![
+            Gate {
+                tells: Tells::Shape,
+                command: "clang-format -i main.cpp".into(),
+                seconds: 1,
+                on_fail: "formatting only — fixed it and carried on".into(),
+            },
+            Gate {
+                tells: Tells::Sound,
+                command: "clang++ -std=c++20 -Wall -fsyntax-only main.cpp".into(),
+                seconds: 5,
+                on_fail: "it doesn't compile yet".into(),
+            },
+            Gate {
+                tells: Tells::Style,
+                command: "clang-tidy main.cpp -- -std=c++20".into(),
+                seconds: 15,
+                on_fail: "it compiles, but there are things worth changing".into(),
+            },
+            Gate {
+                tells: Tells::Sound,
+                command: format!("clang++ -std=c++20 -O1 -g main.cpp -o {}", cpp_program().trim_start_matches("./")),
+                seconds: 15,
+                on_fail: "it doesn't link yet".into(),
+            },
+            Gate {
+                tells: Tells::Behaviour,
+                command: cpp_program().into(),
+                seconds: 10,
+                on_fail: "it builds, and running it failed".into(),
+            },
+        ],
     }
+}
+
+/// The program a gate's command starts, when the gate couldn't start it
+/// because it isn't installed: `Sandbox::run` says "could not start <cmd>",
+/// and a shell says "not found" / "is not recognized".
+fn missing_program(r: &Ran) -> Option<String> {
+    let program = r.command.split_whitespace().next()?.to_string();
+    let out = r.output.to_lowercase();
+    let missing = out.starts_with("could not start")
+        || out.contains("is not recognized as an internal or external command")
+        || (out.contains("not found") && out.contains(&program.to_lowercase()) && out.lines().count() <= 2);
+    missing.then_some(program)
 }
 
 /// How a gate went.
@@ -332,6 +419,10 @@ pub enum Next {
     Fix { gate: Gate, output: String },
     /// It works; these are worth a look but are not blocking.
     WorksWithNotes(Vec<String>),
+    /// A check that decides whether it works couldn't run: its program isn't
+    /// on this computer. Not a fault in the code, so never handed to the
+    /// model to "fix" (report gap 2).
+    CannotCheck { program: String, gate: Gate },
 }
 
 /// Walk the ladder and stop at the first thing that makes the rest meaningless.
@@ -341,9 +432,15 @@ pub enum Next {
 pub fn read_ladder(lang: Lang, ran: &[Ran]) -> Next {
     let gates = ladder(lang);
     // The first failure that blocks. Ordered by the ladder, not by the order
-    // things happen to have been run in.
+    // things happen to have been run in. A blocking or behaviour check whose
+    // program isn't here is "can't check", not "fix it".
     for g in &gates {
         if let Some(r) = ran.iter().find(|r| r.command == g.command) {
+            if !r.passed && (r.tells.blocks_later() || r.tells == Tells::Behaviour) {
+                if let Some(program) = missing_program(r) {
+                    return Next::CannotCheck { program, gate: g.clone() };
+                }
+            }
             if !r.passed && r.tells.blocks_later() {
                 return Next::Fix { gate: g.clone(), output: r.output.clone() };
             }
@@ -361,6 +458,7 @@ pub fn read_ladder(lang: Lang, ran: &[Ran]) -> Next {
     let notes: Vec<String> = ran
         .iter()
         .filter(|r| !r.passed && r.tells == Tells::Style)
+        .filter(|r| missing_program(r).is_none())
         .map(|r| r.output.clone())
         .collect();
     if notes.is_empty() {
@@ -520,6 +618,11 @@ pub fn lang_of_dir(dir: &std::path::Path) -> Option<Lang> {
     }
     if dir.join("package.json").is_file() {
         return Some(Lang::JavaScript);
+    }
+    if dir.join("CMakeLists.txt").is_file()
+        || std::fs::read_dir(dir).ok().is_some_and(|d| d.flatten().any(|e| e.path().extension().is_some_and(|x| x == "vcxproj")))
+    {
+        return Some(Lang::Cpp);
     }
     None
 }

@@ -609,7 +609,7 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         // anything Atlas does here.
         Some("everything" | "all") => {
             let mut all = catalogue();
-            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making(), parakeet_pieces()] {
+            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making(), parakeet_pieces(), vec![crate::kws::spotter_piece()]] {
                 for p in more {
                     if !all.iter().any(|a: &Piece| a.key_path() == p.key_path()) {
                         all.push(p);
@@ -619,8 +619,9 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
             Some(("everything Atlas can use on this machine: voice, Parakeet hearing, understanding, seeing, reading and making pictures (about 11.5 GB)", all))
         }
         Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
-        Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better (about 500 MB)", parakeet_pieces())),
+        Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better, and the wake-word spotter (about 520 MB)", [parakeet_pieces(), vec![crate::kws::spotter_piece()]].concat())),
         Some("voiceid" | "voice-id" | "voices") => Some(("the voice model, so Atlas can tell your voice from others (30 MB)", voice_model())),
+        Some("wakeword" | "wake-word" | "wake" | "kws") => Some(("the wake-word spotter, so Atlas hears its name by the sound (18 MB)", vec![crate::kws::spotter_piece()])),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,
     }
@@ -1115,7 +1116,14 @@ fn slug(name: &str) -> String {
 /// and `ffplay` are found where Atlas put them — no system install, no PATH
 /// editing, and nothing outside Atlas's own folder changed.
 pub fn use_own_tools(root: &Path) {
-    let own: Vec<PathBuf> = ["tools/ffmpeg"].iter().map(|d| root.join(d)).filter(|d| d.is_dir()).collect();
+    // And the code checkers Atlas fetched for itself (`codetools`, 1 Oct
+    // 2026), with Rust's two folders, which its programs read from the
+    // environment.
+    for (k, v) in crate::codetools::rust_env(root) {
+        std::env::set_var(k, v);
+    }
+    let mut own: Vec<PathBuf> = ["tools/ffmpeg"].iter().map(|d| root.join(d)).filter(|d| d.is_dir()).collect();
+    own.extend(crate::codetools::bin_dirs(root));
     if own.is_empty() {
         return;
     }
@@ -1128,6 +1136,59 @@ pub fn use_own_tools(root: &Path) {
     }
 }
 
+
+/// Whisper's multilingual model (the `.en` ones can't hear other languages
+/// at all): what `translate` and `language` need. Hash and size from
+/// Hugging Face's own record of the file, 1 Oct 2026.
+fn multilingual_listening_model() -> Piece {
+    Piece {
+        name: "the multilingual listening model",
+        for_what: "hearing and translating languages other than English",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+        sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+        bytes: 147_951_465,
+        lands: Lands::File("models/ggml-base.bin"),
+    }
+}
+
+/// Everything else a capability needs, fetched by Atlas itself after setup's
+/// essentials (Eric, 1 Oct 2026: "everything Atlas needs to properly run and
+/// perform every capability it has, Atlas needs to download itself"): the
+/// meaning model, Parakeet hearing and the wake-word spotter, telling voices
+/// apart, seeing, photo cut-outs, the helper (draft) model, the deep brain,
+/// and the picture maker. Setup fetches these after the essentials, and the
+/// running Atlas tops up whatever is missing (`Daemon::keep_everything_here`).
+///
+/// Not here: **the "better" talking model** (Qwen3.5 4B). Measured 1 Oct
+/// 2026 on the pinned llama.cpp (b10456): every tool call it was offered
+/// failed in the server ("failed to parse grammar"), so it answered from
+/// nothing -- an invented Friday schedule, "I've added it to your
+/// calendar". Fetching it unasked would make Atlas worse.
+pub fn everything_else() -> Vec<Piece> {
+    let essentials = setup_pieces();
+    let mut out: Vec<Piece> = Vec::new();
+    for p in [
+        understanding(),
+        parakeet_pieces(),
+        vec![crate::kws::spotter_piece()],
+        voice_model(),
+        seeing(),
+        photos(),
+        crate::codetools::tool_pieces(),
+        vec![multilingual_listening_model()],
+        vec![draft_model()],
+        vec![deep_model()],
+        picture_making(),
+    ]
+        .into_iter()
+        .flatten()
+    {
+        if !essentials.iter().chain(out.iter()).any(|a| a.key_path() == p.key_path()) {
+            out.push(p);
+        }
+    }
+    out
+}
 
 /// Everything setup fetches, in order: the voice pieces, the language model
 /// (`pictures`: the same model answers questions and reads screens), then Tor.

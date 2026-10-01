@@ -652,6 +652,9 @@ pub enum Action {
     /// button with no card): back to its page, saying what was missing,
     /// rather than "that isn't a page in Atlas".
     HubBack(crate::hub::Page, String),
+    /// The Talk page as data: the last exchanges, what's queued, and
+    /// whether Atlas is answering now (`atlas mcp`'s `atlas_ask`).
+    TalkJson,
     /// What Atlas is doing and what's ready for you, as data: the phone app's
     /// live-activity card and notifications read it.
     LiveJson,
@@ -1188,6 +1191,7 @@ pub fn route(r: &Request) -> Option<Action> {
         ),
         ("GET", "/hub/live.json") => Some(Action::LiveJson),
         ("GET", "/hub/glance.json") => Some(Action::GlanceJson),
+        ("GET", "/hub/talk.json") => Some(Action::TalkJson),
         ("GET", "/hub/changed.json") => Some(Action::Changed(query_field(&r.query, "p").unwrap_or_default())),
         ("POST", "/hub/calendar/phone") => Some(Action::PhoneCalendar(r.body.clone())),
         ("GET", "/hub/voice-sample") => Some(Action::VoiceSample(query_field(&r.query, "id")?)),
