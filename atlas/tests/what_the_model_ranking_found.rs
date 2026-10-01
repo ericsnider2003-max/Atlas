@@ -45,6 +45,9 @@ fn a_nudge_is_a_reminder() {
     let mut d = Daemon::new(&c, &plat, None, Store::new(tmp("nudge")), Proactive::new(ProactiveConfig::default()));
     let said = d.turn("give me a nudge in 20 minutes to call the dentist", NOW);
     assert!(said.contains("remind you to call the dentist"), "{said}");
+    // And it's really booked: due twenty minutes on, not before.
+    assert!(d.scheduler.due(NOW + 19 * 60).is_empty());
+    assert_eq!(d.scheduler.due(NOW + 21 * 60).len(), 1);
 }
 
 #[test]
@@ -53,4 +56,28 @@ fn saying_it_was_noted_without_noting_it_is_caught() {
         assert!(atlas::backed::claims_work_started(s), "{s}");
     }
     assert!(!atlas::backed::claims_work_started("The capital of Australia is Canberra."));
+}
+
+/// Eric, 1 Oct 2026: everything a capability needs, Atlas downloads itself.
+#[test]
+fn atlas_fetches_the_rest_of_what_it_needs_itself() {
+    let rest = atlas::getpieces::everything_else();
+    let keys: Vec<&str> = rest.iter().map(|p| p.key_path()).collect();
+    for want in ["models/kws/", "models/parakeet/", "models/campplus_en_voxceleb.onnx"] {
+        assert!(keys.iter().any(|k| k.starts_with(want)), "{want} isn't fetched: {keys:?}");
+    }
+    // Nothing setup already fetches, nothing twice.
+    let setup: Vec<&str> = atlas::getpieces::setup_pieces().iter().map(|p| p.key_path()).collect();
+    assert!(keys.iter().all(|k| !setup.contains(k)));
+    let mut sorted = keys.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(sorted.len(), keys.len());
+    // Not the model whose tool calls failed in the pinned server.
+    assert!(!rest.iter().any(|p| p.sha256 == atlas::getpieces::better_talk_model().sha256));
+    // Every code checker archive is pinned (Windows only; empty elsewhere).
+    for p in atlas::codetools::tool_pieces() {
+        assert_eq!(p.sha256.len(), 64);
+        assert!(p.url.starts_with("https://"));
+    }
 }

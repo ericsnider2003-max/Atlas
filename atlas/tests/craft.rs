@@ -279,6 +279,9 @@ fn python_and_javascript_drafts_carry_a_test_so_they_can_pass() {
     let js = Lang::JavaScript.draft_files("console.log('hi')");
     assert!(js.iter().any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
     assert!(js.iter().any(|(p, c)| p == "main.test.js" && c.contains("require('./main.js')")));
+    // The draft itself is still laid down whole, beside its test.
+    assert_eq!(py.iter().find(|(p, _)| p == "main.py").map(|(_, c)| c.as_str()), Some("print('hi')"));
+    assert_eq!(js.len(), 3);
 }
 
 #[test]
@@ -289,4 +292,12 @@ fn an_unchecked_build_says_so_and_is_never_called_built() {
     assert!(o.code().is_some());
     let said = o.spoken(Lang::Cpp);
     assert!(said.contains("clang++ isn't installed") && said.contains("untested"), "{said}");
+}
+
+#[test]
+fn a_typescript_draft_carries_a_test_node_can_run() {
+    let ts = Lang::TypeScript.draft_files("export const x = 1;");
+    assert!(ts.iter().any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
+    assert!(ts.iter().any(|(p, c)| p == "main.test.ts" && c.contains("import('./main.ts')")));
+    assert!(!ladder(Lang::TypeScript).iter().any(|g| g.command.starts_with("eslint")), "eslint can't run on a fresh draft");
 }

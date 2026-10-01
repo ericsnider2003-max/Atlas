@@ -134,6 +134,14 @@ impl Lang {
                     "{\n  \"compilerOptions\": { \"noEmit\": true, \"strict\": true },\n  \"files\": [\"main.ts\"]\n}\n".into(),
                 ),
                 ("main.ts".into(), code.to_string()),
+                // node 24 runs TypeScript itself: its test runner loads the
+                // draft, as for JavaScript (`npm test` with no package.json
+                // failed every TypeScript build).
+                (
+                    "package.json".into(),
+                    "{\n  \"name\": \"build\",\n  \"version\": \"0.0.0\",\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n".into(),
+                ),
+                ("main.test.ts".into(), TS_SMOKE.into()),
             ],
             Lang::Cpp => vec![("main.cpp".into(), code.to_string())],
         }
@@ -145,6 +153,9 @@ const PY_SMOKE: &str = "import importlib\n\n\ndef test_it_loads():\n    importli
 
 /// The JavaScript draft's test: it loads.
 const JS_SMOKE: &str = "const test = require('node:test');\n\ntest('it loads', () => {\n  require('./main.js');\n});\n";
+
+/// The TypeScript draft's test: it loads.
+const TS_SMOKE: &str = "import { test } from 'node:test';\n\ntest('it loads', async () => {\n  await import('./main.ts');\n});\n";
 
 /// What the C++ draft is built to, and run as, for its Behaviour gate.
 fn cpp_program() -> &'static str {
@@ -325,12 +336,10 @@ pub fn ladder(lang: Lang) -> Vec<Gate> {
                 seconds: 15,
                 on_fail: "the types don't line up yet".into(),
             },
-            Gate {
-                tells: Tells::Style,
-                command: "eslint .".into(),
-                seconds: 10,
-                on_fail: "it type-checks, but there are things worth changing".into(),
-            },
+            // No eslint gate (1 Oct 2026): ESLint since v9 refuses to run
+            // without a config file, and can't read TypeScript without a
+            // separate parser package -- on a fresh draft it could only ever
+            // fail. `tsc --strict` is the check that earns its place.
             Gate {
                 tells: Tells::Behaviour,
                 command: "npm test".into(),

@@ -156,7 +156,11 @@ pub(super) fn run_gate(dir: &std::path::Path, gate: &atlas::craft::Gate) -> atla
             output: "empty command".into(),
         };
     };
-    let output = atlas::tools::command(program).args(parts).current_dir(dir).output();
+    // npm, prettier and tsc run by the node Atlas fetched (`codetools`).
+    let output = match atlas::codetools::by_node(program, &atlas::roots::install_root()) {
+        Some((node, script)) => atlas::tools::command(&node).arg(script).args(parts).current_dir(dir).output(),
+        None => atlas::tools::command(program).args(parts).current_dir(dir).output(),
+    };
     match output {
         Ok(o) => {
             let mut text = String::from_utf8_lossy(&o.stdout).into_owned();

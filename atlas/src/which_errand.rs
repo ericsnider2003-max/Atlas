@@ -228,6 +228,8 @@ pub fn describe(c: &Candidate) -> String {
         "outreach" => "the outreach draft",
         "outlook-connect" => "the Outlook sign-in",
         "backup" => "the backup",
+        "getting-everything" => "downloading the rest of what Atlas needs",
+        "model-piece" => "the download",
         "housekeeping" => "the housekeeping",
         "search-check" => "the search check",
         "hub-send" => "the send from the hub",

@@ -1355,6 +1355,9 @@ pub struct Daemon<'a> {
     last_sync_check: u64,
     /// When the last automatic sync pass ran (`sync.automatic`).
     pub last_auto_sync: u64,
+    /// When Atlas last looked for missing downloads to fetch itself
+    /// (`keep_everything_here`); 0 until it has.
+    pub last_top_up: u64,
     /// Set when a night ends, cleared once the brief has been said.
     morning_brief: Option<String>,
     /// Where you were while the last stretch of unattended work happened.
@@ -1934,6 +1937,7 @@ impl<'a> Daemon<'a> {
             last_overnight: 0,
             last_sync_check: 0,
             last_auto_sync: 0,
+            last_top_up: 0,
             morning_brief: None,
             worked_while: None,
             last_turn_failed: false,
@@ -2517,9 +2521,16 @@ fn check_draft_in_sandbox(
         // Build a runnable tool from the gate's command line.
         let mut parts = gate.command.split_whitespace();
         let Some(program) = parts.next() else { continue };
-        let args: Vec<String> = parts.map(str::to_string).collect();
+        let mut args: Vec<String> = parts.map(str::to_string).collect();
+        // npm, prettier and tsc are node scripts (`.cmd` on Windows, which
+        // can't be started directly): run by the node Atlas fetched.
+        let mut program = program.to_string();
+        if let Some((node, script)) = crate::codetools::by_node(&program, &crate::roots::install_root()) {
+            args.insert(0, script.to_string_lossy().into_owned());
+            program = node.to_string_lossy().into_owned();
+        }
         let tool = crate::tools::ExternalTool {
-            command: program.to_string(),
+            command: program,
             args,
             stdin_text: false,
             result_file: None,

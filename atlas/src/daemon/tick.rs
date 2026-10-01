@@ -67,6 +67,9 @@ impl<'a> Daemon<'a> {
         // stopped once idle (`deepbrain`).
         self.keep_deep_brain();
         self.tick_laps.mark("deep model");
+        // Whatever a capability needs that isn't here yet, fetched by Atlas
+        // itself, in the background (Eric, 1 Oct 2026).
+        self.keep_everything_here(t);
         // A request of several steps: the steps it asks for carried out, and
         // each one said as it finishes (`work_through`). Up here, before the
         // returns a pause or a quiet mode take below: a pause is when it
@@ -2461,3 +2464,84 @@ pub fn moment_clock(local_secs: i64) -> (u32, u32) {
     let weekday = ((local_secs.div_euclid(86_400) + 3).rem_euclid(7)) as u32;
     (minutes, weekday)
 }
+
+/// How long after one top-up Atlas looks again (a download that failed --
+/// no room, no connection -- is tried again then, not on every tick).
+pub const TOP_UP_EVERY_SECS: u64 = 6 * 3600;
+
+/// How long after starting before the first look: the first minutes are
+/// for you, not for a download.
+pub const TOP_UP_AFTER_START_SECS: u64 = 120;
+
+impl Daemon<'_> {
+    /// Fetch what a capability needs and isn't here (`getpieces::everything_else`),
+    /// on the crew, one piece at a time, each checked for room first and
+    /// against its SHA-256 as always. Only on an install setup has finished
+    /// (the essentials are here), never while handed over or rehearsing,
+    /// and at most every `TOP_UP_EVERY_SECS`.
+    pub(super) fn keep_everything_here(&mut self, t: u64) {
+        if self.rehearsal {
+            return;
+        }
+        // The first tick only books the first look, a couple of minutes on.
+        if self.last_top_up == 0 {
+            self.last_top_up = t.saturating_sub(TOP_UP_EVERY_SECS).saturating_add(TOP_UP_AFTER_START_SECS).max(1);
+            return;
+        }
+        if t.saturating_sub(self.last_top_up) < TOP_UP_EVERY_SECS {
+            return;
+        }
+        let root = self.store.install_root();
+        let setup_done = crate::getpieces::catalogue().first().is_some_and(|p| crate::getpieces::have(p, &root));
+        if !setup_done || self.handover().stance.handed_over() {
+            return;
+        }
+        self.last_top_up = t;
+        let missing: Vec<crate::getpieces::Piece> =
+            crate::getpieces::everything_else().into_iter().filter(|p| !crate::getpieces::have(p, &root)).collect();
+        if missing.is_empty() && !crate::codetools::unfinished(&root) {
+            return;
+        }
+        self.log.info(&format!("fetching {} missing piece(s) myself: {}", missing.len(), missing.iter().map(|p| p.name).collect::<Vec<_>>().join(", ")));
+        let work: crew::Work = Box::new(move |ctl| {
+            let (mut got, mut not) = (Vec::new(), Vec::new());
+            for p in &missing {
+                if ctl.checkpoint() {
+                    not.push(format!("{} (stopped)", p.name));
+                    break;
+                }
+                if crate::getpieces::have(p, &root) {
+                    continue;
+                }
+                if let Err(why) = crate::getpieces::room_for(std::slice::from_ref(p), &root, crate::getpieces::free_bytes(&root)) {
+                    not.push(format!("{} ({})", p.name, why));
+                    continue;
+                }
+                let places = crate::getpieces::places_it_may_be(&root);
+                let done = match crate::getpieces::take_in(p, &root, &places) {
+                    Ok(Some(_)) => Ok(()),
+                    _ => crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {}),
+                };
+                match done {
+                    Ok(()) => got.push(p.name.to_string()),
+                    Err(e) => not.push(format!("{} ({e})", p.name)),
+                }
+            }
+            // The code checkers' second step: Python's, node's and Rust's own
+            // installs, once their archives are here.
+            for problem in crate::codetools::finish(&root) {
+                not.push(problem);
+            }
+            if got.is_empty() && not.is_empty() {
+                return Ok("Set up the code checkers.".into());
+            }
+            match (got.is_empty(), not.is_empty()) {
+                (_, true) => Ok(format!("Downloaded what I was missing: {}.", got.join(", "))),
+                (true, false) => Err(format!("I couldn't download what I'm missing yet: {}. I'll try again later.", not.join("; "))),
+                (false, false) => Ok(format!("Downloaded {}. Still missing: {} -- I'll try again later.", got.join(", "), not.join("; "))),
+            }
+        });
+        let _ = self.hand_off("getting-everything", t, work, None, SpeakPolicy::ViaWatcher);
+    }
+}
+
