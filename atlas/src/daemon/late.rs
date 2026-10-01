@@ -1315,7 +1315,11 @@ impl<'a> Daemon<'a> {
                 if names.is_empty() {
                     "I can't find any microphone on this machine right now.".into()
                 } else {
-                    format!("None of the microphones here sounds like a {kind} one. The ones I can hear from: {}.", names.join(", "))
+                    format!(
+                        "None of the microphones here sounds like \"{}\". The ones I can hear from: {}.",
+                        kind.trim_start_matches("the ").trim_start_matches("a "),
+                        names.join(", ")
+                    )
                 }
             }
         }

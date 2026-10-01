@@ -189,6 +189,9 @@ windows = { version = "0.58", features = [
 name = "all"
 path = "tests/all.rs"
 [[test]]
+name = "the_self_test_never_starts_another_atlas"
+path = "tests/the_self_test_never_starts_another_atlas.rs"
+[[test]]
 # The engine inside the phone app, on this machine's CPU: only with it built in.
 name = "the_phone_thinks_for_itself"
 path = "tests/the_phone_thinks_for_itself.rs"

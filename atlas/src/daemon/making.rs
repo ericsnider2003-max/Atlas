@@ -28,7 +28,7 @@ impl<'a> Daemon<'a> {
         let t = crate::store::now();
         let out = crate::imagemake::folder(&cfg).join(crate::imagemake::file_name(&what, t));
         let name = "picture maker";
-        if let Err(why) = self.helpers.want(name, crate::imagemake::MEMORY_MB, t, || Ok(None)) {
+        if let Err(why) = self.room_for_heavy(name, crate::imagemake::MEMORY_MB, t) {
             return format!("I can't make it right now: {why}");
         }
         let prompt = what.clone();
@@ -1419,6 +1419,15 @@ impl<'a> Daemon<'a> {
                     Ok(text) => (text, format!("\"{arg}\"")),
                     Err(e) => return format!("I couldn't read {arg}: {e}."),
                 }
+            } else if !looks_like_code(arg) {
+                // "explain code the quarterly budget" isn't code: the model
+                // explained it anyway, as if it were (the laptop's self-test,
+                // 30 Sep 2026). A path that isn't there is said as such.
+                return if looks_like_path {
+                    format!("I can't find a file called {arg}. Give me its full path, or paste the code.")
+                } else {
+                    format!("\"{arg}\" doesn't look like code. Point me at a file -- \"explain src/foo.rs\" -- or paste the code.")
+                };
             } else {
                 (arg.to_string(), "the code you gave me".to_string())
             }
@@ -1573,4 +1582,13 @@ impl<'a> Daemon<'a> {
         let path = dir.join(format!("{slug}.master.md"));
         std::fs::write(&path, doc).ok().map(|_| path.display().to_string())
     }
+}
+
+/// Does pasted text look like code rather than words? Brackets, semicolons,
+/// operators or keywords, and more than a few of them.
+fn looks_like_code(text: &str) -> bool {
+    let marks = text.chars().filter(|c| matches!(c, '{' | '}' | '(' | ')' | ';' | '=' | '<' | '>' | '[' | ']')).count();
+    let words = [" fn ", "def ", "function", "return", "import ", "class ", "let ", "const ", "var ", "#include", "=>", "->", "public ", "SELECT "];
+    let keyword = words.iter().any(|w| text.contains(w));
+    marks >= 3 || (keyword && marks >= 1) || text.contains('\n') && marks >= 1
 }

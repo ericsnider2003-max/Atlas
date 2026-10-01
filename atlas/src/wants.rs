@@ -118,6 +118,14 @@ impl Observations {
 
     pub fn asked_for_something_missing(&mut self, what: &str) {
         let w = what.trim().to_lowercase();
+        // A question isn't something asked to be done: "what is outstanding
+        // in your setup?" came back as "I'd want the ability to what is
+        // outstanding in your setup?" (the laptop's self-test, 30 Sep 2026).
+        let first = w.split_whitespace().next().unwrap_or("");
+        // "Will you juggle ...?" is still a request; "what is ...?" isn't.
+        if ["what", "what's", "whats", "who", "who's", "why", "how", "when", "where", "which", "is", "are", "does", "did"].contains(&first) {
+            return;
+        }
         if !self.unsupported_requests.contains(&w) {
             self.unsupported_requests.push(w);
         }
@@ -277,7 +285,7 @@ pub fn recommend(obs: &Observations, m: &Machine) -> Vec<Recommendation> {
         out.push(Recommendation {
             id: format!("missing-{}", req.replace(' ', "-")),
             want,
-            because: format!("you asked me to {req} and I couldn't"),
+            because: format!("you asked for \"{}\" and I couldn't do it", req.trim_end_matches(['.', '!'])),
             benefit: "a thing you wanted that I can't do yet".into(),
             cost,
             possible_here: possible,
@@ -318,7 +326,7 @@ fn classify_request(req: &str, m: &Machine) -> (String, bool, Cost) {
     if r.contains("calendar") || r.contains("meeting") {
         return ("a calendar connection".into(), true, Cost::Free);
     }
-    (format!("the ability to {req}"), true, Cost::Free)
+    (format!("a way to do \"{}\"", req.trim_end_matches(['.', '!'])), true, Cost::Free)
 }
 
 /// What Atlas says when asked what it's missing.

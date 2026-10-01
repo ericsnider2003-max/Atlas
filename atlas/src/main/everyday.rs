@@ -1880,7 +1880,7 @@ pub(super) fn run_selftest(args: &[String]) {
         println!("Testing every command on this machine, on a copy of your install. Nothing is sent, moved or approved.");
         let exe = std::env::current_exe().unwrap_or_else(|_| "atlas".into());
         let mut cmd = std::process::Command::new(exe);
-        cmd.arg("selftest").arg("--inside").arg("--out").arg(&reports).env("ATLAS_HOME", &tmp).env_remove("ATLAS_CONFIG");
+        cmd.arg("selftest").arg("--inside").arg("--out").arg(&reports).env("ATLAS_HOME", &tmp).env(atlas::selftest::IN_A_TEST, "1").env_remove("ATLAS_CONFIG");
         if no_model {
             cmd.arg("--no-model");
         }
@@ -1912,6 +1912,19 @@ pub(super) fn run_selftest(args: &[String]) {
         }
     };
     let real_plat = atlas::platform::here();
+    // The microphone and the camera this machine really has, as the daemon
+    // picks them (30 Sep 2026: the first run on the laptop tested the shipped
+    // "Integrated Camera" guess, which the machine doesn't have, and reported
+    // the camera broken when the running Atlas uses the C920).
+    let cfg = match cfg.tools.as_ref() {
+        Some(tc) => {
+            let picked = pick_the_microphone(&cfg, real_plat.as_ref(), tc);
+            let mut c = cfg.clone();
+            c.tools = Some(picked);
+            c
+        }
+        None => cfg,
+    };
     let plat = atlas::selftest::SafePlatform::wrapping(real_plat.as_ref());
     let llm = if no_model { None } else { cfg.tools.as_ref().and_then(model_connection) };
     let with_model = llm.is_some();

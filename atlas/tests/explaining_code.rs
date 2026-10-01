@@ -194,7 +194,11 @@ fn explain_routes_through_the_daemon() {
     // string literal so the coverage guard can parse it.
     let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
     let reply = d.turn("explain the code that keeps a running total", 100);
-    assert!(reply.to_lowercase().contains("model"), "with no model it should say it needs one: {reply}");
+    // 30 Sep 2026: a description isn't code -- explained as if it were, a
+    // model invented it. Asked for the code instead, before any model.
+    assert!(reply.contains("doesn't look like code"), "{reply}");
+    let pasted = d.turn("explain the code: fn total(xs: &[u32]) -> u32 { xs.iter().sum() }", 100);
+    assert!(pasted.to_lowercase().contains("model"), "with no model it should say it needs one: {pasted}");
     // Routed to explain_code as its own branch, not the catch-all: a nonsense
     // line does not get the same answer.
     let junk = d.turn("zzqx frobnicate wibble", 100);

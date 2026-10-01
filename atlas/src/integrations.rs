@@ -341,7 +341,7 @@ pub fn mark(answer: &str, used: &[&str], board: &Board, now: u64) -> String {
         .filter_map(|name| {
             let i = board.integrations.iter().find(|i| i.name == *name)?;
             let h = i.health(now);
-            (h != Health::Working).then(|| as_clause(&i.name, h))
+(h != Health::Working).then(|| as_clause(&i.name, h))
         })
         .collect();
     if gaps.is_empty() {

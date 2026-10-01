@@ -481,7 +481,7 @@ impl<'a> Daemon<'a> {
         // About 3 GB while it runs, so the memory budget gets a say first,
         // and a refusal is a sentence rather than a laptop that swaps.
         let name = "picture reader";
-        if let Err(why) = self.helpers.want(name, crate::picture_talk::MEMORY_MB, t, || Ok(None)) {
+        if let Err(why) = self.room_for_heavy(name, crate::picture_talk::MEMORY_MB, t) {
             let _ = std::fs::remove_file(&shot);
             if let Some(p) = &small {
                 let _ = std::fs::remove_file(p);

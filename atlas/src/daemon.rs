@@ -3833,7 +3833,17 @@ fn reads_back(i: &Intent) -> bool {
 /// Long or list-shaped enough to be worth a model call to say naturally.
 fn worth_rephrasing(reply: &str) -> bool {
     let r = reply.trim();
-    !r.is_empty() && (r.split_whitespace().count() > 25 || r.lines().filter(|l| !l.trim().is_empty()).count() > 2)
+    !r.is_empty() && !is_a_failure(r) && (r.split_whitespace().count() > 25 || r.lines().filter(|l| !l.trim().is_empty()).count() > 2)
+}
+
+/// A tool result that says something didn't happen. It is said as written:
+/// handed to the model to reword, "error: unknown app" came back as "I'm
+/// focusing on the quarterly budget now" (self-test, 30 Sep 2026).
+fn is_a_failure(reply: &str) -> bool {
+    let r = reply.trim_start().to_lowercase();
+    ["error", "i couldn't", "i could not", "i can't", "i cannot", "i don't know", "couldn't ", "can't ", "no such", "nothing matched", "unknown "]
+        .iter()
+        .any(|p| r.starts_with(p))
 }
 
 /// Longest tool result handed back to the model to reword.
