@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance", "parakeet"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "utterance", "parakeet", "kws"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -220,7 +220,7 @@ pub fn all() -> Vec<Capability> {
         // a business reaching his own Atlas is not policed at all.
         Capability { id: "firewall", what: "keep your own work out of anything you share", area: Files, state: Untested, needs: None, offline: true, added: 26, runs: &[Needs::Files], modules: &["firewall"] },
 
-        Capability { id: "research", what: "look something up", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable"] },
+        Capability { id: "research", what: "look something up, and save the write-up as a Word or PDF file with its sources as links", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable", "report"] },
         Capability { id: "delegate_online", what: "hand heavy background work to an online worker and check what comes back", area: Web, state: Blocked, needs: Some("a Cloudflare account and token"), offline: false, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["online"] },
         Capability { id: "build_it", what: "write code from your description and check it against the compiler and tests before trusting it", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["build_it", "craft", "goal"] },
         Capability { id: "design", what: "review a page's design against a house style — spacing, colour tokens, accessibility — and say what's off, honestly not claiming to judge whether it looks good; also gate a page it builds against the same rules", area: Thinking, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["taste"] },
@@ -1542,7 +1542,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 444;
+pub const MODULES_IN_TREE: usize = 446;
 
 /// Every module no capability claims, and why it is not one.
 ///

@@ -27,7 +27,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
-| hear a wake word and listen | waiting on whisper | `hearing` `voice` `utterance` `parakeet` | ready | would | would | **no** | would | **no** |
+| hear a wake word and listen | waiting on whisper | `hearing` `voice` `utterance` `parakeet` `kws` | ready | would | would | **no** | would | **no** |
 | stop listening when you stop talking | waiting on ffmpeg, for audio in | `endpoint` | ready | would | would | would | would | would |
 | type what you say into a window | waiting on whisper | `dictate` | ready | catch | would | **no** | catch | **no** |
 | notice when it's mishearing you and offer a better model | waiting on whisper | `language` | ready | would | would | would | would | would |
@@ -113,7 +113,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
-| look something up | built, never run for real | `research` `readable` | ready | ready | ready | ready | ready | ready |
+| look something up, and save the write-up as a Word or PDF file with its sources as links | built, never run for real | `research` `readable` `report` | ready | ready | ready | ready | ready | ready |
 | hand heavy background work to an online worker and check what comes back | waiting on a Cloudflare account and token | `online` | ready | would | would | catch | would | **no** |
 | drive a browser | built, never run for real | `browser` `cdp` | ready | catch | would | **no** | catch | **no** |
 | post something, with approval | built, never run for real | `publish` `publishing` `delivery` | ready | ready | ready | ready | ready | ready |
@@ -359,4 +359,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-240 things, across 408 of 444 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+240 things, across 410 of 446 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

@@ -327,7 +327,12 @@ pub fn wait_for_name(
                 // long request is known to be one while it's being said.
                 let len = seg.so_far().len();
                 if found.is_none() && len.saturating_sub(from) >= clip {
-                    match work.name_in(&seg.so_far()[from..]) {
+                    let named = if work.name_by_sound(&seg.so_far()[from..]) == Some(false) {
+                        Ok(NameCheck::NotNamed(String::new()))
+                    } else {
+                        work.name_in(&seg.so_far()[from..])
+                    };
+                    match named {
                         Ok(check) => match after_the_name(check) {
                             Some(rest) => {
                                 seg.set_hint(&rest);
@@ -345,6 +350,8 @@ pub fn wait_for_name(
                 from = 0;
                 let rest = if ms_of(u.len() - start) < MIN_SPEECH_MS {
                     early
+                } else if early.is_none() && work.name_by_sound(&u[start..]) == Some(false) {
+                    None
                 } else {
                     match work.name_in(&u[start..]) {
                         // The whole of it, heard at once: better than the

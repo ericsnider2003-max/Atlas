@@ -17,7 +17,10 @@ impl<'a> Daemon<'a> {
         let opening = ["open the report", "open that report", "open the research", "open the write up", "open the write-up", "open the brief", "show me the report", "show me the research"]
             .iter()
             .any(|p| t.contains(p));
-        if !reading && !opening {
+        // "Save the report as a Word document", "make that a PDF" (1 Oct
+        // 2026, research report item 24).
+        let export = if reading || opening { None } else { crate::report::asked(said) };
+        if !reading && !opening && export.is_none() {
             return None;
         }
         let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
@@ -30,6 +33,16 @@ impl<'a> Daemon<'a> {
             return Some("There's no research write-up yet. Say \"research\" and a topic, and I'll write one.".into());
         };
         let path = newest.path();
+        if let Some(kind) = export {
+            let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            return Some(match crate::report::export(&path, kind) {
+                Ok(out) => match self.plat.open_path(&out.display().to_string()) {
+                    Ok(()) => format!("Saved and opening {} -- it's in {}, with its sources as links.", name(&out), dir),
+                    Err(_) => format!("Saved as {}, in {}, with its sources as links.", name(&out), dir),
+                },
+                Err(e) => format!("I couldn't make that file: {e}."),
+            });
+        }
         if opening {
             return Some(match self.plat.open_path(&path.display().to_string()) {
                 Ok(()) => format!("Opening {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()),

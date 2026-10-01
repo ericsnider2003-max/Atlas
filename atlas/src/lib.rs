@@ -126,6 +126,8 @@ pub mod references;
 pub mod talkbench;
 pub mod freeonline;
 pub mod parakeet;
+pub mod kws;
+pub mod report;
 pub mod keeping;
 pub mod weather;
 pub mod register;

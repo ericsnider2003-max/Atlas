@@ -40,7 +40,7 @@ fn tmp(tag: &str) -> PathBuf {
 fn cfg(barge: bool) -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
     let t = c.tools.get_or_insert_with(Default::default);
-    t.wake = Some(atlas::voice::WakeConfig { enabled: true, phrase: "atlas".into(), clip_seconds: 3, detector: None });
+    t.wake = Some(atlas::voice::WakeConfig { enabled: true, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
     t.barge_in = BargeInConfig { enabled: barge, ..BargeInConfig::default() };
     c
 }

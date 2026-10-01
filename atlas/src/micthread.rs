@@ -127,6 +127,14 @@ pub trait MicWork: Send {
     fn hears_name_in_audio(&self) -> bool {
         false
     }
+    /// Listening for the name by its sound first (`wake.listen_first`, the
+    /// spotter in `kws`): `Some(false)` when it surely isn't in this audio,
+    /// so it needn't be written out at all. `None`, the default: not
+    /// listening that way, so `name_in` decides.
+    fn name_by_sound(&mut self, samples: &[i16]) -> Option<bool> {
+        let _ = samples;
+        None
+    }
     /// Is the wake word in this audio, and what was said after it?
     fn name_in(&mut self, samples: &[i16]) -> Result<NameCheck> {
         self.transcribe(samples).map(NameCheck::NotNamed)

@@ -921,3 +921,7 @@ mod conversation_sweep;
 #[path = "getting_things_done.rs"]
 mod getting_things_done;
 mod voices_told_apart;
+#[path = "wake_by_sound.rs"]
+mod wake_by_sound;
+#[path = "reports_as_files.rs"]
+mod reports_as_files;

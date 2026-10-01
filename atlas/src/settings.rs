@@ -964,7 +964,7 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Weight::Preference,
         group: "Sound".into(),
     });
-    let wake = t.wake.clone().unwrap_or(crate::voice::WakeConfig { enabled: false, phrase: "atlas".into(), clip_seconds: 3, detector: None });
+    let wake = t.wake.clone().unwrap_or(crate::voice::WakeConfig { enabled: false, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
     items.push(Setting {
         key: "wake.phrase".into(),
         name: "Wake phrase".into(),
