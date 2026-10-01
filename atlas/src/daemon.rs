@@ -2417,7 +2417,13 @@ fn read_project_context(folder: &str) -> String {
     }
     // Bound the whole thing so a big file can't blow the prompt.
     if out.len() > 6000 {
-        out.truncate(6000);
+        // On a character boundary: source files hold "—" and the like, and
+        // truncating inside one panics.
+        let mut cut = 6000;
+        while !out.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        out.truncate(cut);
     }
     out
 }

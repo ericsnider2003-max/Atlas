@@ -521,3 +521,14 @@ fn bing_results_are_read_through_its_redirect() {
     let bing = atlas::research::bing_search();
     assert!(bing.args.iter().any(|a| a.ends_with("q={query_pct}&form=QBLH")));
 }
+
+/// A feed whose text has a multi-byte character just after an `&` must not
+/// stop Atlas (30 Sep 2026: "end byte index 12 is not a char boundary",
+/// a job feed with "&#x2F;CD.\n• Frontend").
+#[test]
+fn a_feed_with_a_bullet_after_an_ampersand_is_read() {
+    let xml = "<rss><channel><title>Jobs</title><item><title>SRE</title><description>CI&#x2F;CD &amp;\n\u{2022} Frontend &\u{2022}\u{2022}\u{2022}\u{2022} ok</description><link>https://example.com/a</link></item></channel></rss>";
+    let parsed = atlas::feeds::parse(xml).unwrap();
+    assert_eq!(parsed.items.len(), 1);
+    let _ = atlas::feeds::text_of("x &\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} y");
+}

@@ -114,7 +114,12 @@ fn unescape(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
-        let semi = tail[..tail.len().min(12)].find(';');
+        // Cut back to a character boundary (the same panic `feeds` had).
+        let mut lim = tail.len().min(12);
+        while !tail.is_char_boundary(lim) {
+            lim -= 1;
+        }
+        let semi = tail[..lim].find(';');
         let (ch, used) = match semi {
             Some(n) => {
                 let ent = &tail[1..n];
