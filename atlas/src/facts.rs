@@ -160,7 +160,7 @@ pub struct Fact {
 /// A password, a code, a key: never carried into a prompt unasked, whether
 /// or not its value looks like one (`redact` judges values; "the wifi
 /// password is hunter2pass" names what it is).
-pub fn reads_as_secret(text: &str) -> bool {
+fn reads_as_secret(text: &str) -> bool {
     let low = text.to_lowercase();
     !crate::redact::secrets_in(text).is_empty()
         || ["password", "passcode", "passphrase", "pin is", "pin number", "api key", "secret", "token", "access code", "recovery key", "seed phrase", "account number", "card number"]

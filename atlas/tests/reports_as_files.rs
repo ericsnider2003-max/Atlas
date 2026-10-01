@@ -21,7 +21,7 @@ A very long address that must still fit on the page: https://www.example.org/a/v
 #[test]
 fn the_write_up_reads_as_pieces() {
     use atlas::report::Block;
-    let b = atlas::report::blocks(NOTE);
+    let b = atlas::report::write_up_blocks(NOTE);
     assert_eq!(b[0], Block::Title("Heat pumps in cold climates".into()));
     assert!(b.contains(&Block::Heading("What the sources say".into())));
     assert!(b.contains(&Block::Numbered("2.".into(), "Keep the backup heater.".into())));

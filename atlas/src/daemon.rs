@@ -2544,6 +2544,7 @@ fn check_draft_in_sandbox(
         Next::Good => crate::build_it::Check::Passed(vec![]),
         Next::WorksWithNotes(notes) => crate::build_it::Check::Passed(notes),
         Next::Fix { output, .. } => crate::build_it::Check::Failed(output),
+        Next::CannotCheck { program, .. } => crate::build_it::Check::CannotCheck(program),
     }
 }
 

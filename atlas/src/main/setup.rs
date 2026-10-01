@@ -63,6 +63,9 @@ pub(super) fn run_craft() {
                 println!("  - {n}");
             }
         }
+        Next::CannotCheck { program, gate } => {
+            println!("\nCouldn't check it: {program} isn't installed on this computer (needed for `{}`).", gate.command);
+        }
         Next::Fix { gate, output } => {
             println!("\n{} — {}\n", gate.on_fail, gate.command);
             // The tool's own words, verbatim -- see craft.rs on why a

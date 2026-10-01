@@ -609,7 +609,7 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         // anything Atlas does here.
         Some("everything" | "all") => {
             let mut all = catalogue();
-            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making(), parakeet_pieces(), vec![crate::kws::model_piece()]] {
+            for more in [understanding(), crate::kokoro::pieces(), seeing(), photos(), pictures(), picture_making(), parakeet_pieces(), vec![crate::kws::spotter_piece()]] {
                 for p in more {
                     if !all.iter().any(|a: &Piece| a.key_path() == p.key_path()) {
                         all.push(p);
@@ -619,9 +619,9 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
             Some(("everything Atlas can use on this machine: voice, Parakeet hearing, understanding, seeing, reading and making pictures (about 11.5 GB)", all))
         }
         Some("understanding" | "meaning") => Some(("what Atlas needs to understand what you mean, not only your words (90 MB)", understanding())),
-        Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better, and the wake-word spotter (about 520 MB)", [parakeet_pieces(), vec![crate::kws::model_piece()]].concat())),
+        Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better, and the wake-word spotter (about 520 MB)", [parakeet_pieces(), vec![crate::kws::spotter_piece()]].concat())),
         Some("voiceid" | "voice-id" | "voices") => Some(("the voice model, so Atlas can tell your voice from others (30 MB)", voice_model())),
-        Some("wakeword" | "wake-word" | "wake" | "kws") => Some(("the wake-word spotter, so Atlas hears its name by the sound (18 MB)", vec![crate::kws::model_piece()])),
+        Some("wakeword" | "wake-word" | "wake" | "kws") => Some(("the wake-word spotter, so Atlas hears its name by the sound (18 MB)", vec![crate::kws::spotter_piece()])),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         _ => None,
     }

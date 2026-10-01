@@ -19,7 +19,7 @@ impl<'a> Daemon<'a> {
             .any(|p| t.contains(p));
         // "Save the report as a Word document", "make that a PDF" (1 Oct
         // 2026, research report item 24).
-        let export = if reading || opening { None } else { crate::report::asked(said) };
+        let export = if reading || opening { None } else { crate::report::file_asked(said) };
         if !reading && !opening && export.is_none() {
             return None;
         }

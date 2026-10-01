@@ -37,7 +37,7 @@ pub enum Block {
 }
 
 /// The write-up's pieces, from its Markdown.
-pub fn blocks(md: &str) -> Vec<Block> {
+pub fn write_up_blocks(md: &str) -> Vec<Block> {
     let mut out = Vec::new();
     let mut para = String::new();
     let mut in_sources = false;
@@ -97,7 +97,7 @@ fn numbered(l: &str) -> Option<(String, String)> {
 
 /// Inline Markdown as runs of (text, bold): `**bold**` kept, `*x*`, `_x_`
 /// and backticks dropped, `[text](url)` as "text (url)".
-pub fn runs(text: &str) -> Vec<(String, bool)> {
+fn runs(text: &str) -> Vec<(String, bool)> {
     let mut plain = String::new();
     let mut rest = text;
     // Links first.
@@ -161,7 +161,7 @@ fn plain(text: &str) -> String {
 
 // ======================================================= .docx
 
-fn xml(s: &str) -> String {
+fn xml_text(s: &str) -> String {
     let mut o = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -179,7 +179,7 @@ fn xml(s: &str) -> String {
 fn w_runs(text: &str) -> String {
     runs(text)
         .into_iter()
-        .map(|(t, bold)| format!("<w:r>{}<w:t xml:space=\"preserve\">{}</w:t></w:r>", if bold { "<w:rPr><w:b/></w:rPr>" } else { "" }, xml(&t)))
+        .map(|(t, bold)| format!("<w:r>{}<w:t xml:space=\"preserve\">{}</w:t></w:r>", if bold { "<w:rPr><w:b/></w:rPr>" } else { "" }, xml_text(&t)))
         .collect()
 }
 
@@ -187,7 +187,7 @@ fn w_runs(text: &str) -> String {
 pub fn docx(md: &str) -> Vec<u8> {
     let mut body = String::new();
     let mut links: Vec<String> = Vec::new();
-    for b in blocks(md) {
+    for b in write_up_blocks(md) {
         match b {
             Block::Title(t) => body.push_str(&format!("<w:p><w:pPr><w:pStyle w:val=\"Title\"/></w:pPr>{}</w:p>", w_runs(&t))),
             Block::Heading(t) => body.push_str(&format!("<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr>{}</w:p>", w_runs(&t))),
@@ -198,7 +198,7 @@ pub fn docx(md: &str) -> Vec<u8> {
             )),
             Block::Numbered(n, t) => body.push_str(&format!(
                 "<w:p><w:pPr><w:ind w:left=\"720\" w:hanging=\"360\"/></w:pPr><w:r><w:t xml:space=\"preserve\">{}\t</w:t></w:r>{}</w:p>",
-                xml(&n),
+                xml_text(&n),
                 w_runs(&t)
             )),
             Block::Source(n, url) => {
@@ -207,7 +207,7 @@ pub fn docx(md: &str) -> Vec<u8> {
                     "<w:p><w:pPr><w:ind w:left=\"720\" w:hanging=\"360\"/></w:pPr><w:r><w:t xml:space=\"preserve\">[{n}]\t</w:t></w:r>\
                      <w:hyperlink r:id=\"rLink{}\"><w:r><w:rPr><w:rStyle w:val=\"Hyperlink\"/></w:rPr><w:t>{}</w:t></w:r></w:hyperlink></w:p>",
                     links.len(),
-                    xml(&url)
+                    xml_text(&url)
                 ));
             }
         }
@@ -228,7 +228,7 @@ pub fn docx(md: &str) -> Vec<u8> {
         rels.push_str(&format!(
             "<Relationship Id=\"rLink{}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"{}\" TargetMode=\"External\"/>",
             i + 1,
-            xml(url)
+            xml_text(url)
         ));
     }
     rels.push_str("</Relationships>");
@@ -476,7 +476,7 @@ impl Layout {
 /// The write-up as a PDF file.
 pub fn pdf(md: &str) -> Result<Vec<u8>, String> {
     let mut l = Layout::new();
-    for b in blocks(md) {
+    for b in write_up_blocks(md) {
         match b {
             Block::Title(t) => {
                 l.text(&[(plain(&t), true)], 20.0, MARGIN, None, None);
@@ -568,7 +568,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub fn extension(self) -> &'static str {
+    fn extension(self) -> &'static str {
         match self {
             Kind::Word => "docx",
             Kind::Pdf => "pdf",
@@ -578,7 +578,7 @@ impl Kind {
 
 /// "Save the report as a Word document", "make that research a PDF",
 /// "export the brief to Word", "send me the report as a pdf": the kind.
-pub fn asked(said: &str) -> Option<Kind> {
+pub fn file_asked(said: &str) -> Option<Kind> {
     let t = said.trim().to_lowercase();
     let words: Vec<&str> = t.split(|c: char| !c.is_alphanumeric() && c != '-').filter(|w| !w.is_empty()).collect();
     let has = |w: &str| words.contains(&w);
@@ -657,7 +657,7 @@ mod tests {
             ("what's a good word for happy", None),
             ("make a pdf of my resume file", None),
         ] {
-            assert_eq!(asked(said), want, "{said}");
+            assert_eq!(file_asked(said), want, "{said}");
         }
     }
 }

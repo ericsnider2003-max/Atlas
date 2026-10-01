@@ -72,7 +72,7 @@ const THRESHOLD: f32 = 0.15;
 
 /// The model, pinned like every other download. Hash and size from
 /// downloading it on 1 Oct 2026.
-pub fn model_piece() -> Piece {
+pub fn spotter_piece() -> Piece {
     Piece {
         name: "the wake-word spotter",
         for_what: "hearing its name by the sound, not only in the words",
@@ -125,7 +125,7 @@ fn runtime_dirs(root: &Path) -> Vec<PathBuf> {
 }
 
 /// The library folder and the model folder, once both are here.
-pub(crate) fn ready(root: &Path) -> Option<(PathBuf, PathBuf)> {
+fn ready(root: &Path) -> Option<(PathBuf, PathBuf)> {
     let (ort, capi) = crate::kokoro::runtime_files()?;
     let runtime = runtime_dirs(root).into_iter().find(|d| d.join(ort).is_file() && d.join(capi).is_file())?;
     let model = root.join(MODEL_DIR);
