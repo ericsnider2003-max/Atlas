@@ -325,6 +325,11 @@ impl Laps {
         p
     }
 
+    /// Every part so far, in the order first marked.
+    pub fn parts(&self) -> &[(&'static str, u32)] {
+        &self.parts
+    }
+
     /// "work_for_you 900ms, observe 400ms, health 120ms".
     pub fn plain(&self, n: usize) -> String {
         self.slowest(n).iter().map(|(name, ms)| format!("{name} {ms}ms")).collect::<Vec<_>>().join(", ")

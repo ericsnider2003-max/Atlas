@@ -46,6 +46,8 @@ pub enum Kind {
     AskedAgain,
     /// A test that has never failed since it was written.
     NeverFailed,
+    /// Atlas's own self-test found a command broken (`regressions`).
+    SelfTestFails,
 }
 
 impl Kind {
@@ -65,6 +67,8 @@ impl Kind {
             Kind::NeverUsed => 1,
             Kind::AskedAgain => 3,
             Kind::NeverFailed => 1,
+            // A run on a copy of the install that broke is a fault already.
+            Kind::SelfTestFails => 1,
         }
     }
 
@@ -79,6 +83,7 @@ impl Kind {
             Kind::NeverUsed => "it isn't reachable, or nothing points at it",
             Kind::AskedAgain => "the answer isn't being kept, so it's derived again each time",
             Kind::NeverFailed => "it asserts something that was always true",
+            Kind::SelfTestFails => "what the command does was changed without the self-test being run against it",
         }
     }
 
@@ -90,6 +95,7 @@ impl Kind {
             Kind::NotUnderstood => 0.8,
             Kind::AskedAgain => 0.7,
             Kind::GotSlower => 0.6,
+            Kind::SelfTestFails => 0.85,
             Kind::NeverFailed => 0.4,
             Kind::NeverUsed => 0.3,
         }
@@ -167,6 +173,7 @@ fn symptom_for(s: &Signal) -> String {
         Kind::NeverUsed => format!("there's {} in two weeks", s.subject),
         Kind::AskedAgain => format!("you keep asking me {} again", s.subject),
         Kind::NeverFailed => format!("the test for {} has never once failed", s.subject),
+        Kind::SelfTestFails => format!("my self-test found {} broken", s.subject),
     }
 }
 
@@ -179,6 +186,7 @@ fn proof_for(s: &Signal) -> String {
         Kind::NeverUsed => format!("a test that calls {} and gets something back", s.subject),
         Kind::AskedAgain => format!("a test that the answer to {} is kept and reused", s.subject),
         Kind::NeverFailed => format!("break {} deliberately and watch the test fail", s.subject),
+        Kind::SelfTestFails => format!("a test that \"{}\" passes the self-test's judgement again", s.example),
     }
 }
 

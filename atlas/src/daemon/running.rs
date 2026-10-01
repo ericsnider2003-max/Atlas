@@ -354,6 +354,20 @@ impl<'a> Daemon<'a> {
             // A tick is time the hub and the typing box wait: a slow one is
             // written down, so where the time goes can be seen.
             let tick_ms = tick_started.elapsed().as_millis() as u64;
+            // Every tick's parts, added up; every quarter hour, Atlas's own
+            // CPU over it and where the loop's time went (`cpuuse`).
+            self.cpu_meter.add(self.tick_laps.parts());
+            if let Some(r) = self.cpu_meter.read(t, crate::cpuuse::own_cpu_ms()) {
+                if r.idle && r.percent >= crate::cpuuse::WARN_PERCENT {
+                    self.log.warn(&format!("idle but busy: {}", r.plain()));
+                } else {
+                    self.log.info(&format!("cpu: {}", r.plain()));
+                }
+                let mut kept: Vec<crate::cpuuse::Reading> = self.store.load(crate::cpuuse::KEPT);
+                kept.push(r);
+                let from = kept.len().saturating_sub(96);
+                let _ = self.store.save(crate::cpuuse::KEPT, &kept[from..].to_vec());
+            }
             if tick_ms >= SLOW_TICK_MS {
                 // Which parts took it, so the next look at a log says where
                 // the time went (30 Sep 2026: the laptop's said only "1777ms").

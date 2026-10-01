@@ -20,6 +20,7 @@ impl<'a> Daemon<'a> {
     /// "Atlas" and then "hello" got silence: addressing scored a one-word
     /// greeting as a fragment, called it overheard, and returned nothing.
     pub fn turn(&mut self, said: &str, t: u64) -> String {
+        self.cpu_meter.talked();
         // The parser needs your project names to tell "fix the parser in
         // Homelab" (project work) from "change the volume" (not).
         let names: Vec<String> = self.workshop.projects.iter().map(|p| p.name.clone()).collect();
@@ -2227,6 +2228,19 @@ impl<'a> Daemon<'a> {
             &never_used,
             total,
         );
+        // What the last mutation run found no test catching (`mutation`).
+        let survivors: Vec<crate::mutation::Survivor> = self.store.load(crate::mutation::KEPT);
+        self.signals.extend(crate::signals::from_survivors(&survivors));
+        // What the last self-test found broken (`regressions`).
+        let cases: Vec<crate::regressions::Case> = self.store.load(crate::regressions::FILE);
+        self.signals.extend(crate::signals::from_regressions(&cases));
+        // What a coverage run of the self-test never reached (`coverage`).
+        let reports = crate::selftest::reports_dir(&self.store.install_root());
+        if let Ok(json) = std::fs::read_to_string(reports.join(crate::coverage::NEVER_REACHED)) {
+            if let Ok((paths, total)) = serde_json::from_str::<(Vec<String>, u32)>(&json) {
+                self.signals.extend(crate::signals::from_never_reached(&paths, total));
+            }
+        }
     }
 
     /// Anything that was running when the machine stopped.

@@ -1034,6 +1034,11 @@ impl<'a> Daemon<'a> {
         // "how often to look" described a looking nothing did, and "act
         // without asking" described an asking that was the only way in.
         //
+        // One file of Atlas's own code broken on purpose a day, to find
+        // what no test notices (`mutation`; research report, Stage 2 item
+        // 12). Only where Atlas runs from its source with self-repair on.
+        self.maybe_mutation_sweep(t);
+
         // Gated on `may_interrupt` before the look rather than after it. The
         // clock is only marked when it actually looked, so a week spent in
         // meetings delays the check rather than silently spending it.

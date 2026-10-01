@@ -921,3 +921,5 @@ mod conversation_sweep;
 #[path = "getting_things_done.rs"]
 mod getting_things_done;
 mod voices_told_apart;
+#[path = "atlas_checks_itself.rs"]
+mod atlas_checks_itself;

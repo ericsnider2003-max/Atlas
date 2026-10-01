@@ -1440,8 +1440,13 @@ impl<'a> Daemon<'a> {
                         let near = if original.exists() { original } else { std::path::Path::new(&path) };
                         if let Some(manifest) = crate::hollowcode::manifest_near(near) {
                             found.extend(crate::hollowcode::made_up_dependencies(&code, tongue, &manifest));
-                            found.sort_by_key(|f| f.line);
                         }
+                        // Public functions nothing in the whole project calls,
+                        // when the file is in a project rather than pasted.
+                        if original.exists() {
+                            found.extend(crate::hollowcode::never_called_in_project(original, &code, tongue));
+                        }
+                        found.sort_by_key(|f| f.line);
                         let mut said = crate::hollowcode::spoken(&item.title(), tongue, &found);
                         // Only when it is worth saying. Telling him a Rust file
                         // is Rust and could be ported to Rust is noise.

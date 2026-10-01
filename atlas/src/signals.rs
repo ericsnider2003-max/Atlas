@@ -110,6 +110,54 @@ pub fn from_unused(never_used: &[String], total_capabilities: u32) -> Option<Sig
     })
 }
 
+/// Code no test notices breaking (`mutation`): each survivor from the last
+/// mutation run is a test that never fails -- the `NeverFailed` signal, which
+/// had no producer until 1 Oct 2026. One signal per function.
+pub fn from_survivors(survivors: &[crate::mutation::Survivor]) -> Vec<Signal> {
+    let mut by_fn: std::collections::BTreeMap<String, (u32, String)> = std::collections::BTreeMap::new();
+    for s in survivors {
+        let subject = if s.function.is_empty() { s.file.clone() } else { format!("{}::{}", s.file, s.function) };
+        let e = by_fn.entry(subject).or_insert((0, s.said()));
+        e.0 += 1;
+    }
+    by_fn
+        .into_iter()
+        .map(|(subject, (seen, example))| Signal { kind: Kind::NeverFailed, subject, seen, of: seen, example })
+        .collect()
+}
+
+/// Commands the last self-test found broken (`regressions`): each one a
+/// `SelfTestFails` signal for self-repair to read.
+pub fn from_regressions(cases: &[crate::regressions::Case]) -> Vec<Signal> {
+    cases
+        .iter()
+        .filter(|c| c.source == crate::regressions::Source::SelfTest)
+        .map(|c| Signal {
+            kind: Kind::SelfTestFails,
+            subject: if c.command.is_empty() { c.said.clone() } else { c.command.clone() },
+            seen: 1,
+            of: 1,
+            example: c.said.clone(),
+        })
+        .collect()
+}
+
+/// Functions a coverage run of the self-test never reached (`coverage`): one
+/// `NeverUsed` signal naming how many, with the first few. "Not reached by
+/// the self-test", not "dead": the run only knows what it was asked.
+pub fn from_never_reached(paths: &[String], reached_total: u32) -> Option<Signal> {
+    if paths.is_empty() {
+        return None;
+    }
+    Some(Signal {
+        kind: Kind::NeverUsed,
+        subject: "functions the self-test never reached".into(),
+        seen: paths.len() as u32,
+        of: reached_total.max(paths.len() as u32),
+        example: paths.iter().take(5).cloned().collect::<Vec<_>>().join(", "),
+    })
+}
+
 /// Everything derivable right now, in one call.
 ///
 /// `GotSlower` is absent on purpose and it is the gap worth naming: nothing in

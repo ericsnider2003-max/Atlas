@@ -115,6 +115,10 @@ pub mod meaning;
 pub mod meaningroute;
 pub mod imagemake;
 pub mod selftest;
+pub mod mutation;
+pub mod regressions;
+pub mod coverage;
+pub mod cpuuse;
 pub mod operate;
 pub mod used;
 #[cfg(feature = "onnx")]

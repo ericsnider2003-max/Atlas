@@ -490,7 +490,59 @@ pub fn run_all(
         on_row(&row);
         rows.push(row);
     }
+    // What you've corrected before, said again (`regressions`): the row fails
+    // if Atlas gives the answer you said was wrong.
+    let cases: Vec<crate::regressions::Case> = crate::store::Store::new(store_dir.to_path_buf()).load(crate::regressions::FILE);
+    let base = rows.len() as u64;
+    for (i, case) in cases.iter().filter(|c| c.source == crate::regressions::Source::Correction).enumerate() {
+        let mut d = crate::daemon::Daemon::new(
+            cfg,
+            plat,
+            llm.clone(),
+            crate::store::Store::new(store_dir.to_path_buf()),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.rehearsal = true;
+        let _ = plat.take();
+        let started = std::time::Instant::now();
+        let reply = match crate::crash::caught("a corrected sentence", || d.turn(&case.said, t0 + (base + i as u64) * 60)) {
+            Ok(r) => r,
+            Err(why) => format!("thinking about what to do next went wrong: {why}"),
+        };
+        let ms = started.elapsed().as_millis() as u64;
+        let k = crate::session::kind_of(&parser.parse(&case.said));
+        let reached = d.last_reached().unwrap_or_else(|| k.to_string());
+        let mut would = plat.take();
+        would.extend(std::mem::take(&mut d.rehearsed));
+        let v = if crate::regressions::repeats_the_mistake(case, &reply) {
+            Verdict::Broken(format!("the answer you corrected before -- you wanted: {}", case.wanted))
+        } else {
+            judge_reply(&reply, ms, &reached, None, !would.is_empty())
+        };
+        let row = Row { command: format!("corrected: {}", reached), said: case.said.clone(), reached, tier: tier(k), verdict: v, reply, ms, would };
+        on_row(&row);
+        rows.push(row);
+    }
     rows
+}
+
+/// The rows that failed, as cases for the install's own regressions
+/// (`regressions::FROM_SELFTEST`).
+pub fn failing_cases(rows: &[Row], at: u64) -> Vec<crate::regressions::Case> {
+    rows.iter()
+        .filter(|r| r.verdict.is_a_fault() && !r.command.starts_with("corrected: "))
+        .map(|r| crate::regressions::Case {
+            said: r.said.clone(),
+            wrong: r.reply.clone(),
+            wanted: match &r.verdict {
+                Verdict::Broken(why) => format!("not: {why}"),
+                other => format!("not: {other:?}"),
+            },
+            command: r.command.clone(),
+            source: crate::regressions::Source::SelfTest,
+            at,
+        })
+        .collect()
 }
 
 /// The report, for you to read.

@@ -1017,6 +1017,8 @@ pub struct Daemon<'a> {
     /// Whether what a restart cut off (`LEFT_WAITING`) has been read back
     /// yet; until then it isn't written over.
     left_waiting_read: bool,
+    /// Atlas's own CPU and where the loop's time goes, by window (`cpuuse`).
+    cpu_meter: crate::cpuuse::Meter,
     /// `models.talk` as last followed (`follow_the_talk_setting`), and the
     /// model the talking server was started on.
     talk_setting_seen: Option<String>,
@@ -1788,6 +1790,7 @@ impl<'a> Daemon<'a> {
             deep_look_at: 0,
             task_loop: None,
             left_waiting_read: false,
+            cpu_meter: Default::default(),
             talk_setting_seen: None,
             model_running_id: None,
             pending_seq: 0,

@@ -322,9 +322,28 @@ enum Ran {
 /// stall it), and stop it -- with everything it started -- at `limit` or when
 /// Atlas is asked to stop.
 fn run_limited(cmd: &str, args: &[String], dir: &Path, limit: std::time::Duration) -> Ran {
+    run_limited_with(cmd, args, &[], dir, limit)
+}
+
+/// Run a program in `dir` with extra environment, for no longer than
+/// `limit`: whether it passed, and what it said (head and tail kept, with
+/// every result line). Stopped past the limit, it reads as failed and says so.
+pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit_secs: u64, max_output: usize) -> (bool, String) {
+    match run_limited_with(cmd, args, env, dir, std::time::Duration::from_secs(limit_secs)) {
+        Ran::Finished { passed, text } => (passed, trim_output(&text, max_output)),
+        Ran::TooLong { .. } => (false, format!("error: stopped after {limit_secs} seconds -- it was still running")),
+        Ran::Stopped => (false, "error: stopped because you asked me to stop".into()),
+        Ran::NoStart(e) => (false, format!("couldn't run {cmd}: {e}")),
+    }
+}
+
+fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration) -> Ran {
     use std::io::Read;
     let mut c = crate::tools::command(cmd);
     c.args(args).current_dir(dir).stdin(std::process::Stdio::null());
+    for (k, v) in env {
+        c.env(k, v);
+    }
     c.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut child = match c.spawn() {
         Ok(ch) => ch,

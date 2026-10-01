@@ -119,6 +119,38 @@ impl<'a> Daemon<'a> {
         // restating a complaint in the same breath is emphasis, not a second
         // occasion.
         let session = self.session.started;
+        // Kept as a case the self-test says again every run, so the same
+        // mistake can't come back unnoticed (`regressions`).
+        // The request that went wrong: the latest turn that isn't the
+        // complaint itself or Atlas asking what it should have done.
+        let wrong_turn = self
+            .session
+            .turns
+            .iter()
+            .rev()
+            .find(|t| {
+                let r = t.reply.to_lowercase();
+                !t.said.trim().is_empty()
+                    && t.said.trim() != wanted.trim()
+                    && !r.contains("what should i have done")
+                    && !looks_like_a_complaint(&t.said)
+            })
+            .map(|t| (t.said.clone(), t.reply.clone()));
+        if let Some((said, wrong)) = wrong_turn {
+            let mut cases: Vec<crate::regressions::Case> = self.store.load(crate::regressions::FILE);
+            crate::regressions::add(
+                &mut cases,
+                crate::regressions::Case {
+                    said,
+                    wrong,
+                    wanted: wanted.to_string(),
+                    command: String::new(),
+                    source: crate::regressions::Source::Correction,
+                    at: t,
+                },
+            );
+            let _ = self.store.save(crate::regressions::FILE, &cases);
+        }
         let c = crate::revise::Correction::new(about, did, t, session).wanting(wanted);
         let earned = self.mending.heard(c);
         let _ = self.store.save("mending", &self.mending);
@@ -622,13 +654,47 @@ impl<'a> Daemon<'a> {
         let slot = self.self_fix_done.clone();
         let instruction = instruction.to_string();
         let symptom = thought.symptom.clone();
+        let (strategy, handoff, consult) = {
+            let tc = self.tools_cfg();
+            (tc.strategy.clone(), tc.handoff.clone(), tc.consult.clone())
+        };
         let work: crate::crew::Work = Box::new(move |c: &crate::crew::Control| {
             let candidate = crate::selfwork::draft_fix(&thought, &instruction, &current, llm.as_ref())
                 .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
             if c.stopping() {
                 return Err("stopped before proving the fix".into());
             }
-            let proved = prove_in_a_copy(&thought, &candidate, &scfg, &root);
+            let mut candidate = candidate;
+            let mut proved = prove_in_a_copy(&thought, &candidate, &scfg, &root);
+            // One draft didn't hold: the fix loop works the proving test from
+            // several angles, the real test output fed back each time, before
+            // giving up (`fixloop`; research report, Stage 2 item 15 -- it
+            // was a command-line tool only). Whatever it finds is proved the
+            // same way: the whole suite, and the mutation check.
+            if proved.is_err() && !c.stopping() && !thought.proof.trim().is_empty() {
+                let mut test: Vec<String> = scfg.test_command.split_whitespace().map(String::from).collect();
+                test.push(thought.proof.trim().to_string());
+                let job = crate::fixloop::Job { folder: root.clone(), test, goal: thought.symptom.clone() };
+                let mut counsel = crate::fixloop::ModelCounsel::new(llm.as_ref());
+                if let Ok(o) = crate::fixloop::run(&job, &mut counsel, &crate::roots::tmp_dir().join("fix"), &strategy, &handoff, &consult) {
+                    if o.solved && !o.changes.is_empty() {
+                        let from_loop: Vec<crate::selfwork::Edit> = o
+                            .changes
+                            .iter()
+                            .map(|(path, content)| crate::selfwork::Edit {
+                                path: path.clone(),
+                                content: content.clone(),
+                                reason: format!("worked out in {} attempts by the fix loop", o.attempts),
+                            })
+                            .collect();
+                        let again = prove_in_a_copy(&thought, &from_loop, &scfg, &root);
+                        if again.is_ok() {
+                            candidate = from_loop;
+                            proved = again;
+                        }
+                    }
+                }
+            }
             let ok = proved.is_ok();
             if let Ok(mut s) = slot.lock() {
                 *s = Some(SelfFixDone { thought, current, candidate, proved });
@@ -647,13 +713,66 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// A day's mutation sweep: the next file of Atlas's own source, broken
+    /// one function at a time by cargo-mutants on the crew, its survivors
+    /// kept (`mutation::KEPT`) for `signals::from_survivors`. Quiet: what it
+    /// finds reaches you as a self-repair recommendation, not a sentence.
+    pub(super) fn maybe_mutation_sweep(&mut self, t: u64) {
+        const EVERY_SECS: u64 = 24 * 3600;
+        if self.rehearsal || !self.tools_cfg().self_work.enabled {
+            return;
+        }
+        let root = std::env::current_dir().unwrap_or_default();
+        if !root.join("Cargo.toml").is_file() || !root.join("src").is_dir() {
+            return;
+        }
+        let last: u64 = self.store.load("mutation_sweep_at");
+        if t.saturating_sub(last) < EVERY_SECS {
+            return;
+        }
+        let _ = self.store.save("mutation_sweep_at", &t);
+        let mut files: Vec<String> = std::fs::read_dir(root.join("src"))
+            .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".rs")).collect())
+            .unwrap_or_default();
+        files.sort();
+        if files.is_empty() {
+            return;
+        }
+        let next: usize = self.store.load("mutation_sweep_next");
+        let file = format!("src/{}", files[next % files.len()]);
+        let _ = self.store.save("mutation_sweep_next", &(next + 1));
+        let store = self.store.clone();
+        let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
+            if !crate::mutation::available(&root) {
+                return Ok("the mutation sweep needs cargo-mutants, which isn't installed".into());
+            }
+            let out = crate::roots::tmp_dir().join("mutation-sweep");
+            let _ = std::fs::remove_dir_all(&out);
+            let args: Vec<String> = ["mutants", "-f", file.as_str(), "--no-shuffle", "--jobs", "2", "--timeout", "120", "--output"]
+                .iter()
+                .map(|s| s.to_string())
+                .chain(std::iter::once(out.display().to_string()))
+                .collect();
+            let _ = crate::sandbox::run_within("cargo", &args, &[], &root, 3 * 3600, 2000);
+            let found = crate::mutation::read_survivors(&out);
+            let mut kept: Vec<crate::mutation::Survivor> = store.load(crate::mutation::KEPT);
+            kept.retain(|s| s.file != file);
+            let n = found.len();
+            kept.extend(found);
+            store.save(crate::mutation::KEPT, &kept).map_err(|e| e.to_string())?;
+            Ok(format!("mutation sweep of {file}: {n} change{} no test noticed", if n == 1 { "" } else { "s" }))
+        });
+        let _ = self.hand_off("mutation-sweep", t, work, None, super::SpeakPolicy::ViaWatcher);
+    }
+
     /// A self-fix errand ended: take in what it found, and say it.
     pub(super) fn finish_own_fix(&mut self) -> Option<String> {
         let done = self.self_fix_done.lock().ok()?.take()?;
         let scfg = self.tools_cfg().self_work.clone();
         let SelfFixDone { thought, current, candidate, proved } = done;
         Some(match proved {
-            Ok((build, changes)) => {
+            Ok((build, changes, mutation_note)) => {
+                let behaviour_note = mutation_note.map(|n| format!(" {n}")).unwrap_or_default();
                 let passing = build.tests_after;
                 let touched = crate::selfwork::lines_touched(&current, &candidate);
                 let review = crate::pipeline::review(&thought, &build, &[]);
@@ -688,7 +807,7 @@ impl<'a> Daemon<'a> {
                     };
                     format!(
                         "Done — I fixed \"{}\" where the cause was, {passing} tests pass, and the \
-                         review is clean.{size} It's staged with a backup; say \"go ahead\" and I'll \
+                         review is clean.{size}{behaviour_note} It's staged with a backup; say \"go ahead\" and I'll \
                          land it.\n\n{behaviour}",
                         thought.symptom
                     )
@@ -872,7 +991,7 @@ pub(crate) struct SelfFixDone {
     thought: crate::pipeline::Thought,
     current: Vec<crate::selfwork::Edit>,
     candidate: Vec<crate::selfwork::Edit>,
-    proved: std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>), String>,
+    proved: std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String>,
 }
 
 /// Write a candidate into a copy of the tree, run the proving test and the
@@ -888,7 +1007,7 @@ fn prove_in_a_copy(
     candidate: &[crate::selfwork::Edit],
     scfg: &crate::selfwork::SelfWorkConfig,
     root: &std::path::Path,
-) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>), String> {
+) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String> {
     // Refuse anything the never-list or its own limits protect, before a
     // single byte is written anywhere.
     for e in candidate {
@@ -940,13 +1059,42 @@ fn prove_in_a_copy(
         return Err("something else in the suite broke".into());
     }
 
+    // Does any test notice if the new lines are broken? Only the lines the
+    // fix changed are mutated (`mutation`). A fix whose new code no test
+    // depends on is a fix nothing proves, so it doesn't land.
+    let diff: String = candidate
+        .iter()
+        .map(|e| {
+            let before = std::fs::read_to_string(root.join(&e.path)).unwrap_or_default();
+            crate::mutation::diff_of(&e.path.replace('\\', "/"), &before, &e.content)
+        })
+        .collect();
+    let mutation_note = match crate::mutation::check_diff(&sandbox.root, &diff) {
+        crate::mutation::Checked::AllCaught => None,
+        crate::mutation::Checked::Survivors(s) => {
+            let list: Vec<String> = s.iter().take(3).map(|x| x.said()).collect();
+            return Err(format!(
+                "the tests pass whether or not the new code works -- breaking it on purpose went unnoticed at {}",
+                list.join("; ")
+            ));
+        }
+        crate::mutation::Checked::NotRun(why) => Some(format!("I couldn't check that the tests would catch this change breaking: {why}.")),
+    };
+
     // The preview: which sandbox file maps onto which real file.
     let mapping: Vec<(String, std::path::PathBuf)> =
         candidate.iter().map(|e| (e.path.clone(), root.join(&e.path))).collect();
     let changes = sandbox
         .plan(&mapping)
         .map_err(|e| format!("couldn't work out what would change: {e}"))?;
-    Ok((build, changes))
+    Ok((build, changes, mutation_note))
 }
 
+/// "That's wrong", "no, not that": the complaint, not the request it's about.
+fn looks_like_a_complaint(said: &str) -> bool {
+    let t = said.trim().to_lowercase();
+    ["that's wrong", "thats wrong", "that was wrong", "wrong", "no,", "not that", "that's not", "that is not", "you got it wrong", "that was too", "you should have"]
+        .iter()
+        .any(|p| t.starts_with(p))
+}
 

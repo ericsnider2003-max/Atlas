@@ -248,7 +248,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | be busy without making you wait -- work that needs your windows waits for a gap, and a long job says how it's going | built, never run for real | `lanes` `channel` | ready | would | would | catch | would | **no** |
 | keep what it couldn't do and why, and offer it again once whatever stopped it has cleared | working | `backlog` | ready | ready | ready | catch | would | catch |
 | work through what it couldn't finish while you sleep, and in the morning say what actually happened, not what was meant to | built, never run for real | `overnight` `faithful` | ready | would | would | catch | would | **no** |
-| try every command on this machine, safely, and report what works, what's off, what needs installing and what's broken | built, never run for real | `selftest` | ready | catch | catch | **no** | catch | **no** |
+| try every command on this machine, safely, and report what works, what's off, what needs installing and what's broken | built, never run for real | `selftest` `regressions` `mutation` `coverage` | ready | catch | catch | **no** | catch | **no** |
 | keep every switch on one page, and keep what you change -- sound and voice too: when it speaks, how loud, when it may pop up | built, never run for real | `settings` `preferences` `sound` | ready | ready | ready | catch | would | catch |
 | arrange the hub's home the way you want it -- which parts, in what order, how big | built, never run for real | `dash` `layout_prefs` | ready | ready | ready | catch | would | catch |
 | look the way you choose -- light, dark, or following this computer's own settings -- everywhere at once | built, never run for real | `appearance` `oslook` | ready | ready | ready | catch | would | catch |
@@ -359,4 +359,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-240 things, across 408 of 444 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+240 things, across 411 of 448 source files. The other 37 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
