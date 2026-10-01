@@ -365,6 +365,10 @@ fn one_email_can_be_read_and_replied_to() {
         Some(OneMessage::Reply("Sam".into(), "I'll be there at six".into()))
     );
     assert_eq!(one_message_asked("reply to him saying ok then"), None);
+    assert_eq!(
+        one_message_asked("send a reply to Jane saying Thursday works for me"),
+        Some(OneMessage::Reply("Jane".into(), "Thursday works for me".into()))
+    );
     assert_eq!(one_message_asked("read me a story"), None);
 
     let (mut c, p) = (cfg(), plat());

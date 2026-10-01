@@ -1011,6 +1011,9 @@ pub struct Daemon<'a> {
     /// (`tasks::work_through`, 30 Sep 2026): its steps are carried out and
     /// said by the tick.
     task_loop: Option<tasks::TaskLoop>,
+    /// Whether what a restart cut off (`LEFT_WAITING`) has been read back
+    /// yet; until then it isn't written over.
+    left_waiting_read: bool,
     /// `models.talk` as last followed (`follow_the_talk_setting`), and the
     /// model the talking server was started on.
     talk_setting_seen: Option<String>,
@@ -1779,6 +1782,7 @@ impl<'a> Daemon<'a> {
             deep: crate::deepbrain::DeepBrain::none(),
             deep_look_at: 0,
             task_loop: None,
+            left_waiting_read: false,
             talk_setting_seen: None,
             model_running_id: None,
             pending_seq: 0,
@@ -2974,7 +2978,7 @@ fn send_reply(
     let mut session = crate::smtp::connect(host, provider.smtp_port())?;
     session.ehlo("atlas")?;
     authenticate_smtp(&mut session, from_address, from_password, oauth_client_id)?;
-    session.send_mail(from_address, &pending.to_address, &pending.subject, &pending.body)?;
+    session.send_mail_in(from_address, &pending.to_address, &pending.subject, &pending.body, &pending.thread)?;
     session.quit();
     Ok(())
 }

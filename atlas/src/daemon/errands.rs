@@ -492,6 +492,28 @@ impl<'a> Daemon<'a> {
     /// The first tick after a start: what the last run left unfinished.
     pub(super) fn pick_up_after_restart(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
+        // Questions you hadn't answered and a request being worked through
+        // when Atlas last stopped: named once, never acted on from an old
+        // yes. A day later they're stale and dropped quietly.
+        if !self.left_waiting_read {
+            self.left_waiting_read = true;
+            let left: Vec<super::running::LeftWaiting> = self.store.load(super::running::LEFT_WAITING);
+            let _ = self.store.save(super::running::LEFT_WAITING, &Vec::<super::running::LeftWaiting>::new());
+            let fresh: Vec<_> = left.into_iter().filter(|l| t.saturating_sub(l.at) < 86_400).collect();
+            let asked: Vec<String> = fresh.iter().filter(|l| l.asked).map(|l| l.what.trim_end_matches(['?', '.']).to_string()).collect();
+            let doing: Vec<String> = fresh.iter().filter(|l| !l.asked).map(|l| l.what.clone()).collect();
+            if !asked.is_empty() {
+                out.push(format!(
+                    "Before I restarted, {} waiting on your yes: {}. A yes from before doesn't carry over -- ask again if you still want {}.",
+                    if asked.len() == 1 { "this was" } else { "these were" },
+                    asked.join("; "),
+                    if asked.len() == 1 { "it" } else { "them" }
+                ));
+            }
+            if !doing.is_empty() {
+                out.push(format!("I was partway through {} when I stopped. Ask again and I'll start it fresh.", doing.join(" and ")));
+            }
+        }
         // Windows first: a conversation you left Atlas carrying on is picked
         // back up if its window is still open. You set it going; a restart
         // isn't a reason to ask again.

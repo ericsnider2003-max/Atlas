@@ -318,6 +318,11 @@ impl Research {
             if should_stop() {
                 return Err(AtlasError::Platform("stopped before finishing".into()));
             }
+            // A search result pointing into this machine or your network is
+            // skipped, never fetched (`safe_to_fetch`).
+            if !safe_to_fetch(url) {
+                continue;
+            }
             let mut fv = v.clone();
             fv.insert("url".into(), url.clone());
             // One dead link must not sink the whole job.
@@ -418,6 +423,7 @@ impl Research {
             }
         }
         std::fs::write(&path, md)?;
+        mark_last(&self.cfg.notes_dir, LAST_RESEARCH, &path);
         Ok(path)
     }
 }
@@ -893,3 +899,124 @@ fn figures(text: &str) -> Vec<String> {
     }
     out
 }
+
+/// May research fetch this? Only an http(s) page out on the internet.
+///
+/// Links come from search results -- other people's pages -- and until 1
+/// Oct 2026 any of them was fetched, including `http://localhost:8787/...`
+/// (Atlas's own hub), your router at 192.168.1.1, or the cloud metadata
+/// address 169.254.169.254 (research report, Stage 1 item 7). A page can
+/// plant such a link; fetching it reads, or pokes, something on your side of
+/// the network. A name that resolves to such an address is refused the same.
+pub fn safe_to_fetch(url: &str) -> bool {
+    let lower = url.trim().to_lowercase();
+    let rest = match lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://")) {
+        Some(r) => r,
+        None => return false,
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.contains('@') {
+        return false;
+    }
+    let host = if let Some(v6) = authority.strip_prefix('[') {
+        v6.split(']').next().unwrap_or("").to_string()
+    } else {
+        authority.rsplit_once(':').map(|(h, _)| h).unwrap_or(authority).to_string()
+    };
+    if host.is_empty() {
+        return false;
+    }
+    let local_name = host == "localhost"
+        || [".localhost", ".local", ".internal", ".lan", ".home", ".arpa"].iter().any(|s| host.ends_with(s))
+        || !host.contains('.') && host.parse::<std::net::Ipv6Addr>().is_err();
+    if local_name {
+        return false;
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return is_public(ip);
+    }
+    // A name: every address it resolves to must be public. Not resolving
+    // is left to the fetch to fail on.
+    use std::net::ToSocketAddrs;
+    match (host.as_str(), 80).to_socket_addrs() {
+        Ok(addrs) => addrs.map(|a| a.ip()).all(is_public),
+        Err(_) => true,
+    }
+}
+
+fn is_public(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v) => {
+            let o = v.octets();
+            !(v.is_loopback()
+                || v.is_private()
+                || v.is_link_local()
+                || v.is_unspecified()
+                || v.is_broadcast()
+                || v.is_multicast()
+                || o[0] == 0
+                || (o[0] == 100 && (64..128).contains(&o[1])) // carrier-grade NAT, Tailscale
+                || (o[0] == 198 && (o[1] == 18 || o[1] == 19)))
+        }
+        std::net::IpAddr::V6(v) => {
+            let seg = v.segments();
+            if let Some(v4) = v.to_ipv4_mapped() {
+                return is_public(std::net::IpAddr::V4(v4));
+            }
+            !(v.is_loopback()
+                || v.is_unspecified()
+                || v.is_multicast()
+                || (seg[0] & 0xfe00) == 0xfc00
+                || (seg[0] & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+#[cfg(test)]
+mod fetching {
+    use super::safe_to_fetch;
+
+    #[test]
+    fn this_machine_and_your_network_are_never_fetched() {
+        for u in [
+            "http://localhost:8787/hub",
+            "http://127.0.0.1/",
+            "http://192.168.1.1/admin",
+            "http://10.0.0.5/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::1]:8080/",
+            "http://router.local/",
+            "http://100.101.102.103/",
+            "file:///C:/Users",
+            "http://user@example.com/",
+            "http://intranet/",
+        ] {
+            assert!(!safe_to_fetch(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn a_public_page_is_fetched() {
+        assert!(safe_to_fetch("https://93.184.215.14/page"));
+        assert!(safe_to_fetch("https://8.8.8.8/"));
+    }
+}
+
+/// Which note was the last research write-up, and which the last document
+/// written for you, kept beside them. "Read me the full brief" read the
+/// newest file in the folder -- a letter written a minute after the research
+/// was then "the brief" (research report, Stage 1 item 7).
+pub const LAST_RESEARCH: &str = ".last-research";
+pub const LAST_WRITTEN: &str = ".last-written";
+
+pub fn mark_last(dir: &str, which: &str, path: &str) {
+    let _ = std::fs::write(std::path::Path::new(dir).join(which), path);
+}
+
+/// The note marked as `which`, if it's still there.
+pub fn last(dir: &str, which: &str) -> Option<std::path::PathBuf> {
+    let p = std::fs::read_to_string(std::path::Path::new(dir).join(which)).ok()?;
+    let p = std::path::PathBuf::from(p.trim());
+    p.is_file().then_some(p)
+}
+

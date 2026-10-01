@@ -112,6 +112,23 @@ impl<'a> Daemon<'a> {
             note(&mut failed, "index", r);
         }
         note(&mut failed, "long_work", self.long_work.save(&self.store));
+        // What a restart would cut off while it waits on you: questions not
+        // yet answered and a request being worked through. Until 1 Oct 2026
+        // these lived only in memory and a restart dropped them silently
+        // (research report, Stage 1 item 6). Kept as words: they're named
+        // after a restart and asked again, never carried out on an old yes.
+        if self.left_waiting_read {
+            let mut waiting: Vec<LeftWaiting> = self
+                .session
+                .all_approvals()
+                .into_iter()
+                .map(|(_, d)| LeftWaiting { what: d, asked: true, at: crate::store::now() })
+                .collect();
+            if let Some(l) = &self.task_loop {
+                waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
+            }
+            note(&mut failed, "left_waiting", self.store.save(LEFT_WAITING, &waiting));
+        }
         // What research taught it. Absent from this list when `learned`
         // gained its first caller, which would have made the knowledge
         // store a write-only diary that died with the process.
@@ -1629,3 +1646,16 @@ impl Drop for Daemon<'_> {
         self.persist();
     }
 }
+
+/// Where `persist` keeps what a restart would cut off.
+pub(super) const LEFT_WAITING: &str = "left_waiting";
+
+/// One thing left waiting when Atlas stopped.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct LeftWaiting {
+    pub what: String,
+    /// A question to you (true), or work being done (false).
+    pub asked: bool,
+    pub at: u64,
+}
+

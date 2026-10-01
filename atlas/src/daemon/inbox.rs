@@ -486,6 +486,10 @@ impl<'a> Daemon<'a> {
                                                     critique: notes,
                                                     created_at: created,
                                                     status: crate::outbox::Status::Waiting,
+                                                    thread: crate::outbox::Thread::replying_to(
+                                                        &m.message_id,
+                                                        &m.references.split_whitespace().map(String::from).collect::<Vec<_>>(),
+                                                    ),
                                                 };
                                                 if may_email_clients {
                                                     match send_reply(
@@ -932,6 +936,7 @@ impl<'a> Daemon<'a> {
             critique: Vec::new(),
             created_at: now,
             status: crate::outbox::Status::Waiting,
+            thread: Default::default(),
         };
         let mut outbox = crate::outbox::Outbox::load(&self.store);
         outbox.add(draft);
@@ -995,6 +1000,7 @@ impl<'a> Daemon<'a> {
                     critique: Vec::new(),
                     created_at: now,
                     status: crate::outbox::Status::Waiting,
+                    thread: crate::outbox::Thread::replying_to(&letter.id, &letter.refs),
                 };
                 let mut outbox = crate::outbox::Outbox::load(&self.store);
                 outbox.add(draft);
@@ -1052,7 +1058,7 @@ impl<'a> Daemon<'a> {
         let work: crew::Work = Box::new(move |_ctl| {
             let sent = match &himalaya {
                 Some((program, name)) => crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000)).and_then(|_| {
-                    let text = crate::smtp::message_text(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now());
+                    let text = crate::smtp::message_text_in(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
                     crate::himalaya::send(program, name, &text)
                 }),
                 None => send_reply(&pending, &account.address, &password, account.oauth.then_some(account.client_id.as_str())),
@@ -1168,6 +1174,7 @@ impl<'a> Daemon<'a> {
                 critique: notes,
                 created_at: created,
                 status: crate::outbox::Status::Waiting,
+                thread: Default::default(),
             };
 
             let mut outbox = crate::outbox::Outbox::load(&store);
@@ -1238,7 +1245,14 @@ pub enum OneMessage {
 pub fn one_message_asked(said: &str) -> Option<OneMessage> {
     let s = said.trim().trim_end_matches(['.', '!', '?']);
     let low = s.to_lowercase();
-    for lead in ["reply to the email from ", "reply to the message from ", "write back to ", "reply to ", "answer the email from "] {
+    // "Send a reply to Jane saying ..." / "email back Jane saying ...":
+    // the same as "reply to Jane saying ..." (research report, Stage 1 item
+    // 8: it was taken as a new email, outside the conversation).
+    for lead in [
+        "reply to the email from ", "reply to the message from ", "write back to ", "reply to ", "answer the email from ",
+        "send a reply to ", "send back to ", "email back ", "respond to the email from ", "respond to ",
+        "can you reply to ", "please reply to ",
+    ] {
         if let Some(rest_low) = low.strip_prefix(lead) {
             let (at, mark) = [" saying ", " and say ", " telling them ", ": ", ", "]
                 .iter()

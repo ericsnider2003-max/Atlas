@@ -228,6 +228,7 @@ fn pulling_up_a_draft_reads_the_outbox_directly_without_touching_the_crew() {
         critique: Vec::new(),
         created_at: 0,
         status: atlas::outbox::Status::Waiting,
+        thread: Default::default(),
     });
     outbox.save(&d.store).unwrap();
 
@@ -278,6 +279,7 @@ fn throwing_away_a_draft_marks_it_discarded_and_removes_it_from_the_waiting_set(
         critique: Vec::new(),
         created_at: 0,
         status: atlas::outbox::Status::Waiting,
+        thread: Default::default(),
     });
     outbox.save(&d.store).unwrap();
 
@@ -376,6 +378,7 @@ fn outreach_at_the_daily_cap_is_held_rather_than_sent() {
         critique: Vec::new(),
         created_at: atlas::store::now(),
         status: atlas::outbox::Status::Sent,
+        thread: Default::default(),
     });
     outbox.save(&d.store).unwrap();
 
