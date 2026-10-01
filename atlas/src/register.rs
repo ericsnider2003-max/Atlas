@@ -147,7 +147,13 @@ fn is_a_task(t: &str) -> bool {
     // those got two sentences and the shortest reply window).
     let asks_to_be_shown = ["show me how", "show me what", "show me why", "find me a good", "find me some", "tell me"]
         .iter()
-        .any(|p| t.starts_with(p));
+        .any(|p| t.starts_with(p))
+        // "find me a book" is asking for a suggestion; "find me the lease"
+        // or "find me a file" is a search of your things.
+        || ((t.starts_with("find me a ") || t.starts_with("find me an "))
+            && !["file", "document", "doc", "pdf", "folder", "email", "mail", "note", "photo", "picture", "spreadsheet"]
+                .iter()
+                .any(|w| t.split_whitespace().any(|x| x.trim_end_matches('s') == *w)));
     if TASK_VERBS.contains(&first) && !asks_to_be_shown {
         return true;
     }

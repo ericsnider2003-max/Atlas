@@ -353,6 +353,7 @@ impl<'a> Daemon<'a> {
             just_spoke: how == Arrival::OpenMic
                 && self.last_spoke_at != 0
                 && t.saturating_sub(self.last_spoke_at) <= crate::addressing::STILL_TALKING_SECS,
+            other_voice: how == Arrival::OpenMic && matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)),
             ..Default::default()
         };
         let judged = assess(said, &situation);
@@ -363,6 +364,9 @@ impl<'a> Daemon<'a> {
             // from one that has crashed.
             Addressed::Ignore if how == Arrival::Directed => {}
             Addressed::Ignore => return String::new(),
+            // Another voice answering: the question you were asked stays
+            // open for you, so nothing is asked in its place.
+            Addressed::Ask(q) if situation.other_voice => return q,
             Addressed::Ask(q) => {
                 self.session.ask(&q);
                 return q;
@@ -503,10 +507,25 @@ impl<'a> Daemon<'a> {
         // three of these went to the model, which said "I'm already on it"
         // and started nothing). With nothing asked yet, it says how to ask.
         let research_again;
-        let said = if matches!(self.parser.parse(said), Intent::Unknown(_)) && crate::references::starts_the_research(said) {
+        // "research it again", "look that up again": the topic is the last
+        // one, not the word "it" (30 Sep 2026: searched for "it").
+        let only_a_pronoun = |a: &str| {
+            let rest: Vec<&str> = a
+                .split_whitespace()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+                .filter(|w| !matches!(*w, "" | "again" | "more" | "further" | "please" | "up" | "on"))
+                .collect();
+            !rest.is_empty() && rest.iter().all(|w| matches!(*w, "it" | "that" | "this" | "them" | "those"))
+        };
+        let parsed_now = self.parser.parse(said);
+        let research_of_it = matches!(&parsed_now, Intent::Research(a) if only_a_pronoun(&a.to_lowercase()));
+        let said = if research_of_it || (matches!(parsed_now, Intent::Unknown(_)) && crate::references::starts_the_research(said)) {
             match self.referents.last_topic.clone() {
                 Some(topic) => {
-                    research_again = format!("research {topic}");
+                    // "again" kept: it asks for a fresh look, not the
+                    // answer from last time (`research_from_request`).
+                    let again = if said.to_lowercase().split_whitespace().any(|w| w.trim_matches(|c: char| !c.is_alphanumeric()) == "again") { " again" } else { "" };
+                    research_again = format!("research {topic}{again}");
                     research_again.as_str()
                 }
                 None => {
@@ -1109,6 +1128,8 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.writing_help(raw))
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.one_message_help(raw))
+            .or_else(|| self.text_help(raw))
             .or_else(|| self.compose_help(raw))
             .or_else(|| self.progress_help(raw))
             .or_else(|| self.unsubscribe_help(raw))
@@ -1142,6 +1163,8 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.writing_help(raw))
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.one_message_help(raw))
+            .or_else(|| self.text_help(raw))
             .or_else(|| self.compose_help(raw))
             .or_else(|| self.progress_help(raw))
             .or_else(|| self.unsubscribe_help(raw))

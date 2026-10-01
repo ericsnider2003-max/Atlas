@@ -21,7 +21,10 @@ impl<'a> Daemon<'a> {
         // A setting changed since the last thing you asked applies to this
         // one. The voice loop and the typed prompt don't tick, so this is
         // where they pick changes up.
-        let _ = self.pick_up_settings();
+        // A settings file that won't read is said with this answer: the
+        // loop's tick says it too, but the typed console never ticks, and
+        // dropping it here also marked it seen (30 Sep 2026: lost).
+        let warned: Vec<String> = self.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")).collect();
         // Also set here, not only in `turn_from`: the one-shot CLI path
         // (`atlas "..."`) parses and executes without going through a turn at
         // all, and a correction typed at the command line is still a
@@ -39,7 +42,11 @@ impl<'a> Daemon<'a> {
             started.elapsed().as_millis().min(u32::MAX as u128) as u32,
         );
         self.timing.add(timed);
-        out
+        if warned.is_empty() {
+            out
+        } else {
+            format!("{} {out}", warned.join(" "))
+        }
     }
 
     pub fn execute(&mut self, intent: &Intent) -> String {

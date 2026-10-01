@@ -230,9 +230,7 @@ impl<S: Read + Write> Session<S> {
         if r.code != 354 {
             return Err(format!("server refused to start the message: {}", r.text()));
         }
-        let escaped_body = escape_dot_stuffing(body);
-        let message =
-            format!("From: {from}\r\nTo: {to}\r\nSubject: {subject}\r\n\r\n{escaped_body}\r\n.\r\n");
+        let message = format!("{}\r\n.\r\n", escape_dot_stuffing(&message_text(from, to, subject, body, crate::store::now())));
         self.stream.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())?;
         let r = self.read_reply().map_err(|e| e.to_string())?;
@@ -245,6 +243,55 @@ impl<S: Read + Write> Session<S> {
     pub fn quit(&mut self) {
         let _ = self.command("QUIT");
     }
+}
+
+/// A whole message as mail servers expect it: a `Date` and `Message-ID`
+/// (without them many providers score it as spam), the character set said
+/// (a curly apostrophe or an accent arrived as mojibake), and a subject
+/// that isn't plain ASCII encoded (RFC 2047). Lines end CRLF. 30 Sep 2026:
+/// only From, To and Subject were written.
+pub fn message_text(from: &str, to: &str, subject: &str, body: &str, now: u64) -> String {
+    let subject_line = if subject.is_ascii() {
+        subject.replace(['\r', '\n'], " ")
+    } else {
+        format!("=?UTF-8?B?{}?=", crate::b64::encode(subject.replace(['\r', '\n'], " ").as_bytes()))
+    };
+    let domain = from.rsplit_once('@').map(|(_, d)| d).unwrap_or("atlas.local");
+    let id = crate::digest::sha256_hex(format!("{from}{to}{subject}{now}{body}").as_bytes());
+    let body = body.replace("\r\n", "\n").replace('\n', "\r\n");
+    format!(
+        "Date: {}\r\nFrom: {from}\r\nTo: {to}\r\nSubject: {subject_line}\r\nMessage-ID: <{}@{domain}>\r\nMIME-Version: 1.0\r\n\
+         Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}",
+        rfc2822_date(now),
+        &id[..24]
+    )
+}
+
+/// `Tue, 30 Sep 2026 18:04:05 +0000`.
+pub fn rfc2822_date(t: u64) -> String {
+    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let days = (t / 86_400) as i64;
+    let secs = t % 86_400;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!(
+        "{}, {:02} {} {} {:02}:{:02}:{:02} +0000",
+        DAYS[(days.rem_euclid(7)) as usize],
+        d,
+        MONTHS[(m - 1) as usize],
+        y,
+        secs / 3600,
+        (secs / 60) % 60,
+        secs % 60
+    )
 }
 
 /// SMTP's "dot-stuffing": a line that starts with `.` is escaped to `..`

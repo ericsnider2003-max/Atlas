@@ -381,7 +381,10 @@ fn see_through(hwnd: isize) -> bool {
         return SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok();
     }
     #[cfg(not(windows))]
-    true
+    {
+        let _ = hwnd;
+        true
+    }
 }
 
 #[cfg(feature = "desktop-ui")]

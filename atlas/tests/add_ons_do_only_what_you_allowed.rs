@@ -346,3 +346,33 @@ fn a_note_and_an_add_on_actually_arrive_on_your_other_device() {
     assert_eq!(found.len(), 1, "the add-on didn't follow you");
     assert_eq!(found[0].status, plugins::Status::Waiting, "an approval came through an unsealed bundle");
 }
+
+/// `sync.automatic`: with a folder you chose, a note reaches your other
+/// device without anyone saying "sync" (30 Sep 2026 sweep: the setting was
+/// read by nothing).
+#[test]
+fn with_a_folder_chosen_your_devices_carry_each_other_by_themselves() {
+    let folder = tmp("auto-sync-folder");
+    let make = |name: &str| {
+        let mut c = cfg();
+        let t = c.tools.as_mut().unwrap();
+        t.sync.enabled = true;
+        t.sync.automatic = true;
+        t.sync.name = name.into();
+        t.sync.folder = folder.to_string_lossy().into_owned();
+        t.sync.encrypt_bundles = false;
+        c
+    };
+    let (lc, pc, p) = (make("laptop"), make("phone"), plat());
+    let laptop = Rig::new("auto-sync-laptop", ADDON);
+    let phone = Rig::new("auto-sync-phone", ADDON);
+    let mut l = laptop.daemon(&lc, &p);
+    l.turn("note that the rack needs a ten inch shelf", 1_000);
+    l.tick(1_000 + atlas::daemon::AUTO_SYNC_EVERY_SECS);
+    let mut ph = phone.daemon(&pc, &p);
+    ph.tick(1_100 + atlas::daemon::AUTO_SYNC_EVERY_SECS);
+    assert!(
+        ph.notebook.notes.iter().any(|n| n.text.contains("ten inch shelf")),
+        "nothing crossed without being asked"
+    );
+}

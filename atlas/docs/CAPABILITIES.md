@@ -169,6 +169,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | sort an inbox by what it asks of you | working | `triage` | ready | ready | ready | ready | ready | ready |
 | reach your mailbox, whoever provides it | switched off | `mail` `imap` `smtp` `mailthread` `ratelimit` `himalaya` `msoauth` | ready | ready | ready | ready | ready | ready |
 | clear out what you never read, safely | switched off | `unsub` | ready | ready | ready | ready | ready | ready |
+| write a text to someone whose number you've given, ready on your phone to send with one tap -- Atlas can't send or read texts itself | built, never run for real | `texting` | ready | ready | ready | catch | would | catch |
 | keep who owes you a reply and what you promised, read from the mail you sent, and learn from what you say was never one | built, never run for real | `waitingfor` `mailbook` | ready | ready | ready | catch | would | catch |
 | know what you ordered and where it is, read off the retailer's own emails | built, never run for real | `orders` | ready | ready | ready | ready | ready | ready |
 | draft replies to clients and brands and hold them for you, or send them on your standing approval -- and cold-email only people you've named | built, never run for real | `outbox` `outreach` | ready | ready | ready | ready | ready | ready |
@@ -355,4 +356,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-236 things, across 399 of 435 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+237 things, across 400 of 436 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

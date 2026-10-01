@@ -403,7 +403,10 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
                 Some(dir) => {
                     let mut settings = crate::settings::registry(&d.tools_cfg());
                     let kept = settings.set_and_keep("hunt.enabled", if on { "on" } else { "off" }, &dir);
-                    let _ = d.pick_up_settings();
+                    let warned: Vec<String> = d.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")).collect();
+                    if !warned.is_empty() {
+                        reply = warned.join(" ");
+                    }
                     if kept.starts_with("I couldn't keep") || kept.starts_with("no setting") {
                         reply = kept;
                     }

@@ -1135,6 +1135,19 @@ impl<'a> Daemon<'a> {
             // ended, nothing was answered and nothing was said, so a cold or
             // a new headset read as Atlas being switched off. See
             // `voiceid::handle`'s own doc for why that is gone.
+            // The evidence for where the lines should sit (`calibration_report`).
+            match (&how, &self.last_verdict) {
+                (_, crate::voiceid::Verdict::NotEnrolled) => {}
+                (Arrival::Directed, v) => {
+                    self.voice_id.note_after_name(v.score());
+                    let _ = self.voice_id.save(&self.store);
+                }
+                (Arrival::OpenMic, crate::voiceid::Verdict::NotYou(s)) => {
+                    self.voice_id.note_turned_away(*s);
+                    let _ = self.voice_id.save(&self.store);
+                }
+                _ => {}
+            }
             if matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)) {
                 self.log.info(&format!(
                     "a voice that didn't match yours ({:.2}) -- carrying on, and \

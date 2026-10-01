@@ -64,6 +64,11 @@ pub struct Situation {
     /// is the conversation carrying on, so talking about "him" or "them" is
     /// not a sign it was meant for someone else.
     pub just_spoke: bool,
+    /// The speaker check said this clearly wasn't your voice (`voiceid`'s
+    /// `NotYou`, not its unsure band). Only consulted on the open floor:
+    /// your name or the wake word still settles it, so a check that gets
+    /// you wrong costs one "Atlas, ..." rather than locking you out.
+    pub other_voice: bool,
 }
 
 /// How long after Atlas speaks a follow-up is still the same conversation.
@@ -81,6 +86,19 @@ pub fn assess(said: &str, s: &Situation) -> Assessment {
             confidence: 0.98,
             kind,
             why: "you addressed it by name".into(),
+        };
+    }
+
+    // Not your voice, and not said to Atlas by name: on the open floor this
+    // is the television, the radio, or someone else in the room. It must
+    // not answer Atlas's question for you either -- a stranger's "yes" is
+    // not your approval (30 Sep 2026: the reply window answered anyone).
+    if s.other_voice {
+        return Assessment {
+            directed: Directed::Overheard,
+            confidence: 0.1,
+            kind,
+            why: "a voice that isn't yours, not said to Atlas by name".into(),
         };
     }
 
@@ -167,6 +185,12 @@ pub fn assess(said: &str, s: &Situation) -> Assessment {
 pub fn respond(a: &Assessment, s: &Situation) -> Response {
     match a.directed {
         Directed::AtAtlas => Response::Act,
+        // Atlas asked you something and another voice answered: said once,
+        // with how to answer if it was you after all, and nothing done.
+        Directed::Overheard if s.other_voice && s.awaiting_answer => {
+            Response::Ask("I didn't recognise that voice. If it was you, start with my name and answer again.".into())
+        }
+        Directed::Overheard if s.other_voice => Response::Ignore,
         // Mid-conversation, a follow-up is never dropped without a word: at
         // worst Atlas asks.
         Directed::Overheard if s.just_spoke => Response::Ask("Sorry -- was that for me?".into()),

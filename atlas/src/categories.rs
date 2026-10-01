@@ -297,6 +297,11 @@ pub fn consent_line(cat: Category, what: &str) -> String {
         Category::ExternalAiCreative => {
             format!("{what} would send your content to an outside AI service. Go ahead?")
         }
+        // A message is sent as you; it signs you up to nothing (30 Sep 2026:
+        // "message Sam saying on my way" was asked about agreeing to terms).
+        Category::AgreementExternal if what.to_lowercase().contains("sending a message") => {
+            format!("{what} -- it goes as you. Go ahead?")
+        }
         Category::AgreementExternal => {
             format!("{what} would sign you up and agree to their terms as you. Go ahead?")
         }

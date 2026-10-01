@@ -250,8 +250,31 @@ impl Thread {
         // 2026 may hold Atlas's own reply boilerplate (`clean_summary`).
         let replies: Vec<&str> = self.recent.iter().map(|e| e.reply.as_str()).collect();
         let summary = clean_summary(&self.summary, &replies);
+        // What Atlas said without being asked (finished research, an errand
+        // done): no turn of yours to hang it on, so the model is told it
+        // here, the last few only (30 Sep 2026: results said into the room
+        // were nowhere, and "what did you find?" got "I don't know").
+        let told: Vec<String> = self
+            .recent
+            .iter()
+            .enumerate()
+            .filter(|(i, e)| self.folded + i >= from && e.said.trim().is_empty() && !e.reply.trim().is_empty())
+            .map(|(_, e)| crate::repeating::for_history(&e.reply, HISTORY_SENTENCES))
+            .filter(|r| !r.trim().is_empty())
+            .collect();
+        let told = &told[told.len().saturating_sub(3)..];
+        let mut earlier = String::new();
         if !summary.trim().is_empty() {
-            out.push(Msg::system(format!("Earlier: {}", summary.trim())));
+            earlier = format!("Earlier: {}", summary.trim());
+        }
+        if !told.is_empty() {
+            if !earlier.is_empty() {
+                earlier.push('\n');
+            }
+            earlier.push_str(&format!("You told them without being asked: {}", told.join(" | ")));
+        }
+        if !earlier.is_empty() {
+            out.push(Msg::system(earlier));
         }
         // Atlas's own past replies go back only as their first sentence or
         // two, without the stock closers, and a reply that says again what

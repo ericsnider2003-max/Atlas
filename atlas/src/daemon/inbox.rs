@@ -941,6 +941,71 @@ impl<'a> Daemon<'a> {
         Some(format!("To {name} ({address}): \"{body}\" Say \"send it\" and it goes, or \"scrap the draft to {name}\"."))
     }
 
+    /// One message you were sent: "read me the email from Sam", and "reply
+    /// to Sam saying I'll be there" (30 Sep 2026 sweep: mail could be
+    /// summarised and drafted to, but not read or answered one at a time).
+    /// From the mail Atlas already fetched (`MailBook`); a reply is a draft
+    /// that waits for "send it", like any other.
+    pub(super) fn one_message_help(&mut self, said: &str) -> Option<String> {
+        let asked = one_message_asked(said)?;
+        let book: crate::mailbook::MailBook = self.store.load(crate::mailbook::MailBook::FILE);
+        let who = match &asked {
+            OneMessage::Read(w) | OneMessage::Reply(w, _) => w.clone(),
+        };
+        let Some(letter) = book.with(&who, 50).into_iter().find(|l| !l.mine && l.from.contains('@')).cloned() else {
+            return Some(format!(
+                "I haven't got an email from {who} in what I've fetched. Say \"check my email\" and ask again."
+            ));
+        };
+        let name = if letter.from_name.trim().is_empty() { letter.from.clone() } else { letter.from_name.clone() };
+        let when = crate::freshness::ago(crate::store::now().saturating_sub(letter.at));
+        match asked {
+            OneMessage::Read(_) => {
+                self.draft_last_read = Some(letter.from.clone());
+                let subject = if letter.subject.trim().is_empty() { "no subject".to_string() } else { format!("\"{}\"", letter.subject.trim()) };
+                Some(format!(
+                    "From {name}, {when}, {subject}: {} Say \"reply to {} saying\" and what to say, and I'll draft it.",
+                    letter.excerpt.trim(),
+                    name.split_whitespace().next().unwrap_or(&name)
+                ))
+            }
+            OneMessage::Reply(_, message) => {
+                let cfg = self.tools_cfg().mail.clone();
+                let Some(account) = cfg.accounts.first().cloned() else {
+                    return Some("I can't reply yet -- there's no mail account set up. Add one in Settings, under Mail.".into());
+                };
+                let body = crate::outbox::body_from_spoken(&message);
+                let subject = if letter.subject.to_lowercase().starts_with("re:") {
+                    letter.subject.clone()
+                } else if letter.subject.trim().is_empty() {
+                    crate::outbox::subject_from_body(&body)
+                } else {
+                    format!("Re: {}", letter.subject.trim())
+                };
+                let now = crate::store::now();
+                let draft = crate::outbox::PendingReply {
+                    id: crate::outbox::Outbox::make_id(&account.name, &letter.from, now),
+                    account: account.name.clone(),
+                    to_address: letter.from.clone(),
+                    to_name: name.clone(),
+                    subject: subject.clone(),
+                    body: body.clone(),
+                    kind: crate::outbox::Kind::Client,
+                    critique: Vec::new(),
+                    created_at: now,
+                    status: crate::outbox::Status::Waiting,
+                };
+                let mut outbox = crate::outbox::Outbox::load(&self.store);
+                outbox.add(draft);
+                if let Err(e) = outbox.save(&self.store) {
+                    return Some(format!("I wrote it but couldn't keep the draft ({e}), so nothing's waiting to send."));
+                }
+                self.draft_last_read = Some(letter.from.clone());
+                Some(format!("Reply to {name}, {subject}: \"{body}\" Say \"send it\" and it goes."))
+            }
+        }
+    }
+
     /// Send a waiting draft: to `who` (a name or address), or the only one
     /// waiting. On the crew, because it's a network call.
     fn send_draft(&mut self, who: Option<&str>) -> String {
@@ -966,19 +1031,32 @@ impl<'a> Daemon<'a> {
             return "There's no mail account set up to send it from.".into();
         };
         let now = crate::store::now();
-        let password = match crate::mail::credential_source(&account)
-            .map(|n| n.to_string())
-            .map_err(|e| e.to_string())
-            .and_then(|n| self.vault.get(&n, now).map_err(|e| e.to_string()))
-        {
-            Ok(p) => p,
-            Err(e) => return format!("I can't send from {} yet: {e}. It's still waiting.", account.name),
+        // Through Himalaya when that's how your mail is read: it keeps its
+        // own password, so nothing comes out of the vault for it.
+        let himalaya = cfg.by_himalaya().then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
+        let password = if himalaya.is_some() {
+            String::new()
+        } else {
+            match crate::mail::credential_source(&account)
+                .map(|n| n.to_string())
+                .map_err(|e| e.to_string())
+                .and_then(|n| self.vault.get(&n, now).map_err(|e| e.to_string()))
+            {
+                Ok(p) => p,
+                Err(e) => return format!("I can't send from {} yet: {e}. It's still waiting.", account.name),
+            }
         };
         let store = self.store.clone();
         let to = pending.to_name.clone();
         let work: crew::Work = Box::new(move |_ctl| {
-            send_reply(&pending, &account.address, &password, account.oauth.then_some(account.client_id.as_str()))
-                .map_err(|e| format!("the reply to {} didn't go: {e}. It's still waiting.", pending.to_name))?;
+            let sent = match &himalaya {
+                Some((program, name)) => crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000)).and_then(|_| {
+                    let text = crate::smtp::message_text(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now());
+                    crate::himalaya::send(program, name, &text)
+                }),
+                None => send_reply(&pending, &account.address, &password, account.oauth.then_some(account.client_id.as_str())),
+            };
+            sent.map_err(|e| format!("the reply to {} didn't go: {e}. It's still waiting.", pending.to_name))?;
             let mut outbox = crate::outbox::Outbox::load(&store);
             outbox.mark_sent(&pending.id);
             outbox.save(&store).map_err(|e| format!("it went, but I couldn't note that it did ({e})"))?;
@@ -1145,4 +1223,58 @@ fn address_in_mail(book: &crate::mailbook::MailBook, who: &str) -> Option<String
         }
         None
     })
+}
+
+/// What "one message" asked for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OneMessage {
+    Read(String),
+    Reply(String, String),
+}
+
+/// "read me the email from Sam", "what did Sam's email say", "reply to Sam
+/// saying ...", "write back to Sam: ...". `None` for anything else.
+pub fn one_message_asked(said: &str) -> Option<OneMessage> {
+    let s = said.trim().trim_end_matches(['.', '!', '?']);
+    let low = s.to_lowercase();
+    for lead in ["reply to the email from ", "reply to the message from ", "write back to ", "reply to ", "answer the email from "] {
+        if let Some(rest_low) = low.strip_prefix(lead) {
+            let (at, mark) = [" saying ", " and say ", " telling them ", ": ", ", "]
+                .iter()
+                .filter_map(|m| rest_low.find(m).map(|i| (i, *m)))
+                .min_by_key(|(i, _)| *i)?;
+            let who = s[lead.len()..lead.len() + at].trim().to_string();
+            let message = s[lead.len() + at + mark.len()..].trim().to_string();
+            if who.is_empty() || who.split_whitespace().count() > 4 || message.split_whitespace().count() < 2 {
+                return None;
+            }
+            if ["him", "her", "them", "it", "that"].contains(&who.to_lowercase().as_str()) {
+                return None;
+            }
+            return Some(OneMessage::Reply(who, message));
+        }
+    }
+    let leads = [
+        "read me the email from ", "read the email from ", "read me the last email from ", "read me the latest email from ",
+        "read the last email from ", "read the latest email from ", "what did the email from ", "read me the message from ",
+        "read my email from ", "open the email from ",
+    ];
+    for lead in leads {
+        if let Some(rest) = low.strip_prefix(lead) {
+            let who = rest.trim_end_matches(" say").trim();
+            let who = &s[lead.len()..lead.len() + who.len()];
+            if !who.trim().is_empty() && who.split_whitespace().count() <= 4 {
+                return Some(OneMessage::Read(who.trim().to_string()));
+            }
+        }
+    }
+    // "what did Sam's email say"
+    if let Some(rest) = low.strip_prefix("what did ") {
+        if let Some(who) = rest.strip_suffix("'s email say").or_else(|| rest.strip_suffix("s email say")) {
+            if !who.trim().is_empty() && who.split_whitespace().count() <= 4 {
+                return Some(OneMessage::Read(s["what did ".len().."what did ".len() + who.len()].trim().to_string()));
+            }
+        }
+    }
+    None
 }

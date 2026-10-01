@@ -93,6 +93,9 @@ fn scheduling_a_repeat_stores_it_once_and_reads_it_on_each_day() {
 fn a_reminder_is_confirmed_and_then_fires_once_as_it_comes_due() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "reminder");
+    // At the desk (keyboard touched just now): a reminder is said here. Away,
+    // it goes the way any note does -- see the test below.
+    *p.input_idle.borrow_mut() = Some(0);
     // Schedule something well ahead with a reminder.
     let reply = d.turn("schedule dentist tomorrow at 9am, remind me 15 minutes before", NOON);
     assert!(reply.to_lowercase().contains("remind"), "should confirm the reminder: {reply}");
@@ -256,4 +259,20 @@ fn blocking_off_time_reads_as_a_block_not_a_meeting() {
         kinds.contains(&EventKind::TimeBlock) && kinds.contains(&EventKind::Meeting),
         "the two should read differently: {kinds:?}"
     );
+}
+
+/// Away from the desk, a reminder isn't said to an empty room: it goes the
+/// way any note does, and is kept for you if nothing else reaches you
+/// (30 Sep 2026 sweep).
+#[test]
+fn a_reminder_while_you_are_away_is_not_said_to_an_empty_room() {
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "reminder-away");
+    let reply = d.turn("schedule dentist tomorrow at 9am, remind me 15 minutes before", NOON);
+    assert!(reply.to_lowercase().contains("remind"), "{reply}");
+    let start = d.calendar.next(0).expect("event is there").start;
+    *p.input_idle.borrow_mut() = Some(3600);
+    let out = d.tick(start - 600);
+    assert!(!out.iter().any(|l| l.contains("dentist")), "said into an empty room: {out:?}");
+    assert!(d.outbox.held.iter().any(|n| n.body.contains("dentist")), "not kept for you either");
 }

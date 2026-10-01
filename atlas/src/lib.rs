@@ -38,6 +38,7 @@ pub mod release;
 pub mod yourchanges;
 pub mod roots;
 pub mod smtp;
+pub mod texting;
 pub mod codes;
 pub mod confirmed;
 pub mod companion;

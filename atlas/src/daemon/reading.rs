@@ -125,7 +125,18 @@ impl<'a> Daemon<'a> {
             if let Some(c) = self
                 .known
                 .iter_mut()
-                .find(|c| !c.corrected && crate::consolidate::same_claim(topic, &c.says))
+                // Matched on what was asked (kept as "research: <topic>" on
+                // each confirmation), not on the answer's own wording: a
+                // question and its answer rarely share enough words, so the
+                // cache never answered anything (30 Sep 2026 sweep).
+                .find(|c| {
+                    !c.corrected
+                        && (c.confirmations.iter().any(|f| {
+                            f.source
+                                .strip_prefix("research: ")
+                                .is_some_and(|asked| asked.trim().eq_ignore_ascii_case(topic.trim()) || crate::consolidate::same_claim(topic, asked))
+                        }) || crate::consolidate::same_claim(topic, &c.says))
+                })
             {
                 if !c.worth_rechecking(now_check) {
                     c.asked_about += 1;

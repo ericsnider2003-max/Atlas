@@ -412,11 +412,12 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         // against this voice's own accepted scores — the evidence the
         // open adaptive-threshold ruling needs, gathered where the person
         // deciding will actually see it.
-        match voice_record.thresholds_report(&vid) {
-            Some(report) => {
-                (true, format!("voice-lock on, {enrolled} samples enrolled; {report}"))
-            }
-            None => (true, format!("voice-lock on, {enrolled} samples enrolled")),
+        let reject = if builtin { vid.builtin_reject } else { vid.reject };
+        let reports: Vec<String> = [voice_record.thresholds_report(&vid), voice_record.calibration_report(reject)].into_iter().flatten().collect();
+        if reports.is_empty() {
+            (true, format!("voice-lock on, {enrolled} samples enrolled"))
+        } else {
+            (true, format!("voice-lock on, {enrolled} samples enrolled; {}", reports.join("; ")))
         }
     };
     let vdetail = if builtin && crate::speaker::available(&sp, &vars) {

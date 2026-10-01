@@ -47,6 +47,9 @@ pub struct Contact {
     /// (month, day).
     #[serde(default)]
     pub birthday: Option<(u32, u32)>,
+    /// Phone numbers, as digits with an optional leading `+`.
+    #[serde(default)]
+    pub phones: Vec<String>,
 }
 
 impl Contact {
@@ -191,6 +194,15 @@ impl People {
         Ok(())
     }
 
+    pub fn phone(&mut self, name: &str, number: &str) -> Result<(), Refused> {
+        let n = phone_number(number).ok_or(Refused::Empty)?;
+        let c = self.entry(name)?;
+        if !c.phones.contains(&n) {
+            c.phones.push(n);
+        }
+        Ok(())
+    }
+
     pub fn birthday(&mut self, name: &str, month: u32, day: u32) -> Result<(), Refused> {
         if !(1..=12).contains(&month) || day == 0 || day > crate::civil::days_in_month(2024, month) {
             return Err(Refused::Empty);
@@ -315,6 +327,22 @@ pub enum Asked {
     Due,
     /// "Sam's email is sam@x.com".
     Email { who: String, address: String },
+    /// "Sam's number is 555 123 4567".
+    Phone { who: String, number: String },
+}
+
+/// A phone number as it can be dialled: its digits, with a leading `+`
+/// kept. `None` when it isn't one (fewer than 7 digits, or letters in it).
+pub fn phone_number(said: &str) -> Option<String> {
+    let t = said.trim().trim_end_matches('.');
+    if t.chars().any(|c| c.is_alphabetic()) {
+        return None;
+    }
+    let digits: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
+    if !(7..=15).contains(&digits.len()) {
+        return None;
+    }
+    Some(if t.starts_with('+') { format!("+{digits}") } else { digits })
 }
 
 fn cadence(words: &str) -> Option<u32> {
@@ -400,6 +428,16 @@ pub fn read(said: &str) -> Option<Asked> {
             let address = s[at + key.len()..].trim().trim_end_matches('.').to_string();
             if !who.is_empty() && address.contains('@') && !address.contains(' ') {
                 return Some(Asked::Email { who, address });
+            }
+        }
+    }
+    // "Sam's number is 555 123 4567", "Sam's cell is ...".
+    for key in ["'s number is ", "'s phone number is ", "'s phone is ", "'s cell is ", "'s cell number is ", "'s mobile is ", "'s mobile number is "] {
+        if let Some(at) = low.find(key) {
+            let who = s[..at].trim().to_string();
+            let number = s[at + key.len()..].trim().to_string();
+            if !who.is_empty() && who.split_whitespace().count() <= 3 && phone_number(&number).is_some() {
+                return Some(Asked::Phone { who, number });
             }
         }
     }

@@ -253,6 +253,14 @@ impl Research {
             .ok_or_else(|| AtlasError::Config("no fetch tool configured".into()))?;
 
         let mut v = self.vars.clone();
+        // The fetch step runs `{browser}`: the one this machine actually has
+        // when the configured path isn't one, as `Browser::start` already
+        // does (30 Sep 2026 sweep: tools.yaml names Chrome under Program
+        // Files, and on a machine with Edge or a per-user Chrome every page
+        // fetch failed, so research found "no sources").
+        if let Some(found) = crate::filmstrip::find_browser(v.get("browser").map(|s| s.as_str())) {
+            v.insert("browser".into(), found.display().to_string());
+        }
         v.insert("query".into(), urlencode(topic));
         v.insert("topic".into(), topic.to_string());
 
