@@ -1613,8 +1613,9 @@ impl<'a> Daemon<'a> {
                     if self.phone_to_retry.len() < PHONE_RETRY_MOST {
                         self.phone_to_retry.push(note.clone());
                         if self.phone_retry_at <= t {
-                            self.phone_retry_at = t + PHONE_RETRY_EVERY_SECS;
+                            self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
                         }
+                        let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
                     }
                     self.outbox.hold(note, &cfg);
                     Sent::Failed(e.to_string())
@@ -1805,8 +1806,20 @@ impl<'a> Daemon<'a> {
     }
 }
 
-/// How often a failed push to the phone is tried again, while you're away.
-pub const PHONE_RETRY_EVERY_SECS: u64 = 300;
+/// The first wait before a failed push to the phone is tried again. Each
+/// failure after doubles it, up to `PHONE_RETRY_LONGEST_SECS`; a push that
+/// lands starts it over. It was a flat five minutes, forgotten on restart
+/// (research report, Stage 1 item 10).
+pub const PHONE_RETRY_EVERY_SECS: u64 = 60;
+pub const PHONE_RETRY_LONGEST_SECS: u64 = 1800;
+
+/// Where notes waiting for another try at the phone are kept.
+pub(super) const PHONE_RETRY_FILE: &str = "phone_retry";
+
+/// How long to wait after `tries` failures in a row.
+pub fn phone_retry_wait(tries: u32) -> u64 {
+    PHONE_RETRY_EVERY_SECS.saturating_mul(1u64 << tries.min(10)).min(PHONE_RETRY_LONGEST_SECS)
+}
 /// The most notes kept for another try: past this they wait for the desk.
 pub const PHONE_RETRY_MOST: usize = 20;
 
@@ -1821,10 +1834,13 @@ impl Daemon<'_> {
         }
         if self.quiet_for(t) <= self.away_after {
             self.phone_to_retry.clear();
+            self.phone_retry_tries = 0;
+            let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
             return;
         }
         let phone_cfg = self.phone_cfg();
         let mut still = Vec::new();
+        let before = self.phone_to_retry.len();
         for note in std::mem::take(&mut self.phone_to_retry) {
             if still.is_empty() && crate::phone::send(&note, &phone_cfg).is_ok() {
                 self.outbox.held.retain(|h| *h != note);
@@ -1837,8 +1853,15 @@ impl Daemon<'_> {
         if let Err(e) = self.outbox.save(&self.store) {
             self.log.warn(&format!("couldn't save what's held for you: {e}"));
         }
+        // Nothing got through: wait longer before the next try.
+        if !still.is_empty() && still.len() == before {
+            self.phone_retry_tries = self.phone_retry_tries.saturating_add(1);
+        } else {
+            self.phone_retry_tries = 0;
+        }
         self.phone_to_retry = still;
-        self.phone_retry_at = t + PHONE_RETRY_EVERY_SECS;
+        let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
+        self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
     }
 }
 

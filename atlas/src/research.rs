@@ -29,6 +29,11 @@ pub struct ResearchConfig {
     /// list `json`). Empty: the `search` tool above, as before. When it
     /// can't be reached or finds nothing, the `search` tool is used instead.
     pub searxng_url: String,
+    /// Fetch pages on this machine or your network too. Off, and meant to
+    /// stay off: it's for testing research against a server of your own
+    /// (`safe_to_fetch`).
+    #[serde(default)]
+    pub pages_on_this_machine: bool,
 }
 
 impl Default for ResearchConfig {
@@ -46,6 +51,7 @@ impl Default for ResearchConfig {
             search: None,
             fetch: None,
             searxng_url: String::new(),
+            pages_on_this_machine: false,
         }
     }
 }
@@ -320,7 +326,7 @@ impl Research {
             }
             // A search result pointing into this machine or your network is
             // skipped, never fetched (`safe_to_fetch`).
-            if !safe_to_fetch(url) {
+            if !self.cfg.pages_on_this_machine && !safe_to_fetch(url) {
                 continue;
             }
             let mut fv = v.clone();

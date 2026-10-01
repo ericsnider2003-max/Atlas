@@ -235,7 +235,11 @@ impl<S: Read + Write> Session<S> {
         if r.code != 354 {
             return Err(format!("server refused to start the message: {}", r.text()));
         }
-        let message = format!("{}\r\n.\r\n", escape_dot_stuffing(&message_text_in(from, to, subject, body, crate::store::now(), thread)));
+        let message = format!("{}\r\n.\r\n", escape_dot_stuffing(&if thread.in_reply_to.is_empty() {
+            message_text(from, to, subject, body, crate::store::now())
+        } else {
+            message_text_in(from, to, subject, body, crate::store::now(), thread)
+        }));
         self.stream.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())?;
         let r = self.read_reply().map_err(|e| e.to_string())?;

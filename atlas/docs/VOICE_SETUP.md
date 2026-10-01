@@ -1,5 +1,19 @@
 # Getting the voice loop running
 
+> **Today (1 Oct 2026): `atlas get everything` sets all of this up** — it
+> downloads every piece below, hash-checked, into Atlas's own folder. The
+> manual steps further down are kept for reference and for machines without
+> the installer.
+>
+> **Which ear is live.** Speech-to-text is Parakeet TDT 0.6B v2 when it has
+> been downloaded (`atlas get hearing`; about a quarter of whisper's time per
+> sentence), whisper.cpp otherwise; `stt_engine` in settings can force either.
+> `atlas doctor` prints the one in use on its `hearing` line. Parakeet is ©
+> NVIDIA under CC BY 4.0 — its credit is in `THIRD_PARTY_NOTICES.md`, with
+> Silero VAD (MIT) and the CAM++ speaker model (Apache-2.0).
+>
+> **The voice.** Kokoro when downloaded, Piper otherwise.
+
 Three free binaries. No subscriptions, no accounts, no cloud. Total install is
 about 20 minutes and roughly 1 GB, most of it the speech model.
 

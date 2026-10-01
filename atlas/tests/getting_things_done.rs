@@ -525,3 +525,36 @@ fn bing_results_are_read_through_its_redirect() {
     let bing = atlas::research::bing_search();
     assert!(bing.args.iter().any(|a| a.ends_with("q={query_pct}&form=QBLH")));
 }
+
+/// Research report, Stage 1 item 10: a failed push waited a flat five
+/// minutes and was forgotten on restart.
+#[test]
+fn a_failed_push_waits_longer_each_time_and_survives_a_restart() {
+    use atlas::daemon::phone_retry_wait;
+    assert_eq!(phone_retry_wait(0), 60);
+    assert_eq!(phone_retry_wait(1), 120);
+    assert_eq!(phone_retry_wait(3), 480);
+    assert_eq!(phone_retry_wait(30), 1800, "capped at half an hour");
+    let (mut c, p) = (cfg(), plat());
+    c.tools.as_mut().unwrap().phone = atlas::phone::PhoneConfig {
+        enabled: true,
+        host: "127.0.0.1:9".into(),
+        path: "/atlas".into(),
+        timeout_secs: 1,
+        ..Default::default()
+    };
+    let dir = tmp("phone-kept");
+    {
+        let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+        let note = atlas::notify::Note::new("Build finished", "all green", atlas::notify::Urgency::Routine, NOW);
+        *p.input_idle.borrow_mut() = Some(4 * 3600);
+        let now = atlas::store::now() + 10 * 3600;
+        d.phone_to_retry.push(note);
+        d.phone_retry_at = now;
+        d.retry_phone(now);
+        assert_eq!(d.phone_to_retry.len(), 1, "nothing listening, so it waits");
+        assert!(d.phone_retry_at >= now + 120, "the second wait is longer than the first");
+    }
+    let d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    assert_eq!(d.phone_to_retry.len(), 1, "still waiting after a restart");
+}

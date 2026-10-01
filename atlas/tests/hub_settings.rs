@@ -85,6 +85,12 @@ fn the_permissions_page_gathers_everything_consequential() {
 /// was always there, finally shows up.
 const DELIBERATELY_DIFFERENT: &[(&str, &str)] = &[
     (
+        "self_work.enabled",
+        "on in the shipped file by Eric's ruling of 30 Sep 2026: bug fixes Atlas may make itself, landing \
+         still waits for his yes. It's the Self-repair switch, and from 1 Oct 2026 the one that's read. \
+         The struct default stays off: an install with no tools.yaml never works on its own code.",
+    ),
+    (
         "wake.enabled",
         "on in the shipped file from 29 Sep 2026 (Eric: talk freely, push-to-talk only as the fallback). \
          The name is listened for on the running microphone stream and speech-to-text runs only while \

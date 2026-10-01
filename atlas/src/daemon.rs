@@ -60,7 +60,8 @@ mod helping;
 mod messages;
 mod hands;
 mod camera;
-pub use hands::{PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
+pub use hands::{phone_retry_wait, PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
+use hands::PHONE_RETRY_FILE;
 pub use errands::CONNECTED_ACCOUNTS;
 pub use tick::moment_clock;
 mod away;
@@ -820,6 +821,8 @@ pub struct Daemon<'a> {
     /// reminder set on the phone never appeared.
     pub said_for_apps: Vec<(u64, String)>,
     pub phone_retry_at: u64,
+    /// Failed tries in a row, for the wait before the next (`retry_phone`).
+    phone_retry_tries: u32,
     /// The last reminder or timer set ("cancel that reminder").
     pub last_reminder_set: Option<u64>,
     /// "Remind me to X" with no time: X, until you say when.
@@ -1694,9 +1697,11 @@ impl<'a> Daemon<'a> {
                 crate::vault::Vault::load(&store_for_vault)
             },
             last_reminder_fired: None,
-            phone_to_retry: Vec::new(),
+            // Kept across a restart (research report, Stage 1 item 10).
+            phone_to_retry: store_for_load.load(PHONE_RETRY_FILE),
             said_for_apps: Vec::new(),
             phone_retry_at: 0,
+            phone_retry_tries: 0,
             last_reminder_set: None,
             reminder_waiting_for_a_time: None,
             weather_place: None,

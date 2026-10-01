@@ -115,6 +115,10 @@ pub trait MicWork: Send {
     /// Here rather than on the loop (28 Sep 2026): six to twenty seconds of
     /// recording after every spoken reply held the hub for all of it.
     fn follow_up(&mut self, secs: u32, stop: &dyn Fn() -> bool) -> Result<Option<String>>;
+    /// Get the microphone running while a reply plays, so the open floor
+    /// after it starts on a recorder that's already going (`follow_up`).
+    /// The default does nothing.
+    fn warm_up(&mut self) {}
     /// How loud Atlas's own voice is right now, 0..1, while it speaks.
     fn playing_level(&mut self) -> Option<f32> {
         None
@@ -1087,6 +1091,9 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                     }
                 }
             }
+            // The recorder for the open floor after this reply, started
+            // now so your first words aren't lost to it starting up.
+            work.warm_up();
             // Once per reply: after you've cut in (or the microphone
             // couldn't be streamed) nothing more is recorded until the
             // reply is over.
