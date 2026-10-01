@@ -160,10 +160,18 @@ pub fn automatic_cost_mb() -> u64 {
 /// makes everything sound like something on it.
 pub const HINTS_GIVEN: usize = 24;
 
-/// The speech model's hint arguments from your words (whisper's `--prompt`),
-/// or nothing when there are none yet.
-pub fn hint_args(v: &Vocabulary) -> (String, String) {
-    let words = v.hints(HINTS_GIVEN);
+/// The speech model's hint arguments (whisper's `--prompt`): `primer` words
+/// first (the assistant's own name, 29 Sep 2026, so there is a prompt before
+/// any of your words are learned), then your words, without the ones already
+/// there -- or nothing when there are none.
+pub fn hint_args(v: &Vocabulary, primer: &[&str]) -> (String, String) {
+    let mut words: Vec<String> = primer.iter().map(|w| w.to_string()).collect();
+    for w in v.hints(HINTS_GIVEN) {
+        if !words.iter().any(|x| x.eq_ignore_ascii_case(&w)) {
+            words.push(w);
+        }
+    }
+    words.truncate(HINTS_GIVEN);
     if words.is_empty() {
         (String::new(), String::new())
     } else {

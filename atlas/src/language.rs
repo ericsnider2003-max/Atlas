@@ -348,3 +348,22 @@ pub fn live_line(t: &Turn) -> String {
         _ => t.readable(),
     }
 }
+
+/// The speech model to use: the sharper one setup fetches
+/// (`getpieces::SHARPER_LISTENING_MODEL`) when it is under `root` and the
+/// configured one is the shipped `ggml-base.en.bin`, else the configured one
+/// (29 Sep 2026). A model you named yourself is always kept.
+pub fn speech_model_for(configured: &str, root: &std::path::Path) -> String {
+    let shipped = configured.replace('\\', "/").ends_with("ggml-base.en.bin") || configured.trim().is_empty();
+    let sharper = root.join(crate::getpieces::SHARPER_LISTENING_MODEL);
+    if shipped && sharper.is_file() {
+        return sharper.display().to_string();
+    }
+    configured.to_string()
+}
+
+/// Words the speech model is primed with before any of your own are known
+/// (whisper's `--prompt`): the assistant's name, which base.en heard as
+/// "At this" and "Brad" (29 Sep 2026). Kept to the name: a long list of
+/// words is what whisper writes back when it hears only silence.
+pub const SPEECH_PRIMER: &[&str] = &["Atlas"];

@@ -312,7 +312,7 @@ impl<'a> Daemon<'a> {
     /// picture arrives in the form the models want.
     ///
     /// The camera is closed on the way out of this function, every time.
-    fn one_frame(&mut self) -> std::result::Result<(Vec<u8>, usize, usize), String> {
+    pub(super) fn one_frame(&mut self) -> std::result::Result<(Vec<u8>, usize, usize), String> {
         let tools = self.tools_cfg();
         let capture = tools
             .capture_webcam
@@ -360,7 +360,7 @@ impl<'a> Daemon<'a> {
     }
 
     /// Open the seeing models, if they are not open already.
-    fn start_looking(&mut self) -> &mut crate::vision::Looking {
+    pub(super) fn start_looking(&mut self) -> &mut crate::vision::Looking {
         if self.looking.is_none() {
             let models = std::path::Path::new(&self.tools_cfg().models.dir).to_path_buf();
             self.looking = Some(crate::vision::Looking::open(&models));
@@ -414,15 +414,10 @@ impl<'a> Daemon<'a> {
             Capture::Screen => (tools.capture_screen.clone(), "screen"),
             Capture::Camera => (tools.capture_webcam.clone(), "webcam"),
         };
-        let Some(tool) = tool else {
-            return format!("There's no {word} capture set up on this machine.");
-        };
         let dir = std::path::PathBuf::from(&tools.work_dir);
         let _ = std::fs::create_dir_all(&dir);
         let t = crate::store::now();
         let shot = dir.join(format!("{word}_{t}.png"));
-        let mut vars = tools.vars.clone();
-        vars.insert("out_png".into(), shot.display().to_string());
         // A question about another app ("what does Slack say?") brings that
         // window forward for the picture and puts yours back afterwards
         // (Eric, G3) — but never while you're in the middle of something.
@@ -431,24 +426,49 @@ impl<'a> Daemon<'a> {
         } else {
             crate::probe::Target::Active
         };
-        if let crate::probe::Target::App(app) = &target {
-            if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
-                return format!(
-                    "You're in the middle of something, so I won't move your windows to look at {app}. \
-                     Ask again when you pause."
-                );
+        // The screen you're working on -- or every screen, or the one you
+        // named -- captured by Atlas itself, in real pixels (29 Sep 2026).
+        // The configured capture (ffmpeg's gdigrab of the whole desktop) is
+        // not DPI-aware: with the laptop's screen scaled and the monitors
+        // not, it cropped the desktop wrongly, and one picture of three
+        // screens shrunk for the reader left each too small to read.
+        let mut label = format!("your {word}");
+        let mut taken_here = false;
+        if matches!(what, Capture::Screen) && matches!(target, crate::probe::Target::Active) {
+            if let Some((named, grab)) = self.screen_picture() {
+                let rgba: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+                let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba { width: grab.width, height: grab.height, pixels: rgba });
+                if std::fs::write(&shot, png).is_ok() {
+                    label = named;
+                    taken_here = true;
+                }
             }
-            let shoot = || -> crate::error::Result<String> {
-                tool.run(&vars, None).map(|_| shot.display().to_string())
+        }
+        if !taken_here {
+            let Some(tool) = tool else {
+                return format!("There's no {word} capture set up on this machine.");
             };
-            if let Err(e) = self.probe.gather(self.cfg, self.plat, &shoot, &target) {
+            let mut vars = tools.vars.clone();
+            vars.insert("out_png".into(), shot.display().to_string());
+            if let crate::probe::Target::App(app) = &target {
+                if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
+                    return format!(
+                        "You're in the middle of something, so I won't move your windows to look at {app}. \
+                         Ask again when you pause."
+                    );
+                }
+                let shoot = || -> crate::error::Result<String> {
+                    tool.run(&vars, None).map(|_| shot.display().to_string())
+                };
+                if let Err(e) = self.probe.gather(self.cfg, self.plat, &shoot, &target) {
+                    let _ = std::fs::remove_file(&shot);
+                    return format!("I couldn't take the picture of {app}: {e}");
+                }
+            } else if let Err(e) = tool.run(&vars, None) {
+                // A capture that failed partway can leave a half-written file.
                 let _ = std::fs::remove_file(&shot);
-                return format!("I couldn't take the picture of {app}: {e}");
+                return format!("I couldn't take the picture: {e}");
             }
-        } else if let Err(e) = tool.run(&vars, None) {
-            // A capture that failed partway can leave a half-written file.
-            let _ = std::fs::remove_file(&shot);
-            return format!("I couldn't take the picture: {e}");
         }
         let small = crate::picture_talk::smaller(&shot);
         // About 3 GB while it runs, so the memory budget gets a say first,
@@ -466,7 +486,11 @@ impl<'a> Daemon<'a> {
             }
             return format!("I can't read it right now: {why}");
         }
-        let question = crate::picture_talk::question_for(&self.last_said);
+        // The camera is asked about you, not about a screen (30 Sep 2026).
+        let question = match what {
+            Capture::Camera => crate::camera_ask::question(&self.last_said),
+            Capture::Screen => crate::picture_talk::question_for(&self.last_said),
+        };
         let shot_again = shot.clone();
         // The model takes a while on a laptop, so it's a crew errand: Atlas
         // keeps listening, "stop" reaches it, and the answer is said when
@@ -490,7 +514,11 @@ impl<'a> Daemon<'a> {
             serde_json::to_string(&o).map_err(|e| e.to_string())
         });
         if self.hand_off("pictures", t, work, Some(word.to_string()), SpeakPolicy::Always) {
-            format!("Looking at your {word} — I'll tell you in a moment.")
+            if matches!(what, Capture::Camera) {
+                // Said as it happens: the camera is never on unannounced.
+                return format!("{} — I'll tell you what I see in a moment.", crate::camera_ask::LOOKING);
+            }
+            format!("Looking at {label} — I'll tell you in a moment.")
         } else {
             self.helpers.finished(name);
             let _ = std::fs::remove_file(&shot_again);
@@ -962,6 +990,13 @@ impl<'a> Daemon<'a> {
     /// "What do you see?"
     pub(super) fn whats_there(&mut self) -> String {
         let cfg = self.tools_cfg().vision.clone();
+        // You asked. The "Recognising things" switch is for looking on
+        // Atlas's own initiative; asked, it looks the way "can you see me"
+        // does -- asked once, said, frame deleted (30 Sep 2026: it answered
+        // "seeing is switched off").
+        if !cfg.enabled {
+            return self.look_at_you();
+        }
         let sight = self.see();
         if let Some(scene) = sight.scene() {
             // A look that half-worked says which half. Reporting only what was
@@ -982,10 +1017,10 @@ impl<'a> Daemon<'a> {
     /// and had no idea which of it was meant.
     pub(super) fn whats_this(&mut self) -> String {
         let cfg = self.tools_cfg().vision.clone();
+        // Asked, so looked -- through the camera path (`look_at_you`), not
+        // refused over a switch meant for looking unasked (30 Sep 2026).
         if !cfg.enabled {
-            return "Seeing is switched off — turn on Recognising things in settings and \
-                    I'll pick this up."
-                .into();
+            return self.look_at_you();
         }
         let (frame, w, h) = match self.one_frame() {
             Ok(f) => f,

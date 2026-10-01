@@ -293,6 +293,10 @@ pub fn classify(intent: &Intent) -> Decision {
         | Intent::PressButton(_)
         // Shows the plan and waits for a yes itself (G5).
         | Intent::MoveBigFiles(_)
+        // Shows the plan and waits for a yes itself; nothing is deleted.
+        | Intent::TidyDesktop
+        // Which microphone to record from: undone by naming another.
+        | Intent::UseMic(_)
         // Works on a copy; the original is only touched after two yeses.
         | Intent::EditMedia(_)
         // Writes a new file beside the original, never over it.

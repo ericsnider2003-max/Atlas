@@ -17,7 +17,13 @@ commands:
     phrases: ["view my display", "look at my screen", "view display",
               "what's on my screen", "whats on my screen", "what is on my screen",
               "what does this chart show", "what does this graph show",
-              "read this chart", "explain this chart", "read this graph"]
+              "read this chart", "explain this chart", "read this graph",
+              # Which screen (29 Sep 2026): the one you're working on unless
+              # you say -- "all my screens", or one by name.
+              "look at all my screens", "look at both my screens", "look at my monitors",
+              "look at all my monitors", "what's on all my screens", "whats on all my screens",
+              "look at every screen", "look at my laptop screen", "look at my left screen",
+              "look at my right screen", "look at my middle screen"]
 
   - intent: research
     describe: "Look a topic up on the web and write a note about it. arg: the topic."
@@ -766,6 +772,22 @@ commands:
     takes_argument: true
     argument_optional: true
 
+  # "Organize my desktop" (Eric, 29 Sep 2026): the desktop's loose files
+  # filed into folders by kind (`filing::plan_folder`), the plan said first
+  # and carried out only on a yes. Shortcuts and folders are never touched.
+  - intent: tidy_desktop
+    describe: "Tidy the user's desktop: file its loose files into folders. Says the plan and asks first; never deletes anything."
+    phrases: ["tidy my desktop", "tidy up my desktop", "tidy the desktop", "organize my desktop", "organise my desktop",
+              "clean up my desktop", "sort my desktop", "sort out my desktop"]
+
+  # "Use my webcam mic" (Eric, 29 Sep 2026): record from the microphone
+  # named by kind, and keep to it (`hearing::mic_by_kind`).
+  - intent: use_mic
+    describe: "Record from a different microphone and keep to it. arg: which one, e.g. webcam, headset, laptop."
+    phrases: ["switch microphone to", "switch the microphone to", "switch mic to", "change microphone to",
+              "use the microphone on the"]
+    takes_argument: true
+
   - intent: press_button
     describe: "Press a named button in the app in front. arg: the button's name."
     # Pressing a button in an app by its name (Eric, G4).
@@ -1048,6 +1070,10 @@ commands:
     phrases: ["what do you see", "what can you see", "look at the room",
               "what's in front of you", "whats in front of you", "who is here",
               "who's here", "whos here", "look around"]
+              # "Can you see me", "look at me", "use my camera" (30 Sep 2026)
+              # go to the camera's own command through `camera_ask`, which
+              # asks once for permission and picks the camera that goes with
+              # the microphone hearing you -- not here.
 
   # "what is this" belongs to the clipboard and has for a long time — it means
   # the thing you copied. These are the phrasings that can only mean the thing

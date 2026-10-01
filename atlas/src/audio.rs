@@ -687,6 +687,40 @@ pub fn pick_camera(cameras: &[String], configured: &str) -> Option<String> {
         .map(|c| (*c).clone())
 }
 
+/// The camera to look through, knowing more about the desk: the lid (a
+/// laptop's own camera under a shut lid sees its keyboard) and the
+/// microphone Atlas hears you with (the webcam whose microphone hears you is
+/// the one pointed at you).
+///
+/// 30 Sep 2026: Eric's laptop is shut behind two monitors with a C920 on
+/// top, and `webcam_device` is the shipped "Integrated Camera". `pick_camera`
+/// keeps a configured camera the machine has, so a look would have opened
+/// the camera inside the shut lid -- a black frame. Order: the camera that
+/// matches the microphone in use; any real camera but a built-in one when the
+/// lid is shut; then `pick_camera`.
+pub fn pick_camera_for(cameras: &[String], configured: &str, microphone: &str, lid_open: bool) -> Option<String> {
+    let low = |c: &str| c.to_lowercase();
+    let builtin = |c: &str| ["integrated", "built-in", "internal", "front", "facetime", "user facing"].iter().any(|k| low(c).contains(k));
+    let virtual_cam = |c: &str| ["virtual", "obs", "snap camera", "droidcam", "nvidia broadcast"].iter().any(|v| low(c).contains(v));
+    let usable: Vec<&String> = cameras.iter().filter(|c| !virtual_cam(c) && (lid_open || !builtin(c))).collect();
+    // "Microphone (HD Pro Webcam C920)" -> the words inside the brackets
+    // that name the device, matched against each camera's name.
+    let mic = low(microphone);
+    let inside = mic.split_once('(').map(|(_, r)| r.trim_end_matches(')').to_string()).unwrap_or_default();
+    let tokens: Vec<&str> = inside.split_whitespace().filter(|w| w.len() >= 4 && !["microphone", "array", "audio", "webcam"].contains(w)).collect();
+    if !tokens.is_empty() {
+        if let Some(c) = usable.iter().find(|c| tokens.iter().all(|t| low(c).contains(t))) {
+            return Some((*c).clone());
+        }
+    }
+    if !lid_open {
+        if let Some(c) = usable.iter().find(|c| c.as_str() == configured).or_else(|| usable.first()) {
+            return Some((*c).clone());
+        }
+    }
+    pick_camera(cameras, configured)
+}
+
 /// The cameras this machine has (Windows' listing; empty elsewhere, where
 /// the camera is named differently and `webcam_device` stands).
 pub fn probe_cameras(ffmpeg_cmd: &str) -> Vec<String> {
@@ -735,8 +769,17 @@ pub enum SpeechCheck {
 pub const MIN_SPEECH_MS: u32 = 250;
 /// Speech stands this far above the clip's own quiet parts.
 pub const SPEECH_OVER_ROOM_DB: f32 = 9.0;
-/// Below this nothing is speech, however quiet the room (a dead device).
-pub const QUIETEST_SPEECH_DB: f32 = -62.0;
+/// Below this nothing is speech, however quiet the room: just above the
+/// dither of a dead or muted device (about -90 dBFS), so zeros and stray
+/// clicks are never transcribed.
+///
+/// Was -62 (29 Sep 2026), and that line is why Eric had to shout (30 Sep
+/// 2026): his webcam microphone read -90 dB in a quiet room, so a normal
+/// voice on it at -68 dB, 22 dB clear of the room, was thrown away as
+/// silence (`tests/a_normal_voice_is_heard.rs`). Speech is told from the room by how far it stands above
+/// it (`SPEECH_OVER_ROOM_DB`), which is the test that holds on any
+/// microphone at any input level; this only guards the dead device.
+pub const QUIETEST_SPEECH_DB: f32 = -75.0;
 /// Speech whose loudest part is under this is turned up.
 pub const TURN_UP_BELOW_DB: f32 = -28.0;
 
@@ -759,8 +802,12 @@ pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
         return SpeechCheck::Silence;
     }
     if loudest < TURN_UP_BELOW_DB {
-        // Up to about -12 dBFS at its loudest, and never more than 30x.
-        let gain = 10f32.powf((-12.0 - loudest) / 20.0).clamp(1.0, 30.0);
+        // Up to about -12 dBFS at its loudest, never more than 100x
+        // (`leveller::MAX_GAIN_DB`), and never lifting the room past
+        // `leveller::NOISE_CEILING_DB`. Was capped at 30x, which left a voice
+        // at -65 dB still at -35 when whisper heard it (30 Sep 2026).
+        let up_db = (-12.0 - loudest).min(crate::leveller::NOISE_CEILING_DB - room).min(crate::leveller::MAX_GAIN_DB);
+        let gain = 10f32.powf(up_db / 20.0).max(1.0);
         return SpeechCheck::Quiet(gain);
     }
     SpeechCheck::Speech

@@ -47,10 +47,15 @@ fn the_default_is_what_atlas_already_did() {
     assert_eq!(Persona::default().wit, Wit::Dry);
     let c = Config::load(Path::new("config")).unwrap();
     assert_eq!(c.tools.unwrap().persona.wit, Wit::Dry);
-    // Word for word what the prompt said before the setting had levels.
+    // Word for word what the prompt said before the setting had levels --
+    // until 29 Sep 2026, when "a dry aside is fine when it's actually funny"
+    // was read by the 4B model on Eric's laptop as licence for a bit in
+    // every reply. Dry is now worded as what it is: rare, subtle, after the
+    // answer, never theatrical (`wit::prompt_line`).
     let p = persona(Wit::Dry).prompt_for(Register::Chatting);
-    assert!(p.contains("An occasional dry aside is fine. Rarely, and never instead of the answer."), "{p}");
-    assert!(persona(Wit::Dry).for_this_turn_on(Register::Chatting, 8, "", false).contains(" A dry aside is fine when it's actually funny."));
+    assert!(p.contains("At most an occasional light, dry touch: rarely, subtle, after the answer and never instead of it."), "{p}");
+    let turn = persona(Wit::Dry).for_this_turn_on(Register::Chatting, 8, "", false);
+    assert!(turn.contains(" At most a light, dry touch after the answer -- never theatrical"), "{turn}");
     // And a canned reply at dry is exactly what it was.
     let d = persona(Wit::Dry);
     for seed in 0..8 {

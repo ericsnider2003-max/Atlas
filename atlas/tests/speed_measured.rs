@@ -81,7 +81,14 @@ impl Llm for Talker {
         // Never the same answer twice: Atlas asks again when a reply
         // repeats the last one word for word.
         let about = req.messages.last().map(|m| m.content.rsplit("User said: ").next().unwrap_or("").to_string()).unwrap_or_default();
-        let reply = format!("On {about}: {}", self.reply);
+        // 29 Sep 2026: and never the same sentences twice either. Atlas now
+        // leaves out a sentence an earlier reply already said, and asks
+        // again when most of a reply is repeats (`repeating`); a talker
+        // saying the same three sentences after a new opening every turn is
+        // the loop Eric's laptop fell into, not a conversation.
+        let n = self.asked.lock().unwrap().len();
+        let body = if self.reply == REPLY { REPLIES[n % REPLIES.len()] } else { self.reply.as_str() };
+        let reply = format!("On {about}: {body}");
         std::thread::sleep(Duration::from_millis(self.first_ms));
         for w in reply.split_inclusive(' ') {
             if !on_text(w) {
@@ -167,6 +174,34 @@ const CONVERSATION: &[&str] = &[
 const REPLY: &str = "Fair question, and there's more to it than it looks. The short version is that it \
     depends on a few things, mostly timing and what you already have to hand. If you tell me a bit more \
     about what you're after, I can be a lot more specific.";
+
+/// Replies the length of `REPLY`, each different, so a conversation of them
+/// is not a loop (`Talker`).
+const REPLIES: &[&str] = &[
+    "Fair question, and there's more to it than it looks. The short version is that it depends on a few things, \
+     mostly timing and what you already have to hand. If you tell me a bit more, I can be a lot more specific.",
+    "Most people get this one backwards at first. What matters is the order you do things in, not how fast. \
+     Start small and the rest tends to follow on its own.",
+    "It's simpler than it sounds once you see the trick behind it. Everything else is detail layered on top of \
+     one idea. Ask me about any part and I'll unpack that bit.",
+    "There are two camps on this and both have a point. One side cares about speed, the other about getting it \
+     right the first time. I lean towards the second, for what that's worth.",
+    "Short answer: yes, but with a caveat worth knowing. The caveat only bites in unusual cases, so you'll \
+     rarely hit it. When you do, it's obvious straight away.",
+    "That one surprised me when I first read about it. The explanation involves a bit of physics and a bit of \
+     history. I can go into either if you like.",
+    "Honestly, it comes down to taste more than anything. There's no wrong choice among the usual options. \
+     Pick the one you'd enjoy doing on a tired evening.",
+    "The numbers are closer than people expect. Neither is dramatically ahead once you account for the edges. \
+     It's the kind of thing that flips depending on who's counting.",
+    "Good one, and the usual explanation is only half right. The missing half is about how light scatters on \
+     its way through the air. Once you see that, the colours make sense.",
+    "I'd start with something short and well written rather than the famous doorstop. You'll finish it and \
+     want more. Then the big classic reads twice as well.",
+    "That was written by someone better known for something else entirely. It came out early in their career. \
+     Their later work is more polished but less fun.",
+    "Any time. I'll be around when you want to pick it up again. Enjoy the rest of your evening.",
+];
 
 /// Sentences that need a tool the phrases don't catch, for trying a real
 /// model's tool choice (`ATLAS_DUMP_TOOL_ASKS=<file>`).
@@ -359,6 +394,7 @@ fn each_request_says_which_tools_are_the_every_turn_ones() {
         force_tool: false,
         stable_tools: stable,
         aside,
+        stronger: false,
     };
     let sent_as = |stable: usize, aside: bool| {
         let (url, rx) = one_request_server();
@@ -372,12 +408,12 @@ fn each_request_says_which_tools_are_the_every_turn_ones() {
     assert_eq!(b["chat_template_kwargs"][atlas::models::STABLE_TOOLS_KWARG], 2, "{b}");
     assert_eq!(b["tools"].as_array().unwrap().len(), 3, "every tool is still offered");
     // Not said when it isn't known, or when every tool is an every-turn one.
-    // (30 Sep 2026: the kwargs are always sent now, carrying
-    // `enable_thinking: false`, so the check is on the one key.)
+    // 30 Sep 2026: every request now carries `enable_thinking: false` (Qwen3
+    // thinks before answering otherwise), so the kwargs are always there;
+    // the stable-tools count still only when it is known and not all of them.
     assert!(sent(0)["chat_template_kwargs"].get(atlas::models::STABLE_TOOLS_KWARG).is_none());
     assert!(sent(3)["chat_template_kwargs"].get(atlas::models::STABLE_TOOLS_KWARG).is_none());
-    // Nothing thought out loud before the answer.
-    assert_eq!(sent(0)["chat_template_kwargs"]["enable_thinking"], false);
+    assert_eq!(sent(3)["chat_template_kwargs"]["enable_thinking"], false);
     // A call beside the conversation goes to the other slot, so the
     // conversation's slot keeps what it has read.
     assert_eq!(sent_as(2, true)["id_slot"], 1);
@@ -388,11 +424,13 @@ fn a_turn_says_its_core_tools_lead() {
     let (c, p) = (cfg(), plat());
     let llm = Talker::new(REPLY, 0, 0);
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("core")), Proactive::new(ProactiveConfig::default()));
-    let _ = d.turn("tell me something interesting about octopuses", 1_790_000_000);
+    // 30 Sep 2026 (the prompt diet, `router`): the one tool offered every
+    // turn is the capabilities tool; the rest are picked for the sentence,
+    // and small talk ("octopuses") gets none, so a request is used here.
+    let _ = d.turn("find the tax pdf from last year and the receipts", 1_790_000_000);
     let r = llm.asked.lock().unwrap()[0].clone();
-    let core = atlas::intent::ToolBook::new(&c.commands).for_sentence("", 0);
     assert!(r.stable_tools > 0 && r.stable_tools < r.tools.len(), "{} of {}", r.stable_tools, r.tools.len());
-    assert_eq!(&r.tools[..r.stable_tools], &core[..], "the leading tools are the core ones, in their order");
+    assert_eq!(&r.tools[..r.stable_tools], &[atlas::router::meta_spec()][..], "the leading tool is the every-turn one");
 }
 
 // ================= the model reads ahead while Atlas starts =================

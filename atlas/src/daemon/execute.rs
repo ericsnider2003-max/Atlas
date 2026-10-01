@@ -171,6 +171,10 @@ impl<'a> Daemon<'a> {
             Intent::PressButton(said) => self.press_button(said),
             // Big folders to another drive, findable afterwards (G5).
             Intent::MoveBigFiles(said) => self.move_big_files(said, crate::store::now()),
+            // The desktop's loose files filed, after a yes (29 Sep 2026).
+            Intent::TidyDesktop => self.tidy_desktop(),
+            // The microphone you named, kept to (29 Sep 2026).
+            Intent::UseMic(kind) => self.use_microphone(kind),
             // A video edited on a copy; the original only after you say (G8).
             Intent::EditMedia(said) => self.edit_media(said, crate::store::now()),
             Intent::EditPhoto(said) => self.edit_photo(said),
@@ -351,7 +355,8 @@ impl<'a> Daemon<'a> {
             Intent::Research(topic) => self.research(topic),
             Intent::McpTool(p) => self.use_mcp_tool(p),
             Intent::ViewDisplay => self.look_closer(Capture::Screen),
-            Intent::CaptureWebcam => self.look_closer(Capture::Camera),
+            // Asked once, said as it happens, frame deleted (`daemon::camera`).
+            Intent::CaptureWebcam => self.look_at_you(),
             Intent::Gestures(on) => self.watch_hands(*on, crate::store::now()),
             Intent::WhatsThere => self.whats_there(),
             Intent::WhatsThis => self.whats_this(),
@@ -1219,13 +1224,23 @@ impl<'a> Daemon<'a> {
                         None => "Nothing's blocked.".into(),
                     }
                 } else {
-                    // "can you read my email?" — match it to a capability.
-                    match crate::capability::all()
-                        .into_iter()
-                        .find(|c| w.contains(c.id) || c.what.split(' ').any(|word| word.len() > 4 && w.contains(word)))
-                    {
-                        Some(c) => crate::capability::can(c.id).map(|(_, why)| why).unwrap_or_default(),
-                        None => "I don't have anything for that.".into(),
+                    // "can you read my email?", "can you see me" -- the
+                    // ability searched for in the catalogue, with its state
+                    // on this machine and what turns it on (30 Sep 2026: it
+                    // matched the first entry sharing a long word, and said
+                    // "I don't have anything for that" otherwise).
+                    let research = self.tools_cfg().research.enabled;
+                    // The capabilities tool may name an entry by its id
+                    // ("vision"): that entry's own state.
+                    match crate::capability::can(w.trim()).filter(|_| w.trim() != "research") {
+                        Some((_, why)) => why,
+                        None => match crate::capability::answer_can(what, research) {
+                            Some(a) => a,
+                            None => format!(
+                                "Nothing I can do is about \u{201c}{}\u{201d}, as far as my own list goes. Ask what I can do for the list.",
+                                what.trim()
+                            ),
+                        },
                     }
                 }
             }

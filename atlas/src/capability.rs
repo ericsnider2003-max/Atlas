@@ -188,7 +188,7 @@ pub fn all() -> Vec<Capability> {
     use Area::*;
     use State::*;
     vec![
-        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "parakeet"] },
+        Capability { id: "wake", what: "hear a wake word and listen", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 1, runs: &[Needs::WakeWord, Needs::Audio], modules: &["hearing", "voice", "parakeet", "utterance"] },
         Capability { id: "endpoint", what: "stop listening when you stop talking", area: Hearing, state: Blocked, needs: Some("ffmpeg, for audio in"), offline: true, added: 12, runs: &[Needs::Audio], modules: &["endpoint"] },
         Capability { id: "dictate", what: "type what you say into a window", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 12, runs: &[Needs::Audio, Needs::ActInApps], modules: &["dictate"] },
         Capability { id: "accents", what: "notice when it's mishearing you and offer a better model", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 14, runs: &[Needs::Audio], modules: &["language"] },
@@ -337,7 +337,7 @@ pub fn all() -> Vec<Capability> {
         // because nothing here has yet run on Eric's machine, and saying
         // otherwise is the one kind of drift that costs you the ability to
         // tell.
-        Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames"] },
+        Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames", "camera_ask"] },
         Capability { id: "callnotes", what: "notice a call, note your side, record the others only after they say yes, and write up who said what", area: Hearing, state: Untested, needs: Some("a call on this laptop"), offline: true, added: 31, runs: &[Needs::Audio], modules: &["callnotes", "callrec", "callwatch", "consent"] },
         Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
@@ -418,7 +418,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "thread", what: "carry one conversation on for good -- no session to start, the older part folded into a summary that keeps what mattered", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["thread"] },
         Capability { id: "understood", what: "check with you before acting on a guess at what you meant, and ask which one when it could be two things", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["understood", "whichone"] },
         Capability { id: "answering", what: "take an answer to its questions however you can give it -- a word, a typed yes, a key -- when speaking isn't an option", area: Speaking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["answering"] },
-        Capability { id: "audio", what: "pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing", area: Hearing, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["audio", "playout"] },
+        Capability { id: "audio", what: "pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing", area: Hearing, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["audio", "playout", "leveller", "miclevel"] },
         Capability { id: "addressing", what: "tell whether what it heard was meant for it -- a \"stop\" to it stops it, a voice on your call doesn't", area: Hearing, state: Blocked, needs: Some("whisper"), offline: true, added: 40, runs: &[Needs::Audio], modules: &["addressing"] },
         Capability { id: "references", what: "work out what \"it\", \"that\" and \"this one\" mean from what just happened -- \"move it to the other screen\"", area: Windows, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["references"] },
         Capability { id: "clipboard", what: "explain or answer about whatever you copied -- and when nothing is copied, work out what \"this\" is from what you were looking at", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::ReadScreen], modules: &["clipboard", "subject"] },
@@ -491,6 +491,12 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "hunt", what: "look once a day for gigs, jobs, grants, contracts and niches -- Hacker News hiring threads, Grants.gov, SAM.gov, Reddit, Product Hunt, the App Store charts, GitHub, your feeds and searches, and job alerts in your mail -- and bring the best few with why, to read more, drop or save; it never applies or replies", area: Web, state: Off, needs: None, offline: false, added: 41, runs: &[Needs::Background], modules: &["hunt", "hunting"] },
         // 29 Sep 2026, Eric: "Can we give Atlas the ability to be a smart ass".
         Capability { id: "wit", what: "be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying \"tone it down\" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else", area: Speaking, state: Working, needs: None, offline: true, added: 41, runs: &[Needs::JustThinking], modules: &["wit", "talkback"] },
+        // 30 Sep 2026: Eric's "doesn't know what it's supposed to be doing ...
+        // can't use multiple streams of thought ... not completing a task".
+        Capability { id: "router", what: "offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["router"] },
+        Capability { id: "taskloop", what: "work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["taskloop"] },
+        Capability { id: "streams", what: "do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["streams"] },
+        Capability { id: "backed", what: "never say it's on something unless it really started it", area: Speaking, state: Working, needs: None, offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["backed"] },
     ]
 }
 
@@ -739,7 +745,21 @@ pub fn about_atlas(said: &str, most: usize) -> String {
 /// (27 Sep 2026).
 pub fn is_about_atlas(said: &str) -> bool {
     let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
-    let t = format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "));
+    let mut w: Vec<&str> = t.split_whitespace().collect();
+    // "Atlas, ..." is calling it by name, not asking about it (29 Sep 2026:
+    // nearly everything Eric said began "Atlas" -- or "At this", the name
+    // misheard -- and every one of them carried the whole about-Atlas block,
+    // two thousand characters, into the prompt).
+    for lead in [&["hey", "atlas"][..], &["ok", "atlas"], &["okay", "atlas"], &["at", "this"], &["atlas"]] {
+        if w.len() > lead.len() && w[..lead.len()] == *lead {
+            w.drain(..lead.len());
+            break;
+        }
+    }
+    if w.last() == Some(&"atlas") && w.len() > 1 {
+        w.pop();
+    }
+    let t = format!(" {} ", w.join(" "));
     if crate::register::read(said, &Default::default()) == crate::register::Register::AboutAtlas {
         return true;
     }
@@ -800,6 +820,167 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
     out
 }
 
+
+// ---------------------------------------------------------------------------
+// Knowing its own abilities (30 Sep 2026).
+//
+// Eric: "I have a long list of capabilities Atlas is supposed to perform and
+// it doesn't know how to perform them or even know that it has them." On his
+// laptop Atlas said "I don't have a camera", "I'm not supposed to" and "I
+// don't have a research mode" -- while this catalogue lists looking through
+// the camera and research. "Can you X" matched the first entry sharing a
+// five-letter word with X ("I don't have anything for that" otherwise). Now
+// a question about an ability is searched for (BM25 over what each entry is
+// for, with the everyday words people use for it), and answered with its
+// state and what turns it on.
+// ---------------------------------------------------------------------------
+
+/// Everyday words for an ability that its own description doesn't carry.
+const ABILITY_WORDS: &[(&str, &str)] = &[
+    ("vision", "camera webcam see me look at me face faces who's here room"),
+    ("presence", "camera webcam see me desk watching"),
+    ("research", "research internet web online browse search look up find out study"),
+    ("speak", "voice talk speak out loud say"),
+    ("wake", "hear listen microphone mic wake word"),
+    ("mail", "email emails inbox"),
+    ("calendar", "calendar schedule agenda events appointments meetings"),
+    ("ocr", "screen read text"),
+];
+
+/// What turns an ability on, or that it's already there, in a clause.
+fn state_said(c: &Capability) -> String {
+    match c.state {
+        State::Working => "works now".to_string(),
+        State::Off => "built, switched off -- Settings turns it on".to_string(),
+        State::Blocked => format!("built, waiting on {} -- setup fetches it", c.needs.unwrap_or("a piece that isn't installed")),
+        State::Untested => match c.needs {
+            Some(n) => format!("built, not tried on this machine yet (it uses {n}) -- ask and it will try"),
+            None => "built, not tried on this machine yet -- ask and it will try".to_string(),
+        },
+        State::Planned => "not built yet".to_string(),
+    }
+}
+
+/// The catalogue as it stands on this machine: the entries whose state
+/// depends on a setting read from it (`research_on`: web research turned
+/// on in Settings).
+fn as_set_up(research_on: bool) -> Vec<Capability> {
+    let mut all = all();
+    for c in all.iter_mut() {
+        if c.id == "research" {
+            c.state = if research_on { State::Working } else { State::Off };
+        }
+    }
+    all
+}
+
+/// The abilities a question is about, best first, at most `most`.
+pub fn find_abilities(said: &str, research_on: bool, most: usize) -> Vec<Capability> {
+    let all = as_set_up(research_on);
+    let mut index = crate::bm25::Index::default();
+    for (i, c) in all.iter().enumerate() {
+        let extra: Vec<&str> = ABILITY_WORDS.iter().filter(|(id, _)| *id == c.id).map(|(_, w)| *w).collect();
+        // The everyday words count as much as its own description does.
+        index.add(i as u64, &format!("{} {}", c.what, extra.join(" ")), &format!("{} {}", c.id, c.area.plain()));
+    }
+    let q = crate::router::request_words(said).join(" ");
+    if q.trim().is_empty() {
+        return Vec::new();
+    }
+    let hits = index.search(&q, most);
+    let best = hits.first().map(|h| h.1).unwrap_or(0.0);
+    hits.into_iter()
+        .filter(|(_, s)| *s >= ABILITY_FLOOR && *s >= best * 0.5)
+        .filter_map(|(i, _)| all.get(i as usize).cloned())
+        .collect()
+}
+
+/// Below this BM25 score an entry isn't what was asked about.
+const ABILITY_FLOOR: f64 = 3.0;
+
+/// "Can you X", answered from the catalogue: the ability, its state, and
+/// what turns it on. `None` when nothing in the catalogue is about X.
+pub fn answer_can(what: &str, research_on: bool) -> Option<String> {
+    let found = find_abilities(what, research_on, 2);
+    let first = found.first()?;
+    let mut s = format!("Yes -- I can {}: {}.", first.what, state_said(first));
+    if let Some(second) = found.get(1) {
+        s.push_str(&format!(" Also: {} ({}).", second.what, state_said(second)));
+    }
+    Some(s)
+}
+
+/// The truth about one ability a reply said Atlas lacks
+/// (`backed::denies_an_ability`): the catalogue entry that is that ability,
+/// said with its state. `topic` is the denial's word ("camera", "research",
+/// "screen"), or anything else to be searched for.
+pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
+    let id = match topic {
+        "camera" => Some("vision"),
+        "research" => Some("research"),
+        "screen" => Some("picture_talk"),
+        "files" => Some("findfile"),
+        _ => None,
+    };
+    let c = match id {
+        Some(id) => as_set_up(research_on).into_iter().find(|c| c.id == id)?,
+        None => find_abilities(topic, research_on, 1).into_iter().next()?,
+    };
+    Some(format!("Actually, I can {}: {}.", c.what, state_said(&c)))
+}
+
+/// What Atlas can do that bears on a question about itself, for the model:
+/// a few catalogue lines with their states, and the rule that it never says
+/// it lacks one of them.
+pub fn abilities_for_prompt(said: &str, research_on: bool, most: usize) -> String {
+    let found = find_abilities(said, research_on, most);
+    let pages = hub_pages_for(said, most);
+    let mut out = format!(
+        "About Atlas (you) -- true, so never say you lack one of these; for a setting, name its hub page. Web research: {}.\n",
+        if research_on { "on" } else { "off -- Settings turns it on" }
+    );
+    for p in &pages {
+        out.push_str(p);
+        out.push('\n');
+    }
+    for c in &found {
+        out.push_str(&format!("- {}: {}\n", c.what, state_said(c)));
+    }
+    if found.is_empty() && pages.is_empty() {
+        out.push_str("For anything else you might do, call the capabilities tool rather than guess.\n");
+    }
+    out
+}
+
+/// The hub's pages a question is about (the search palette's entries), as
+/// lines for the model, best first, at most `most`.
+fn hub_pages_for(said: &str, most: usize) -> Vec<String> {
+    // Only for a question about where something is or how to change it:
+    // "can you see me" isn't asking for a page.
+    let t = format!(" {} ", said.to_lowercase());
+    let about_where = [" where ", " setting", " change ", " turn on", " turn off", " switch ", " set up", " setup", " page", " how do i "]
+        .iter()
+        .any(|w| t.contains(w));
+    if !about_where {
+        return Vec::new();
+    }
+    let words: Vec<String> = crate::router::request_words(said).into_iter().filter(|w| w.len() > 2).collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let mut pages: Vec<(usize, String)> = crate::palette::catalogue()
+        .iter()
+        .filter_map(|e| {
+            let crate::palette::Does::Go(href) = e.does else { return None };
+            let t = format!("{} {} {}", e.label, e.hint, e.also.join(" ")).to_lowercase();
+            let n = words.iter().filter(|w| t.contains(w.as_str())).count();
+            (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, crate::router::clip_words(e.hint, 90))))
+        })
+        .collect();
+    pages.sort_by(|a, b| b.0.cmp(&a.0));
+    let best = pages.first().map(|p| p.0).unwrap_or(0);
+    pages.into_iter().filter(|p| p.0 == best).take(most).map(|p| p.1).collect()
+}
 
 /// What Atlas says to "what can you do?"
 ///
@@ -1335,17 +1516,19 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 410 -> 413 (29 Sep): `photo`, `straighten` and `cutout` (photo editing).
 // 413 -> 414 (29 Sep): `social` (its `src/social/*.rs` fold into it).
 // 414 -> 418 (29 Sep): `hunt`, `hunting` (opportunity hunting), `wit`, `talkback`.
-// 418 -> 420 (29 Sep): `playout` (the voice played inside Atlas, through
-// the speaker it chose -- part of `audio`) and `winpark` (plumbing).
-// 420 -> 422 (30 Sep): `freeonline` (the free online models, second to the
-// one on this machine -- part of `reason`) and `talkbench` (Atlas's own
-// conversation, timed against a model).
-// 422 -> 423 (30 Sep): `parakeet` (hearing through sherpa-onnx's server
-// with NVIDIA's Parakeet model -- part of `wake`).
-// 423 -> 424 (30 Sep): `keeping` (reminders listed, cancelled, snoozed;
-// timers; events cancelled and moved -- part of `calendar`).
-// 424 -> 425 (30 Sep): `weather` (Open-Meteo).
-pub const MODULES_IN_TREE: usize = 425;
+// 418 -> 420 (29 Sep): `doing`, `repeating` (Eric's evening on the laptop; plumbing).
+// 420 -> 421 (29 Sep): `utterance` (the wake word and the request in one breath; claimed by `wake`).
+// 421 -> 423 (30 Sep, merging the other chat's 29 Sep work): `playout` (the
+// voice played inside Atlas, through the speaker it chose -- part of `audio`)
+// and `winpark` (plumbing).
+// 423 -> 426 (30 Sep 2026): `leveller` and `miclevel` (a quiet voice heard
+// without shouting -- part of `audio`) and `camera_ask` ("can you see me?" --
+// part of `vision`).
+// 427 -> 430 on merging with r8-brain (router, taskloop, backed, streams).
+// 430 -> 435 (30 Sep 2026, merging the sweep): `freeonline` (part of
+// `reason`), `talkbench`, `parakeet` (part of `wake`), `keeping` (part of
+// `calendar`) and `weather`.
+pub const MODULES_IN_TREE: usize = 435;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1377,6 +1560,8 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("gguf", "reads a model file's header so the model loader knows what it is loading"),
     ("http", "a minimal loopback HTTP client for the browser debugger and local helpers"),
     ("intent", "turns a phrase into an intent for every capability; the understanding layer, not a thing you ask for"),
+    ("doing", "reads a request that doesn't start with a command's phrase as the command it means, and whether the screen was mentioned; part of the understanding layer"),
+    ("repeating", "keeps a reply from saying again what Atlas already said; part of how every reply is spoken, not a thing you ask for"),
     ("judgment", "the shared scale graded judgments are expressed on, borrowed by a dozen capabilities"),
     ("lifecycle", "starts heavyweight helpers when needed and reaps them when idle"),
     ("look", "the palette and catenary constants the native windows are painted from"),

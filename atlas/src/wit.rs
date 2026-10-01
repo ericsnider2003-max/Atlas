@@ -29,7 +29,9 @@
 //!
 //! **Default: `dry`.** The shipped `persona.wit` was the number 0.35, which
 //! `Persona::prompt_for` read as "an occasional dry aside is fine" in
-//! conversation. `dry` produces exactly that prompt, word for word, and
+//! conversation. `dry` produced exactly that prompt, word for word (until
+//! 29 Sep 2026, when its wording was made plainly subtle -- see
+//! `prompt_line`), and
 //! leaves every canned reply as it was -- so a fresh install and an upgraded
 //! one behave as they did before this setting existed until someone turns it
 //! up. (The brief suggested `off`; `off` would have *removed* the aside Atlas
@@ -297,8 +299,9 @@ pub fn holds_back(level: Wit, m: &Moment) -> Option<Held> {
 
 /// The line the model is given about humour, or nothing.
 ///
-/// `dry` is the two sentences `Persona` has always used, word for word, so
-/// the default changes nothing the model is told. `said` is what was said
+/// `dry` was the two sentences `Persona` had always used, word for word,
+/// until 29 Sep 2026, when it was reworded as subtle and rare (see below).
+/// `said` is what was said
 /// this turn when it's known; a serious subject takes the line away and puts
 /// a plain "no jokes" in its place, because a model left to its own
 /// judgement on a question about a bill will sometimes be charming about it.
@@ -306,8 +309,11 @@ pub fn prompt_line(level: Wit, m: &Moment, per_turn: bool) -> String {
     match holds_back(level, m) {
         None => match level {
             Wit::Off => String::new(),
-            Wit::Dry if per_turn => " A dry aside is fine when it's actually funny.".into(),
-            Wit::Dry => "\n\nAn occasional dry aside is fine. Rarely, and never instead of the answer.".into(),
+            // 29 Sep 2026: "a dry aside is fine when it's actually funny" was
+            // read by a 4B model as a licence for a bit in every reply. Dry
+            // is now said to be what it is: subtle, after the answer, rare.
+            Wit::Dry if per_turn => " At most a light, dry touch after the answer -- never theatrical, never a joke for its own sake.".into(),
+            Wit::Dry => "\n\nAt most an occasional light, dry touch: rarely, subtle, after the answer and never instead of it. Never theatrical.".into(),
             Wit::Full => {
                 let rule = "You're allowed to be a bit of a smart-ass: one sharp, playful remark, at most a \
                             clause, after the answer and never instead of it or before it. Tease the situation, \

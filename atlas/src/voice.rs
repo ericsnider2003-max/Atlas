@@ -252,6 +252,10 @@ pub struct ToolsConfig {
     pub tts_engine: crate::tts::EngineConfig,
     #[serde(default)]
     pub endpoint: crate::endpoint::EndpointConfig,
+    /// The conversation after the wake word: hands-free until you stop
+    /// talking for a while (`utterance`).
+    #[serde(default)]
+    pub conversation: crate::utterance::ConversationConfig,
     #[serde(default)]
     pub dictate: crate::dictate::DictateConfig,
     #[serde(default)]
@@ -630,20 +634,25 @@ impl<'a> Voice<'a> {
     }
 
     /// Speech-to-text for the clip at `{in_wav}`, only when someone is
-    /// speaking in it (`audio::check_speech`): silence is "" without asking
-    /// whisper, quiet speech is turned up first, and what whisper writes for
+    /// speaking in it (`audio::check_speech`, by way of `leveller::prepare`):
+    /// silence is "" without asking whisper, speech is levelled to where
+    /// whisper hears it best, and what whisper writes for
     /// a quiet room ("you", "Thanks for watching") is dropped
     /// (`not_really_said`). 29 Sep 2026.
     fn transcribe_heard(&self, vars: &Vars) -> Result<String> {
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         if let Ok(bytes) = std::fs::read(&in_wav) {
             if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
-                match crate::audio::check_speech(&samples, rate) {
-                    crate::audio::SpeechCheck::Silence => return Ok(String::new()),
-                    crate::audio::SpeechCheck::Quiet(gain) => {
-                        let _ = std::fs::write(&in_wav, crate::audio::wav_bytes(&crate::audio::turned_up(&samples, gain), rate));
+                // Judged against the room and levelled by your usual voice on
+                // this microphone (`leveller`, 30 Sep 2026: "I have to yell").
+                let mic = microphone_now(self.cfg).0;
+                match crate::leveller::prepare(&samples, rate, &mic) {
+                    None => return Ok(String::new()),
+                    Some(ready) => {
+                        if ready != samples {
+                            let _ = std::fs::write(&in_wav, crate::audio::wav_bytes(&ready, rate));
+                        }
                     }
-                    crate::audio::SpeechCheck::Speech => {}
                 }
             }
         }
@@ -716,12 +725,19 @@ impl<'a> Voice<'a> {
         v.insert("sentence_gap".into(), format!("{:.2}", vs.sentence_gap));
         // The language flags whisper's command carries. Without these every
         // spoken turn passed the literal `{task_opt}` to whisper-cli.
+        // The sharper listening model when setup has fetched it (29 Sep 2026).
+        let chosen = crate::language::speech_model_for(
+            v.get("stt_model").map(String::as_str).unwrap_or(""),
+            &crate::roots::install_root(),
+        );
+        v.insert("stt_model".into(), chosen);
         let model = crate::language::model_facts(v.get("stt_model").map(String::as_str).unwrap_or(""));
         crate::language::insert_whisper_vars(&self.cfg.language, &model, &mut v);
         // Your own words as the speech model's hints (H11): names, projects,
-        // jargon it would otherwise guess at.
+        // jargon it would otherwise guess at -- after the few every install
+        // is primed with ("Atlas" first), so there's a prompt from day one.
         let vocab: crate::improve::Vocabulary = crate::roots::store().load("vocabulary");
-        let (opt, val) = crate::improve::hint_args(&vocab);
+        let (opt, val) = crate::improve::hint_args(&vocab, crate::language::SPEECH_PRIMER);
         v.insert("hint_opt".into(), opt);
         v.insert("hint_val".into(), val);
         Ok(v)
@@ -752,113 +768,43 @@ impl<'a> Voice<'a> {
         cfg: &crate::endpoint::EndpointConfig,
         device: &str,
     ) -> Result<Option<String>> {
-        self.stream_until_you_stop(cfg, device, &|| false)
-    }
-
-    /// `listen_until_you_stop`, given up the moment `stop()` says so.
-    fn stream_until_you_stop(
-        &self,
-        cfg: &crate::endpoint::EndpointConfig,
-        device: &str,
-        stop: &dyn Fn() -> bool,
-    ) -> Result<Option<String>> {
-        use std::io::Read;
-
         if !cfg.enabled || device.trim().is_empty() {
             return Ok(None);
         }
-        let vars = self.vars()?;
-        let rate = RECORD_RATE_HZ;
-        // A quarter-second window. Short enough that the shortest silence
-        // `endpoint` asks for is measured to a useful resolution, long enough
-        // that one window's RMS is a sensible measure of energy rather than
-        // of a single syllable's shape.
-        let window_ms: u64 = 250;
-        let want = crate::audio::window_samples(rate, window_ms);
-
         let hard_stop_secs = ((cfg.hard_stop_ms / 1000) as u32).max(1);
-        let mut child = crate::tools::command(&self.cfg.record.command)
-            .args(crate::audio::stream_args(device, rate, hard_stop_secs))
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| {
-                AtlasError::Platform(format!(
-                    "could not start '{}' to listen: {e}",
-                    self.cfg.record.command
-                ))
-            })?;
-        let mut out = child.stdout.take().ok_or_else(|| {
-            AtlasError::Platform("the recorder gave nothing to read".into())
-        })?;
-
+        let mut stream = self.open_pcm(device, hard_stop_secs + 5)?;
         let started = std::time::Instant::now();
-        let mut ep = crate::endpoint::Endpointer::start(0);
-        // Speech, not loudness: the detector learns the room's own level
-        // (`vad`) so a fan above the fixed line doesn't hold the turn open
-        // until the hard stop, and a quiet voice isn't cut off.
-        let mut vad = crate::vad::Vad::tuned(rate, cfg.vad_params());
-        let mut kept: Vec<i16> = Vec::new();
-        let mut pending: Vec<u8> = Vec::new();
-        let mut buf = vec![0u8; want * 2];
-
-        loop {
-            if stop() {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Ok(None);
+        // Cut by `utterance`: speech told from the room by the detector that
+        // learns the room (`vad`), a pause long enough for what you were
+        // saying, and a third of a second kept from before the first word.
+        // (29 Sep 2026: this loop fed the endpointer itself and threw away
+        // everything before the detector was sure, so the first syllable of
+        // an answer said promptly was lost.)
+        let got = crate::utterance::next_utterance(&mut stream, cfg, cfg.no_speech_after_ms, &|| false);
+        let Some(kept) = got else {
+            if let Some(why) = crate::micthread::MicStream::why_stopped(&mut stream) {
+                return Err(AtlasError::Platform(format!("the microphone \"{device}\" couldn't be opened: {why}")));
             }
-            let n = match out.read(&mut buf) {
-                Ok(0) => break, // ffmpeg stopped on its own
-                Ok(n) => n,
-                Err(_) => break,
-            };
-            pending.extend_from_slice(&buf[..n]);
-            // Whole windows only. A partial window measured as though it were
-            // a full one reads quieter than the room actually is, which would
-            // end the turn early -- mid-word, which is the exact failure this
-            // is replacing.
-            while pending.len() >= want * 2 {
-                let chunk: Vec<u8> = pending.drain(..want * 2).collect();
-                let samples = crate::audio::samples_from_le(&chunk);
-                let db = crate::audio::level_db(&samples);
-                kept.extend_from_slice(&samples);
-                // Text-so-far is empty: transcription happens after the clip
-                // is complete, so the shape-aware silence thresholds are not
-                // available live yet. `shape_of("")` is the neutral case, and
-                // the honest thing is to use it rather than to guess at what
-                // has been said.
-                let now_ms = started.elapsed().as_millis() as u64;
-                let level = crate::vad::level_for_endpoint(db, vad.window(&samples), cfg.silence_below_db);
-                ep.feed(level, "", now_ms, cfg);
-                if ep.finished() {
-                    break;
-                }
-            }
-            if ep.finished() {
-                break;
-            }
-        }
-        let _ = child.kill();
-        let _ = child.wait();
-
-        if !ep.heard_anything || kept.is_empty() {
             return Ok(None);
-        }
-
-        let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
-        std::fs::write(&in_wav, crate::audio::wav_bytes(&kept, rate))?;
-
+        };
+        drop(stream);
         let recorded = started.elapsed().as_millis();
         let t1 = std::time::Instant::now();
-        let raw = self.transcribe_heard(&vars)?;
+        // Through `transcribe_heard` (silence never reaches whisper), by way
+        // of `transcribe_samples` (merge of 30 Sep 2026).
+        let text = self.transcribe_samples(&kept)?;
         self.last_listen.store(
             pack(recorded, t1.elapsed().as_millis()),
             std::sync::atomic::Ordering::Relaxed,
         );
-        let text = clean_transcript(&raw);
         Ok((!text.is_empty()).then_some(text))
+    }
+
+    /// The microphone as a stream of 16 kHz samples, for up to `secs`: the
+    /// recorder's complaint kept for when it gives nothing
+    /// (`MicStream::why_stopped`).
+    fn open_pcm(&self, device: &str, secs: u32) -> Result<PcmStream> {
+        PcmStream::open(&self.cfg.record.command, device, secs)
     }
 
     /// Record for as long as the push-to-talk key is held (H1): the same
@@ -975,18 +921,32 @@ impl<'a> Voice<'a> {
     /// `listen_for`, stopped part-way when `stop` says so (paused, Atlas
     /// closing): stopped reads as silence.
     fn listen_for_until(&self, secs: u32, stop: &dyn Fn() -> bool) -> Result<Option<String>> {
-        // Listening until you stop, not for a fixed stretch (30 Sep 2026):
-        // the window was a recording of `secs` seconds, transcribed only once
-        // it ended, so every reply without the wake word waited out the whole
-        // window -- six to twelve seconds of nothing -- and a reply started
-        // late in it was cut off mid-sentence. Now `secs` is how long to wait
-        // for you to START; once you do, it ends when you stop.
+        // Waiting for you to start, rather than recording `secs` and
+        // transcribing all of it (29 Sep 2026). The open floor after a reply
+        // used to be a fixed six-second recording: start speaking at five
+        // seconds and you were cut off at six; say nothing and six seconds of
+        // silence went through the speech engine. Now nothing is transcribed
+        // unless you spoke, and what you say is taken until you stop -- which
+        // is what lets the conversation stay open for half a minute between
+        // turns (`conversation.quiet_secs`) at no cost.
         let device = microphone_now(self.cfg).1;
         if self.cfg.endpoint.enabled && !device.trim().is_empty() {
-            let mut cfg = self.cfg.endpoint.clone();
-            cfg.no_speech_after_ms = u64::from(secs) * 1000;
-            cfg.hard_stop_ms = cfg.hard_stop_ms.max(u64::from(secs) * 1000 + 15_000);
-            return self.stream_until_you_stop(&cfg, &device, stop);
+            if let Ok(mut stream) = self.open_pcm(&device, secs + 30) {
+                let t0 = std::time::Instant::now();
+                let got = crate::utterance::next_utterance(&mut stream, &self.cfg.endpoint, u64::from(secs) * 1000, stop);
+                let Some(kept) = got else {
+                    if let Some(why) = crate::micthread::MicStream::why_stopped(&mut stream) {
+                        return Err(AtlasError::Platform(format!("the microphone \"{device}\" couldn't be opened: {why}")));
+                    }
+                    return Ok(None);
+                };
+                drop(stream);
+                let recorded = t0.elapsed().as_millis();
+                let t1 = std::time::Instant::now();
+                let text = self.transcribe_samples(&kept)?;
+                self.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
+                return Ok((!text.is_empty()).then_some(text));
+            }
         }
         let mut vars = self.vars()?;
         vars.insert("seconds".into(), secs.to_string());
@@ -1457,7 +1417,7 @@ impl<'a> Voice<'a> {
                 }
                 if ep.heard_anything {
                     let said = self.heard_in(&kept, &vars).unwrap_or_default();
-                    if let Some(rest) = after_wake_phrase(&said, phrase) {
+                    if let Some(rest) = words_after_name(&said, phrase) {
                         heard = Some(rest);
                         break 'stream;
                     }
@@ -1476,7 +1436,7 @@ impl<'a> Voice<'a> {
         // The stream ended mid-sentence: what was said so far still counts.
         if heard.is_none() && ep.heard_anything && !stop() {
             let said = self.heard_in(&kept, &vars).unwrap_or_default();
-            heard = after_wake_phrase(&said, phrase);
+            heard = words_after_name(&said, phrase);
         }
         Ok(Some(heard))
     }
@@ -1532,35 +1492,16 @@ impl<'a> Voice<'a> {
             return Ok(name_alone(crate::wakeword::heard(&samples, rate, &model)));
         }
         let raw = self.transcribe_heard(&vars)?;
-        Ok(after_wake_phrase(&clean_transcript(&raw), &wake.phrase))
+        Ok(words_after_name(&clean_transcript(&raw), &wake.phrase))
     }
 }
 
-/// What was said after the wake phrase in `heard`: `None` when the phrase
-/// isn't there, `Some("")` when nothing follows it. Matched loosely, word by
-/// word ("Atlas, can you see me?" -> "can you see me?").
-pub fn after_wake_phrase(heard: &str, phrase: &str) -> Option<String> {
-    let want = loose(phrase);
-    if want.is_empty() || !loose(heard).contains(&want) {
-        return None;
-    }
-    let words: Vec<&str> = heard.split_whitespace().collect();
-    for i in 0..words.len() {
-        let mut joined = String::new();
-        for (k, w) in words[i..].iter().enumerate() {
-            joined.push_str(&loose(w));
-            if joined == want {
-                let rest = words[i + k + 1..].join(" ");
-                return Some(rest.trim_start_matches(|c: char| !c.is_alphanumeric()).trim().to_string());
-            }
-            if !want.starts_with(&joined) {
-                break;
-            }
-        }
-    }
-    // In there, but inside a word ("atlases"): the name, nothing after.
-    Some(String::new())
-}
+// `after_wake_phrase` (the other chat's, 29 Sep 2026) and `words_after_name`
+// (this one's) were the same matcher written twice; merged 30 Sep 2026 into
+// `words_after_name`, used by both the clip-at-a-time wake word and the
+// stream (`VoiceWork::name_in`). The one difference: a phrase found only
+// inside a longer word ("Atlassian") is no longer the name -- it woke Atlas
+// on the clip path and not on the stream.
 
 /// A listen that worked and heard no words. Not a broken microphone: the
 /// daemon answers it and doesn't count it towards dropping to push-to-talk
@@ -1577,8 +1518,35 @@ pub fn loose(s: &str) -> String {
         .collect()
 }
 
-/// Whisper emits bracketed timestamps and blank-audio markers. Strip them,
-/// or "[BLANK_AUDIO]" gets parsed as a command.
+/// The words after the wake phrase in what was heard: "Atlas, what time is
+/// it?" -> "what time is it?". `None` when the phrase isn't there; empty when
+/// nothing came after it. The phrase is matched word by word, loosely ("Hey,
+/// Atlas!" is "hey atlas"), so "Atlassian" isn't the name. (29 Sep 2026: the
+/// words were thrown away once the name was found, and the request said in
+/// the same breath was lost.)
+pub fn words_after_name(heard: &str, phrase: &str) -> Option<String> {
+    let want = loose(phrase);
+    if want.is_empty() {
+        return None;
+    }
+    let words: Vec<&str> = heard.split_whitespace().collect();
+    for i in 0..words.len() {
+        let mut acc = String::new();
+        for j in i..words.len() {
+            acc.push_str(&loose(words[j]));
+            if acc == want {
+                let rest = words[j + 1..].join(" ");
+                let rest = rest.trim_start_matches(|c: char| !c.is_alphanumeric()).trim();
+                return Some(rest.to_string());
+            }
+            if !want.starts_with(&acc) {
+                break;
+            }
+        }
+    }
+    None
+}
+
 /// What whisper writes for a quiet room, not for anything said: a whole
 /// transcript that is only one of these is dropped. "Thank you" alone is not
 /// here -- people say it -- but it only reaches whisper at all when the clip
@@ -1616,6 +1584,8 @@ pub fn not_really_said(text: &str) -> bool {
     plain.is_empty() || WHISPER_SILENCE.contains(&plain.as_str())
 }
 
+/// Whisper emits bracketed timestamps and blank-audio markers. Strip them,
+/// or "[BLANK_AUDIO]" gets parsed as a command.
 pub fn clean_transcript(raw: &str) -> String {
     let mut out = String::new();
     let mut depth = 0i32;
@@ -1696,16 +1666,45 @@ impl crate::micthread::MicWork for VoiceWork {
         if device.trim().is_empty() {
             return None;
         }
-        // Ten minutes is longer than any reply.
-        let mut child = crate::tools::command(&self.cfg.record.command)
-            .args(crate::audio::stream_args(&device, RECORD_RATE_HZ, 600))
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .ok()?;
-        let out = child.stdout.take()?;
-        Some(Box::new(PcmStream { child, out }))
+        // Ten minutes is longer than any reply; listening for the wake word
+        // opens it again when it runs out.
+        PcmStream::open(&self.cfg.record.command, &device, 600).ok().map(|p| Box::new(p) as Box<dyn crate::micthread::MicStream>)
+    }
+    /// The wake word from what you said, when it's heard by speech-to-text
+    /// (with or without your taught phrase) rather than by a program of its
+    /// own, and the microphone can be streamed.
+    fn hears_name_in_audio(&self) -> bool {
+        let Some(wake) = self.cfg.wake.as_ref() else { return false };
+        wake.enabled && wake.detector.is_none() && self.cfg.endpoint.enabled && !microphone_now(&self.cfg).1.trim().is_empty()
+    }
+    fn name_in(&mut self, samples: &[i16]) -> Result<crate::micthread::NameCheck> {
+        use crate::micthread::NameCheck;
+        let phrase = self.cfg.wake.as_ref().map(|w| w.phrase.clone()).unwrap_or_else(|| "atlas".into());
+        // Your own phrase, taught with `atlas wake-word`, is matched on the
+        // sound first: speech-to-text only runs when it's there.
+        let taught = crate::wakeword::load(&crate::roots::store());
+        if let Some(model) = &taught {
+            if !crate::wakeword::heard(samples, RECORD_RATE_HZ, model) {
+                return Ok(NameCheck::NotNamed(String::new()));
+            }
+        }
+        let words = self.voice().transcribe_samples(samples)?;
+        Ok(match words_after_name(&words, &phrase) {
+            Some(rest) => NameCheck::Named(rest),
+            // Heard by its sound and not written as the phrase: what was said
+            // after the phrase's own number of words.
+            None if taught.is_some() => {
+                let n = phrase.split_whitespace().count().max(1);
+                NameCheck::Named(words.split_whitespace().skip(n).collect::<Vec<_>>().join(" "))
+            }
+            None => NameCheck::NotNamed(words),
+        })
+    }
+    fn endpointing(&self) -> crate::endpoint::EndpointConfig {
+        self.cfg.endpoint.clone()
+    }
+    fn clip_secs(&self) -> u32 {
+        self.cfg.wake.as_ref().map(|w| w.clip_seconds).unwrap_or(3)
     }
     fn transcribe(&mut self, samples: &[i16]) -> Result<String> {
         self.voice().transcribe_samples(samples)
@@ -1722,9 +1721,34 @@ impl crate::micthread::MicWork for VoiceWork {
 }
 
 /// The recorder streaming raw 16-bit samples. Dropping it ends the recorder.
+/// What the recorder writes about itself is kept, so a microphone that
+/// couldn't be opened says why rather than looking like silence.
 struct PcmStream {
     child: std::process::Child,
     out: std::process::ChildStdout,
+    said: Option<std::thread::JoinHandle<String>>,
+}
+
+impl PcmStream {
+    fn open(command: &str, device: &str, secs: u32) -> Result<PcmStream> {
+        use std::io::Read;
+        let mut child = crate::tools::command(command)
+            .args(crate::audio::stream_args(device, RECORD_RATE_HZ, secs))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| AtlasError::Platform(format!("could not start '{command}' to listen: {e}")))?;
+        let out = child.stdout.take().ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
+        let said = child.stderr.take().map(|mut e| {
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let _ = e.read_to_string(&mut s);
+                s
+            })
+        });
+        Ok(PcmStream { child, out, said })
+    }
 }
 
 impl crate::micthread::MicStream for PcmStream {
@@ -1733,6 +1757,14 @@ impl crate::micthread::MicStream for PcmStream {
         let mut buf = vec![0u8; n * 2];
         self.out.read_exact(&mut buf).ok()?;
         Some(crate::audio::samples_from_le(&buf))
+    }
+    fn why_stopped(&mut self) -> Option<String> {
+        // The recorder has ended (that's why `read` gave nothing), so its
+        // complaint is all written.
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let said = self.said.take().and_then(|h| h.join().ok()).unwrap_or_default();
+        recorder_could_not_open(&said)
     }
 }
 

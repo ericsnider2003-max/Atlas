@@ -159,12 +159,17 @@ impl<'a> Daemon<'a> {
         };
         let store = crate::roots::store();
         let mut hearing = crate::hearing::Hearing::load_from(&store);
+        hearing.observe_devices(devices);
+        hearing.learn_levels(&crate::leveller::remembered());
         let laptop_active = self.plat.built_in_screen_on().unwrap_or(true);
         let Some(p) = crate::hearing::pick_microphone(devices, &mut hearing, &tc, &w, laptop_active, t) else { return };
         let _ = hearing.save_to(&store);
         let (now_name, now_device) = crate::voice::microphone_now(&tc);
         if let Some(line) = microphone_change(&now_name, &now_device, &p) {
             crate::voice::set_microphone(&p.name, &p.device);
+            // A different microphone: if the last one failed the wake word,
+            // try this one now rather than at the next turn of the clock.
+            self.mic_probe_at = 0;
             self.log.info(&line);
             self.heard_note = Some(line);
         }

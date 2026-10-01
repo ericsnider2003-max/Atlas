@@ -543,7 +543,11 @@ fn a_reply_given_again_and_again_is_not_shown_to_the_model_again_and_again() {
     t.append("Can you hear me?", stuck, None, 5);
     let msgs = t.messages(20, 4000);
     let text: Vec<String> = msgs.iter().map(|m| m.content.clone()).collect();
-    assert_eq!(text.iter().filter(|m| m.as_str() == stuck).count(), 1, "the same reply is shown to the model again and again: {text:?}");
+    // 30 Sep 2026 (merge): a past reply is shown as its first sentence or
+    // two without the stock closers (`repeating::for_history`), and later
+    // near copies are left out, so the stuck reply is counted by its opening.
+    let opening = "I\u{2019}m here \u{2014} and I\u{2019}m listening.";
+    assert_eq!(text.iter().filter(|m| m.contains(opening)).count(), 1, "the same reply is shown to the model again and again: {text:?}");
     assert!(!text.iter().any(|m| m == "you"), "a whisper ghost was kept as something said");
     assert!(text.iter().any(|m| m == "Can you hear me?"), "the newest exchange was dropped");
 }
@@ -634,7 +638,18 @@ fn a_report_on_itself_is_the_self_check() {
 
 #[test]
 fn a_sentence_copied_from_earlier_replies_is_not_kept_again() {
-    use atlas::thread::without_repeated_sentences as clean;
+    // 30 Sep 2026 (merge): `thread::without_repeated_sentences` took copied
+    // sentences out when a reply was stored; this chat's
+    // `repeating::SentenceFilter` stops them before they are said (through
+    // `brain::SpeechGate`), so the reply stored is already without them. The
+    // same text, through the one that was kept.
+    let clean = |reply: &str, earlier: &[&str]| {
+        let mut f = atlas::repeating::SentenceFilter::new(earlier);
+        for s in atlas::repeating::sentences(reply) {
+            f.pass(&s);
+        }
+        f.kept()
+    };
     let tail = "What\u{2019}s your next move? A joke? A memory? Or maybe you\u{2019}re testing if I can still hear you when you\u{2019}re not talking? Either way, I\u{2019}m tuned in.";
     let earlier = format!("You\u{2019}re not wrong. {tail}");
     let now = format!("You\u{2019}re right, I\u{2019}m not calm. {tail}");
@@ -646,7 +661,9 @@ fn a_sentence_copied_from_earlier_replies_is_not_kept_again() {
     t.append("b", &now, None, 2);
     let msgs = t.messages(20, 4000);
     let all: String = msgs.iter().map(|m| m.content.clone()).collect::<Vec<_>>().join(" ");
-    assert_eq!(all.matches("Either way, I\u{2019}m tuned in.").count(), 1, "{all}");
+    // Shown to the model at most once (a stock closer: not at all).
+    assert!(all.matches("Either way, I\u{2019}m tuned in.").count() <= 1, "{all}");
+    assert!(all.matches("Or maybe you\u{2019}re testing").count() <= 1, "{all}");
 }
 
 #[test]
@@ -676,7 +693,9 @@ fn a_parked_window_is_marked_minimized_and_unmarked_to_show() {
 /// nothing after it", five times in one evening).
 #[test]
 fn the_words_said_with_the_name_are_kept() {
-    use atlas::voice::after_wake_phrase;
+    // 30 Sep 2026 (merge): `after_wake_phrase` and `words_after_name` were
+    // the same matcher; `words_after_name` is the one kept.
+    use atlas::voice::words_after_name as after_wake_phrase;
     assert_eq!(after_wake_phrase("Atlas, can you see me?", "atlas").as_deref(), Some("can you see me?"));
     assert_eq!(after_wake_phrase("Hey Atlas. Research local models.", "hey atlas").as_deref(), Some("Research local models."));
     assert_eq!(after_wake_phrase("Atlas.", "atlas").as_deref(), Some(""));
@@ -739,12 +758,14 @@ fn getting_on_with_the_research_is_recognised() {
 #[test]
 fn atlas_knows_who_it_is_and_what_its_job_is() {
     let p = atlas::persona::Persona::default();
+    // 30 Sep 2026 (the prompt diet): the same statements in fewer words, and
+    // "assistant and friend" (Eric: "an assistant that is also a friend").
     for prompt in [p.character(), p.system_prompt()] {
-        assert!(prompt.contains("personal assistant of the person who owns this computer"), "{prompt}");
-        assert!(prompt.contains("Your job is to take things off their plate"));
-        assert!(prompt.contains("research a topic on the web"));
-        assert!(prompt.contains("You want to get better at this job"));
-        assert!(prompt.contains("that you can't do research"));
+        assert!(prompt.contains("personal assistant and friend of the person who owns this computer"), "{prompt}");
+        assert!(prompt.contains("Your job: take things off their plate"));
+        assert!(prompt.contains("research the web"));
+        assert!(prompt.contains("about getting better"));
+        assert!(prompt.contains("can't do research"));
     }
     // Still says to call the tools (the second scan's check).
     assert!(p.character().contains("call the tool"));
@@ -856,8 +877,9 @@ fn talk_is_spoken_length_unless_you_ask_for_more() {
 #[test]
 fn the_prompt_forbids_made_up_history() {
     let c = atlas::persona::Persona::default().character();
-    assert!(c.contains("Never invent past events, shared memories"), "{c}");
-    assert!(c.contains("Don't mention the time of day"));
+    // 30 Sep 2026 (merged with the prompt diet): its wording.
+    assert!(c.contains("Never invent people, events or stories"), "{c}");
+    assert!(c.contains("Don't remark on the time"));
 }
 
 /// The bench's checks catch what a person heard as wrong.
@@ -953,11 +975,13 @@ fn parakeet_hears_real_speech_through_atlas_own_client() {
 fn a_question_is_answered_first_and_talk_is_still_free() {
     let p = atlas::persona::Persona::default();
     let c = p.character();
-    assert!(c.contains("A question gets its answer, in your first sentence"), "{c}");
-    assert!(c.contains("Never answer a question with a question"));
-    assert!(c.contains("After that you're free to talk"));
+    // 30 Sep 2026 (merged with the prompt diet): the same rule, shorter; and
+    // the friend's talk after it is the diet's own "small talk" line.
+    assert!(c.contains("a question's answer comes \
+             first."), "{c}");
+    assert!(c.contains("Small talk: a friend who knows them"), "{c}");
     let chat = p.for_this_turn_on(atlas::register::Register::Chatting, 3, "what's your favourite film", false);
-    assert!(chat.contains("answer it first") && chat.contains("go with a tangent"), "{chat}");
+    assert!(chat.contains("answer like a friend would"), "{chat}");
     use atlas::talkbench::question_dodged;
     assert!(question_dodged("give me three ideas for dinner tonight", "What's your mood? Something simple?").is_some());
     assert!(question_dodged("give me three ideas for dinner tonight", "Pasta, soup, or eggs. Want the recipe?").is_none());

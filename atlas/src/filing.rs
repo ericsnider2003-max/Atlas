@@ -190,3 +190,116 @@ pub fn spoken(moves: usize, left: usize) -> String {
          any of it can be put back."
     )
 }
+
+/// Files a folder like the desktop holds that are not "loose files": the
+/// shortcuts you launch things from, and the folder's own settings file.
+const NOT_LOOSE: &[&str] = &["lnk", "url", "ini", "desktop", "website", "appref-ms"];
+
+/// The loose files in `dir` -- files, not folders; not hidden; not
+/// shortcuts -- each with where it would go under `root`, oldest-untouched
+/// counted from `now` (seconds). In name order, so the plan reads the same
+/// twice. Nothing is moved.
+pub fn plan_folder(dir: &Path, root: &Path, now: u64) -> Vec<(PathBuf, Suggestion)> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut out: Vec<(PathBuf, Suggestion)> = Vec::new();
+    for e in entries.flatten() {
+        let path = e.path();
+        let Ok(meta) = e.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().to_string();
+        let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if name.starts_with('.') || NOT_LOOSE.contains(&ext.as_str()) {
+            continue;
+        }
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(now);
+        let age = now.saturating_sub(modified) / 86_400;
+        let s = suggest(root, &name, &ext, age);
+        out.push((path, s));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// Carry out one suggested move, through `system::judge` -- the master
+/// switch, the folders Atlas may work in -- never over the top of a file
+/// already there, and never leaving two copies: a rename, or across drives
+/// a copy and then the original removed only once the copy is whole. Where
+/// it went, or why not.
+pub fn file_one(from: &Path, s: &Suggestion, sys: &crate::system::SystemConfig) -> Result<PathBuf, String> {
+    let (Some(change), Suggestion::Move { to, .. }) = (as_change(from, s), s) else {
+        return Err("left where it is".into());
+    };
+    if let crate::system::Verdict::Refuse(why) = crate::system::judge(&change, sys) {
+        return Err(why);
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("couldn't make {}: {e}", parent.display()))?;
+    }
+    // `fs::rename` replaces its destination silently on unix, and the one
+    // already there is, by definition, the one filed before.
+    if to.exists() {
+        return Err(format!("{} already exists, and I won't write over it", to.display()));
+    }
+    let moved = match std::fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(_) => std::fs::copy(from, to).and_then(|_| std::fs::remove_file(from)).map(|_| ()),
+    };
+    match moved {
+        Ok(()) => Ok(to.clone()),
+        Err(e) => {
+            if to.exists() && from.exists() {
+                let _ = std::fs::remove_file(to);
+            }
+            Err(e.to_string())
+        }
+    }
+}
+
+/// What Atlas says before tidying a folder: how many loose files, how many
+/// it would move and where to, how many it would leave. Ends with the
+/// question when there is something to move.
+pub fn tidy_plan_words(what: &str, plan: &[(PathBuf, Suggestion)], root: &Path) -> String {
+    let moves: Vec<&Bucket> = plan
+        .iter()
+        .filter_map(|(_, s)| match s {
+            Suggestion::Move { bucket, .. } => Some(bucket),
+            Suggestion::Leave { .. } => None,
+        })
+        .collect();
+    let left = plan.len() - moves.len();
+    if plan.is_empty() {
+        return format!("There are no loose files on {what} -- only folders and shortcuts, which I leave where they are.");
+    }
+    if moves.is_empty() {
+        return format!(
+            "{} loose file{} on {what}, and none I'd move with any confidence -- their names or kinds don't say where they \
+             belong, so they stay where you put them.",
+            plan.len(),
+            if plan.len() == 1 { "" } else { "s" }
+        );
+    }
+    let mut by: Vec<String> = Vec::new();
+    for b in [Bucket::Projects, Bucket::Areas, Bucket::Resources, Bucket::Archive] {
+        let n = moves.iter().filter(|m| ***m == b).count();
+        if n > 0 {
+            by.push(format!("{n} to {}", b.folder()));
+        }
+    }
+    format!(
+        "{} loose file{} on {what}. I'd file {} into {} -- {} -- and leave {left} where {} (shortcuts and folders aren't \
+         touched). Nothing is deleted, and I'll say where each one went. Go ahead?",
+        plan.len(),
+        if plan.len() == 1 { "" } else { "s" },
+        moves.len(),
+        root.display(),
+        by.join(", "),
+        if left == 1 { "it is" } else { "they are" }
+    )
+}

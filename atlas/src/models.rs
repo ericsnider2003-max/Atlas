@@ -108,6 +108,106 @@ pub struct ModelsConfig {
     /// this machine can't answer, or there isn't one, a free model online
     /// that needs no account (`freeonline`). `false`: nothing is sent.
     pub online_second: bool,
+    /// How the model picks its words (`Sampling`): sent with every request,
+    /// so the server's own defaults -- no penalty for repeating at all --
+    /// never apply.
+    pub sampling: Sampling,
+}
+
+/// How the model picks its next word, sent with every request (29 Sep 2026).
+///
+/// llama-server's defaults are `repeat_penalty` 1.0, `presence_penalty` 0 and
+/// DRY off: nothing discourages the model from saying again what it just
+/// said, and on Eric's laptop the 4B model answered twenty sentences in a
+/// row with the same paragraph. These are Qwen's published settings for its
+/// Qwen3-VL Instruct models (the model card's "Generation Hyperparameters",
+/// VL: temperature 0.7, top_p 0.8, top_k 20; Qwen3 Instruct cards add min_p
+/// 0 and presence_penalty "between 0 and 2 to reduce endless repetitions")
+/// plus llama.cpp's DRY sampler, which penalises extending a run of words
+/// that already appeared -- exactly the loop above -- and leaves single
+/// repeated words (every JSON key of a tool call) alone.
+///
+/// The presence penalty stays at 1.0 rather than the card's 1.5: at 1.5 the
+/// model garbled the JSON of its tool calls (every key repeats), measured
+/// 27 Sep 2026. `stronger` is what a reply caught looping is asked again with
+/// (`brain`), without tools.
+#[derive(Debug, Clone, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct Sampling {
+    pub temperature: f32,
+    pub top_p: f32,
+    pub top_k: u32,
+    pub min_p: f32,
+    pub presence_penalty: f32,
+    pub repeat_penalty: f32,
+    /// llama.cpp's DRY ("don't repeat yourself") strength; 0 is off.
+    pub dry_multiplier: f32,
+    pub dry_base: f32,
+    /// A repeated run this many words long costs nothing; longer ones do.
+    pub dry_allowed_length: u32,
+    /// The presence penalty and DRY strength for a reply asked again because
+    /// the first one looped.
+    pub stronger_presence_penalty: f32,
+    pub stronger_dry_multiplier: f32,
+}
+
+impl Default for Sampling {
+    fn default() -> Self {
+        Sampling {
+            temperature: 0.7,
+            top_p: 0.8,
+            top_k: 20,
+            min_p: 0.0,
+            presence_penalty: 1.0,
+            repeat_penalty: 1.05,
+            dry_multiplier: 0.8,
+            dry_base: 1.75,
+            dry_allowed_length: 2,
+            stronger_presence_penalty: 1.5,
+            stronger_dry_multiplier: 1.2,
+        }
+    }
+}
+
+impl Sampling {
+    /// The fields a llama-server request takes, as JSON. `stronger`: the
+    /// settings for asking again after a loop.
+    fn fields(&self, stronger: bool) -> serde_json::Map<String, serde_json::Value> {
+        use serde_json::json;
+        let mut m = serde_json::Map::new();
+        m.insert("temperature".into(), json!(self.temperature));
+        m.insert("top_p".into(), json!(self.top_p));
+        m.insert("top_k".into(), json!(self.top_k));
+        m.insert("min_p".into(), json!(self.min_p));
+        m.insert(
+            "presence_penalty".into(),
+            json!(if stronger { self.stronger_presence_penalty.max(self.presence_penalty) } else { self.presence_penalty }),
+        );
+        m.insert("repeat_penalty".into(), json!(self.repeat_penalty));
+        m.insert(
+            "dry_multiplier".into(),
+            json!(if stronger { self.stronger_dry_multiplier.max(self.dry_multiplier) } else { self.dry_multiplier }),
+        );
+        m.insert("dry_base".into(), json!(self.dry_base));
+        m.insert("dry_allowed_length".into(), json!(self.dry_allowed_length));
+        m
+    }
+}
+
+/// The sampling every chat request carries: set from the settings when the
+/// connection is built (`connection`), the defaults until then.
+static SAMPLING: std::sync::RwLock<Option<Sampling>> = std::sync::RwLock::new(None);
+
+/// Use these sampling settings for every chat request from now on.
+fn set_sampling(s: &Sampling) {
+    if let Ok(mut g) = SAMPLING.write() {
+        *g = Some(s.clone());
+    }
+}
+
+/// The sampling chat requests are sent with now.
+fn sampling_now() -> Sampling {
+    SAMPLING.read().ok().and_then(|g| g.clone()).unwrap_or_default()
 }
 
 impl Default for ModelsConfig {
@@ -128,6 +228,7 @@ impl Default for ModelsConfig {
             draft: String::new(),
             speculate: "off".into(),
             online_second: true,
+            sampling: Sampling::default(),
         }
     }
 }
@@ -503,27 +604,28 @@ pub fn completion_url(port: u16) -> String {
 }
 
 /// Request body for llama.cpp's /completion endpoint.
-pub fn completion_body(prompt: &str, template: Template, max_tokens: u32) -> String {
-    let stops: Vec<String> = template
-        .stop_tokens()
-        .iter()
-        .map(|s| serde_json::Value::String(s.to_string()).to_string())
-        .collect();
-    format!(
-        // Qwen's own recommended sampling for its Instruct models (the one
-        // Atlas ships): with llama-server's defaults it looped and rambled,
-        // and each loop cost another call (27 Sep 2026).
-        //
-        // presence_penalty was 1.5 -- the top of Qwen's range, meant for
-        // long free generation. Here it pushed the model off the words a
-        // JSON object or a tool call is made of (every key repeats), and
-        // garbled them. 0.5 with a light repeat penalty still stops the
-        // loops (27 Sep 2026).
-        "{{\"prompt\":{},\"n_predict\":{},\"stream\":false,\"temperature\":0.7,\"top_p\":0.8,\"top_k\":20,\"presence_penalty\":0.5,\"repeat_penalty\":1.05,\"cache_prompt\":true,\"stop\":[{}]}}",
-        serde_json::Value::String(prompt.to_string()),
-        max_tokens,
-        stops.join(",")
-    )
+///
+/// Qwen's own recommended sampling for its Instruct models (the one Atlas
+/// ships): with llama-server's defaults it looped and rambled, and each loop
+/// cost another call (27 Sep 2026). Now from the settings (`Sampling`), with
+/// DRY added (29 Sep 2026).
+///
+/// `id_slot` 1 (29 Sep 2026): a one-prompt call is always work beside the
+/// conversation -- the running summary, a council seat, a screen read.
+/// Naming no slot let llama.cpp put it in the conversation's slot 0 when
+/// that one was idle, and the next turn read its whole prompt again.
+pub fn completion_body(prompt: &str, template: Template, max_tokens: u32, sampling: &Sampling) -> String {
+    let stops: Vec<serde_json::Value> =
+        template.stop_tokens().iter().map(|s| serde_json::Value::String(s.to_string())).collect();
+    let mut body = serde_json::Map::new();
+    body.insert("prompt".into(), serde_json::Value::String(prompt.to_string()));
+    body.insert("n_predict".into(), serde_json::json!(max_tokens));
+    body.insert("stream".into(), serde_json::json!(false));
+    body.extend(sampling.fields(false));
+    body.insert("cache_prompt".into(), serde_json::json!(true));
+    body.insert("id_slot".into(), serde_json::json!(1));
+    body.insert("stop".into(), serde_json::Value::Array(stops));
+    serde_json::Value::Object(body).to_string()
 }
 
 /// Start the server for a chosen model.
@@ -998,7 +1100,7 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
 pub fn llm_config_for(model: &Model, cfg: &ModelsConfig, http: &ExternalTool) -> crate::brain::LlmConfig {
     let template = Template::detect(model.chat_template.as_deref(), &model.id);
     let prompt = template.render("{system}", "{user}");
-    let body = completion_body(&prompt, template, 512);
+    let body = completion_body(&prompt, template, 512, &cfg.sampling);
 
     let mut tool = http.clone();
     // The endpoint, resolved here rather than left to a `{url}` the caller
@@ -1044,6 +1146,8 @@ pub fn why_no_model(cfg: &ModelsConfig) -> String {
 }
 
 pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
+    // Every chat request from here on carries the settings' sampling.
+    set_sampling(&tc.models.sampling);
     let derived: Option<crate::brain::LlmConfig> = if tc.llm.is_some() {
         None
     } else {
@@ -1195,8 +1299,7 @@ fn chat_failed(url: &str) {
 
 /// The request body for `/v1/chat/completions`.
 ///
-/// Same sampling as `completion_body` (Qwen's recommended settings for its
-/// Instruct models), with the lighter presence penalty.
+/// Same sampling as `completion_body` (`Sampling`, from the settings).
 ///
 /// Talking always uses slot 0, which every llama-server has however many
 /// slots it was started with; a call beside the conversation uses slot 1
@@ -1205,7 +1308,7 @@ fn chat_failed(url: &str) {
 /// other slot and read all 1,692 tokens again (52 s on that machine) where
 /// the same slot would have read the ~300 new ones. Background calls name no
 /// slot, so they take whichever is free -- usually the other one.
-fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
+pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     use serde_json::{json, Value};
     let messages: Vec<Value> =
         req.messages.iter().map(|m| json!({"role": m.role.name(), "content": m.content})).collect();
@@ -1213,23 +1316,29 @@ fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
         "messages": messages,
         "max_tokens": req.max_tokens.max(16),
         "stream": stream,
-        "temperature": 0.7,
-        "top_p": 0.8,
-        "top_k": 20,
-        "presence_penalty": 0.5,
-        "repeat_penalty": 1.05,
         "cache_prompt": true,
         // The conversation's slot, or the other one for a call beside it
         // (`ChatRequest::aside`). A server with one slot wraps 1 round to 0.
         "id_slot": if req.aside { 1 } else { 0 },
     });
+    // The sampling from the settings (`Sampling`); stronger for a reply
+    // asked again because the first one looped.
+    if let Some(m) = body.as_object_mut() {
+        m.extend(sampling_now().fields(req.stronger));
+    }
+    // No thinking out loud (30 Sep 2026): Qwen3 and Qwen3.5 templates think
+    // before answering unless told not to, which is hundreds of tokens before
+    // the first spoken word on a laptop writing 15-23 a second. Eric's
+    // measurement that answered in 1-3 s sent exactly this. A template that
+    // doesn't read it ignores it.
+    body["chat_template_kwargs"] = json!({ "enable_thinking": false });
     if !req.tools.is_empty() {
         body["tools"] = Value::Array(req.tools.clone());
         body["tool_choice"] = json!(if req.force_tool { "required" } else { "auto" });
         // Which tools are the same every turn, for Atlas's own template
         // (`tools_late_template`); any other template never reads it.
         if req.stable_tools > 0 && req.stable_tools < req.tools.len() {
-            body["chat_template_kwargs"] = json!({ STABLE_TOOLS_KWARG: req.stable_tools });
+            body["chat_template_kwargs"][STABLE_TOOLS_KWARG] = json!(req.stable_tools);
         }
     }
     // No thinking out loud before answering (30 Sep 2026): Qwen3.5 and
@@ -1284,8 +1393,12 @@ pub const STABLE_TOOLS_KWARG: &str = "atlas_stable_tools";
 pub fn tools_late_template(original: &str) -> Option<String> {
     const TOOLS_LOOP: &str = "{%- for tool in tools %}";
     const USER_BRANCH: &str = "{%- if message.role == \"user\" %}";
+    // Qwen3.5's template (30 Sep 2026) tests the user role in an `elif`: the
+    // late tools go just inside that branch, before the user's words.
+    const USER_ELIF: &str = "{%- elif message.role == \"user\" %}";
+    let (if_form, elif_form) = (original.matches(USER_BRANCH).count(), original.matches(USER_ELIF).count());
     if original.matches(TOOLS_LOOP).count() != 1
-        || original.matches(USER_BRANCH).count() != 1
+        || if_form + elif_form != 1
         || !original.contains("<tool_call>")
         || !original.contains("<tools>")
         || original.contains(STABLE_TOOLS_KWARG)
@@ -1304,9 +1417,12 @@ pub fn tools_late_template(original: &str) -> Option<String> {
         {%- endfor %}\n\
         {{- '\\n</tools><|im_end|>\\n' }}\n\
         {%- endif %}\n    ";
-    let t = original
-        .replacen(TOOLS_LOOP, "{%- for tool in tools[:atlas_early] %}", 1)
-        .replacen(USER_BRANCH, &format!("{late}{USER_BRANCH}"), 1);
+    let early_loop = original.replacen(TOOLS_LOOP, "{%- for tool in tools[:atlas_early] %}", 1);
+    let t = if if_form == 1 {
+        early_loop.replacen(USER_BRANCH, &format!("{late}{USER_BRANCH}"), 1)
+    } else {
+        early_loop.replacen(USER_ELIF, &format!("{USER_ELIF}\n    {late}"), 1)
+    };
     Some(format!("{early}{t}"))
 }
 
@@ -1339,6 +1455,56 @@ pub struct ChatStream {
     pub done: bool,
     /// An error the server sent instead of a reply.
     pub error: Option<String>,
+    /// The server's own count of what it read and wrote (`ServerTimings`).
+    pub timings: Option<ServerTimings>,
+}
+
+/// What llama-server says a call cost, from the `timings` object its last
+/// streamed piece carries (29 Sep 2026). The one way to tell a slow turn
+/// that read its whole prompt again (a cache miss) from one that read a
+/// little and wrote a lot, or one that waited behind other work: Eric's
+/// laptop took 26-40 seconds a turn and nothing Atlas logged could say which.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ServerTimings {
+    /// Prompt tokens reused from the slot's cache.
+    pub cached: u64,
+    /// Prompt tokens read this time.
+    pub read: u64,
+    pub read_ms: u64,
+    /// Tokens written.
+    pub wrote: u64,
+    pub wrote_ms: u64,
+}
+
+impl ServerTimings {
+    /// From the `timings` object, when it has the counts.
+    fn from_json(t: &serde_json::Value) -> Option<ServerTimings> {
+        let n = |k: &str| t.get(k).and_then(|v| v.as_f64()).map(|v| v.max(0.0).round() as u64);
+        Some(ServerTimings {
+            cached: n("cache_n").unwrap_or(0),
+            read: n("prompt_n")?,
+            read_ms: n("prompt_ms").unwrap_or(0),
+            wrote: n("predicted_n")?,
+            wrote_ms: n("predicted_ms").unwrap_or(0),
+        })
+    }
+
+    /// For the log's timing line.
+    pub fn line(&self) -> String {
+        format!(
+            "server read {} new tokens ({} from cache) in {}ms, wrote {} in {}ms",
+            self.read, self.cached, self.read_ms, self.wrote, self.wrote_ms
+        )
+    }
+}
+
+/// The last chat call's `ServerTimings`, for the turn's timing line.
+static LAST_TIMINGS: std::sync::Mutex<Option<ServerTimings>> = std::sync::Mutex::new(None);
+
+/// What the last chat call cost, as the server counted it; taken, so the
+/// next turn's line says only its own.
+pub fn take_last_timings() -> Option<ServerTimings> {
+    LAST_TIMINGS.lock().ok().and_then(|mut g| g.take())
 }
 
 impl ChatStream {
@@ -1356,6 +1522,9 @@ impl ChatStream {
             return None;
         }
         let v: serde_json::Value = serde_json::from_str(data).ok()?;
+        if let Some(t) = v.get("timings").and_then(|t| ServerTimings::from_json(t)) {
+            self.timings = Some(t);
+        }
         if let Some(e) = v.get("error") {
             self.error = Some(e.get("message").and_then(|m| m.as_str()).map(str::to_string).unwrap_or_else(|| e.to_string()));
             return None;
@@ -1678,6 +1847,11 @@ fn chat_call_io(
     // the whole reply (28 Sep 2026: it was taken as one).
     if !stopped && !stream.done {
         return Ok(Err(ChatFail::Other("the model server stopped partway through its reply".into())));
+    }
+    if let Some(t) = stream.timings {
+        if let Ok(mut g) = LAST_TIMINGS.lock() {
+            *g = Some(t);
+        }
     }
     Ok(Ok(stream.reply()))
 }

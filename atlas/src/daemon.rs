@@ -59,6 +59,7 @@ mod errands;
 mod helping;
 mod messages;
 mod hands;
+mod camera;
 pub use hands::{PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
 pub use errands::CONNECTED_ACCOUNTS;
 pub use tick::moment_clock;
@@ -69,6 +70,7 @@ mod making;
 mod reading;
 mod execute;
 mod turn;
+mod tasks;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -959,6 +961,11 @@ pub struct Daemon<'a> {
     /// When to list the sound devices again and see whether a different
     /// microphone should be recorded from (29 Sep 2026).
     mic_look_at: u64,
+    /// Push-to-talk because the microphone failed: how many recordings had
+    /// given sound when it dropped (`back_to_the_wake_word`).
+    mic_heard_before_ptt: Option<u64>,
+    /// When to try the microphone again, while that lasts.
+    mic_probe_at: u64,
     /// That listing, running off the loop.
     mic_listing: Option<std::sync::mpsc::Receiver<std::result::Result<Vec<crate::audio::Device>, String>>>,
     /// The voice tools weren't there at start (not a failing microphone).
@@ -1024,8 +1031,15 @@ pub struct Daemon<'a> {
     /// When Atlas last finished speaking to you. A follow-up soon after is
     /// the conversation carrying on, whoever it mentions.
     last_spoke_at: u64,
-    /// Every command, as a tool the model can call (`intent::ToolBook`).
-    tool_book: crate::intent::ToolBook,
+    /// The few of them a sentence needs (`router`, 30 Sep 2026).
+    router: crate::router::Router,
+    /// The parts of the last request of several parts, and where each
+    /// stands (`streams`), for "what are you working on".
+    streams: Vec<crate::streams::Stream>,
+    /// How long after the model was asked the first sentence of this turn's
+    /// reply went to be spoken (30 Sep 2026): the wait you actually hear,
+    /// for the turn's timing line. Taken by `log_turn_timing`.
+    first_words_ms: std::cell::Cell<Option<u64>>,
     /// Other programs' tools (`mcp`): the servers in `tools.yaml`, started
     /// on their own threads the first time a conversation needs tools.
     mcp: crate::mcp::McpHub,
@@ -1213,6 +1227,9 @@ pub struct Daemon<'a> {
     pending_press: Option<(u64, String, String)>,
     /// A storage plan shown and waiting for your yes.
     pending_storage: Option<crate::tune::StoragePlan>,
+    /// The desktop's loose files and where each would go, shown and waiting
+    /// for your yes ("tidy my desktop", 29 Sep 2026).
+    pending_desktop: Option<Vec<(std::path::PathBuf, crate::filing::Suggestion)>>,
     /// An undo asked about ("Undo X?"), waiting for your yes.
     pending_undo: Option<u64>,
     /// A dropped task you asked about: put back on the list on a yes (H8).
@@ -1696,6 +1713,8 @@ impl<'a> Daemon<'a> {
             model_look_at: 0,
             audio_look_at: 0,
             mic_look_at: crate::store::now() + MIC_LOOK_EVERY_SECS,
+            mic_heard_before_ptt: None,
+            mic_probe_at: 0,
             mic_listing: None,
             audio_tools_missing: false,
             talk_queue: Vec::new(),
@@ -1719,7 +1738,9 @@ impl<'a> Daemon<'a> {
             talk_partial: Default::default(),
             pending_stamp: None,
             last_spoke_at: 0,
-            tool_book: crate::intent::ToolBook::new(&cfg.commands),
+            router: crate::router::Router::new(&crate::intent::ToolBook::new(&cfg.commands)),
+            streams: Vec::new(),
+            first_words_ms: std::cell::Cell::new(None),
             by_chat: false,
             model_server_trouble: None,
             helpers: crate::lifecycle::Helpers::new(
@@ -1806,6 +1827,7 @@ impl<'a> Daemon<'a> {
             posting: Vec::new(),
             pending_press: None,
             pending_storage: None,
+            pending_desktop: None,
             pending_undo: None,
             pending_media_keep: None,
             pending_unscanned: None,
@@ -1937,7 +1959,8 @@ const CUT_IN_STATE: &str = "cut_in";
 /// The talk key, while a reply is being said: held, the reply stops at once
 /// and you're listened to for as long as it's down. A stop or a pause is
 /// returned as said; anything else is kept in `cut_in`, to be answered
-/// next, and returned as "hold on".
+/// next, and returned as `speech::YOUR_TURN` -- you taking the turn, which
+/// is answered, not acknowledged with "Paused." (29 Sep 2026).
 fn key_cut_in(
     keys: Option<&crate::hotkeys::Hotkeys>,
     ears: &dyn Ears,
@@ -1954,7 +1977,7 @@ fn key_cut_in(
         return Some(words);
     }
     *cut_in.borrow_mut() = Some(words);
-    Some("hold on".to_string())
+    Some(crate::speech::YOUR_TURN.to_string())
 }
 
 /// A reply being said, as the loop sees it (`speakthread`).
@@ -2483,6 +2506,9 @@ fn app_action_of(i: &Intent) -> Option<(String, String)> {
         Intent::OpenApp(a) => Some((a.clone(), "open".into())),
         Intent::CloseApp(a) => Some((a.clone(), "close".into())),
         Intent::FocusApp(a) => Some((a.clone(), "focus".into())),
+        // "Allow the camera?" -- a yes is kept as the camera's grant
+        // (`daemon::camera`, 30 Sep 2026).
+        Intent::CaptureWebcam => Some((camera::CAMERA.into(), "look".into())),
         _ => None,
     }
 }
@@ -3652,11 +3678,43 @@ pub const CHATTING_FOLLOWUP_SECS: u32 = 10;
 
 /// How many earlier exchanges go to the model as turns, and roughly how many
 /// tokens they may take.
+/// Kept at six (30 Sep 2026, the prompt diet): the window's start steps
+/// forward three exchanges at a time, so the model server can reuse the
+/// conversation it already read on two turns in three
+/// (`speed_measured::a_conversation_rereads_only_what_is_new`); what keeps
+/// the prompt small is `HISTORY_TOKENS`, and past replies going back as
+/// their first sentences.
 pub const HISTORY_EXCHANGES: usize = 6;
-pub const HISTORY_TOKENS: usize = 1200;
+/// How long nothing has been said before the conversation is summarised
+/// (`fold_if_due`): the summary is a model call, and shares the model with
+/// the conversation.
+pub const FOLD_WHEN_QUIET_SECS: u64 = 90;
+/// How many of Atlas's last replies a new one is checked against for
+/// saying the same again (`brain::Turn::recent_replies`).
+pub const REPLIES_CHECKED: usize = 4;
+/// The most sentences a spoken reply is asked for, unless more was asked
+/// for (`persona::asks_for_more`).
+pub const SPOKEN_SENTENCES: usize = 3;
+/// Said to the model when a sentence reads as a request (`doing::looks_like_an_action`).
+pub const ACTION_OR_SAY_SO: &str = "This is a request: if a tool does it, call it now. If none does, say in one \
+sentence what you can do instead. Don't chat around it.";
+/// 30 Sep 2026: 1200 -> 350, with `HISTORY_EXCHANGES` (the prompt diet).
+pub const HISTORY_TOKENS: usize = 350;
+
+/// Lines of the summary of older talk, at most, that go in when they bear
+/// on what was said.
+pub const SUMMARY_LINES: usize = 2;
+
+/// Lines from the capability catalogue a question about Atlas gets.
+pub const ABILITY_LINES: usize = 2;
+
+/// The standing rules learned from corrections, at most this many characters.
+pub const LEARNED_CHARS: usize = 300;
 
 /// How many facts you told Atlas go in front of the model every turn.
-pub const FACTS_IN_PROMPT: usize = 10;
+/// 30 Sep 2026: 10 -> 4, each cut to 100 characters (the prompt diet);
+/// the rest come in as hints when they bear on what was said.
+pub const FACTS_IN_PROMPT: usize = 4;
 
 /// A note's score below which it isn't worth putting in front of the model.
 pub const NOTE_HINT_FLOOR: f32 = 0.25;
@@ -3886,6 +3944,12 @@ pub fn what_this_machine_cant_do(limits: Vec<String>, pictures: Option<std::resu
 
 /// How often the microphones are listed again.
 pub const MIC_LOOK_EVERY_SECS: u64 = 180;
+
+/// Push-to-talk after the microphone failed: how often it is tried again.
+pub const MIC_PROBE_EVERY_SECS: u64 = 20;
+
+/// Your name on its own: how long Atlas waits for the rest after "Yes?".
+pub const NAME_ALONE_WAIT_SECS: u32 = 8;
 
 /// What to say when a fresh pick differs from the microphone in use; `None`
 /// when it is the same one.

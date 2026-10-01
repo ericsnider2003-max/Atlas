@@ -209,6 +209,12 @@ fn main() {
     unsafe {
         let _ = windows::Win32::System::Console::SetConsoleOutputCP(65001);
     }
+    // Real pixels on every monitor, before any window or capture: without
+    // it Windows scales every coordinate Atlas sees to the primary monitor,
+    // and a laptop screen at 150% beside monitors at 100% is captured and
+    // placed wrongly (29 Sep 2026).
+    #[cfg(windows)]
+    atlas::platform::win::become_dpi_aware();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let flag = |f: &str| argv.iter().any(|a| a == f);
     let words: Vec<String> =

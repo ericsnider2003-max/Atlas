@@ -38,8 +38,13 @@ impl<'a> Daemon<'a> {
         };
 
         let active = self.plat.active_window().unwrap_or(None);
+        // Only when what was said is about the screen (`doing::refers_to_screen`,
+        // 29 Sep 2026); the title is still read for orders below either way.
         if let Some(a) = &active {
-            s.push_str(&brain::focus_line(a, at));
+            let app = a.process.trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+            if crate::doing::refers_to_screen(&self.last_said, &app) {
+                s.push_str(&brain::focus_line(a, at));
+            }
         }
         let names: Vec<String> =
             self.index.recent(5).iter().map(|e| e.name.clone()).collect();

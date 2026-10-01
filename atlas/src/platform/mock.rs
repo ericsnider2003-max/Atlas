@@ -68,6 +68,23 @@ pub struct MockPlatform {
     /// to it and backspace takes the last character off, the way a real one
     /// does.
     pub typing_box: RefCell<Option<String>>,
+    /// How many reads of the typing box, after Atlas types into it, still
+    /// show it as it was: a real app takes keys in a moment after they're
+    /// sent (30 Sep 2026, `astype::read_back`).
+    pub box_lags_reads: RefCell<u32>,
+    lag_left: RefCell<u32>,
+    box_as_shown: RefCell<Option<String>>,
+    /// Whole screens can be captured: each is a picture of its monitor's
+    /// size in one colour (its id's), titled "screen <id>".
+    pub screen_pictures: RefCell<bool>,
+    /// The monitor the window in front is on; the laptop's own screen.
+    pub active_screen: RefCell<Option<u32>>,
+    pub laptop_screen: RefCell<Option<u32>>,
+    /// What the text engine reads off a picture with this title (a screen's
+    /// "screen <id>"), before `ocr`.
+    pub ocr_by_title: RefCell<HashMap<String, String>>,
+    /// Where windows are, by handle (`rect_of`).
+    pub window_rects: RefCell<HashMap<u64, PixelRect>>,
 }
 
 impl MockPlatform {
@@ -97,6 +114,14 @@ impl MockPlatform {
             focus_refused: RefCell::new(false),
             garbles: RefCell::new(false),
             typing_box: RefCell::new(None),
+            box_lags_reads: RefCell::new(0),
+            lag_left: RefCell::new(0),
+            box_as_shown: RefCell::new(None),
+            screen_pictures: RefCell::new(false),
+            active_screen: RefCell::new(None),
+            laptop_screen: RefCell::new(None),
+            ocr_by_title: RefCell::new(HashMap::new()),
+            window_rects: RefCell::new(HashMap::new()),
         }
     }
 
@@ -110,6 +135,18 @@ impl MockPlatform {
     /// write-back actually landed.
     pub fn clipboard_now(&self) -> Option<String> {
         self.clipboard.borrow().clone()
+    }
+
+    /// The typing box is about to change under Atlas's keys: with
+    /// `box_lags_reads` set, the next reads still show it as it was.
+    fn box_about_to_change(&self) {
+        let lag = *self.box_lags_reads.borrow();
+        if lag > 0 {
+            if *self.lag_left.borrow() == 0 {
+                *self.box_as_shown.borrow_mut() = self.typing_box.borrow().clone();
+            }
+            *self.lag_left.borrow_mut() = lag;
+        }
     }
 
     /// Everything typed, in order.
@@ -181,6 +218,11 @@ impl Platform for MockPlatform {
     }
 
     fn focused_text(&self) -> Result<Option<String>> {
+        let left = *self.lag_left.borrow();
+        if left > 0 {
+            *self.lag_left.borrow_mut() = left - 1;
+            return Ok(self.box_as_shown.borrow().clone());
+        }
         Ok(self.typing_box.borrow().clone())
     }
 
@@ -289,6 +331,7 @@ impl Platform for MockPlatform {
     }
     fn type_text(&self, text: &str) -> Result<()> {
         self.log.borrow_mut().push(Action::Type(text.to_string()));
+        self.box_about_to_change();
         if let Some(b) = self.typing_box.borrow_mut().as_mut() {
             b.push_str(text);
             return Ok(());
@@ -316,6 +359,7 @@ impl Platform for MockPlatform {
             }
         }
         if combo == "backspace" {
+            self.box_about_to_change();
             if let Some(b) = self.typing_box.borrow_mut().as_mut() {
                 b.pop();
             }
@@ -339,8 +383,34 @@ impl Platform for MockPlatform {
     fn grab_window(&self) -> Result<Option<super::Grab>> {
         Ok(self.grab.borrow().clone())
     }
-    fn recognise_text(&self, _grab: &super::Grab) -> Result<Option<String>> {
+    fn recognise_text(&self, grab: &super::Grab) -> Result<Option<String>> {
+        if let Some(t) = self.ocr_by_title.borrow().get(&grab.title) {
+            return Ok(Some(t.clone()));
+        }
         Ok(self.ocr.borrow().clone())
+    }
+    fn grab_screen(&self, monitor: u32) -> Result<Option<super::Grab>> {
+        if !*self.screen_pictures.borrow() {
+            return Ok(None);
+        }
+        let Some(m) = self.monitors.iter().find(|m| m.id == monitor) else { return Ok(None) };
+        let (w, h) = (m.width.max(1) as u32, m.height.max(1) as u32);
+        let c = [(monitor * 40 % 256) as u8, (monitor * 90 % 256) as u8, (monitor * 150 % 256) as u8];
+        let rgb = c.iter().copied().cycle().take((w * h * 3) as usize).collect();
+        Ok(Some(super::Grab { width: w, height: h, rgb, title: format!("screen {monitor}") }))
+    }
+    fn active_monitor(&self) -> Option<u32> {
+        *self.active_screen.borrow()
+    }
+    fn rect_of(&self, win: WindowId) -> Result<PixelRect> {
+        self.window_rects
+            .borrow()
+            .get(&win.0)
+            .copied()
+            .ok_or_else(|| crate::error::AtlasError::Platform("no such window".into()))
+    }
+    fn built_in_monitor(&self) -> Option<u32> {
+        *self.laptop_screen.borrow()
     }
     fn recognise_image_file(&self, _path: &str) -> Result<Option<String>> {
         Ok(self.ocr_file.borrow().clone())

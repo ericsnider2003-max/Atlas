@@ -407,6 +407,15 @@ impl<'a> Daemon<'a> {
             return reply;
         }
 
+        // "What are you working on": every stream of work, by name
+        // (30 Sep 2026, `streams`).
+        if crate::streams::asks_what_youre_working_on(said) {
+            let reply = self.what_im_working_on();
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
+
         // A named mode wins before anything else parses it as a command.
         if let Some(m) = self.modes.match_trigger(said).map(|m| m.name.clone()) {
             if self.modes.active().map(|a| a.name != m).unwrap_or(true) {
@@ -779,6 +788,14 @@ impl<'a> Daemon<'a> {
                     return "Left as it is.".into();
                 }
                 return self.carry_out_undo(id);
+            }
+            // The desktop's loose files, filed on a yes (29 Sep 2026).
+            if let Some(plan) = self.pending_desktop.take() {
+                self.session.pending = Pending::Nothing;
+                if !is_yes(said) {
+                    return "Alright, your desktop stays as it is.".into();
+                }
+                return self.carry_out_desktop_plan(plan);
             }
             // Moving big folders to another drive (G5).
             if let Some(plan) = self.pending_storage.take() {
@@ -1298,7 +1315,15 @@ impl<'a> Daemon<'a> {
                     model: brain::Reached::NotNeeded,
                 },
                 Some(llm) => {
-                    let needs_model = beyond_the_notes || matches!(self.parser.parse(said), Intent::Unknown(_));
+                    // A request of several parts (30 Sep 2026): worked side
+                    // by side, or step by step, rather than one tool and the
+                    // rest named as not done.
+                    let several = if !resumed && llm.native_chat() && !self.handover().stance.handed_over() {
+                        self.several_parts(said)
+                    } else {
+                        None
+                    };
+                    let needs_model = several.is_some() || beyond_the_notes || matches!(self.parser.parse(said), Intent::Unknown(_));
                     // Built only when the model will read it: a command the
                     // phrases settle needs none of it.
                     let mut turn = if needs_model {
@@ -1308,6 +1333,10 @@ impl<'a> Daemon<'a> {
                     };
                     turn.skip_phrases = beyond_the_notes;
                     self.by_chat = needs_model && llm.native_chat();
+                    match several {
+                        Some(tasks::Several::SideBySide(parts)) => self.work_side_by_side(llm.clone(), parts, _t, register, &persona),
+                        Some(tasks::Several::StepByStep) => self.work_through(llm.clone(), said, turn, _t),
+                        None => {
                     // The Talk page and the voice loop don't wait here: the
                     // call runs on a worker and the turn is finished when it
                     // comes back (`finish_pending_turn`).
@@ -1347,6 +1376,8 @@ impl<'a> Daemon<'a> {
                     );
                     self.also_asked = also;
                     d
+                        }
+                    }
                 }
                 None => {
                     let i = self.parser.parse(said);
@@ -1354,6 +1385,20 @@ impl<'a> Daemon<'a> {
                     brain::Decision { intent: i, say, model: brain::Reached::NotNeeded }
                 }
             },
+        };
+        // "I'm on it" with nothing started, by whichever path the model
+        // answered (30 Sep 2026, `backed`): the chat path holds such a
+        // sentence back itself; this catches the one-prompt path.
+        let decision = match &decision.intent {
+            Intent::Say(s) if decision.model == brain::Reached::Yes => {
+                let s2 = crate::backed::without_unbacked_claims(s, false);
+                if s2 != *s {
+                    brain::Decision { intent: Intent::Say(s2.clone()), say: s2, model: decision.model }
+                } else {
+                    decision
+                }
+            }
+            _ => decision,
         };
         let took_ms = self.decided_in_ms.take().unwrap_or(started.elapsed().as_millis() as u64);
         // Only when the model was actually asked. `Reached::NotNeeded` means

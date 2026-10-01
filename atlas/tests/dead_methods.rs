@@ -154,12 +154,9 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // because "recall with no context" is the honest name for what they test.
     "facts::recall",
     "faithful::not_checked",
-    // `firewall::allowed` and `grants::allowed` added 28 Sep 2026. Neither
-    // had a real caller: the bare-name scan counted `ladder`'s own
-    // `Moved::allowed()` call in `atlas trade` as theirs. With `ladder.rs`
-    // out of personal Atlas the collision went and the truth showed. Both
-    // are proven by their tests; wiring them is its own decision.
-    "firewall::allowed",
+    // `firewall::allowed` and `grants::allowed` came off 30 Sep 2026: the
+    // camera's permission (`daemon::camera::camera_allowed`) calls
+    // `Verdict::allowed`, which the bare-name scan counts for both.
     "flow::optional",
     "flow::producing",
     "flow::retrying",
@@ -167,7 +164,6 @@ const TEST_ONLY_METHODS: &[&str] = &[
     "goal::machine_checks",
     "goal::runnable_unattended",
     "grade::clears",
-    "grants::allowed",
     "grants::message",
     "handshape::recognise",
     // `handshape::worked_out` and `hearing::record_turn` came off 26 Sep 2026
@@ -188,6 +184,12 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // `input::is_talking` came off 26 Sep 2026 with 25j: the Windows key hook
     // (`hotkeys`, H1) asks it.
     "integrations::panel",
+    // 30 Sep 2026, the prompt diet: a conversation turn is offered the
+    // capabilities tool and the few tools the router picks
+    // (`router::Router::for_turn`), not every core command; `for_sentence`
+    // is kept for the tests that measure the old shape.
+    // (`ToolBook::retrieved_for` lost its one caller and was deleted.)
+    "intent::for_sentence",
     "interrupt::forget_stale",
     // `knowhow::for_symptom` came off 22 Sep 2026: the new `Intent::Diagnose`
     // handler (`Daemon::diagnose_symptom`, reached by "troubleshoot …", "why

@@ -90,6 +90,8 @@ pub mod keeping;
 pub mod weather;
 pub mod register;
 pub mod rehearse;
+pub mod repeating;
+pub mod doing;
 pub mod presence;
 pub mod probe;
 pub mod prose;
@@ -205,6 +207,11 @@ pub mod handoff;
 pub mod health;
 pub mod hlc;
 pub mod hearing;
+// A quiet voice heard without shouting: speech judged against the room and
+// levelled before speech-to-text; Windows' input level read and raised once
+// when it is set too low (30 Sep 2026).
+pub mod leveller;
+pub mod miclevel;
 pub mod goingaway;
 pub mod goodbye;
 pub mod grade;
@@ -311,6 +318,8 @@ pub mod overlaywin;
 pub mod next_up;
 pub mod phases;
 pub mod picture_talk;
+// "Can you see me?" read as a request to look through the camera (30 Sep 2026).
+pub mod camera_ask;
 pub mod callwatch;
 pub mod callrec;
 pub mod callnotes;
@@ -364,6 +373,10 @@ pub mod elsewhere;
 pub mod understood;
 pub mod automation;
 pub mod bm25;
+pub mod router;
+pub mod backed;
+pub mod taskloop;
+pub mod streams;
 pub mod chunker;
 pub mod civil;
 pub mod cronspec;
@@ -396,6 +409,7 @@ pub mod mfcc;
 pub mod gmm;
 pub mod wakeword;
 pub mod micthread;
+pub mod utterance;
 pub mod speakthread;
 pub mod vadcal;
 pub mod hotkey;

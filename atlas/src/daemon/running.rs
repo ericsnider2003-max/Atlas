@@ -529,6 +529,7 @@ impl<'a> Daemon<'a> {
             self.keep_model_server_waiting(clock(), std::time::Duration::ZERO, false);
             self.look_again_at_audio(ears, clock());
             self.look_again_at_the_microphone(clock());
+            self.back_to_the_wake_word(mouth, clock());
             self.open_signal_door_again(clock());
             let signals = self.observe(clock());
             let nap = throttle.next_interval(&signals, self.power);
@@ -581,6 +582,17 @@ impl<'a> Daemon<'a> {
             }
         }
         line.push_str(&format!(" model={model_ms}ms/{} call(s) delivering={speaking_ms}ms", calls.len()));
+        // When the first sentence went to be spoken, counted from when the
+        // model was asked (30 Sep 2026): the target is under 3 s.
+        if let Some(ms) = self.first_words_ms.take() {
+            line.push_str(&format!(" first_words={ms}ms"));
+        }
+        // What the model server itself counted for the last call: a whole
+        // prompt read again (a cache miss) reads very differently from a
+        // long reply (29 Sep 2026).
+        if let Some(st) = crate::models::take_last_timings() {
+            line.push_str(&format!("; {}", st.line()));
+        }
         self.log.info(&line);
     }
 
@@ -793,7 +805,9 @@ impl<'a> Daemon<'a> {
         let cfg = self.tools_cfg();
         m.set_paused(self.attention.is_paused());
         m.set_wake(self.tiers.tier == Tier::Voice && cfg.wake.as_ref().map(|w| w.enabled).unwrap_or(false));
-        m.set_barge(&cfg.barge_in);
+        // Cutting in by voice on for a headset even when it's off in
+        // settings: its microphone doesn't hear Atlas (`for_microphone`).
+        m.set_barge(&cfg.barge_in.for_microphone(&crate::voice::microphone_now(&cfg).0));
         for n in m.take_notes() {
             self.log.info(&n);
         }
@@ -836,17 +850,15 @@ impl<'a> Daemon<'a> {
                 self.heard_through_this_ear(&said);
                 self.converse(&said, ears, mouth, clock);
             }
-            // Your name, then nothing: answered, and not a failure.
+            // Your name, then nothing: "Yes?", and whatever you say next is
+            // the request. Not a failure. (29 Sep 2026: this said "I heard
+            // my name but nothing after it" -- when you'd said the request in
+            // the same breath and it had been thrown away with the clip the
+            // name was found in. That is fixed in `utterance`; this is only
+            // for the name said on its own.)
+            crate::micthread::Heard::Named => self.answer_the_name(ears, mouth, clock),
             crate::micthread::Heard::Wake(Err(why)) if why.contains(crate::voice::HEARD_NOTHING) => {
-                // "Atlas…" and a pause is someone getting its attention, the
-                // way you'd say a person's name: answered "Yes?", then heard
-                // (30 Sep 2026: it said "I heard my name but nothing after it"
-                // and stopped listening).
-                self.log.info("heard my name, then nothing: asking");
-                self.say(mouth, "Yes?");
-                if let Some(said) = self.follow_up(ears, 8) {
-                    self.converse(&said, ears, mouth, clock);
-                }
+                self.answer_the_name(ears, mouth, clock)
             }
             crate::micthread::Heard::Wake(Err(why)) | crate::micthread::Heard::Trouble(why) => {
                 self.log.info(&format!("listening for the wake word: {why}"));
@@ -865,6 +877,56 @@ impl<'a> Daemon<'a> {
     /// reads to say whether Atlas can hear you at all.
     pub(crate) fn mic_running(&self) -> bool {
         self.mic.is_some()
+    }
+
+    /// Your name said on its own: "Yes?", then listen for the rest -- after
+    /// the question is said, so its own sound isn't taken for your answer.
+    fn answer_the_name(&mut self, ears: &dyn Ears, mouth: &dyn Mouth, clock: &dyn Fn() -> u64) {
+        if let Some(m) = self.tiers.succeeded() {
+            self.say(mouth, &m);
+        }
+        self.say(mouth, "Yes?");
+        match self.follow_up(ears, NAME_ALONE_WAIT_SECS) {
+            Some(said) => {
+                self.heard_through_this_ear(&said);
+                self.converse(&said, ears, mouth, clock);
+            }
+            None => self.log.info("heard my name, then nothing"),
+        }
+    }
+
+    /// Push-to-talk because the wake word's microphone failed -- not because
+    /// you turned the wake word off -- comes back to listening for the name
+    /// once the microphone gives sound again (29 Sep 2026: the log showed
+    /// "Switching to push-to-talk -- wake word isn't working" after a
+    /// missing device, and it never switched back, not even after the
+    /// microphone was picked again). The microphone's thread is asked for a
+    /// short recording now and then; any sound at all is enough.
+    pub fn back_to_the_wake_word(&mut self, mouth: &dyn Mouth, t: u64) {
+        if self.tiers.tier != Tier::PushToTalk || !self.tiers.wake_on() {
+            self.mic_heard_before_ptt = None;
+            return;
+        }
+        let Some(m) = self.mic.as_ref() else { return };
+        let heard = m.audio_heard();
+        let Some(before) = self.mic_heard_before_ptt else {
+            // Just dropped: from here on, sound means it works.
+            self.mic_heard_before_ptt = Some(heard);
+            self.mic_probe_at = t + MIC_PROBE_EVERY_SECS;
+            return;
+        };
+        if heard > before {
+            self.mic_heard_before_ptt = None;
+            if let Some(said) = self.tiers.microphone_works_again() {
+                self.say(mouth, &format!("{said} The microphone works again."));
+            }
+            self.steer_mic();
+            return;
+        }
+        if t >= self.mic_probe_at {
+            self.mic_probe_at = t + MIC_PROBE_EVERY_SECS;
+            m.probe();
+        }
     }
 
     /// Is the microphone's thread recording right now? For the tests and the
@@ -1131,7 +1193,7 @@ impl<'a> Daemon<'a> {
             if let Some(words) = cut_while_thinking {
                 // Set aside for what you said instead.
                 if let Some(mut s) = saying.take() {
-                    s.cut("hold on");
+                    s.cut(crate::speech::YOUR_TURN);
                     let _ = s.finish();
                 }
                 self.timing.add(timed);
@@ -1196,7 +1258,16 @@ impl<'a> Daemon<'a> {
             // answer a question is the fastest way to make a voice assistant
             // feel broken, so Atlas waits longer when it just asked something
             // -- and in a conversation, long enough to think of a reply.
-            let window = if self.session.is_waiting() {
+            //
+            // Hands-free (29 Sep 2026, on by default): the conversation stays
+            // open until you've said nothing for `conversation.quiet_secs`,
+            // then Atlas goes back to listening for its name. Nothing is
+            // transcribed while nobody speaks (`utterance::next_utterance`),
+            // so the long wait costs nothing.
+            let talk = self.tools_cfg().conversation.clone();
+            let window = if talk.hands_free {
+                talk.quiet_secs.max(self.followup_secs)
+            } else if self.session.is_waiting() {
                 self.followup_secs * 2
             } else if self.last_register == crate::register::Register::Chatting {
                 self.followup_secs.max(CHATTING_FOLLOWUP_SECS)
@@ -1220,15 +1291,22 @@ impl<'a> Daemon<'a> {
                 break;
             }
             match self.follow_up(ears, window) {
-                // "That's all", "bye", "thanks": said back briefly, and the
-                // floor closes.
-                Some(next) if crate::session::ends_the_conversation(&next) => {
-                    self.thread.append(&next, "Anytime.", None, clock());
-                    self.say(mouth, "Anytime.");
+                // "That's all", "thanks Atlas", "bye": the conversation is
+                // over, said back briefly, and Atlas goes back to listening
+                // for its name.
+                Some(next) if crate::utterance::is_goodbye(&next) || crate::session::ends_the_conversation(&next) => {
+                    self.log.info("the conversation ended: you said so");
+                    self.thread.append(&next, "Okay.", None, clock());
+                    self.say(mouth, "Okay.");
                     break;
                 }
                 Some(next) => said = next,
-                None => break,
+                None => {
+                    if talk.hands_free {
+                        self.log.info(&format!("the conversation ended: nothing said for {window}s"));
+                    }
+                    break;
+                }
             }
         }
     }
@@ -1417,9 +1495,14 @@ impl<'a> Daemon<'a> {
             self.unsaid = Some(d.remaining_text());
             // Words said over it are answered next, straight away: no
             // "Paused." in front of the answer. A stop still says so.
-            let answering_you = over_it.as_deref().is_some_and(|w| !w.trim().is_empty());
+            // (Merged 30 Sep 2026: both chats fixed this. The other chat
+            // skipped the "Paused." here when words came with the cut; this
+            // chat's `speech::YOUR_TURN` is the reason given for any cut that
+            // is you taking the turn -- your voice, the talk key, the cut
+            // switch -- and `acknowledge` says nothing for it, so the check
+            // here was the same thing twice and went.)
             let ack = crate::speech::acknowledge(&d);
-            if !ack.is_empty() && (!answering_you || ack == "Stopped.") {
+            if !ack.is_empty() {
                 self.say(mouth, &ack);
             }
         } else {

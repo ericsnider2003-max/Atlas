@@ -487,7 +487,7 @@ fn a_request(n_history: usize) -> ChatRequest {
     messages.push(Msg::user("User said: hello"));
     // `stable_tools` and `aside` since 28 Sep 2026 (the every-turn tools, and
     // a call beside the conversation); neither here.
-    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false }
+    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false, stronger: false }
 }
 
 #[test]
@@ -760,7 +760,8 @@ fn an_announced_tool_that_never_runs_is_owned_up_to() {
         (vec![], Some(text("Sure."))),
     ]);
     let (d, _, _) = converse(&llm, &brain_turn("anything on for tomorrow", vec![], tools));
-    assert_eq!(d.say, format!("I'll check your calendar. {}", atlas::brain::NOTHING_FOLLOWED));
+    // The announcement is held back and owned up to (`backed`).
+    assert_eq!(d.say, atlas::backed::NOT_STARTED);
 }
 
 // ================= 10: times around the clocks changing =================

@@ -96,7 +96,7 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                     ),
                 });
             }
-            let roles = crate::layout::resolve_roles(&cfg.layouts, &m);
+            let roles = crate::layout::resolve_roles_with(&cfg.layouts, &m, plat.built_in_monitor());
             for (role, mon) in &roles {
                 f.push(Finding {
                     label: format!("role '{role}'"),

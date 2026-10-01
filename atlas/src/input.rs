@@ -171,6 +171,20 @@ impl Tiers {
         Some(format!("Back to {}.", Tier::PushToTalk.describe()))
     }
 
+    /// Push-to-talk because the wake word's microphone failed, and it works
+    /// again: straight back to the wake word, rather than after five turns
+    /// at push-to-talk that nobody takes when the wake word is what they use
+    /// (29 Sep 2026). Nothing when the wake word is off or already in use.
+    pub fn microphone_works_again(&mut self) -> Option<String> {
+        if self.tier != Tier::PushToTalk || !self.wake_on {
+            return None;
+        }
+        self.tier = Tier::Voice;
+        self.failures = 0;
+        self.successes = 0;
+        Some(format!("Back to {}.", Tier::Voice.describe()))
+    }
+
     /// Audio is unusable outright — skip straight to typing.
     /// The wake word, tried again by itself a while after failures dropped
     /// it -- a microphone busy for a moment, a speech engine that crashed

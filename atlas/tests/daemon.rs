@@ -487,6 +487,10 @@ fn what_you_are_doing_reaches_the_models_context() {
     let (c, p) = (cfg(), plat());
     p.focus_on("chrome.exe", "quarterly numbers");
     let mut d = daemon(&c, &p, "ctx");
+    // 29 Sep 2026: the window goes into the context only when what was said
+    // is about the screen (`doing::refers_to_screen`) -- with Discord in
+    // front, Eric's evening was answered as if every sentence were about it.
+    let _ = d.turn("hmm, thinking about this window", 100);
     let ctx = d.context();
     assert!(ctx.contains("quarterly numbers"), "got:\n{ctx}");
     assert!(ctx.contains("Displays:"));

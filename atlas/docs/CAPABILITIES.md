@@ -27,7 +27,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
-| hear a wake word and listen | waiting on whisper | `hearing` `voice` `parakeet` | ready | would | would | **no** | would | **no** |
+| hear a wake word and listen | waiting on whisper | `hearing` `voice` `parakeet` `utterance` | ready | would | would | **no** | would | **no** |
 | stop listening when you stop talking | waiting on ffmpeg, for audio in | `endpoint` | ready | would | would | would | would | would |
 | type what you say into a window | waiting on whisper | `dictate` | ready | catch | would | **no** | catch | **no** |
 | notice when it's mishearing you and offer a better model | waiting on whisper | `language` | ready | would | would | would | would | would |
@@ -41,7 +41,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | hold a key in any window to talk; a quick tap still reaches the app | built, never run for real | `hotkey` `input` | ready | would | would | would | would | would |
 | notice a call, note your side, record the others only after they say yes, and write up who said what | built, never run for real | `callnotes` `callrec` `callwatch` `consent` | ready | would | would | would | would | would |
 | hold a key anywhere in Windows to talk, or press one to type, alongside the wake word | built, never run for real | `hotkeys` `typebox` `quickinput` | ready | would | would | would | would | would |
-| pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` `playout` | ready | would | would | would | would | would |
+| pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` `playout` `leveller` `miclevel` | ready | would | would | would | would | would |
 | tell whether what it heard was meant for it -- a "stop" to it stops it, a voice on your call doesn't | waiting on whisper | `addressing` | ready | would | would | would | would | would |
 
 ## Talking
@@ -61,6 +61,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | check with you before acting on a guess at what you meant, and ask which one when it could be two things | working | `understood` `whichone` | ready | ready | ready | ready | ready | ready |
 | take an answer to its questions however you can give it -- a word, a typed yes, a key -- when speaking isn't an option | working | `answering` | ready | ready | ready | ready | ready | ready |
 | be as much of a smart-ass as you like -- off, dry or full, changed in settings or by saying "tone it down" -- after the answer, never about errors, money, health, security or bad news, and never in anything written for someone else | working | `wit` `talkback` | ready | ready | ready | ready | ready | ready |
+| never say it's on something unless it really started it | working | `backed` | ready | ready | ready | ready | ready | ready |
 
 ## Your windows
 
@@ -206,6 +207,9 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen | working | `decide` `otherside` | ready | ready | ready | ready | ready | ready |
 | weigh something that might be worth doing on five counts, and say which ones it can't judge yet | working | `opportunity` | ready | ready | ready | ready | ready | ready |
 | walk you through a colour grade in the fixed order a colourist uses | working | `grading` | ready | ready | ready | ready | ready | ready |
+| offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one | built, never run for real | `router` | ready | ready | ready | ready | ready | ready |
+| work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on | built, never run for real | `taskloop` | ready | ready | ready | ready | ready | ready |
+| do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on | built, never run for real | `streams` | ready | ready | ready | ready | ready | ready |
 
 ## Looking after itself
 
@@ -252,7 +256,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | read text off an image with an outside program | waiting on tesseract, which nothing fetches | `ocr` | ready | catch | catch | **no** | catch | **no** |
 | read the words on your screen | built, never run for real | `words` | ready | catch | catch | **no** | catch | **no** |
 | notice what window you're in | built, never run for real | `watch` `watching` | ready | catch | catch | **no** | catch | **no** |
-| name what's in front of the camera, and tell faces apart | built, never run for real | `vision` `frames` | ready | catch | ready | would | would | catch |
+| name what's in front of the camera, and tell faces apart | built, never run for real | `vision` `frames` `camera_ask` | ready | catch | ready | would | would | catch |
 | say what a chart, your screen or a photo shows, with a model on this laptop | built, never run for real | `picture_talk` | ready | ready | ready | catch | would | catch |
 | follow your hand and move things with it | built, never run for real | `handloop` `handtrack` `handshape` `frames` | ready | catch | ready | would | would | catch |
 | copy the text off the window in front, read on this machine by Windows' own recognizer, and warn you if it holds something secret | built, never run for real | `screentext` | ready | catch | catch | **no** | catch | **no** |
@@ -351,4 +355,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-232 things, across 391 of 425 source files. The other 34 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+236 things, across 399 of 435 source files. The other 36 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

@@ -880,3 +880,19 @@ mod weather_answered;
 mod conversation_sweep;
 #[path = "getting_things_done.rs"]
 mod getting_things_done;
+#[path = "one_evening_on_the_laptop.rs"]
+mod one_evening_on_the_laptop;
+#[path = "the_name_and_the_request_in_one_breath.rs"]
+mod the_name_and_the_request_in_one_breath;
+#[path = "every_screen_is_seen.rs"]
+mod every_screen_is_seen;
+#[path = "the_right_tools_for_the_sentence.rs"]
+mod the_right_tools_for_the_sentence;
+#[path = "finishing_what_it_starts.rs"]
+mod finishing_what_it_starts;
+#[path = "a_real_model_answers_him.rs"]
+mod a_real_model_answers_him;
+#[path = "a_normal_voice_is_heard.rs"]
+mod a_normal_voice_is_heard;
+#[path = "atlas_looks_when_you_ask.rs"]
+mod atlas_looks_when_you_ask;

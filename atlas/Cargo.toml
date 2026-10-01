@@ -172,6 +172,16 @@ windows = { version = "0.58", features = [
     # Is the laptop's own screen on (the lid open)? Windows' display paths
     # name the built-in panel as an internal output (29 Sep 2026).
     "Win32_Devices_Display",
+    # Real pixels on every monitor: per-monitor DPI awareness (29 Sep 2026,
+    # "only seeing one of my monitors" -- platform::win::become_dpi_aware).
+    "Win32_UI_HiDpi",
+    # miclevel: a microphone's input level and mute, read (and, when it is
+    # set so low you have to shout, raised once) through Windows' own
+    # endpoint volume -- the slider in Sound settings (30 Sep 2026).
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_UI_Shell_PropertiesSystem",
 ] }
 
 # The consolidated suite: one binary, one link of the crate.

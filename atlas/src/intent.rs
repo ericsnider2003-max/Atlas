@@ -92,6 +92,12 @@ pub enum Intent {
     PressButton(String),
     /// Move Atlas's big folders to another drive, or say where they went (G5).
     MoveBigFiles(String),
+    /// File the loose files on your desktop into folders, after showing the
+    /// plan and hearing yes (Eric, 29 Sep 2026: "organize my desktop").
+    TidyDesktop,
+    /// Record from the microphone you name ("webcam", "headset"), and keep
+    /// to it (Eric, 29 Sep 2026: "use my webcam mic"). The kind named.
+    UseMic(String),
     /// Edit a video you name, on a copy (G8). The whole utterance.
     EditMedia(String),
     /// Edit a photo, or every photo in a folder, on a new copy (`photo`). The whole utterance.
@@ -539,6 +545,8 @@ impl Intent {
             Intent::SchedulePost(_) => "scheduling your post".to_string(),
             Intent::PressButton(s) => format!("pressing a button: {s}"),
             Intent::MoveBigFiles(_) => "moving big files to another drive".to_string(),
+            Intent::TidyDesktop => "tidying your desktop".to_string(),
+            Intent::UseMic(m) => format!("listening with the {m} microphone"),
             Intent::EditMedia(_) => "editing your video on a copy".to_string(),
             Intent::EditPhoto(_) => "editing your photo on a copy".to_string(),
             Intent::Clock => "the time and date".to_string(),
@@ -822,6 +830,13 @@ impl Parser {
         // Asked for a report on itself, inside a longer sentence (29 Sep 2026:
         // "Can you do some work and generate a report on yourself?" went to
         // the model, which said it can't): the self-check.
+        // Asked to be looked at, anywhere in the sentence (29 Sep 2026: "Are
+        // you using my camera? Can you see me?" and "Please use my camera and
+        // look at me" matched nothing, went to the model, and were told
+        // "I don't have a camera"): the camera (`camera_ask`).
+        if crate::camera_ask::asks_to_look(input) {
+            return (Intent::CaptureWebcam, Some("capture_webcam".into()));
+        }
         if asks_for_a_self_report(input) {
             return (Intent::SelfCheck, Some("self_check".into()));
         }
@@ -913,6 +928,21 @@ impl Parser {
                 return (built, None);
             }
             return (built, Some(intent.clone()));
+        }
+        // A sentence that asks for one of a few things Atlas does without
+        // starting with its phrase -- "I guess I want you to organize my
+        // desktop", "calm down with being our smart apps" (a smart-ass,
+        // misheard) -- read as the plain command it means and parsed as
+        // that (`doing::rescue`, Eric's evening, 29 Sep 2026). Only when the
+        // reading is unambiguous; the command's own phrase is never read
+        // again, so this cannot go round.
+        if let Some(plain) = crate::doing::rescue(input) {
+            if normalize(&plain) != text {
+                let (i, n) = self.parse_named(&plain);
+                if !matches!(i, Intent::Unknown(_)) {
+                    return (i, n);
+                }
+            }
         }
         (Intent::Unknown(input.trim().to_string()), None)
     }
@@ -1289,6 +1319,8 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "schedule_post" => Intent::SchedulePost(raw.trim().to_string()),
         "press_button" => Intent::PressButton(raw.trim().to_string()),
         "move_big_files" => Intent::MoveBigFiles(raw.trim().to_string()),
+        "tidy_desktop" => Intent::TidyDesktop,
+        "use_mic" => Intent::UseMic(arg),
         "edit_media" => Intent::EditMedia(raw.trim().to_string()),
         "edit_photo" => Intent::EditPhoto(raw.trim().to_string()),
         "clock" => Intent::Clock,
@@ -1548,13 +1580,6 @@ impl ToolBook {
     /// May the model choose this command?
     pub fn offered(&self, name: &str) -> bool {
         self.get(name).is_some_and(|e| e.exposure != Exposure::Never)
-    }
-
-    /// Only the commands a sentence reads like, best first, at most `more`
-    /// (no core ones): for a turn that also offers other programs' tools
-    /// (`mcp::merge`).
-    pub fn retrieved_for(&self, said: &str, more: usize) -> Vec<serde_json::Value> {
-        self.index.search(said, more).into_iter().filter_map(|(id, _)| self.entries.get(id as usize).map(|e| e.spec())).collect()
     }
 
     /// The tools for one sentence: every core tool, always in the same

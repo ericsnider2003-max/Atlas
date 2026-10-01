@@ -133,6 +133,15 @@ fn a_section_shipped_on_against_a_default_of_off_is_also_a_decision() {
          away a dashboard everyone already has. The struct default stays off, \
          so an install with no tools.yaml listens to nothing. Loopback only, \
          token on every request. See tests/a_switch_that_does_nothing.rs.",
+    ), (
+        "wake",
+        "Eric, 29 Sep 2026: talk freely, push-to-talk only as the fallback. \
+         The name is found in what you say on the running microphone stream, \
+         and speech-to-text runs only while someone is talking (`utterance`), \
+         not on every three seconds of silence as before. If the microphone \
+         fails Atlas drops to push-to-talk and comes back by itself once it \
+         works. With no tools.yaml there is no wake configuration, so the \
+         code's default stays off.",
     )];
 
     let mut surprises = Vec::new();

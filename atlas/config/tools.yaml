@@ -141,11 +141,14 @@ capture_webcam:
   args: ["-hide_banner", "-loglevel", "error", "-f", "dshow",
          "-i", "video={webcam_device}", "-frames:v", "1", "-y", "{out_png}"]
 
-# Hands-free. Leave disabled until the press-Enter loop is reliable.
-# With no `detector`, Atlas polls speech-to-text on short clips: nothing extra
-# to install, but it keeps a core busy. Add a detector binary later.
+# Hands-free: say "Atlas" and what you want, in one breath or with a pause.
+# On by default (29 Sep 2026); if the microphone fails Atlas drops to
+# push-to-talk and comes back by itself once it works again. With no
+# `detector`, the name is found by speech-to-text in what you say -- only
+# while someone is talking, not every few seconds of silence.
+# clip_seconds: how much of a long stretch of talk is looked through at once.
 wake:
-  enabled: false
+  enabled: true
   phrase: "atlas"
   clip_seconds: 3
   # detector:
@@ -165,6 +168,17 @@ barge_in:
   margin_db: 5        # how far above the room and Atlas's echo your voice must be
   echo_db: 3          # extra asked for while the reply is at its loudest
   model: silero_vad_16k_op15.onnx
+  # With a headset (AirPods and the like) its microphone doesn't hear Atlas,
+  # so cutting in by voice is on for it even with `enabled` off.
+  headset: true
+
+# The conversation after the wake word. Hands-free: Atlas keeps listening for
+# the next thing you say -- no key, no "Atlas" again -- until you've said
+# nothing for quiet_secs, or you say "that's all" or "thanks Atlas". Then it
+# listens for its name again. The push-to-talk key works at any time.
+conversation:
+  hands_free: true
+  quiet_secs: 25
 
 # The reasoning layer. Atlas runs its own: the model `atlas get` downloads
 # into models/, served by llama-server on this machine, with the connection
@@ -479,6 +493,24 @@ models:
   # ngram-map-k / ngram-map-k4v / ngram-cache (no second model).
   draft: ""
   speculate: "off"
+  # How the model picks its words, sent with every request (29 Sep 2026).
+  # llama-server's own defaults never discourage repeating; these are Qwen's
+  # published settings for the shipped Qwen3-VL (temperature 0.7, top_p 0.8,
+  # top_k 20, min_p 0) with a presence penalty and llama.cpp's DRY, which
+  # penalises repeating a run of words. `stronger_*` is what a reply caught
+  # looping is asked again with. Leave out any line to keep its default.
+  # sampling:
+  #   temperature: 0.7
+  #   top_p: 0.8
+  #   top_k: 20
+  #   min_p: 0.0
+  #   presence_penalty: 1.0
+  #   repeat_penalty: 1.05
+  #   dry_multiplier: 0.8
+  #   dry_base: 1.75
+  #   dry_allowed_length: 2
+  #   stronger_presence_penalty: 1.5
+  #   stronger_dry_multiplier: 1.2
   dir: "models"
   prefer: ""              # empty = the largest that fits, up to talk_ceiling_b
   # The biggest model (billions of parameters) picked for talking when none

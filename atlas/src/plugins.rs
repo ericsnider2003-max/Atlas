@@ -216,6 +216,10 @@ pub const NEVER: &[(&str, &str)] = &[
     ("implement", "it changes Atlas's own code"),
     ("dictate", "it types into other apps as if it were you"),
     ("shakedown", "it drives checks across every capability, some of them visible"),
+    // Eric's evening on the laptop (29 Sep 2026, 9101519), decided when the
+    // commands' test caught them undecided.
+    ("tidy_desktop", "it moves your files into folders"),
+    ("use_mic", "it changes which microphone Atlas listens through -- one it can't hear you on silences it"),
     // The third chat's commands, decided when its line was merged (26 Sep
     // 2026). Every one acts as you or on other people, so none is opened.
     ("type_code", "it types a sign-in code into whatever is in front"),

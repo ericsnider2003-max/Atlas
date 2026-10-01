@@ -102,6 +102,154 @@ pub struct PixelRect {
     pub height: i32,
 }
 
+// ---------------------------------------------------------------------------
+// Which screen, in words and in pixels (29 Sep 2026: "I think Atlas is only
+// seeing one of my monitors"). Pure, so the mock platform can prove the
+// arithmetic the Windows capture relies on.
+// ---------------------------------------------------------------------------
+
+/// The monitor a rectangle (a window) is mostly on: the one it overlaps
+/// most; the nearest when it overlaps none.
+pub fn monitor_under(monitors: &[Monitor], r: PixelRect) -> Option<u32> {
+    let overlap = |m: &Monitor| {
+        let w = (r.x + r.width).min(m.x + m.width) - r.x.max(m.x);
+        let h = (r.y + r.height).min(m.y + m.height) - r.y.max(m.y);
+        i64::from(w.max(0)) * i64::from(h.max(0))
+    };
+    let apart = |m: &Monitor| {
+        let (cx, cy) = (i64::from(r.x) + i64::from(r.width) / 2, i64::from(r.y) + i64::from(r.height) / 2);
+        let (mx, my) = (i64::from(m.x) + i64::from(m.width) / 2, i64::from(m.y) + i64::from(m.height) / 2);
+        (cx - mx).pow(2) + (cy - my).pow(2)
+    };
+    let best = monitors.iter().max_by_key(|m| overlap(m))?;
+    if overlap(best) > 0 {
+        return Some(best.id);
+    }
+    monitors.iter().min_by_key(|m| apart(m)).map(|m| m.id)
+}
+
+/// The whole desktop's extent: every monitor's rectangle together. Windows
+/// calls it the virtual screen; its corner can be left of or above the
+/// primary monitor's (negative x or y).
+pub fn virtual_screen(rects: &[PixelRect]) -> Option<PixelRect> {
+    let left = rects.iter().map(|r| r.x).min()?;
+    let top = rects.iter().map(|r| r.y).min()?;
+    let right = rects.iter().map(|r| r.x + r.width).max()?;
+    let bottom = rects.iter().map(|r| r.y + r.height).max()?;
+    Some(PixelRect { x: left, y: top, width: right - left, height: bottom - top })
+}
+
+/// Pictures of each screen, put together as the screens sit: the result is
+/// the virtual screen, black where no monitor is. `None` for no pictures.
+pub fn stitch(parts: &[(PixelRect, Grab)]) -> Option<Grab> {
+    if parts.len() == 1 {
+        return Some(parts[0].1.clone());
+    }
+    let rects: Vec<PixelRect> = parts.iter().map(|(r, g)| PixelRect { x: r.x, y: r.y, width: g.width as i32, height: g.height as i32 }).collect();
+    let all = virtual_screen(&rects)?;
+    let (w, h) = (all.width.max(1) as usize, all.height.max(1) as usize);
+    let mut rgb = vec![0u8; w * h * 3];
+    for ((r, g), placed) in parts.iter().zip(&rects) {
+        let _ = r;
+        let (ox, oy) = ((placed.x - all.x) as usize, (placed.y - all.y) as usize);
+        let gw = g.width as usize;
+        for row in 0..g.height as usize {
+            let from = &g.rgb[row * gw * 3..(row + 1) * gw * 3];
+            let at = ((oy + row) * w + ox) * 3;
+            rgb[at..at + gw * 3].copy_from_slice(from);
+        }
+    }
+    Some(Grab { width: w as u32, height: h as u32, rgb, title: format!("all {} screens", parts.len()) })
+}
+
+/// A screen named the way you'd name it: "your laptop screen", "the left
+/// screen", "the middle screen", "the right screen" -- or, for one monitor,
+/// "your screen". Left to right by where they sit; one above another by
+/// "top"/"bottom".
+pub fn describe_screen(monitors: &[Monitor], id: u32, built_in: Option<u32>) -> String {
+    if monitors.len() <= 1 {
+        return "your screen".into();
+    }
+    if Some(id) == built_in {
+        return "your laptop screen".into();
+    }
+    let Some(me) = monitors.iter().find(|m| m.id == id) else { return "a screen".into() };
+    // Placed among the others -- the laptop's own screen left out, since it
+    // has its own name: with it on the right, the two monitors beside it are
+    // still "left" and "right".
+    let others: Vec<&Monitor> = monitors.iter().filter(|m| Some(m.id) != built_in).collect();
+    if others.len() == 1 {
+        return "your monitor".into();
+    }
+    let mut xs: Vec<i32> = others.iter().map(|m| m.x + m.width / 2).collect();
+    xs.sort();
+    xs.dedup();
+    let my_x = me.x + me.width / 2;
+    if xs.len() == 1 {
+        // One above another.
+        let top = others.iter().map(|m| m.y).min().unwrap_or(me.y);
+        return if me.y == top { "the top screen".into() } else { "the bottom screen".into() };
+    }
+    let pos = xs.iter().position(|x| *x == my_x).unwrap_or(0);
+    let n = xs.len();
+    let side = if pos == 0 {
+        "left"
+    } else if pos == n - 1 {
+        "right"
+    } else if n == 3 {
+        "middle"
+    } else {
+        return format!("screen {} from the left", pos + 1);
+    };
+    format!("the {side} screen")
+}
+
+/// Which monitor (by id) shows the laptop's own panel: the monitor whose
+/// device name ("\\\\.\\DISPLAY1") is one the display settings give an
+/// internal output's source. Windows names both sides the same way; this is
+/// the matching, kept here so it's proved off Windows too.
+pub fn builtin_among(monitors: &[(u32, String)], builtin_sources: &[String]) -> Option<u32> {
+    monitors.iter().find(|(_, dev)| builtin_sources.iter().any(|s| s.eq_ignore_ascii_case(dev))).map(|(id, _)| *id)
+}
+
+/// Which screens a request means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreenPick {
+    /// The one with the window you're in.
+    Active,
+    /// Every screen.
+    All,
+    /// One screen, named ("the left screen", "my laptop screen").
+    This(u32),
+}
+
+/// What "look at my screen" means in what was said: "all my screens",
+/// "both monitors", "every screen" -> all of them; "the left screen", "my
+/// laptop screen" -> that one; anything else -> the one you're working on.
+pub fn screens_asked_for(said: &str, monitors: &[Monitor], built_in: Option<u32>) -> ScreenPick {
+    let s = said.to_lowercase();
+    let plural = ["screens", "monitors", "displays"].iter().any(|w| s.contains(w));
+    if (plural && ["all", "both", "every", "each", "my"].iter().any(|w| s.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)))
+        || s.contains("every screen")
+        || s.contains("every monitor")
+        || s.contains("whole desktop")
+        || s.contains("entire desktop")
+    {
+        return ScreenPick::All;
+    }
+    if monitors.len() > 1 {
+        for m in monitors {
+            let name = describe_screen(monitors, m.id, built_in);
+            // "the left screen" -> "left"; "your laptop screen" -> "laptop".
+            let key = name.trim_start_matches("the ").trim_start_matches("your ").trim_end_matches(" screen");
+            if !key.is_empty() && s.split(|c: char| !c.is_alphanumeric()).any(|x| x == key) {
+                return ScreenPick::This(m.id);
+            }
+        }
+    }
+    ScreenPick::Active
+}
+
 /// What you are actually looking at right now. Layer 1 awareness: cheap
 /// enough to poll continuously, unlike screenshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +361,16 @@ pub trait Platform {
     fn press(&self, combo: &str) -> Result<()> {
         let _ = combo;
         Err(crate::error::AtlasError::Platform("key presses are not supported here".into()))
+    }
+    /// Take `delete` characters back from where you're typing and type
+    /// `text` in their place (`astype`'s fix of the word just finished). On
+    /// Windows it is one burst that none of your own keys can land in the
+    /// middle of; elsewhere, backspaces and then the text.
+    fn replace_typed(&self, delete: usize, text: &str) -> Result<()> {
+        for _ in 0..delete {
+            self.press("backspace")?;
+        }
+        self.type_text(text)
     }
     /// A handle to just the pointer parts, safe to hand to another thread.
     ///
@@ -327,6 +485,43 @@ pub trait Platform {
         Ok(None)
     }
 
+    /// The pixels of one whole monitor (by `Monitor::id`), taskbar and all.
+    /// `None`: this platform can't capture a screen itself (the configured
+    /// capture tool is used instead).
+    fn grab_screen(&self, _monitor: u32) -> Result<Option<Grab>> {
+        Ok(None)
+    }
+
+    /// Where a monitor is on the desktop, whole (`monitors()` gives the part
+    /// windows go in, without the taskbar).
+    fn monitor_bounds(&self, monitor: u32) -> Option<PixelRect> {
+        self.monitors().ok()?.into_iter().find(|m| m.id == monitor).map(|m| PixelRect { x: m.x, y: m.y, width: m.width, height: m.height })
+    }
+
+    /// Every screen in one picture, laid out as they sit (`stitch`).
+    fn grab_all_screens(&self) -> Result<Option<Grab>> {
+        let mut parts = Vec::new();
+        for m in self.monitors()? {
+            if let Some(g) = self.grab_screen(m.id)? {
+                let at = self.monitor_bounds(m.id).unwrap_or(PixelRect { x: m.x, y: m.y, width: m.width, height: m.height });
+                parts.push((at, g));
+            }
+        }
+        Ok(stitch(&parts))
+    }
+
+    /// The monitor the window in front is on (`Monitor::id`). `None`: can't
+    /// be told here.
+    fn active_monitor(&self) -> Option<u32> {
+        None
+    }
+
+    /// The laptop's own screen among `monitors()`, when this machine has one
+    /// and it's on. `None`: a desktop, the lid shut, or can't be told.
+    fn built_in_monitor(&self) -> Option<u32> {
+        None
+    }
+
     /// The OS's own text recognition, where it has one (Windows ships an
     /// on-device engine, `Windows.Media.Ocr`). `None`: no such engine here.
     fn recognise_text(&self, _grab: &Grab) -> Result<Option<String>> {
@@ -375,6 +570,7 @@ pub use idle::OwnInput;
 pub fn here() -> Box<dyn Platform> {
     #[cfg(windows)]
     {
+        win::become_dpi_aware();
         Box::new(win::WindowsPlatform)
     }
     // A phone is `unix`, so it must be carved out of the Posix branch below —

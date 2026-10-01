@@ -34,23 +34,8 @@ pub(super) fn run_file(cfg: &Config, go: bool) {
     let mut planned: Vec<(std::path::PathBuf, atlas::filing::Suggestion)> = Vec::new();
     for folder in ["Downloads", "Desktop", "Documents"] {
         let dir = std::path::PathBuf::from(&home).join(folder);
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for e in entries.flatten() {
-            let path = e.path();
-            let Ok(meta) = e.metadata() else { continue };
-            if !meta.is_file() {
-                continue;
-            }
-            let name = e.file_name().to_string_lossy().to_string();
-            let ext = path.extension().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
-            let age = now.saturating_sub(
-                meta.modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(now),
-            ) / 86_400;
-            let s = atlas::filing::suggest(&root, &name, &ext, age);
+        // The same reading "tidy my desktop" makes (`filing::plan_folder`).
+        for (path, s) in atlas::filing::plan_folder(&dir, &root, now) {
             match &s {
                 atlas::filing::Suggestion::Move { .. } => moves += 1,
                 atlas::filing::Suggestion::Leave { .. } => left += 1,
@@ -91,65 +76,17 @@ pub(super) fn run_file(cfg: &Config, go: bool) {
     // recoverable rather than a hunt", which is a sound instinct about the
     // wrong operation: the trash is for removing something, and a misfiled
     // file is recoverable because the line below says where it went.
+    //
+    // The move itself is `filing::file_one` (29 Sep 2026), shared with "tidy
+    // my desktop": judged every time, never over a file already there, and a
+    // cross-drive copy removes the original only once it is whole.
     for (from, s) in &planned {
-        let Some(change) = atlas::filing::as_change(from, s) else { continue };
-        // Judged every time. A refusal here names its own fix, so a run that
-        // does nothing still tells you what to change.
-        match atlas::system::judge(&change, &sys) {
-            atlas::system::Verdict::Refuse(why) => {
-                println!("  skipped {}: {why}", from.display());
-            }
-            atlas::system::Verdict::Go { .. } => {
-                if let atlas::filing::Suggestion::Move { to, .. } = s {
-                    if let Some(parent) = to.parent() {
-                        if let Err(e) = std::fs::create_dir_all(parent) {
-                            println!("  couldn't make {}: {e}", parent.display());
-                            continue;
-                        }
-                    }
-                    // Never over the top of something already there.
-                    //
-                    // `fs::rename` replaces its destination silently on unix.
-                    // Filing a `report.pdf` onto an existing `report.pdf`
-                    // would destroy the one already filed -- and the one
-                    // already filed is, by definition, the one the person
-                    // meant to keep.
-                    if to.exists() {
-                        println!(
-                            "  left {} alone: {} already exists, and I won't write over it",
-                            from.display(),
-                            to.display()
-                        );
-                        continue;
-                    }
-                    // Rename is atomic within a volume; Downloads and the
-                    // Filed tree are usually the same one. Across volumes it
-                    // fails with a cross-device error, so copy-then-remove is
-                    // the fallback -- and the remove only happens once the
-                    // copy has succeeded, so an interrupted move leaves the
-                    // original where it was rather than nowhere.
-                    let moved = match std::fs::rename(from, to) {
-                        Ok(()) => Ok(()),
-                        Err(_) => std::fs::copy(from, to)
-                            .and_then(|_| std::fs::remove_file(from))
-                            .map(|_| ()),
-                    };
-                    match moved {
-                        // Says where it went, which is what makes a wrong
-                        // home a correction rather than a hunt.
-                        Ok(()) => println!("  filed {} -> {}", from.display(), to.display()),
-                        Err(e) => {
-                            // Clean up a half-finished cross-volume copy, so a
-                            // failure does not leave two copies and no word
-                            // about which is which.
-                            if to.exists() && from.exists() {
-                                let _ = std::fs::remove_file(to);
-                            }
-                            println!("  couldn't file {}: {e}", from.display());
-                        }
-                    }
-                }
-            }
+        if atlas::filing::as_change(from, s).is_none() {
+            continue;
+        }
+        match atlas::filing::file_one(from, s, &sys) {
+            Ok(to) => println!("  filed {} -> {}", from.display(), to.display()),
+            Err(why) => println!("  skipped {}: {why}", from.display()),
         }
     }
 }

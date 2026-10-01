@@ -192,7 +192,7 @@ static LAST_FAILURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(No
 /// Why a reply stopped before its end.
 #[derive(Debug, Clone, PartialEq)]
 enum Stop {
-    /// Cut off: by the words given (a stop, a pause, or "hold on" for words
+    /// Cut off: by the words given (a stop, a pause, or `speech::YOUR_TURN` for words
     /// that are answered next).
     Interrupted(String),
     /// Playback failed.
@@ -378,8 +378,11 @@ impl<'m> Saying<'m> {
                             // Cut without a reason given here (the stop
                             // switch, thrown elsewhere): taken as a stop, so
                             // the rest is kept.
+                            // The switch is thrown by the talk key and by
+                            // your voice (`micthread::cut_playback`): you
+                            // taking the turn (29 Sep 2026; it read as "stop").
                             if self.stop.is_none() && !self.voice_pending() {
-                                self.halt(Stop::Interrupted("stop".into()));
+                                self.halt(Stop::Interrupted(crate::speech::YOUR_TURN.into()));
                             }
                         }
                         Outcome::Failed => {
@@ -418,7 +421,7 @@ impl<'m> Saying<'m> {
                     // handed on while the words are made out.
                     let since = *self.cut_since.get_or_insert_with(Instant::now);
                     if self.stop.is_none() {
-                        self.halt(Stop::Interrupted("hold on".into()));
+                        self.halt(Stop::Interrupted(crate::speech::YOUR_TURN.into()));
                     }
                     if since.elapsed() >= CUT_IN_WAIT {
                         l.give_up_cut_in();
@@ -432,7 +435,7 @@ impl<'m> Saying<'m> {
                         words
                     } else {
                         self.words = Some(words);
-                        "hold on".into()
+                        crate::speech::YOUR_TURN.into()
                     };
                     if self.stop.is_none() {
                         self.halt(Stop::Interrupted(why));
@@ -453,7 +456,9 @@ impl<'m> Saying<'m> {
             return;
         }
         if let Some(heard) = listen() {
-            if crate::speech::is_interruption(&heard) {
+            // The talk key held over the reply comes back as
+            // `speech::YOUR_TURN`: you taking the turn stops it too.
+            if heard == crate::speech::YOUR_TURN || crate::speech::is_interruption(&heard) {
                 self.halt(Stop::Interrupted(heard));
             }
         }

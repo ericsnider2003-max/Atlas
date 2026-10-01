@@ -69,16 +69,18 @@ impl Thread {
         if let Some(a) = &about {
             self.current_topic = Some(a.clone());
         }
-        // Kept without the sentences it copied from the last few replies
-        // (29 Sep 2026: every reply ended "What's your next move? A joke? A
-        // memory? ... Either way, I'm tuned in.", and each copy in the
-        // conversation taught the model to write it again).
-        let earlier: Vec<&str> = self.recent.iter().rev().take(REPEAT_LOOKBACK).map(|e| e.reply.as_str()).collect();
-        let kept = without_repeated_sentences(reply, &earlier);
+        // Kept as it was said (merged 30 Sep 2026). The other chat took out
+        // here any sentence copied from the last four replies; this chat
+        // stops those sentences before they are said (`repeating::
+        // SentenceFilter`, through `brain::SpeechGate` -- near copies and stock
+        // closers too, and the reply kept is what was said), and shows the
+        // model each past reply only as its first sentence or two, near
+        // copies left out (`messages`). Doing it here as well rewrote replies
+        // that were right to repeat ("Moved 3 files to Documents.").
         self.recent.push(Exchange {
             at: t,
             said: said.to_string(),
-            reply: if kept.trim().is_empty() { reply.to_string() } else { kept },
+            reply: reply.to_string(),
             about,
         });
         self.last_active = t;
@@ -140,16 +142,26 @@ impl Thread {
         self.summary = new_summary.trim().to_string();
     }
 
-    /// What to hand the model for folding.
+    /// What to hand the model for folding: the notes so far, and what the
+    /// user said since -- only the user (29 Sep 2026). With Atlas's replies
+    /// in it, the model copied one into the summary ("User is frustrated,
+    /// hey, if you want me to stop, I'll stop ... What's your next move?"),
+    /// and the summary goes in front of every turn after, so the loop was
+    /// fed back in forever.
     pub fn fold_input(&self, cfg: &ThreadConfig) -> String {
         let mut s = String::new();
-        if !self.summary.is_empty() {
-            s.push_str("So far:\n");
-            s.push_str(&self.summary);
-            s.push_str("\n\nSince then:\n");
+        let replies: Vec<&str> = self.recent.iter().map(|e| e.reply.as_str()).collect();
+        let summary = clean_summary(&self.summary, &replies);
+        if !summary.trim().is_empty() {
+            s.push_str("Notes so far:\n");
+            s.push_str(summary.trim());
+            s.push_str("\n\n");
         }
+        s.push_str("What the user said since, in order:\n");
         for e in self.foldable(cfg) {
-            s.push_str(&format!("you: {}\natlas: {}\n", e.said, e.reply));
+            if !e.said.trim().is_empty() {
+                s.push_str(&format!("- {}\n", e.said.trim()));
+            }
         }
         s
     }
@@ -217,7 +229,7 @@ impl Thread {
                 .filter(|(i, _)| self.folded + i >= from)
                 .map(|(_, e)| e)
                 .filter(|e| !e.said.trim().is_empty() && !e.reply.trim().is_empty())
-                .map(|e| e.said.len() + e.reply.len())
+                .map(|e| e.said.len() + crate::repeating::for_history(&e.reply, HISTORY_SENTENCES).len())
                 .sum()
         };
         // The newest exchange with words on both sides: kept whatever the
@@ -234,10 +246,20 @@ impl Thread {
             from = (from + step).min(newest);
         }
         let mut out = Vec::new();
-        if !self.summary.trim().is_empty() {
-            out.push(Msg::system(format!("Earlier: {}", self.summary.trim())));
+        // The summary as it can be trusted: a summary written before 29 Sep
+        // 2026 may hold Atlas's own reply boilerplate (`clean_summary`).
+        let replies: Vec<&str> = self.recent.iter().map(|e| e.reply.as_str()).collect();
+        let summary = clean_summary(&self.summary, &replies);
+        if !summary.trim().is_empty() {
+            out.push(Msg::system(format!("Earlier: {}", summary.trim())));
         }
-        let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+        // Atlas's own past replies go back only as their first sentence or
+        // two, without the stock closers, and a reply that says again what
+        // an earlier one in the window said goes back not at all (29 Sep
+        // 2026): shown its own loop twenty times, a small model copies it a
+        // twenty-first. What was said is kept whole in the thread; this is
+        // only what the model is shown.
+        let mut shown: Vec<String> = Vec::new();
         for (i, e) in self.recent.iter().enumerate() {
             // An exchange with nothing said on either side is no turn at all.
             if self.folded + i < from || e.said.trim().is_empty() || e.reply.trim().is_empty() {
@@ -247,24 +269,45 @@ impl Thread {
             if crate::voice::not_really_said(&e.said) {
                 continue;
             }
-            // (Sentences copied from earlier replies are taken out when a reply
-            // is kept -- `append` -- not here: rewriting an earlier reply
-            // because of a later one changes the start of every prompt after
-            // it, and the model server then reads the whole conversation again
-            // instead of reusing what it read last turn.)
-            let reply = e.reply.clone();
-            // An answer given again later is kept only there: a small model
-            // shown the same reply several times copies it for everything
-            // after (29 Sep 2026: "I'm here -- and I'm listening. What's on
-            // your mind?" to every question, including "why can't you hear
-            // me").
-            if self.recent[i + 1..].iter().any(|later| same(&later.reply, &e.reply)) {
+            // Merged 30 Sep 2026: both chats stopped the model being shown its
+            // own reply again and again. The other chat's way dropped an
+            // earlier reply when the same one came later (exact match); this
+            // one (below) keeps the first and leaves out later near copies
+            // (`repeating::near_copy`), which also catches a copy with a
+            // different first few words, and leaves the start of the prompt
+            // as it was, so the model server can reuse what it already read.
+            out.push(Msg::user(e.said.clone()));
+            let short = crate::repeating::for_history(&e.reply, HISTORY_SENTENCES);
+            if short.trim().is_empty() || shown.iter().any(|s| crate::repeating::near_copy(&short, s) || crate::repeating::near_copy(&e.reply, s)) {
                 continue;
             }
-            out.push(Msg::user(e.said.clone()));
-            out.push(Msg::assistant(reply));
+            shown.push(short.clone());
+            out.push(Msg::assistant(short));
         }
         out
+    }
+
+    /// Atlas's last `n` replies in full, oldest first: what a new reply is
+    /// checked against for saying the same again (`brain::Turn::recent_replies`).
+    pub fn recent_replies(&self, n: usize) -> Vec<String> {
+        let start = self.recent.len().saturating_sub(n);
+        self.recent[start..].iter().map(|e| e.reply.clone()).filter(|r| !r.trim().is_empty()).collect()
+    }
+
+    /// What the user is trying to get done, from what they said lately: the
+    /// newest request among the last few exchanges ("I want you to organize
+    /// my desktop"), in their words, or `None` when they haven't asked for
+    /// anything lately. Kept in front of the model every turn, so a "that's
+    /// it" or "this means to organize my desktop" is read as about the
+    /// request, not as small talk (Eric's evening, 29 Sep 2026).
+    ///
+    /// Only among the requests `open` says are still open: the daemon passes
+    /// "not one of my own commands", which were done when asked.
+    pub fn current_goal_where(&self, open: impl Fn(&str) -> bool) -> Option<String> {
+        self.recent.iter().rev().take(GOAL_LOOKBACK).find(|e| is_a_request(&e.said) && open(&e.said)).map(|e| {
+            let s = e.said.split_whitespace().collect::<Vec<_>>().join(" ");
+            if s.chars().count() > 160 { format!("{}…", s.chars().take(160).collect::<String>()) } else { s }
+        })
     }
 
     /// How long since you last said anything.
@@ -303,6 +346,16 @@ impl Thread {
         }
         self.recent.iter().rev().skip(1).find(|e| normalize(&e.said) == n)
     }
+
+    /// The last time exactly this was said, before it is written down as
+    /// this turn (`asked_before` is asked after).
+    pub fn said_earlier(&self, said: &str) -> Option<&Exchange> {
+        let n = normalize(said);
+        if n.len() < 8 {
+            return None;
+        }
+        self.recent.iter().rev().find(|e| normalize(&e.said) == n)
+    }
 }
 
 fn normalize(s: &str) -> String {
@@ -315,11 +368,147 @@ fn normalize(s: &str) -> String {
         .join(" ")
 }
 
+/// How much of each past reply the model is shown (`Thread::messages`).
+pub const HISTORY_SENTENCES: usize = 2;
+
+/// How many exchanges back a request still counts as what the user is
+/// trying to get done (`Thread::current_goal`).
+pub const GOAL_LOOKBACK: usize = 6;
+
+/// Does this read as asking for something to be done, rather than talk?
+pub fn is_a_request(said: &str) -> bool {
+    let t = crate::repeating::words(said).join(" ");
+    if t.is_empty() {
+        return false;
+    }
+    const ASKS: &[&str] = &[
+        "i want you to", "i need you to", "i asked you to", "can you", "could you", "would you", "will you",
+        "please", "go and", "try to", "you need to", "i want to", "help me", "i'd like you to", "id like you to",
+    ];
+    const DOING: &[&str] = &[
+        "organize", "organise", "tidy", "clean", "sort", "look", "check", "open", "close", "use", "set", "find",
+        "make", "do", "put", "generate", "run", "listen", "switch", "show", "tell", "fix", "install", "start",
+        "stop", "send", "write", "draft", "remind", "move", "play", "read", "search", "research", "diagnose",
+    ];
+    let first = t.split(' ').next().unwrap_or("");
+    ASKS.iter().any(|a| format!(" {t} ").contains(&format!(" {a} "))) || DOING.contains(&first)
+}
+
+/// Lines of a summary that are not notes about the user: Atlas's own reply
+/// boilerplate copied in, editorialising about how the conversation went or
+/// how the user feels, and any line sharing a long run of words with one of
+/// `replies` (29 Sep 2026: Eric's summary ended "User is frustrated, hey, if
+/// you want me to stop, I'll stop ... Either way, I'm here."). Taken out a
+/// line (or, in a one-paragraph summary, a sentence) at a time.
+pub fn clean_summary(summary: &str, replies: &[&str]) -> String {
+    let pieces: Vec<String> = if summary.lines().filter(|l| !l.trim().is_empty()).count() > 1 {
+        summary.lines().map(str::to_string).collect()
+    } else {
+        crate::repeating::sentences(summary)
+    };
+    let kept: Vec<String> = pieces
+        .into_iter()
+        .filter(|l| !l.trim().is_empty())
+        .filter(|l| !is_summary_noise(l, replies))
+        .map(|l| l.trim_end().to_string())
+        .collect();
+    let joiner = if summary.lines().filter(|l| !l.trim().is_empty()).count() > 1 { "\n" } else { " " };
+    kept.join(joiner)
+}
+
+/// The lines of a summary that bear on what was just said: those sharing a
+/// word that says something (`router::request_words`, stemmed) with it,
+/// best first, at most `most`, each cut to a line (30 Sep 2026).
+///
+/// The whole summary used to go in front of every turn. Eric's held fifteen
+/// lines of a confused evening -- "'Freaky man' unconfirmed", "User tone:
+/// persistent, playful, possibly surreal" -- and a 4B model brought the
+/// freaky man back into answers about his camera and his research. Older
+/// talk that bears on this still comes back; the rest stays folded.
+pub fn summary_bearing_on(summary: &str, said: &str, most: usize) -> Vec<String> {
+    let want: std::collections::BTreeSet<String> =
+        crate::stemmer::stems_of(&crate::router::request_words(said).join(" ")).into_iter().filter(|w| w.len() > 2).collect();
+    if want.is_empty() || most == 0 {
+        return Vec::new();
+    }
+    let pieces: Vec<String> = if summary.lines().filter(|l| !l.trim().is_empty()).count() > 1 {
+        summary.lines().map(str::to_string).collect()
+    } else {
+        crate::repeating::sentences(summary)
+    };
+    let mut scored: Vec<(usize, usize, String)> = pieces
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, l)| {
+            let l = l.trim().trim_start_matches(['-', '*', ' ']).trim().to_string();
+            let has: std::collections::BTreeSet<String> = crate::stemmer::stems_of(&l.to_lowercase()).into_iter().collect();
+            let shared: Vec<&String> = want.intersection(&has).collect();
+            // One short, common word ("see", "use") is not enough: "can you
+            // see me" brought back "I built you to see this freaky man".
+            let n = shared.len();
+            let bears = n >= 2 || shared.iter().any(|w| w.chars().count() >= 5);
+            (bears && !l.is_empty()).then_some((n, i, l))
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    scored
+        .into_iter()
+        .take(most)
+        .map(|(_, _, l)| crate::router::one_line(&l, 150))
+        .collect()
+}
+
+/// One line of a summary that isn't a note about the user (`clean_summary`).
+fn is_summary_noise(line: &str, replies: &[&str]) -> bool {
+    let l = crate::repeating::words(line).join(" ");
+    if l.is_empty() {
+        return true;
+    }
+    if crate::repeating::carries_boilerplate(line) {
+        return true;
+    }
+    const EDITORIAL: &[&str] = &[
+        "user is frustrated", "user seems", "user was frustrated", "the user is frustrated", "user is annoyed",
+        "user is upset", "atlas responded", "atlas replied", "atlas failed", "atlas kept", "atlas was",
+        "atlas did not", "atlas didnt", "atlas could not", "atlas couldnt", "the assistant", "assistant responded",
+        "non actionable", "no task execution", "no names dates", "recorded beyond",
+    ];
+    if EDITORIAL.iter().any(|m| l.contains(m)) {
+        return true;
+    }
+    replies.iter().any(|r| crate::repeating::longest_shared_run(line, r) >= 6)
+}
+
+/// The model's new summary, if it can be trusted, else one made without it
+/// (29 Sep 2026). A summary goes in front of every turn after it, so one
+/// holding Atlas's replies or commentary is worse than a plain one: its
+/// noise is taken out (`clean_summary`), and when that leaves nothing, or
+/// took out more than it left, the plain summary (`plain_fold`) is used.
+/// Either way what the user said that must survive is added back
+/// (`with_the_important_kept`).
+pub fn accepted_summary(model_summary: &str, exchanges: &[Exchange], earlier: &str) -> String {
+    let replies: Vec<&str> = exchanges.iter().map(|e| e.reply.as_str()).collect();
+    let earlier = clean_summary(earlier, &replies);
+    // Counted the way `clean_summary` takes them out: lines, or the
+    // sentences of a one-paragraph summary.
+    let units = |s: &str| {
+        let lines = s.lines().filter(|l| !l.trim().is_empty()).count();
+        if lines > 1 { lines } else { crate::repeating::sentences(s).len() }
+    };
+    let cleaned = clean_summary(model_summary, &replies);
+    let before = units(model_summary);
+    let after = if cleaned.trim().is_empty() { 0 } else { units(&cleaned) };
+    if after == 0 || after * 2 < before {
+        return plain_fold(&earlier, exchanges);
+    }
+    with_the_important_kept(&cleaned, exchanges, &earlier)
+}
+
 pub const FOLD_PROMPT: &str = "\
-Compress this conversation into a short running summary. Keep decisions made,
-things still open, names, numbers, dates, file paths, and anything asked to be
-remembered. Drop pleasantries and
-anything already resolved. Write it as notes, not prose. Under 200 words.";
+Update the running notes of a conversation with what the user said since. Keep only what the USER said: \
+facts about them, decisions, requests still open, names, numbers, dates, file paths, and anything they asked to \
+be remembered. Never quote or describe the assistant's replies, never describe the user's mood, no commentary. \
+One note per line, each starting with \"- \". Under 120 words.";
 
 pub fn now_secs() -> u64 {
     now()
@@ -328,6 +517,11 @@ pub fn now_secs() -> u64 {
 /// Lines from the exchanges that must survive any summary: anything asked to
 /// be remembered, decided, promised, dated or counted. Checked against what
 /// the model wrote, and added back if it left them out.
+///
+/// And, from 29 Sep 2026, the user's requests (`is_a_request`) -- "I want
+/// you to organize my desktop" -- the last `REQUESTS_KEPT` of them: open
+/// requests are what the next turn most needs to know, and the summary
+/// made without a model kept none of them.
 pub fn must_keep(exchanges: &[Exchange]) -> Vec<String> {
     const MARKS: &[&str] = &[
         "remember", "don't forget", "dont forget", "decided", "we'll go with", "let's go with", "i'll ", "promise",
@@ -344,8 +538,17 @@ pub fn must_keep(exchanges: &[Exchange]) -> Vec<String> {
             }
         }
     }
+    let requests: Vec<String> = exchanges.iter().filter(|e| is_a_request(&e.said)).map(|e| e.said.trim().to_string()).collect();
+    for r in requests.iter().skip(requests.len().saturating_sub(REQUESTS_KEPT)) {
+        if !r.is_empty() && !out.contains(r) {
+            out.push(r.clone());
+        }
+    }
     out
 }
+
+/// How many of the user's requests a summary keeps word for word (`must_keep`).
+pub const REQUESTS_KEPT: usize = 6;
 
 /// The model's summary with anything important it dropped added back.
 pub fn with_the_important_kept(summary: &str, exchanges: &[Exchange], earlier: &str) -> String {
@@ -396,38 +599,4 @@ pub fn plain_fold(earlier: &str, exchanges: &[Exchange]) -> String {
         out.push_str(&format!("Talked about {}.", topics.join(", ")));
     }
     with_the_important_kept(&out, exchanges, earlier)
-}
-
-/// How many earlier replies a new one is checked against for copied sentences.
-pub const REPEAT_LOOKBACK: usize = 4;
-
-/// The sentences of `text`, each with its closing mark.
-fn reply_sentences(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let chars: Vec<char> = text.chars().collect();
-    for (i, c) in chars.iter().enumerate() {
-        cur.push(*c);
-        let ends = matches!(c, '.' | '!' | '?') && chars.get(i + 1).is_none_or(|n| n.is_whitespace());
-        if ends {
-            if !cur.trim().is_empty() {
-                out.push(cur.trim().to_string());
-            }
-            cur.clear();
-        }
-    }
-    if !cur.trim().is_empty() {
-        out.push(cur.trim().to_string());
-    }
-    out
-}
-
-/// `reply` without any sentence (of five letters or more) that one of
-/// `others` also has. Short ones ("Sure.", "Done.") are kept: they repeat
-/// because they're right, not because they were copied.
-pub fn without_repeated_sentences(reply: &str, others: &[&str]) -> String {
-    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
-    let seen: std::collections::HashSet<String> =
-        others.iter().flat_map(|o| reply_sentences(o)).map(|s| norm(&s)).filter(|n| n.len() >= 5).collect();
-    reply_sentences(reply).into_iter().filter(|s| !seen.contains(&norm(s))).collect::<Vec<_>>().join(" ")
 }
