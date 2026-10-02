@@ -354,7 +354,12 @@ pub fn check(root: &Path) -> String {
         None => out.push("NPU engine: ready".into()),
         Some(why) => out.push(format!("NPU engine: not in use -- {why}")),
     }
-    // Search.
+    // Search. The meaning model runs through ONNX Runtime, which the phone
+    // builds leave out (`--no-default-features`, 2 Oct 2026: run 12 of the
+    // iPhone build stopped here).
+    #[cfg(not(feature = "onnx"))]
+    out.push("Search: this build has no meaning model (no ONNX Runtime)".into());
+    #[cfg(feature = "onnx")]
     match crate::meaningnative::Native::load(root) {
         None => out.push("Search: the meaning model isn't downloaded, so there's nothing to measure".into()),
         Some(mut enc) => {
