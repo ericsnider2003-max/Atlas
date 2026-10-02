@@ -334,6 +334,98 @@ impl Backlog {
     }
 }
 
+/// Which outstanding item a "take it off my list" means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Removal {
+    /// "Clear my outstanding list", "remove everything from it".
+    All,
+    /// "Remove the second one", "remove number 2" (1-based, as listed).
+    Number(usize),
+    /// "Remove the chrome one": words to find it by.
+    Words(Vec<String>),
+    /// "Remove the item on my outstanding list": which isn't said.
+    Unsaid,
+}
+
+/// Is this asking to take something off the outstanding list? (1 Oct 2026:
+/// Eric couldn't -- "Remove the item on my outstanding list", "chrome
+/// should be a removed item off my list" -- there was no way to at all.)
+pub fn removal_asked(said: &str) -> Option<Removal> {
+    let t = format!(" {} ", normalize(said));
+    const VERBS: &[&str] = &[
+        " remove ", " removed ", " delete ", " drop ", " clear ", " cross off ", " cross ", " take off ", " take ",
+        " scratch ", " get rid of ", " mark done ", " mark as done ", " is done ", " are done ", " dismiss ",
+    ];
+    const LIST: &[&str] = &[" outstanding ", " outstanding list", " my list ", " your list ", " the list ", " off my ", " off the list", " off your list"];
+    let verb = VERBS.iter().any(|v| t.contains(v));
+    let list = LIST.iter().any(|l| t.contains(l)) || t.trim_end().ends_with(" outstanding");
+    if !verb || !list {
+        return None;
+    }
+    if [" all ", " everything ", " the whole ", " entire "].iter().any(|w| t.contains(w)) || t.trim() == "clear outstanding" || t.trim() == "clear my outstanding list" {
+        return Some(Removal::All);
+    }
+    const ORD: &[(&str, usize)] = &[
+        ("first", 1), ("second", 2), ("third", 3), ("fourth", 4), ("fifth", 5), ("sixth", 6), ("seventh", 7), ("eighth", 8),
+        ("1st", 1), ("2nd", 2), ("3rd", 3), ("4th", 4), ("5th", 5),
+    ];
+    let words: Vec<&str> = t.split_whitespace().collect();
+    for w in &words {
+        if let Some((_, n)) = ORD.iter().find(|(o, _)| o == w) {
+            return Some(Removal::Number(*n));
+        }
+        if let Ok(n) = w.parse::<usize>() {
+            if (1..=50).contains(&n) {
+                return Some(Removal::Number(n));
+            }
+        }
+    }
+    const NOT_A_TARGET: &[&str] = &[
+        "remove", "removed", "delete", "drop", "clear", "cross", "take", "scratch", "get", "rid", "mark", "done", "dismiss",
+        "off", "from", "my", "your", "the", "list", "outstanding", "item", "items", "thing", "things", "one", "on", "of",
+        "a", "an", "please", "atlas", "should", "be", "is", "are", "as", "it", "that", "this", "can", "you", "could", "i",
+        "want", "to", "need", "now", "and", "out", "entry", "task", "job",
+    ];
+    let left: Vec<String> = words.iter().filter(|w| !NOT_A_TARGET.contains(w) && w.len() > 1).map(|w| w.to_string()).collect();
+    Some(if left.is_empty() { Removal::Unsaid } else { Removal::Words(left) })
+}
+
+impl Backlog {
+    /// The outstanding item a removal names, by its place in the list or its
+    /// words: `Ok(id)`, or `Err` with what to say instead.
+    pub fn find_for_removal(&self, r: &Removal) -> std::result::Result<Vec<u64>, String> {
+        let o = self.outstanding();
+        if o.is_empty() {
+            return Err("There's nothing on your outstanding list.".into());
+        }
+        let listed = || {
+            o.iter().enumerate().map(|(i, it)| format!("{}. {}", i + 1, it.request.trim())).collect::<Vec<_>>().join("; ")
+        };
+        match r {
+            Removal::All => Ok(o.iter().map(|i| i.id).collect()),
+            Removal::Number(n) => match o.get(n.saturating_sub(1)) {
+                Some(it) => Ok(vec![it.id]),
+                None => Err(format!("There are only {} on the list: {}.", o.len(), listed())),
+            },
+            Removal::Unsaid if o.len() == 1 => Ok(vec![o[0].id]),
+            Removal::Unsaid => Err(format!("Which one? {}. Say its number, or some of its words.", listed())),
+            Removal::Words(w) => {
+                let score = |it: &Item| {
+                    let r = normalize(&it.request);
+                    w.iter().filter(|x| r.split_whitespace().any(|y| y == x.as_str())).count()
+                };
+                let best = o.iter().map(|it| score(it)).max().unwrap_or(0);
+                let hits: Vec<u64> = o.iter().filter(|it| best > 0 && score(it) == best).map(|it| it.id).collect();
+                match hits.len() {
+                    0 => Err(format!("I couldn't find that on the list: {}.", listed())),
+                    1 => Ok(hits),
+                    _ => Err(format!("More than one matches. {}. Say its number.", listed())),
+                }
+            }
+        }
+    }
+}
+
 fn normalize(s: &str) -> String {
     s.to_lowercase()
         .chars()

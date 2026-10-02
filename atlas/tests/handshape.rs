@@ -1018,3 +1018,22 @@ fn losing_the_hand_forgets_the_trail() {
     let m = t.saw(0.9, 0.5, 400);
     assert!(m.still(), "a jump across a gap in sight read as motion: {m:?}");
 }
+
+/// 1 Oct 2026: the look meant to catch a thumbs-up ran every seeing model
+/// and never read a hand. A hand answering is now read from its joints.
+#[test]
+fn a_thumb_up_a_thumb_down_and_an_open_palm_answer_a_question() {
+    use atlas::handshape::hand_answer as answer_from;
+    let mut up = fist();
+    extend(&mut up, 0);
+    assert_eq!(answer_from(&up).map(|a| a.0), Some("thumb_up"));
+    let mut down = fist();
+    down.points[4] = Point::from(0.44, 1.3);
+    assert_eq!(answer_from(&down).map(|a| a.0), Some("thumb_down"));
+    let mut palm = fist();
+    for f in 0..5 {
+        extend(&mut palm, f);
+    }
+    assert_eq!(answer_from(&palm).map(|a| a.0), Some("open_palm"));
+    assert_eq!(answer_from(&fist()), None, "a fist answers nothing");
+}

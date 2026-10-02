@@ -403,6 +403,44 @@ pub const EVERYDAY: &[(&str, &str)] = &[
     ("what can you do", "capabilities"),
 ];
 
+/// What to say after a command that needs it, so the self-test asks
+/// something a person would. A command missing from here is left out of
+/// the self-test rather than tried with words that don't fit it
+/// (`tests/selftest_examples.rs` keeps this list complete).
+pub const EXAMPLES: &[(&str, &str)] = &[
+    ("research", "the best budget mechanical keyboards"),
+    ("open_app", "notepad"),
+    ("close_app", "notepad"),
+    ("focus_app", "notepad"),
+    ("draft_post", "linkedin about finishing a project"),
+    ("set_mode", "focus"),
+    ("rehearse", "open notepad"),
+    ("show_panel", "the outstanding list"),
+    ("refile", "an idea"),
+    ("pair", "my phone"),
+    ("accept_pairing", "ABCD-EFGH"),
+    ("forget_peer", "my phone"),
+    ("message", "sam saying I'll be late"),
+    ("who_is_in", "the family group"),
+    ("name_group", "the family group to home"),
+    ("leave_group", "the family group"),
+    ("friend", "sam"),
+    ("change_group", "sam to the family group"),
+    ("design_review", "the home page"),
+    ("animate", "a bouncing ball"),
+    ("scene3d", "a small cabin in the woods"),
+    ("explain_code", "the clipboard"),
+    ("learn_knowledge", "the office opens at nine"),
+    ("name_this", "mug"),
+    ("brief_on", "my phone"),
+    ("launch", "calculator"),
+    ("use_mic", "webcam"),
+];
+
+pub fn example_for(intent: &str) -> Option<&'static str> {
+    EXAMPLES.iter().find(|(i, _)| *i == intent).map(|(_, a)| *a)
+}
+
 /// Every command's sentence, and the everyday ones.
 pub fn sentences(book: &crate::intent::ToolBook) -> Vec<(String, String, Option<String>)> {
     let mut out = Vec::new();
@@ -411,7 +449,17 @@ pub fn sentences(book: &crate::intent::ToolBook) -> Vec<(String, String, Option<
             continue;
         }
         let Some(phrase) = e.phrases.iter().find(|p| !p.trim().is_empty()) else { continue };
-        let said = if e.takes_arg && !e.arg_optional { format!("{phrase} the quarterly budget") } else { phrase.clone() };
+        // A command that needs something after it is tried with something
+        // that fits it (1 Oct 2026: every one got "the quarterly budget", so
+        // "add a friend the quarterly budget" was judged and called broken).
+        let said = if e.takes_arg && !e.arg_optional {
+            match example_for(&e.name) {
+                Some(arg) => format!("{phrase} {arg}"),
+                None => continue,
+            }
+        } else {
+            phrase.clone()
+        };
         out.push((e.name.clone(), said, None));
     }
     for (said, want) in EVERYDAY {

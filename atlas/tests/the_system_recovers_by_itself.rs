@@ -767,7 +767,7 @@ fn atlas_knows_who_it_is_and_what_its_job_is() {
         assert!(prompt.contains("Your job: take things off their plate"));
         assert!(prompt.contains("research the web"));
         assert!(prompt.contains("about getting better"));
-        assert!(prompt.contains("can't do research"));
+        assert!(prompt.contains("can't research or add abilities"));
     }
     // Still says to call the tools (the second scan's check).
     assert!(p.character().contains("call the tool"));
@@ -894,7 +894,7 @@ fn talk_is_spoken_length_unless_you_ask_for_more() {
 fn the_prompt_forbids_made_up_history() {
     let c = atlas::persona::Persona::default().character();
     assert!(c.contains("Never invent past events, shared memories"), "{c}");
-    assert!(c.contains("Don't mention the time of day"));
+    assert!(c.contains("Mention the time only if it matters"));
 }
 
 /// The bench's checks catch what a person heard as wrong.

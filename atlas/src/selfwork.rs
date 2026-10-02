@@ -35,6 +35,9 @@ pub struct SelfWorkConfig {
     pub min_tests: usize,
     /// Lines changed in one go before it wants a second look.
     pub large_change_lines: usize,
+    /// Where Atlas's own source is on this computer. Empty: looked for
+    /// (`source_root`), on whoever's computer this is.
+    pub source_dir: String,
 }
 
 impl Default for SelfWorkConfig {
@@ -55,6 +58,7 @@ impl Default for SelfWorkConfig {
             test_command: "cargo test".into(),
             min_tests: 1,
             large_change_lines: 150,
+            source_dir: String::new(),
         }
     }
 }
@@ -1290,4 +1294,67 @@ pub fn is_a_source_checkout(root: &std::path::Path) -> bool {
             l == "name=\"atlas\""
         }))
         .unwrap_or(false)
+}
+
+
+/// Where Atlas's own source is on this computer, if anywhere: the folder set
+/// in settings, then `ATLAS_SOURCE`, then the folder it was started in and
+/// the folders above the program, then a short look through the home folder
+/// (three levels, a bounded number of folders). Never assumes one person's
+/// layout: an installed Atlas is started from wherever Windows likes --
+/// System32, 1 Oct 2026 -- and a friend's copy may have no source at all.
+pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let here = |p: PathBuf| -> Option<PathBuf> {
+        if is_a_source_checkout(&p) {
+            return Some(p);
+        }
+        let inner = p.join("atlas");
+        is_a_source_checkout(&inner).then_some(inner)
+    };
+    let set = crate::doctor::expand_env(cfg.source_dir.trim());
+    if !set.is_empty() {
+        if let Some(p) = here(PathBuf::from(&set)) {
+            return Some(p);
+        }
+    }
+    if let Some(p) = crate::doctor::lookup_env("ATLAS_SOURCE").and_then(|e| here(PathBuf::from(e))) {
+        return Some(p);
+    }
+    if let Some(p) = std::env::current_dir().ok().and_then(here) {
+        return Some(p);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for a in exe.ancestors().skip(1).take(4) {
+            if let Some(p) = here(a.to_path_buf()) {
+                return Some(p);
+            }
+        }
+    }
+    let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))?;
+    const SKIP: &[&str] = &["appdata", "library", "pictures", "music", "videos", "node_modules", "target", "onedrive", "dropbox", "google drive", "icloud drive"];
+    let mut level = vec![PathBuf::from(home)];
+    let mut seen = 0usize;
+    for _ in 0..3 {
+        let mut next = Vec::new();
+        for d in &level {
+            let Ok(rd) = std::fs::read_dir(d) else { continue };
+            for e in rd.flatten() {
+                seen += 1;
+                if seen > 4000 {
+                    return None;
+                }
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                if name.starts_with('.') || SKIP.contains(&name.as_str()) || !e.file_type().is_ok_and(|t| t.is_dir()) {
+                    continue;
+                }
+                if is_a_source_checkout(&e.path()) {
+                    return Some(e.path());
+                }
+                next.push(e.path());
+            }
+        }
+        level = next;
+    }
+    None
 }

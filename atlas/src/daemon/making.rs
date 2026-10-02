@@ -264,10 +264,14 @@ impl<'a> Daemon<'a> {
             let mut said = outcome.spoken(lang);
             if let Some(code) = outcome.code() {
                 let _ = std::fs::create_dir_all(&out_dir);
-                let name = if outcome.is_built() { "build.verified" } else { "build.draft" };
-                let path = out_dir.join(format!("{name}.{}", ext_for(lang)));
-                if let Err(e) = std::fs::write(&path, code) {
-                    said.push_str(&format!("\n\n(I couldn't save it to {} — {e}. Is the disk full?)", path.display()));
+                // Named for what it does, never over the top of the last
+                // one, and said where (1 Oct 2026: every build overwrote
+                // "build.verified.py", and the reply never said where it was).
+                let ext = if outcome.is_built() { ext_for(lang).to_string() } else { format!("draft.{}", ext_for(lang)) };
+                let path = crate::build_it::file_name_for(&out_dir, &desc, &ext);
+                match std::fs::write(&path, code) {
+                    Ok(()) => said.push_str(&format!("\n\nSaved as {}, in {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), out_dir.display())),
+                    Err(e) => said.push_str(&format!("\n\n(I couldn't save it to {} — {e}. Is the disk full?)", path.display())),
                 }
                 // Auto-explain: generated code never arrives without a plain-
                 // English summary of what it does, iterated to read plainly.

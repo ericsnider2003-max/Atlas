@@ -1040,12 +1040,22 @@ pub fn budget_bytes(cfg: &ModelsConfig, m: &Machine) -> u64 {
 /// and that alone left Eric's Atlas with no model at all (27 Sep 2026: every
 /// question got "I can't answer that here"); Windows pages out what's idle.
 pub fn pick<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<&'a Model> {
-    registry.choose_for(cfg, budget_bytes(cfg, m)).or_else(|| {
-        if cfg.memory_budget_mb != 0 {
-            return None;
-        }
-        registry.choose_for(cfg, m.total_ram_mb * 1024 * 1024 / 2)
-    })
+    let now = registry.choose_for(cfg, budget_bytes(cfg, m));
+    if cfg.memory_budget_mb != 0 {
+        return now;
+    }
+    // Sized to the machine, not to this minute: what fits in half its
+    // memory, when that's more than what's free right now picks. Windows
+    // pages out what's idle, and a browser open at start isn't a reason to
+    // talk through the smallest model all day (1 Oct 2026: with 1.4 GB free
+    // on a 16 GB laptop, Atlas chose the 0.6B model and left the 4B one --
+    // there, downloaded -- unused).
+    let roomy = registry.choose_for(cfg, m.total_ram_mb * 1024 * 1024 / 2);
+    match (now, roomy) {
+        (Some(a), Some(b)) if b.parameters > a.parameters => Some(b),
+        (None, b) => b,
+        (a, _) => a,
+    }
 }
 
 impl Registry {

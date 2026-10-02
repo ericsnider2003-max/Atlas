@@ -55,7 +55,7 @@ impl<'a> Daemon<'a> {
 
     /// Is a question Atlas asked still waiting in one of its slots?
     pub(super) fn a_slot_is_open(&self) -> bool {
-        self.pending_job.is_some() || self.pending_offer.is_some() || self.pending_wanted.is_some() || self.pending_backlog.is_some() || self.pending_bring_back.is_some() || self.pending_unscanned.is_some() || self.pending_media_keep.is_some() || self.pending_media_original.is_some() || self.pending_undo.is_some() || self.pending_storage.is_some() || self.pending_desktop.is_some() || self.pending_press.is_some() || self.pending_post_approval.is_some() || self.pending_post_when.is_some() || self.pending_security.is_some() || self.pending_signin.is_some() || self.pending_window_confirm.is_some() || self.pending_panel.is_some() || self.pending_correction.is_some() || self.pending_decision.is_some() || self.pending_mail_sort
+        self.pending_job.is_some() || self.pending_offer.is_some() || self.pending_wanted.is_some() || self.pending_backlog.is_some() || self.pending_bring_back.is_some() || self.pending_unscanned.is_some() || self.pending_media_keep.is_some() || self.pending_media_original.is_some() || self.pending_undo.is_some() || self.pending_storage.is_some() || self.pending_optimize.is_some() || self.pending_desktop.is_some() || self.pending_press.is_some() || self.pending_post_approval.is_some() || self.pending_post_when.is_some() || self.pending_security.is_some() || self.pending_signin.is_some() || self.pending_window_confirm.is_some() || self.pending_panel.is_some() || self.pending_correction.is_some() || self.pending_decision.is_some() || self.pending_mail_sort
     }
 
     /// Every open question dropped, in one place: the session's and each
@@ -74,6 +74,7 @@ impl<'a> Daemon<'a> {
         self.pending_media_original = None;
         self.pending_undo = None;
         self.pending_storage = None;
+        self.pending_optimize = None;
         self.pending_desktop = None;
         self.pending_press = None;
         self.pending_post_approval = None;

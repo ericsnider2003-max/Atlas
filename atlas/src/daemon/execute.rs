@@ -1314,7 +1314,31 @@ impl<'a> Daemon<'a> {
         let models_mb = std::fs::read_dir(self.store.install_root().join("models"))
             .map(|rd| rd.flatten().filter_map(|e| e.metadata().ok()).map(|m| m.len()).sum::<u64>() / 1_000_000)
             .unwrap_or(0);
+        // Measured now (1 Oct 2026): memory by program, and the temporary
+        // folder. "Used today" is what the work log saw in front of you
+        // since this morning -- never assumed, so nothing you use is called
+        // forgotten.
+        let now = crate::store::now();
+        let since = crate::localclock::midnight(now, crate::localclock::offset_secs());
+        let used: Vec<String> = self.worklog.between(since, now).iter().map(|sp| sp.app.to_lowercase()).collect();
+        let used_today = |app: &str| {
+            let a = app.to_lowercase();
+            used.iter().any(|u| u.contains(&a) || a.contains(u.as_str()))
+        };
+        let memory_by_app: Vec<(String, u64, bool)> = crate::tune::memory_by_app()
+            .into_iter()
+            .take(15)
+            .filter(|(app, _)| !app.to_lowercase().starts_with("atlas") && !app.to_lowercase().starts_with("llama-server"))
+            .map(|(app, mb)| {
+                let u = used_today(&app);
+                (app, mb, u)
+            })
+            .collect();
+        let temp = std::env::temp_dir();
+        let temp_mb = crate::tune::folder_mb(&temp, std::time::Duration::from_millis(500));
         let survey = crate::tune::Survey {
+            memory_by_app,
+            disposable: vec![(temp.display().to_string(), temp_mb)],
             disk_free_gb: r.disk_free_gb,
             disk_total_gb: r.disk_total_gb,
             ram_used_gb: r.ram_used_gb,
@@ -1326,14 +1350,52 @@ impl<'a> Daemon<'a> {
             &survey,
             &self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default(),
         );
-        if let Some(first) = crate::tune::actionable(&findings).first() {
-            let (mb, _) = crate::tune::worth_it(&findings);
+        // The deeper look: what's holding the memory, whoever it is.
+        let mut top: Vec<&(String, u64, bool)> = survey.memory_by_app.iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        if !top.is_empty() {
+            let named: Vec<String> = top.iter().take(4).map(|(a, mb, _)| format!("{a} {}", if *mb >= 1024 { format!("{:.1} GB", *mb as f32 / 1024.0) } else { format!("{mb} MB") })).collect();
+            s.push_str(&format!(" Using the most memory: {}.", named.join(", ")));
+        }
+        // And what to do about it, on one yes (1 Oct 2026, Eric: "closing
+        // things in the task manager that aren't needed, moving files, doing
+        // deeper dives and actually making it run well").
+        let tune_cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
+        let windowed = crate::tune::windowed_programs();
+        let week: Vec<String> = self.worklog.between(now.saturating_sub(7 * 86_400), now).iter().map(|sp| sp.app.to_lowercase()).collect();
+        let used_this_week = |app: &str| {
+            let a = app.to_lowercase();
+            week.iter().any(|u| u.contains(&a) || a.contains(u.as_str()))
+        };
+        let plan = crate::tune::Plan {
+            close: survey
+                .memory_by_app
+                .iter()
+                .filter(|(app, mb, today)| {
+                    *mb >= tune_cfg.min_mb && !*today && windowed.iter().any(|w| w.eq_ignore_ascii_case(app)) && crate::tune::may_close(app, &tune_cfg.keep)
+                })
+                .map(|(app, mb, _)| (app.clone(), *mb))
+                .take(4)
+                .collect(),
+            stop_starting: crate::tune::startup_programs()
+                .into_iter()
+                .filter(|n| !used_this_week(n) && crate::tune::may_close(n, &tune_cfg.keep))
+                .take(5)
+                .collect(),
+            temp: (temp_mb >= tune_cfg.min_mb).then(|| (temp.clone(), temp_mb)),
+        };
+        if !plan.is_empty() {
+            let offer = plan.offer();
             s.push(' ');
-            s.push_str(&if mb > 0 {
-                format!("{} — about {mb}MB back.", first.what)
-            } else {
-                format!("{}.", first.what)
-            });
+            s.push_str(&offer);
+            self.session.ask(&offer);
+            self.pending_optimize = Some(plan);
+        } else if let Some(f) = crate::tune::actionable(&findings).first().copied().or(findings.first()) {
+            let (mb, _) = crate::tune::worth_it(&findings);
+            s.push_str(&format!(" {}", f.what));
+            if mb > 0 {
+                s.push_str(&format!(" About {mb} MB could come back in all."));
+            }
         }
         if !watched.starts_with("Not watching") {
             s.push(' ');

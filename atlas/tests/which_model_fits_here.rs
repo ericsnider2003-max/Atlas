@@ -603,3 +603,24 @@ fn both_endpoints_are_on_the_loopback_and_never_a_public_interface() {
     assert!(atlas::models::health_url(port).ends_with("/health"));
     assert!(atlas::models::completion_url(port).ends_with("/completion"));
 }
+
+/// 1 Oct 2026: with 1.4 GB free on a 16 GB laptop Atlas talked through its
+/// smallest model all day, the bigger one sitting downloaded beside it. The
+/// talking model is sized to the machine: what fits in half its memory, when
+/// that's bigger than what fits in what's free this minute.
+#[test]
+fn a_busy_minute_doesnt_shrink_atlas_to_its_smallest_model() {
+    let dir = a_folder("busy-minute");
+    let cfg = ModelsConfig { talk_ceiling_b: 0, ..cfg_at(&dir) };
+    let (registry, _) = Registry::scan_reporting(&dir);
+    let large = registry.models.iter().map(|m| estimate_memory(m, cfg.context)).max().unwrap() / (1024 * 1024);
+    let small = registry.models.iter().map(|m| estimate_memory(m, cfg.context)).min().unwrap() / (1024 * 1024);
+    // Free right now: room for the small one only. The machine: room for both.
+    let busy = Machine { total_ram_mb: large * 4, free_ram_mb: small * 2 + 10, ..machine(0, 0) };
+    let chosen = atlas::models::pick(&registry, &cfg, &busy).unwrap();
+    assert_eq!(chosen.parameters, registry.models.iter().map(|m| m.parameters).max().unwrap(), "{}", chosen.id);
+    // A limit you set yourself is still a limit.
+    let capped = ModelsConfig { memory_budget_mb: small + 10, ..cfg.clone() };
+    let chosen = atlas::models::pick(&registry, &capped, &busy).unwrap();
+    assert_eq!(chosen.parameters, registry.models.iter().map(|m| m.parameters).min().unwrap());
+}

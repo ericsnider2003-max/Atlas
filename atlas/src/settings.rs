@@ -681,6 +681,18 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Sensitive,
         group: "Your devices".into(),
     });
+    // Where Atlas's own source is, for self-repair (1 Oct 2026): looked for
+    // when empty, set here when it's somewhere unusual.
+    items.push(Setting {
+        key: "self_work.source_dir".into(),
+        name: "Source folder".into(),
+        what: "The folder holding Atlas's own source code, for fixing itself. Empty: I look for it.".into(),
+        cost: "Self-repair reads and edits the code in this folder; any change still waits for your yes.".into(),
+        value: Value::Text(t.self_work.source_dir.clone()),
+        default: Value::Text(t.self_work.source_dir.clone()),
+        weight: Sensitive,
+        group: "Your devices".into(),
+    });
     // Your own handles, for the Social page's refresh (29 Sep 2026).
     items.push(Setting {
         key: "workday.social.youtube_channel".into(),
