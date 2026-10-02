@@ -1064,13 +1064,13 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         key: "models.speculate".into(),
         name: "Guessing ahead".into(),
         what: "Lets the model reuse words already in the conversation to answer faster, with no second model.".into(),
-        cost: "Almost no memory. Helps summaries and anything that repeats what it read; ordinary chat, little.".into(),
+        cost: "Almost no memory. Helps summaries and anything that repeats what it read; measured on this laptop, about 8% faster replies overall.".into(),
         value: Value::Choice {
             value: if t.models.speculate.trim().is_empty() { "off".into() } else { t.models.speculate.clone() },
             options: std::iter::once("off".to_string()).chain(crate::models::NGRAM_KINDS.iter().map(|k| k.to_string())).collect(),
         },
         default: Value::Choice {
-            value: "off".into(),
+            value: "ngram-mod".into(),
             options: std::iter::once("off".to_string()).chain(crate::models::NGRAM_KINDS.iter().map(|k| k.to_string())).collect(),
         },
         weight: Weight::Resource,

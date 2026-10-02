@@ -931,3 +931,5 @@ mod reports_as_files;
 mod mcp_server;
 #[path = "what_the_model_ranking_found.rs"]
 mod what_the_model_ranking_found;
+#[path = "greet_once.rs"]
+mod greet_once;

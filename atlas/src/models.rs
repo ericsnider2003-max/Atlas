@@ -280,7 +280,14 @@ impl Default for ModelsConfig {
             gpu_layers: "auto".into(),
             talk_ceiling_b: 5,
             draft: String::new(),
-            speculate: "off".into(),
+            // Measured on Eric's laptop, 1 Oct 2026 (Qwen3-VL 4B, five
+            // everyday prompts each): no speculation 22.2 words-pieces a
+            // second, `ngram-mod` 23.9 (faster on every prompt, no extra
+            // memory), the Qwen3-0.6B draft model 5.7 -- four times
+            // *slower*: it guessed right 8-45% of the time and every miss
+            // costs a check. So guessing from what's already been said is
+            // on by default, and the draft model is not.
+            speculate: "ngram-mod".into(),
             sampling: Sampling::default(),
             talk: String::new(),
             deep: String::new(),

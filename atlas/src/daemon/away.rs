@@ -508,6 +508,14 @@ impl<'a> Daemon<'a> {
             b.start_with = day.iter().find(|i| i.weight == crate::brief::Weight::Urgent).map(|i| i.subject.clone());
         }
         b.yours.extend(day);
+        // The one push you asked for, from "get to know me" -- only when the
+        // brief is on at all, and one piece a day.
+        if cfg.enabled {
+            b.push = self
+                .facts
+                .get("push them on")
+                .and_then(|f| crate::brief::push_for_day(&f.summary, crate::localclock::day_here(now) as u64));
+        }
         self.last_brief = now;
         b
     }

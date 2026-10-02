@@ -32,12 +32,18 @@ fn model(path: PathBuf) -> Model {
 }
 
 #[test]
-fn nothing_is_passed_by_default() {
+fn only_the_free_guessing_is_passed_by_default() {
+    // Measured on the laptop 1 Oct 2026: ngram-mod faster on every prompt,
+    // the draft model four times slower.
     let d = dir("default");
     let cfg = ModelsConfig { dir: d.display().to_string(), ..Default::default() };
     assert_eq!(cfg.draft, "");
-    assert_eq!(cfg.speculate, "off");
+    assert_eq!(cfg.speculate, "ngram-mod");
     let args = server_args(&model(d.join("big.gguf")), &cfg, 0);
+    assert!(!args.iter().any(|a| a.starts_with("-md")), "{args:?}");
+    assert!(args.join(" ").ends_with("--spec-type ngram-mod"), "{args:?}");
+    let off = ModelsConfig { speculate: "off".into(), ..cfg.clone() };
+    let args = server_args(&model(d.join("big.gguf")), &off, 0);
     assert!(!args.iter().any(|a| a.starts_with("-md") || a.starts_with("--spec")), "{args:?}");
     // The flags b10456 removed are never passed.
     assert!(!args.iter().any(|a| a == "--draft-max" || a == "--draft-min"), "{args:?}");
@@ -47,7 +53,7 @@ fn nothing_is_passed_by_default() {
 fn a_draft_model_that_is_there_is_passed_as_draft_simple() {
     let d = dir("draft");
     std::fs::write(d.join("Qwen3-0.6B-Q8_0.gguf"), b"GGUF").unwrap();
-    let cfg = ModelsConfig { dir: d.display().to_string(), draft: "Qwen3-0.6B-Q8_0.gguf".into(), ..Default::default() };
+    let cfg = ModelsConfig { dir: d.display().to_string(), draft: "Qwen3-0.6B-Q8_0.gguf".into(), speculate: "off".into(), ..Default::default() };
     let args = server_args(&model(d.join("big.gguf")), &cfg, 0);
     let at = args.iter().position(|a| a == "-md").expect("no -md");
     assert_eq!(PathBuf::from(&args[at + 1]), d.join("Qwen3-0.6B-Q8_0.gguf"));
@@ -62,7 +68,7 @@ fn a_draft_model_that_is_there_is_passed_as_draft_simple() {
 #[test]
 fn a_draft_that_isnt_there_or_is_the_model_itself_is_left_out() {
     let d = dir("missing");
-    let cfg = ModelsConfig { dir: d.display().to_string(), draft: "nope.gguf".into(), ..Default::default() };
+    let cfg = ModelsConfig { dir: d.display().to_string(), draft: "nope.gguf".into(), speculate: "off".into(), ..Default::default() };
     assert!(speculation_args(&cfg, &d.join("big.gguf")).is_empty());
     // On a machine small enough that the helper is the model that talks.
     std::fs::write(d.join("small.gguf"), b"GGUF").unwrap();
@@ -93,7 +99,7 @@ fn the_helper_model_is_pinned_and_its_settings_wait_for_a_restart() {
     assert!(atlas::settings::needs_a_restart("models.draft") && atlas::settings::needs_a_restart("models.speculate"));
     let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
     let t = c.tools.unwrap();
-    assert_eq!((t.models.draft.as_str(), t.models.speculate.as_str()), ("", "off"), "shipped off");
+    assert_eq!((t.models.draft.as_str(), t.models.speculate.as_str()), ("", "ngram-mod"), "shipped: free guessing on, draft model off");
     let reg = atlas::settings::registry(&t);
     assert!(reg.get("models.draft").is_some() && reg.get("models.speculate").is_some());
 }

@@ -1321,6 +1321,8 @@ impl<'a> Daemon<'a> {
                 // who just asked and the wrong thing to volunteer every
                 // morning for the rest of your life.
                 if !b.is_empty() {
+                    self.last_greeted_at = t;
+                    let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
                     let line = crate::brief::spoken(&b);
                     match self.morning_brief.take() {
                         // The night finished and this is the same morning.
@@ -1457,12 +1459,49 @@ impl<'a> Daemon<'a> {
         // "nothing needs you" every morning is the count-shaped notification
         // this module is written against, and `Brief::is_empty` is the check
         // that already knows the difference.
+        //
+        // 1 Oct 2026 (idea 4, "welcome back"): one hello, not one per restart
+        // and not to an empty room. On 30 Sep "Good evening. Nothing
+        // outstanding on my side" was said six times in one evening, and
+        // overnight with nobody there. `returning::hello_now` decides: held
+        // while you're away, spent if a welcome back or the morning brief
+        // already greeted you, and an empty hello isn't said at all.
         let nudge = match nudge {
             Some(n) if n.trigger == crate::nudge::Trigger::Daypart => {
-                let b = self.brief_now(t);
-                match (crate::nudge::Part::from_hour(hour), b.is_empty()) {
-                    (Some(part), false) => Some(crate::nudge::daypart_with_brief(part, &b)),
-                    _ => Some(n),
+                match crate::returning::hello_now(self.last_greeted_at, t, self.quiet_for(t)) {
+                    crate::returning::Hello::Hold => {
+                        self.nudger.unsaid(&n);
+                        None
+                    }
+                    crate::returning::Hello::Spent => {
+                        let _ = self.store.save("greeted_part", &self.nudger.last_daypart());
+                        None
+                    }
+                    crate::returning::Hello::Say => {
+                        let b = self.brief_now(t);
+                        let open = self.nudger.goals.iter().filter(|g| !g.muted).count();
+                        match (crate::nudge::Part::from_hour(hour), b.is_empty()) {
+                            (Some(part), false) => Some(crate::nudge::daypart_with_brief(part, &b)),
+                            _ if open > 0 => Some(n),
+                            (part, _) => {
+                                let knows_you = self.facts.get("push them on").is_some()
+                                    || !self.facts.of_kind(crate::facts::Kind::Project).is_empty()
+                                    || !self.person.projects.is_empty();
+                                let offered: bool = self.store.load("offered_get_to_know");
+                                let greeting = part.map(|p| p.greeting()).unwrap_or("Hello");
+                                match crate::returning::empty_hello(greeting, knows_you, offered) {
+                                    Some(message) => {
+                                        let _ = self.store.save("offered_get_to_know", &true);
+                                        Some(crate::nudge::Nudge { message, ..n })
+                                    }
+                                    None => {
+                                        let _ = self.store.save("greeted_part", &self.nudger.last_daypart());
+                                        None
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             other => other,
@@ -1479,6 +1518,13 @@ impl<'a> Daemon<'a> {
         if let Some(n) = &nudge {
             if chosen.as_ref().map(|o| Some(&o.kind)) != Some(nudge_kind.as_ref()) {
                 self.nudger.unsaid(n);
+            }
+        }
+        if let (Some(n), Some(o)) = (&nudge, &chosen) {
+            if n.trigger == crate::nudge::Trigger::Daypart && Some(&o.kind) == nudge_kind.as_ref() {
+                self.last_greeted_at = t;
+                let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
+                let _ = self.store.save("greeted_part", &self.nudger.last_daypart());
             }
         }
         if let Some(offer) = chosen {

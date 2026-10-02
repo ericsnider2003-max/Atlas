@@ -182,6 +182,12 @@ impl<'a> Daemon<'a> {
                 }
                 crate::returning::Welcome::Nothing => None,
             };
+            // A welcome back is a hello: the part-of-day greeting after it
+            // would be a second one (`returning::hello_now`).
+            if self.pending_brief.is_some() {
+                self.last_greeted_at = t;
+                let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
+            }
             if let Some(cue) = cue {
                 self.pending_brief = Some(match self.pending_brief.take() {
                     Some(b) => format!("{b} {cue}"),
