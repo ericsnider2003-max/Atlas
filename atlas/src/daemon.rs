@@ -588,6 +588,12 @@ pub struct Daemon<'a> {
     /// and most days nobody asks Atlas what a thing is. Held open afterwards,
     /// because the load is the expensive half and the run is not.
     pub looking: Option<crate::vision::Looking>,
+    /// The camera kept open between the looks Atlas takes on its own, and
+    /// when it was last asked for a frame (`one_frame`, 2 Oct 2026).
+    kept_camera: Option<(crate::frames::Latest, std::time::Instant)>,
+    /// The last look's thumbnail, when, and what it saw: a room that hasn't
+    /// changed isn't run through the models again (`see_you`).
+    last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
     /// A watch in progress ("watch me for five minutes", `camwatch`).
     pub cam_watch: Option<crate::camwatch::Watcher>,
     /// A watch asked for before the camera was allowed: started on the yes.
@@ -1680,6 +1686,8 @@ impl<'a> Daemon<'a> {
             steering_at: 0,
             hands: None,
             looking: None,
+            kept_camera: None,
+            last_sight: None,
             cam_watch: None,
             watch_after_allow: None,
             agent_lookup: crate::tools::which,

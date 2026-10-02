@@ -155,13 +155,13 @@ pub fn last_cost_ms() -> Option<u32> {
 /// for the same files. `tract` stays as the fallback for a machine without
 /// the runtime, or a model the runtime refuses. Both models take one fixed
 /// picture size, which is exactly what the NPU wants.
-enum Reader {
+pub enum Reader {
     Here(crate::infer::Model),
     Runtime { session: crate::npu::Session, input: String, kind: crate::infer::Kind },
 }
 
 impl Reader {
-    fn open(kind: crate::infer::Kind, models: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> crate::error::Result<Reader> {
+    pub fn open(kind: crate::infer::Kind, models: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> crate::error::Result<Reader> {
         if let Some(root) = root.filter(|r| crate::npu::runtime_ready(r)) {
             let model = models.join(kind.file());
             let shape: Vec<i64> = kind.recipe().shape().iter().map(|d| *d as i64).collect();
@@ -188,7 +188,7 @@ impl Reader {
         Ok(Reader::Here(crate::infer::Model::load(kind, models)?))
     }
 
-    fn run(&mut self, pixels: &[f32]) -> crate::error::Result<crate::infer::Outputs> {
+    pub fn run(&mut self, pixels: &[f32]) -> crate::error::Result<crate::infer::Outputs> {
         match self {
             Reader::Here(m) => m.run(pixels),
             Reader::Runtime { session, input, kind } => {
@@ -201,7 +201,7 @@ impl Reader {
         }
     }
 
-    fn on(&self) -> &'static str {
+    pub fn on(&self) -> &'static str {
         match self {
             Reader::Here(_) => "tract on the processor",
             Reader::Runtime { session, .. } if session.on == crate::npu::Where::Npu => "the NPU",

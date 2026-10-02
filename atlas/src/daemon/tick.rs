@@ -855,6 +855,7 @@ impl<'a> Daemon<'a> {
 
         // Look at the room. Only a gesture answering a pending question ever
         // reaches you from this; presence just informs everything else.
+        self.camera_idle_check();
         if let Some(said) = self.look_at_the_room(t) {
             out.push(said);
         }

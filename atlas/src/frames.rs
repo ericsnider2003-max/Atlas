@@ -40,6 +40,13 @@ pub struct Feed {
     /// megabytes a frame in order to throw almost all of it away.
     pub width: usize,
     pub height: usize,
+    /// Frames a second to hand over, when fewer than the camera's own are
+    /// wanted. Dropped by ffmpeg *before* the picture is scaled and turned
+    /// into pixels, so the frames nobody reads cost almost nothing: measured
+    /// on Eric's C920 (2 Oct 2026), kept open at 2 a second is about 0.7%
+    /// of a core, against about 9% for opening the camera afresh every four
+    /// seconds.
+    pub per_second: Option<u32>,
 }
 
 impl Default for Feed {
@@ -48,6 +55,7 @@ impl Default for Feed {
             open_with: Vec::new(),
             width: 640,
             height: 480,
+            per_second: None,
         }
     }
 }
@@ -72,10 +80,14 @@ impl Rolling {
             ));
         }
         let mut args: Vec<String> = feed.open_with.clone();
+        let filter = match feed.per_second {
+            Some(n) if n > 0 => format!("fps={n},scale={}:{}", feed.width, feed.height),
+            _ => format!("scale={}:{}", feed.width, feed.height),
+        };
         args.extend(
             [
                 "-vf",
-                &format!("scale={}:{}", feed.width, feed.height),
+                &filter,
                 "-pix_fmt",
                 "rgb24",
                 "-f",
@@ -140,6 +152,90 @@ impl Drop for Rolling {
         // A camera left open is a light left on.
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// A camera kept open between looks, with the newest frame always to hand.
+///
+/// For the looks the daemon takes on its own -- presence, a hand answering a
+/// question, "watch me" -- which come every one to five seconds. Each used
+/// to open the camera afresh: about 360 ms of ffmpeg's CPU and almost two
+/// seconds of wall time per look on Eric's laptop (2 Oct 2026), with the
+/// daemon's loop waiting the whole time. Kept open at a couple of frames a
+/// second instead, a thread reads every frame as it arrives (so nothing goes
+/// stale in the pipe) and keeps only the latest.
+///
+/// Closed when dropped: the camera process is killed, its stream ends and
+/// the reading thread with it, so the light goes off with the value.
+pub struct Latest {
+    shared: std::sync::Arc<std::sync::Mutex<Option<(Vec<u8>, std::time::Instant)>>>,
+    alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    width: usize,
+    height: usize,
+    opened: std::time::Instant,
+    /// The camera process. Dropped with this value, which kills it.
+    _camera: Rolling,
+}
+
+impl Latest {
+    /// Open the camera and start keeping its newest frame.
+    pub fn start(feed: &Feed) -> Result<Latest> {
+        let mut camera = Rolling::start(feed)?;
+        let (width, height) = camera.size();
+        // The reading end goes to the thread; the process stays here, so
+        // letting go of this value kills it even if the thread is stuck
+        // waiting on a camera that has hung.
+        let mut out = camera
+            .child
+            .stdout
+            .take()
+            .ok_or_else(|| AtlasError::Platform("the camera gave no picture stream".into()))?;
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let (s2, alive2) = (shared.clone(), alive.clone());
+        let len = width * height * 3;
+        std::thread::Builder::new()
+            .name("atlas-camera".into())
+            .spawn(move || {
+                let mut buf = vec![0u8; len];
+                while out.read_exact(&mut buf).is_ok() {
+                    if let Ok(mut g) = s2.lock() {
+                        *g = Some((buf.clone(), std::time::Instant::now()));
+                    }
+                }
+                alive2.store(false, std::sync::atomic::Ordering::Relaxed);
+            })
+            .map_err(|e| AtlasError::Platform(format!("couldn't start reading the camera: {e}")))?;
+        Ok(Latest { shared, alive, width, height, opened: std::time::Instant::now(), _camera: camera })
+    }
+
+    pub fn size(&self) -> (usize, usize) {
+        (self.width, self.height)
+    }
+
+    /// Still reading frames?
+    pub fn alive(&self) -> bool {
+        self.alive.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The newest frame that arrived after `settle` from opening (a camera
+    /// that has just opened is still finding its exposure) and is no older
+    /// than `fresh`, waiting up to `wait` for one.
+    pub fn frame(&self, settle: std::time::Duration, fresh: std::time::Duration, wait: std::time::Duration) -> Option<Vec<u8>> {
+        let until = std::time::Instant::now() + wait;
+        loop {
+            if let Ok(g) = self.shared.lock() {
+                if let Some((f, at)) = g.as_ref() {
+                    if at.duration_since(self.opened) >= settle && at.elapsed() <= fresh {
+                        return Some(f.clone());
+                    }
+                }
+            }
+            if !self.alive() || std::time::Instant::now() >= until {
+                return None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
     }
 }
 

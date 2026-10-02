@@ -183,6 +183,7 @@ impl<'a> Daemon<'a> {
         let Some(capture) = tools.capture_webcam.as_ref() else {
             return "could_not: there's no camera configured".into();
         };
+        self.let_go_of_the_camera("a detector takes the camera");
 
         let vars = self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default();
         let frame = std::path::Path::new(&tools.work_dir).join("look.png");
@@ -330,6 +331,20 @@ impl<'a> Daemon<'a> {
         // Written down, so "did you really look?" has an answer (the log on
         // 1 Oct showed a sight described with no picture taken at all).
         self.log.info("camera: one frame taken");
+        // Kept open between looks (2 Oct 2026). Opening the camera for each
+        // one cost about 360 ms of ffmpeg's CPU and nearly two seconds with
+        // the loop waiting, every one to five seconds while Atlas watched;
+        // kept open at two frames a second it is under 1% of a core.
+        if let Some((cam, used)) = self.kept_camera.as_mut() {
+            if cam.alive() {
+                *used = std::time::Instant::now();
+                let (w, h) = cam.size();
+                if let Some(f) = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, std::time::Duration::from_millis(2500)) {
+                    return Ok((f, w, h));
+                }
+            }
+            self.let_go_of_the_camera("it stopped handing over pictures");
+        }
         let tools = self.tools_cfg();
         let capture = tools
             .capture_webcam
@@ -338,6 +353,7 @@ impl<'a> Daemon<'a> {
             .clone();
         let feed = crate::frames::Feed {
             open_with: crate::frames::from_capture_args(&resolved(&capture.args, &tools.vars)),
+            per_second: Some(CAMERA_PER_SECOND),
             ..crate::frames::Feed::default()
         };
         // Asked for, rather than just taken. The camera is ~60MB of ffmpeg
@@ -349,38 +365,60 @@ impl<'a> Daemon<'a> {
         self.helpers
             .want(name, crate::lifecycle::typical_mb(name), t, || Ok(None))
             .map_err(|why| format!("I can't open the camera right now: {why}"))?;
-        let mut rolling = match crate::frames::Rolling::start(&feed) {
-            Ok(r) => r,
+        let cam = match crate::frames::Latest::start(&feed) {
+            Ok(c) => c,
             Err(e) => {
                 // It never opened, so it must not stay on the books.
                 self.helpers.finished(name);
                 return Err(format!("the camera wouldn't open: {e}"));
             }
         };
-        let (w, h) = rolling.size();
-        // The first frame off a camera that has just opened is often the one
-        // taken while it was still working out its exposure. Reading a couple
-        // and keeping the last costs a fraction of a second and is the
-        // difference between a dark picture and a usable one.
-        let mut frame = None;
-        for _ in 0..3 {
-            if let Some(f) = rolling.next() {
-                frame = Some(f.to_vec());
+        let (w, h) = cam.size();
+        // The first frames off a camera that has just opened are taken while
+        // it is still working out its exposure: the first one kept is one
+        // that arrived a second in.
+        let frame = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, std::time::Duration::from_secs(6));
+        match frame {
+            Some(f) => {
+                self.log.info("camera: open, kept open between looks");
+                self.kept_camera = Some((cam, std::time::Instant::now()));
+                Ok((f, w, h))
+            }
+            None => {
+                drop(cam);
+                self.helpers.finished(name);
+                Err("the camera didn't hand back a picture".to_string())
             }
         }
-        // Closed on the way out, every time -- so it leaves the budget too.
-        drop(rolling);
-        self.helpers.finished(name);
-        frame
-            .map(|f| (f, w, h))
-            .ok_or_else(|| "the camera didn't hand back a picture".to_string())
+    }
+
+    /// Close the camera kept open between looks, if it is.
+    pub(super) fn let_go_of_the_camera(&mut self, why: &str) {
+        if self.kept_camera.take().is_some() {
+            self.helpers.finished("camera");
+            self.log.info(&format!("camera: closed ({why})"));
+        }
+    }
+
+    /// Once a tick: the kept camera closes once nothing has asked for a
+    /// picture for `CAMERA_KEEP`.
+    pub(super) fn camera_idle_check(&mut self) {
+        let idle = self.kept_camera.as_ref().map(|(c, used)| !c.alive() || used.elapsed() >= CAMERA_KEEP).unwrap_or(false);
+        if idle {
+            self.let_go_of_the_camera("nothing has looked for a while");
+        }
     }
 
     /// Open the seeing models, if they are not open already.
     pub(super) fn start_looking(&mut self) -> &mut crate::vision::Looking {
         if self.looking.is_none() {
-            let models = std::path::Path::new(&self.tools_cfg().models.dir).to_path_buf();
-            self.looking = Some(crate::vision::Looking::open(&models));
+            let tools = self.tools_cfg();
+            let models = std::path::Path::new(&tools.models.dir).to_path_buf();
+            // ONNX Runtime lives under the install folder that holds
+            // `models/`, the way hand tracking finds it.
+            let looking = crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
+            self.log.info(&format!("seeing: {}", looking.engines()));
+            self.looking = Some(looking);
         }
         self.looking.as_mut().expect("just filled in")
     }
@@ -419,9 +457,20 @@ impl<'a> Daemon<'a> {
             Ok(f) => f,
             Err(why) => return crate::vision::Sight::Unread(why),
         };
+        // A room that hasn't changed since the last look isn't run through
+        // the models again (2 Oct 2026): the same movement check hand
+        // tracking uses, with a real look at least every `LOOK_ANYWAY_MS`.
+        let thumb = crate::handweight::thumbnail(&frame, w, h);
+        if let Some((before, at, seen)) = self.last_sight.as_ref() {
+            if reuse_sight(before, &thumb, at.elapsed()) {
+                return seen.clone();
+            }
+        }
         let album = self.album.clone();
         let looking = self.start_looking();
-        looking.look_at_you(&frame, w, h, &cfg, &album)
+        let seen = looking.look_at_you(&frame, w, h, &cfg, &album);
+        self.last_sight = Some((thumb, std::time::Instant::now(), seen.clone()));
+        seen
     }
 
     /// "Look at my screen", "what does this chart show?" — a picture taken
@@ -451,6 +500,9 @@ impl<'a> Daemon<'a> {
                 }
             }
             return format!("I can't read pictures yet: {why}.");
+        }
+        if matches!(what, Capture::Camera) {
+            self.let_go_of_the_camera("a photo takes the camera");
         }
         let (tool, word) = match what {
             Capture::Screen => (tools.capture_screen.clone(), "screen"),
@@ -1247,6 +1299,7 @@ impl<'a> Daemon<'a> {
             open_with: crate::frames::from_capture_args(&resolved(&capture.args, &tools.vars)),
             width: plan.width,
             height: plan.height,
+            per_second: None,
         };
         // ONNX Runtime and the NPU engine live under the install folder,
         // which holds `models/` -- the same way `speakernet` finds them.
@@ -1316,6 +1369,8 @@ impl<'a> Daemon<'a> {
                 .into();
         };
         let plan = self.hands_plan();
+        // The kept camera steps aside: one reader on a camera at a time.
+        self.let_go_of_the_camera("hand tracking takes the camera");
         let Some(eyes) = self.build_eyes(&models, &plan) else {
             return "I couldn't start the camera.".into();
         };
@@ -2004,5 +2059,44 @@ impl Daemon<'_> {
         }
         let over = self.said_for_apps.len().saturating_sub(SAID_FOR_APPS_KEPT);
         self.said_for_apps.drain(..over);
+    }
+}
+
+/// Frames a second the kept camera hands over: enough for the fastest look
+/// (steering, every second) to get a picture no older than half a second.
+const CAMERA_PER_SECOND: u32 = 2;
+/// How long after opening before a frame is trusted (exposure settling).
+const CAMERA_SETTLE: std::time::Duration = std::time::Duration::from_millis(1000);
+/// The oldest frame a look will take.
+const CAMERA_FRESH: std::time::Duration = std::time::Duration::from_millis(1500);
+/// How long the camera stays open with nothing asking for a picture. The
+/// slowest regular look is every five seconds; three missed in a row means
+/// the reason to look has ended.
+const CAMERA_KEEP: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// May the last look's answer stand for this one? Only when the picture has
+/// barely changed and the last real look is recent. Public to the crate for
+/// its test.
+pub(crate) fn reuse_sight(before: &[u8], now: &[u8], since_last: std::time::Duration) -> bool {
+    since_last < std::time::Duration::from_millis(crate::handweight::LOOK_ANYWAY_MS as u64 * 5)
+        && crate::handweight::moved(before, now) < crate::handweight::MOVED_SHARE
+}
+
+#[cfg(test)]
+mod camera_reuse_tests {
+    use super::reuse_sight;
+    use std::time::Duration;
+
+    #[test]
+    fn an_unchanged_room_reuses_the_last_look_but_not_forever() {
+        let a = vec![100u8; 32 * 24];
+        assert!(reuse_sight(&a, &a, Duration::from_secs(3)));
+        assert!(!reuse_sight(&a, &a, Duration::from_secs(11)), "a real look at least every ten seconds");
+        let mut b = a.clone();
+        for v in b.iter_mut().take(200) {
+            *v = 200;
+        }
+        assert!(!reuse_sight(&a, &b, Duration::from_secs(1)), "a change in the room is looked at");
+        assert!(!reuse_sight(&[], &a, Duration::from_secs(1)), "nothing to compare with: look");
     }
 }

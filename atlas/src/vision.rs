@@ -53,7 +53,7 @@
 //! several gigabytes and a different decision.
 
 use crate::error::{AtlasError, Result};
-use crate::infer::{Kind, Model, Outputs};
+use crate::infer::{Kind, Outputs};
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
 
@@ -931,10 +931,10 @@ pub fn alike(a: &[f32], b: &[f32]) -> f32 {
 /// because one file is missing is how a feature nobody can partly install
 /// becomes a feature nobody installs.
 pub struct Looking {
-    pub finding_faces: Option<Model>,
-    pub telling_faces: Option<Model>,
-    pub naming_things: Option<Model>,
-    pub describing: Option<Model>,
+    pub finding_faces: Option<crate::handloop::Reader>,
+    pub telling_faces: Option<crate::handloop::Reader>,
+    pub naming_things: Option<crate::handloop::Reader>,
+    pub describing: Option<crate::handloop::Reader>,
     /// The hand models again, so a finger and the thing it is over can be
     /// read out of *the same picture*.
     ///
@@ -945,8 +945,8 @@ pub struct Looking {
     /// screen, and the question here is where a finger is in a camera frame.
     /// Those are different pictures, and treating them as one would name
     /// whatever happened to be in that corner of the room.
-    pub finding_hands: Option<Model>,
-    pub reading_hands: Option<Model>,
+    pub finding_hands: Option<crate::handloop::Reader>,
+    pub reading_hands: Option<crate::handloop::Reader>,
 }
 
 impl std::fmt::Debug for Looking {
@@ -967,15 +967,42 @@ impl Looking {
     /// Never fails: a model that will not load is a model Atlas does not have,
     /// and which ones those are is reported by `missing`.
     pub fn open(models_dir: &std::path::Path) -> Looking {
-        let one = |k: Kind| Model::load(k, models_dir).ok();
+        Looking::open_with(models_dir, None, false)
+    }
+
+    /// Load whatever is there, in ONNX Runtime when `root` has it (2 Oct
+    /// 2026): the same engine hand tracking moved to, several times quicker
+    /// than `tract` for the same files, with `tract` as the fallback for a
+    /// machine without the runtime or a model it refuses. The small models
+    /// -- finding a face, finding and reading a hand -- may go on the NPU
+    /// when `npu` is on; the larger ones stay on the processor.
+    pub fn open_with(models_dir: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> Looking {
+        let one = |k: Kind, on_npu: bool| crate::handloop::Reader::open(k, models_dir, root, on_npu).ok();
         Looking {
-            finding_faces: one(Kind::Faces),
-            telling_faces: one(Kind::FaceId),
-            naming_things: one(Kind::Objects),
-            describing: one(Kind::Picture),
-            finding_hands: one(Kind::HandPresence),
-            reading_hands: one(Kind::HandLandmarks),
+            finding_faces: one(Kind::Faces, npu),
+            telling_faces: one(Kind::FaceId, false),
+            naming_things: one(Kind::Objects, false),
+            describing: one(Kind::Picture, false),
+            finding_hands: one(Kind::HandPresence, npu),
+            reading_hands: one(Kind::HandLandmarks, npu),
         }
+    }
+
+    /// Where each loaded model runs, for the log.
+    pub fn engines(&self) -> String {
+        let mut out: Vec<String> = Vec::new();
+        for (name, m) in [
+            ("faces", &self.finding_faces),
+            ("whose face", &self.telling_faces),
+            ("things", &self.naming_things),
+            ("the picture", &self.describing),
+            ("hands", &self.finding_hands),
+        ] {
+            if let Some(m) = m {
+                out.push(format!("{name} on {}", m.on()));
+            }
+        }
+        if out.is_empty() { "no seeing models".into() } else { out.join(", ") }
     }
 
     /// Can Atlas see at all?

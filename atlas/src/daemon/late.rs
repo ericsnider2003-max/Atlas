@@ -2480,6 +2480,8 @@ impl<'a> Daemon<'a> {
             return crate::infer::spoken(&missing);
         }
         let plan = self.hands_plan();
+        // The kept camera steps aside: one reader on a camera at a time.
+        self.let_go_of_the_camera("hand tracking takes the camera");
         let Some(mut eyes) = self.build_eyes(&models, &plan) else {
             return "I couldn't start the camera.".into();
         };

@@ -156,6 +156,7 @@ impl<'a> Daemon<'a> {
         let Some(capture) = tools.capture_webcam.clone() else {
             return "There's no camera set up on this machine, so I can't watch.".into();
         };
+        self.let_go_of_the_camera("watching takes the camera");
         let feed = crate::frames::Feed {
             open_with: crate::frames::from_capture_args(&super::resolved(&capture.args, &tools.vars)),
             ..crate::frames::Feed::default()

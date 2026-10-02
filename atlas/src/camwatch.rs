@@ -299,7 +299,7 @@ fn watch_loop(
     use std::time::{Duration, Instant};
     let began = Instant::now();
     let end = began + Duration::from_secs(secs);
-    let mut looking = crate::vision::Looking::open(&setup.models_dir);
+    let mut looking = crate::vision::Looking::open_with(&setup.models_dir, setup.models_dir.parent(), false);
     let mut vision = setup.vision.clone();
     vision.enabled = true;
     let (w, h) = rolling.size();
