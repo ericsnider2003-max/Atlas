@@ -933,6 +933,8 @@ mod mcp_server;
 mod what_the_model_ranking_found;
 #[path = "what_eric_said_on_1_oct.rs"]
 mod what_eric_said_on_1_oct;
+#[path = "taking_things_off_outstanding.rs"]
+mod taking_things_off_outstanding;
 #[path = "greet_once.rs"]
 mod greet_once;
 #[path = "selftest_examples.rs"]

@@ -1769,32 +1769,29 @@ impl<'a> Daemon<'a> {
         .trim()
         .to_string();
         let words: Vec<&str> = what.split_whitespace().filter(|w| w.len() > 2).collect();
+        // Looked for across everything the Outstanding page can take off,
+        // not only the backlog, and taken off the one way the page's buttons
+        // do it (2 Oct 2026), which keeps a dropped backlog item findable.
         let found = self
-            .backlog
-            .outstanding()
+            .outstanding_removable(t)
             .into_iter()
-            .map(|i| (words.iter().filter(|w| i.request.to_lowercase().contains(**w)).count(), i.id, i.request.clone(), i.first_seen))
-            .filter(|(n, ..)| *n > 0)
-            .max_by_key(|(n, ..)| *n);
-        let Some((_, id, request, first_seen)) = found else {
+            .map(|(key, title)| (words.iter().filter(|w| title.to_lowercase().contains(**w)).count(), key))
+            .filter(|(n, _)| *n > 0)
+            .max_by_key(|(n, _)| *n);
+        let Some((_, key)) = found else {
             return if what.is_empty() {
                 "Which one? Say \"drop the task\" and some of its words.".into()
             } else {
                 format!("I can't find \"{what}\" on your list.")
             };
         };
-        self.backlog.dismiss(id);
-        let _ = self.backlog.save(&self.store);
-        self.dropped.retain(|d| d.title != request);
-        self.dropped.push(crate::daily::Dropped {
-            title: request.clone(),
-            when: t,
-            carried_for: (t.saturating_sub(first_seen) / 86_400) as u32,
-            about: None,
-            thinking: Vec::new(),
-        });
-        let _ = self.store.save("dropped", &self.dropped);
-        format!("Dropped \"{request}\". It's kept — \"bring back what I dropped\" finds it again.")
+        match self.drop_outstanding(&key, t) {
+            Ok(off) if off.can_bring_back && off.unsaved.is_none() => {
+                format!("Dropped \"{}\". It's kept — \"bring back what I dropped\" finds it again.", off.title)
+            }
+            Ok(off) => off.said(),
+            Err(why) => why,
+        }
     }
 
     fn what_was_dropped(&mut self, said: &str) -> String {

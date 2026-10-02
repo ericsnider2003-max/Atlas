@@ -555,20 +555,43 @@ impl<'a> Daemon<'a> {
         // and started nothing). With nothing asked yet, it says how to ask.
         // "Take that off my outstanding list" (1 Oct 2026: there was no way).
         if let Some(removal) = crate::backlog::removal_asked(said) {
-            let reply = match self.backlog.find_for_removal(&removal) {
-                Ok(ids) => {
-                    let named: Vec<String> = ids
-                        .iter()
-                        .filter_map(|id| self.backlog.outstanding().into_iter().find(|i| i.id == *id).map(|i| i.request.trim().to_string()))
-                        .collect();
-                    for id in &ids {
-                        self.backlog.dismiss(*id);
+            // Matched against everything the Outstanding page can take off,
+            // in its order, not only the backlog (2 Oct 2026), and removed
+            // the one way the page's buttons remove (`drop_outstanding`).
+            let listed = self.outstanding_removable(t);
+            // "Clear my outstanding list" clears the list; it doesn't stop
+            // work a worker is in the middle of. Those are stopped by name,
+            // or with their own Stop it.
+            let listed: Vec<(String, String)> = match removal {
+                crate::backlog::Removal::All => listed.into_iter().filter(|(k, _)| !k.starts_with("e:")).collect(),
+                _ => listed,
+            };
+            let titles: Vec<String> = listed.iter().map(|(_, title)| title.clone()).collect();
+            let reply = match crate::backlog::pick_for_removal(&removal, &titles) {
+                Ok(at) => {
+                    let mut off = Vec::new();
+                    let mut refused = Vec::new();
+                    for n in at {
+                        match self.drop_outstanding(&listed[n].0, t) {
+                            Ok(o) => off.push(o),
+                            Err(why) => refused.push(why),
+                        }
                     }
-                    match self.backlog.save(&self.store) {
-                        Err(e) => format!("I took it off, but couldn't save the list ({e}) -- it may come back after a restart."),
-                        Ok(()) if named.len() == 1 => format!("Done -- \"{}\" is off your outstanding list.", named[0]),
-                        Ok(()) => format!("Done -- cleared {} things off your outstanding list.", named.len()),
+                    let unsaved = off.iter().find_map(|o| o.unsaved.clone());
+                    let mut said = match (off.as_slice(), &unsaved) {
+                        (_, Some(e)) => format!("I took it off, but couldn't save the list ({e}) -- it may come back after a restart."),
+                        ([], None) => String::new(),
+                        ([one], None) if one.stopping => format!("Asked \"{}\" to stop -- it's off your outstanding list once it winds down.", one.title),
+                        ([one], None) => format!("Done -- \"{}\" is off your outstanding list.", one.title),
+                        (many, None) => format!("Done -- cleared {} things off your outstanding list.", many.len()),
+                    };
+                    for why in refused {
+                        if !said.is_empty() {
+                            said.push(' ');
+                        }
+                        said.push_str(&why);
                     }
+                    said
                 }
                 Err(say) => say,
             };

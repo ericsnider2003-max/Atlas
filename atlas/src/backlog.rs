@@ -390,37 +390,34 @@ pub fn removal_asked(said: &str) -> Option<Removal> {
     Some(if left.is_empty() { Removal::Unsaid } else { Removal::Words(left) })
 }
 
-impl Backlog {
-    /// The outstanding item a removal names, by its place in the list or its
-    /// words: `Ok(id)`, or `Err` with what to say instead.
-    pub fn find_for_removal(&self, r: &Removal) -> std::result::Result<Vec<u64>, String> {
-        let o = self.outstanding();
-        if o.is_empty() {
-            return Err("There's nothing on your outstanding list.".into());
-        }
-        let listed = || {
-            o.iter().enumerate().map(|(i, it)| format!("{}. {}", i + 1, it.request.trim())).collect::<Vec<_>>().join("; ")
-        };
-        match r {
-            Removal::All => Ok(o.iter().map(|i| i.id).collect()),
-            Removal::Number(n) => match o.get(n.saturating_sub(1)) {
-                Some(it) => Ok(vec![it.id]),
-                None => Err(format!("There are only {} on the list: {}.", o.len(), listed())),
-            },
-            Removal::Unsaid if o.len() == 1 => Ok(vec![o[0].id]),
-            Removal::Unsaid => Err(format!("Which one? {}. Say its number, or some of its words.", listed())),
-            Removal::Words(w) => {
-                let score = |it: &Item| {
-                    let r = normalize(&it.request);
-                    w.iter().filter(|x| r.split_whitespace().any(|y| y == x.as_str())).count()
-                };
-                let best = o.iter().map(|it| score(it)).max().unwrap_or(0);
-                let hits: Vec<u64> = o.iter().filter(|it| best > 0 && score(it) == best).map(|it| it.id).collect();
-                match hits.len() {
-                    0 => Err(format!("I couldn't find that on the list: {}.", listed())),
-                    1 => Ok(hits),
-                    _ => Err(format!("More than one matches. {}. Say its number.", listed())),
-                }
+/// Which of `titles` a removal names: their places in the list, or what to
+/// say instead. What `Backlog::find_for_removal` did for the backlog alone,
+/// widened on 2 Oct 2026 so "take it off my outstanding list" is matched
+/// against everything the Outstanding page shows -- not only this backlog,
+/// which is one of its four lanes. Eric pointed at a thing on that page and
+/// was told it wasn't on the list.
+pub fn pick_for_removal(r: &Removal, titles: &[String]) -> std::result::Result<Vec<usize>, String> {
+    if titles.is_empty() {
+        return Err("There's nothing on your outstanding list.".into());
+    }
+    let listed = || titles.iter().enumerate().map(|(i, t)| format!("{}. {}", i + 1, t)).collect::<Vec<_>>().join("; ");
+    match r {
+        Removal::All => Ok((0..titles.len()).collect()),
+        Removal::Number(n) if (1..=titles.len()).contains(n) => Ok(vec![n - 1]),
+        Removal::Number(_) => Err(format!("There are only {} on the list: {}.", titles.len(), listed())),
+        Removal::Unsaid if titles.len() == 1 => Ok(vec![0]),
+        Removal::Unsaid => Err(format!("Which one? {}. Say its number, or some of its words.", listed())),
+        Removal::Words(w) => {
+            let score = |t: &str| {
+                let t = normalize(t);
+                w.iter().filter(|x| t.split_whitespace().any(|y| y == x.as_str())).count()
+            };
+            let best = titles.iter().map(|t| score(t)).max().unwrap_or(0);
+            let hits: Vec<usize> = (0..titles.len()).filter(|n| best > 0 && score(&titles[*n]) == best).collect();
+            match hits.len() {
+                0 => Err(format!("I couldn't find that on the list: {}.", listed())),
+                1 => Ok(hits),
+                _ => Err(format!("More than one matches. {}. Say its number.", listed())),
             }
         }
     }

@@ -3521,6 +3521,38 @@ pub struct Open {
     pub in_progress: Vec<(String, String)>,
     /// (what, days carried)
     pub carried: Vec<(String, u64)>,
+    /// What each item's remove button sends back, lane by lane, in the same
+    /// order as the items. `None`, or no entry at all, draws no button: a
+    /// running step Atlas can't safely stop has none rather than one that
+    /// does nothing. (2 Oct 2026: "Can't remove things from the outstanding
+    /// list" -- the page said "tell me to drop it" and had no way to.)
+    pub drops: Drops,
+}
+
+/// The keys behind the remove buttons on Outstanding. A key is
+/// `<kind>:<id>` -- `b` a backlog item, `w` a workspace item, `t` a queued
+/// task, `e` a worker's errand, `c` a project change waiting for your yes
+/// -- and is only ever read back by `Daemon::drop_outstanding`, which looks
+/// the id up again rather than trusting anything else in the form.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Drops {
+    pub waiting: Vec<Option<String>>,
+    pub blocked: Vec<Option<String>>,
+    pub in_progress: Vec<Option<String>>,
+    pub carried: Vec<Option<String>>,
+}
+
+/// The remove button for one item, or nothing. Work already running is
+/// asked to stop ("Stop it"); everything else is taken off ("Drop it").
+fn drop_button(key: Option<&Option<String>>, what: &str) -> String {
+    let Some(Some(key)) = key else { return String::new() };
+    let label = if key.starts_with("e:") { "Stop it" } else { "Drop it" };
+    format!(
+        "<form class=inline method=post action=/hub/outstanding><input type=hidden name=what value=drop>\
+         <input type=hidden name=key value='{}'><button class=quiet aria-label='{label}: {}'>{label}</button></form>",
+        esc(key),
+        esc(what)
+    )
 }
 
 impl Open {
@@ -3545,12 +3577,13 @@ pub fn outstanding_page(o: &Open) -> String {
     if o.waiting.is_empty() {
         left.push_str("<p class=nothing>Nothing waiting on you.</p>");
     }
-    for (what, why, href) in &o.waiting {
+    for (n, (what, why, href)) in o.waiting.iter().enumerate() {
         left.push_str(&format!(
-            "<div class='item wait'><div class=t>{}</div>{}<div class=acts><a class='btn primary' href='{}'>Open it</a></div></div>",
+            "<div class='item wait'><div class=t>{}</div>{}<div class=acts><a class='btn primary' href='{}'>Open it</a>{}</div></div>",
             esc(what),
             if why.is_empty() { String::new() } else { format!("<div class=d>{}</div>", esc(why)) },
-            esc(href)
+            esc(href),
+            drop_button(o.drops.waiting.get(n), what)
         ));
     }
     left.push_str("</section><section class=lane>");
@@ -3558,12 +3591,14 @@ pub fn outstanding_page(o: &Open) -> String {
     if o.blocked.is_empty() {
         left.push_str("<p class=nothing>Nothing is stuck.</p>");
     }
-    for b in &o.blocked {
+    for (n, b) in o.blocked.iter().enumerate() {
+        let drop = drop_button(o.drops.blocked.get(n), &b.what);
         left.push_str(&format!(
             "<div class='item stop'>{area}<div class=t>{what}</div><div class=tsn>\
              <span class=k>Tried</span><span class=v>{tried}</span>\
              <span class='k stopped'>Stopped</span><span class=v>{stopped}</span>\
-             <span class='k needs'>Needs</span><span class=v>{needs}</span></div></div>",
+             <span class='k needs'>Needs</span><span class=v>{needs}</span></div>{acts}</div>",
+            acts = if drop.is_empty() { String::new() } else { format!("<div class=acts>{drop}</div>") },
             area = b.area.as_deref().map(|a| format!("<span class=area>{}</span>", esc(a))).unwrap_or_default(),
             what = esc(&b.what),
             tried = esc(&b.tried),
@@ -3579,11 +3614,13 @@ pub fn outstanding_page(o: &Open) -> String {
     if o.in_progress.is_empty() {
         right.push_str("<p class=nothing>Nothing running right now.</p>");
     }
-    for (what, how) in &o.in_progress {
+    for (n, (what, how)) in o.in_progress.iter().enumerate() {
+        let drop = drop_button(o.drops.in_progress.get(n), what);
         right.push_str(&format!(
-            "<div class=item><div class=t>{}</div><div class=d>{}</div></div>",
+            "<div class=item><div class=t>{}</div><div class=d>{}</div>{}</div>",
             esc(what),
-            esc(how)
+            esc(how),
+            if drop.is_empty() { String::new() } else { format!("<div class=acts>{drop}</div>") }
         ));
     }
     right.push_str("</section><section class=lane>");
@@ -3592,19 +3629,21 @@ pub fn outstanding_page(o: &Open) -> String {
         right.push_str("<p class=nothing>Nothing carried over.</p>");
     } else {
         right.push_str("<div class=carried>");
-        for (what, days) in &o.carried {
+        for (n, (what, days)) in o.carried.iter().enumerate() {
             right.push_str(&format!(
-                "<div class=row2><span class=w>{}</span><span class=chipd>{} day{}</span></div>",
+                "<div class=row2><span class=w>{}</span><span class=chipd>{} day{}</span>{}</div>",
                 esc(what),
                 days,
-                if *days == 1 { "" } else { "s" }
+                if *days == 1 { "" } else { "s" },
+                drop_button(o.drops.carried.get(n), what)
             ));
         }
         right.push_str("</div>");
     }
     right.push_str(
         "</section><div class=rule><b>Nothing here rots quietly.</b> Anything carried more than a week, \
-         I raise in your brief. If you want something gone, tell me to drop it and it's gone — I won't keep nagging.</div>",
+         I raise in your brief. If you want something gone, press Drop it, or tell me to take it off your outstanding list, \
+         and it's gone — I won't keep nagging.</div>",
     );
     let body = format!("<div class=lanes><div>{left}</div><div>{right}</div></div>");
     shell_at(Some(Page::Outstanding), "Outstanding", &body)
