@@ -313,6 +313,15 @@ impl<'a> Daemon<'a> {
     ///
     /// The camera is closed on the way out of this function, every time.
     pub(super) fn one_frame(&mut self) -> std::result::Result<(Vec<u8>, usize, usize), String> {
+        // Never without your say-so (1 Oct 2026): every picture from the
+        // camera, asked for or on Atlas's own initiative, needs the camera's
+        // grant -- the question "Allow the camera?" answered yes once.
+        if !self.camera_allowed(crate::store::now()) {
+            return Err("you haven't allowed the camera yet -- say \"look at me\" and I'll ask".into());
+        }
+        // Written down, so "did you really look?" has an answer (the log on
+        // 1 Oct showed a sight described with no picture taken at all).
+        self.log.info("camera: one frame taken");
         let tools = self.tools_cfg();
         let capture = tools
             .capture_webcam
@@ -401,7 +410,16 @@ impl<'a> Daemon<'a> {
     pub(super) fn look_closer(&mut self, what: Capture) -> String {
         let tools = self.tools_cfg();
         let root = self.store.install_root();
-        if let Err(why) = crate::picture_talk::ready(&tools.picture_talk, &root) {
+        // The talking model can see for itself when its server was started
+        // with its picture encoder (item 79): the picture goes to it, and no
+        // second copy of the model is started.
+        let eyes_url = (tools.picture_talk.enabled
+            && crate::models::talking_model_sees()
+            && self.helpers.is_running("model-server"))
+        .then(|| crate::models::talking_chat_url(&tools.models));
+        if eyes_url.is_some() {
+            // Ready: nothing to load.
+        } else if let Err(why) = crate::picture_talk::ready(&tools.picture_talk, &root) {
             // The screen's words can still be read, by Windows' own recognizer.
             if matches!(what, Capture::Screen) {
                 if let Some(said) = self.screen_words_instead() {
@@ -481,7 +499,9 @@ impl<'a> Daemon<'a> {
         // About 3 GB while it runs, so the memory budget gets a say first,
         // and a refusal is a sentence rather than a laptop that swaps.
         let name = "picture reader";
-        if let Err(why) = self.room_for_heavy(name, crate::picture_talk::MEMORY_MB, t) {
+        if eyes_url.is_some() {
+            // Already loaded and already counted: no room to make.
+        } else if let Err(why) = self.room_for_heavy(name, crate::picture_talk::MEMORY_MB, t) {
             let _ = std::fs::remove_file(&shot);
             if let Some(p) = &small {
                 let _ = std::fs::remove_file(p);
@@ -516,8 +536,26 @@ impl<'a> Daemon<'a> {
                 }
                 small = crate::picture_talk::smaller(&shot);
             }
-            let answer =
-                crate::picture_talk::ask_until(&cfg, &root, small.as_deref().unwrap_or(&shot), &question, &|| c.stopping());
+            let picture = small.as_deref().unwrap_or(&shot);
+            let answer = match &eyes_url {
+                // The running model first. If it can't (stopped meanwhile,
+                // an old server without eyes), the one-off reader -- but only
+                // when there's room for its 3.6 GB, never a laptop that swaps.
+                Some(url) => match crate::picture_talk::ask_server(url, picture, &question, cfg.most_words) {
+                    Ok(a) => Ok(a),
+                    Err(first) if c.stopping() => Err(first),
+                    Err(first) => {
+                        if crate::fit::measure().free_ram_mb >= crate::picture_talk::MEMORY_MB
+                            && crate::picture_talk::ready(&cfg, &root).is_ok()
+                        {
+                            crate::picture_talk::ask_until(&cfg, &root, picture, &question, &|| c.stopping())
+                        } else {
+                            Err(first)
+                        }
+                    }
+                },
+                None => crate::picture_talk::ask_until(&cfg, &root, picture, &question, &|| c.stopping()),
+            };
             let _ = std::fs::remove_file(&shot);
             if let Some(p) = &small {
                 let _ = std::fs::remove_file(p);
@@ -1015,16 +1053,20 @@ impl<'a> Daemon<'a> {
         if !cfg.enabled {
             return self.look_at_you();
         }
+        if let Some(question) = self.camera_gate() {
+            return question;
+        }
         let sight = self.see();
+        let looking = crate::camera_ask::LOOKING;
         if let Some(scene) = sight.scene() {
             // A look that half-worked says which half. Reporting only what was
             // found would turn "the object model failed" into "there is
             // nothing on your desk".
             if !scene.could_not.is_empty() {
-                return format!("{} ({})", scene.spoken(&cfg), scene.could_not.join("; "));
+                return format!("{looking}. {} ({})", scene.spoken(&cfg), scene.could_not.join("; "));
             }
         }
-        sight.spoken(&cfg)
+        format!("{looking}. {}", sight.spoken(&cfg))
     }
 
     /// "What's this?" — the one thing being held up or pointed at.
@@ -1039,6 +1081,9 @@ impl<'a> Daemon<'a> {
         // refused over a switch meant for looking unasked (30 Sep 2026).
         if !cfg.enabled {
             return self.look_at_you();
+        }
+        if let Some(question) = self.camera_gate() {
+            return question;
         }
         let (frame, w, h) = match self.one_frame() {
             Ok(f) => f,
@@ -1087,6 +1132,9 @@ impl<'a> Daemon<'a> {
             return "Seeing is switched off — turn on Recognising things in settings and \
                     I'll pick this up."
                 .into();
+        }
+        if let Some(question) = self.camera_gate() {
+            return question;
         }
         let (frame, w, h) = match self.one_frame() {
             Ok(f) => f,

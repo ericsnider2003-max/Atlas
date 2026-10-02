@@ -1044,6 +1044,8 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             let started = Instant::now();
             let stop_s = s.clone();
             let still = move || held() && !stop_s.stop.load(Ordering::SeqCst);
+            // On a call: muted there while you talk to Atlas (`callmute`).
+            crate::callmute::addressed();
             s.recording.store(true, Ordering::SeqCst);
             let got = work.listen_while(&still).map_err(|e| e.to_string());
             s.recording.store(false, Ordering::SeqCst);
@@ -1162,6 +1164,8 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 failures = 0;
                 s.heard_audio.fetch_add(1, Ordering::SeqCst);
                 s.taken.store(true, Ordering::SeqCst);
+                // The name was heard: on a call, muted there for the rest.
+                crate::callmute::addressed();
                 s.recording.store(true, Ordering::SeqCst);
                 // Merged 30 Sep 2026: both chats fixed "I heard my name but
                 // nothing after it". The stream above (`wake_on_stream`) is the

@@ -40,6 +40,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | tune when it hears you stop talking to your own room, from a recording of the room and one of you | built, never run for real | `vadcal` `vad` | ready | ready | ready | catch | would | catch |
 | hold a key in any window to talk; a quick tap still reaches the app | built, never run for real | `hotkey` `input` | ready | would | would | would | would | would |
 | notice a call, note your side, record the others only after they say yes, and write up who said what | built, never run for real | `callnotes` `callrec` `callwatch` `consent` | ready | would | would | would | would | would |
+| mute you on a call while you talk to me, or let the call hear me when you show me off | built, never run for real | `callmute` | ready | would | would | would | would | would |
 | hold a key anywhere in Windows to talk, or press one to type, alongside the wake word | built, never run for real | `hotkeys` `typebox` `quickinput` | ready | would | would | would | would | would |
 | pick the right microphone and speakers, and keep a Bluetooth headset sounding right by not opening its microphone for nothing | built, never run for real | `audio` `playout` `leveller` `miclevel` | ready | would | would | would | would | would |
 | tell whether what it heard was meant for it -- a "stop" to it stops it, a voice on your call doesn't | waiting on whisper | `addressing` | ready | would | would | would | would | would |
@@ -231,6 +232,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | fingerprint a file or a download so a changed byte is noticed | built, never run for real | `digest` | ready | ready | ready | ready | ready | ready |
 | read what it's handed without being told what to do | built, never run for real | `untrusted` | ready | ready | ready | ready | ready | ready |
 | check itself and say what's wrong | working | `doctor` `diagnose` | ready | ready | ready | ready | ready | ready |
+| take down a new ability you ask me for, and keep it for your yes | working | `growth` | ready | ready | ready | catch | would | catch |
 | pick back up what a restart cut off — windows it was working, research and council redone once, project work carried on from its last finished phase — and say what it didn't redo | working | `resume` `phases` | ready | would | would | catch | would | **no** |
 | say what needs you first when you come back, rather than what happened first | working | `next_up` | ready | ready | ready | ready | ready | ready |
 | pause one errand without losing what it has done, and work out which one you meant when several are going | working | `which_errand` `attention` | ready | would | would | catch | would | **no** |
@@ -261,6 +263,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | read the words on your screen | built, never run for real | `words` | ready | catch | catch | **no** | catch | **no** |
 | notice what window you're in | built, never run for real | `watch` `watching` | ready | catch | catch | **no** | catch | **no** |
 | name what's in front of the camera, and tell faces apart | built, never run for real | `vision` `frames` `camera_ask` | ready | catch | ready | would | would | catch |
+| watch you for a while and say when something changes, keeping nothing | built, never run for real | `camwatch` | ready | catch | ready | would | would | catch |
 | say what a chart, your screen or a photo shows, with a model on this laptop | built, never run for real | `picture_talk` | ready | ready | ready | catch | would | catch |
 | follow your hand and move things with it | built, never run for real | `handloop` `handtrack` `handshape` `frames` | ready | catch | ready | would | would | catch |
 | copy the text off the window in front, read on this machine by Windows' own recognizer, and warn you if it holds something secret | built, never run for real | `screentext` | ready | catch | catch | **no** | catch | **no** |
@@ -359,4 +362,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-240 things, across 416 of 453 source files. The other 37 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+243 things, across 419 of 456 source files. The other 37 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

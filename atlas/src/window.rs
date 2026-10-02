@@ -166,6 +166,12 @@ pub fn read_staged(path: &std::path::Path) -> std::io::Result<Contents> {
 /// message falls back to being held and spoken, which is what the outbox is
 /// for.
 pub fn open(c: &Contents) -> Result<(), String> {
+    // The self-test's copy never puts anything on the screen or starts
+    // another Atlas (1 Oct 2026: a briefing panel opened on Eric's screen from
+    // inside the test).
+    if crate::selftest::in_a_test() {
+        return Err(crate::selftest::NOT_IN_A_TEST.into());
+    }
     if !running_as_atlas() {
         return Err("I'm not running as the Atlas program, so there's no window of mine to open".into());
     }

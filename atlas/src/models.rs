@@ -31,6 +31,31 @@ impl Model {
         self.architecture.eq_ignore_ascii_case("clip") || self.id.to_lowercase().starts_with("mmproj")
     }
 
+    /// This model's picture encoder (`mmproj-<model>-<quant>.gguf`) when
+    /// it's in the same folder: what lets the talking model see (item 79).
+    /// `Qwen3VL-4B-Instruct-Q4_K_M` pairs with
+    /// `mmproj-Qwen3VL-4B-Instruct-Q8_0`: the names match once the
+    /// quantisation at the end is taken off both.
+    pub fn projector(&self) -> Option<PathBuf> {
+        if self.is_a_projector() {
+            return None;
+        }
+        let want = without_quant(&self.id).to_lowercase();
+        let dir = self.path.parent()?;
+        let mut found: Vec<PathBuf> = std::fs::read_dir(dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().to_lowercase()) else { return false };
+                p.extension().is_some_and(|x| x.eq_ignore_ascii_case("gguf"))
+                    && stem.strip_prefix("mmproj-").is_some_and(|rest| without_quant(rest) == want)
+            })
+            .collect();
+        found.sort();
+        found.into_iter().next()
+    }
+
     fn inspect(path: &Path) -> Result<Model> {
         let g = Gguf::open(path)?;
         Ok(Model {
@@ -132,6 +157,15 @@ pub struct ModelsConfig {
     /// this machine can't answer, or there isn't one, a free model online
     /// that needs no account (`freeonline`). `false`: nothing is sent.
     pub online_second: bool,
+    /// The talking model sees pictures itself (Eric, 1 Oct 2026, item 79).
+    /// When the talking model is a picture model (the shipped Qwen3-VL 4B)
+    /// and its picture encoder (`mmproj-…`) is beside it, the server is
+    /// started with that encoder and "look at me" / "look at my screen" are
+    /// asked of the model already running: about 0.45 GB more, instead of a
+    /// second 3.6 GB copy of the same model started for every look -- which
+    /// is what "the picture reader needs about 3.5 GB and only 2.7 GB is
+    /// free" was. `false`: the server is started without it, as before.
+    pub see_with_talking_model: bool,
 }
 
 /// How the model picks its next word, sent with every request (29 Sep 2026).
@@ -254,6 +288,7 @@ impl Default for ModelsConfig {
             deep_idle_secs: 300,
             deep_context: 8192,
             online_second: true,
+            see_with_talking_model: true,
         }
     }
 }
@@ -386,7 +421,7 @@ impl Registry {
                 return Some(m);
             }
         }
-        self.best_fit(cfg.memory_budget_mb * 1024 * 1024, cfg.context)
+        self.best_fit(budget_set_mb(cfg.memory_budget_mb) * 1024 * 1024, cfg.context)
     }
 
     /// Why a model was or wasn't picked — so "it used the small one" is never
@@ -409,7 +444,7 @@ impl Registry {
                 match smallest {
                     Some(m) => format!(
                         "nothing fits {}MB — the smallest, {}, needs ~{}MB",
-                        cfg.memory_budget_mb,
+                        budget_set_mb(cfg.memory_budget_mb),
                         m.id,
                         estimate_memory(m, cfg.context) / (1024 * 1024)
                     ),
@@ -421,6 +456,21 @@ impl Registry {
 }
 
 /// Memory estimate without re-reading the file.
+/// A model's name without the quantisation on the end: `Qwen3VL-4B-Instruct`
+/// from `Qwen3VL-4B-Instruct-Q4_K_M`, `-Q8_0`, `-f16`, `-IQ4_XS` or `-BF16`.
+pub fn without_quant(id: &str) -> String {
+    let lower = id.to_lowercase();
+    if let Some((head, tail)) = lower.rsplit_once(['-', '.']) {
+        let quant = tail.starts_with('q') && tail[1..].starts_with(|c: char| c.is_ascii_digit())
+            || tail.starts_with("iq") && tail[2..].starts_with(|c: char| c.is_ascii_digit())
+            || matches!(tail, "f16" | "f32" | "bf16");
+        if quant {
+            return head.to_string();
+        }
+    }
+    lower
+}
+
 pub fn estimate_memory(m: &Model, context: u64) -> u64 {
     // KV cache scales with context; approximate from the weights when the
     // architecture details aren't to hand.
@@ -428,6 +478,15 @@ pub fn estimate_memory(m: &Model, context: u64) -> u64 {
     let kv = (m.weight_bytes / 40) * (ctx / 1024).max(1);
     let base = m.weight_bytes + kv;
     base + base / 10
+}
+
+/// The picture encoder's share when the talking model is started with it:
+/// the file, plus room for one picture being read.
+fn projector_memory(m: &Model) -> u64 {
+    m.projector()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|md| md.len() + 150 * 1024 * 1024)
+        .unwrap_or(0)
 }
 
 // ---------- prompt templating ----------
@@ -559,6 +618,17 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
     .collect()
 }
 
+/// `--mmproj <encoder>` when the talking model can see and is allowed to.
+pub fn projector_args(model: &Model, cfg: &ModelsConfig) -> Vec<String> {
+    if !cfg.see_with_talking_model {
+        return Vec::new();
+    }
+    match model.projector() {
+        Some(p) => vec!["--mmproj".into(), p.display().to_string()],
+        None => Vec::new(),
+    }
+}
+
 /// The no-model speculation kinds the pinned llama.cpp (b10456) takes for
 /// `--spec-type` -- read off that build's `tools/server/README.md` and
 /// `common/speculative.cpp` (28 Sep 2026). Anything else in `speculate` is
@@ -653,6 +723,11 @@ pub fn health_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/health")
 }
 
+/// The talking model's chat address, at the host it listens on.
+pub fn talking_chat_url(cfg: &ModelsConfig) -> String {
+    at_listen_host(format!("http://127.0.0.1:{}/v1/chat/completions", cfg.port), cfg)
+}
+
 pub fn completion_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/completion")
 }
@@ -695,9 +770,23 @@ pub fn launch(
     gpu_layers: u32,
     vars: &Vars,
 ) -> Result<std::process::Child> {
-    let child = launch_logging(model, cfg, gpu_layers, vars, "model-server.log")?;
+    // The talking model gets its eyes (item 79); the deep model's server,
+    // started through `launch_logging` directly, never does.
+    let eyes = projector_args(model, cfg);
+    let child = launch_with(model, cfg, gpu_layers, vars, "model-server.log", &eyes)?;
     LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
+    SEES.store(!eyes.is_empty(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
+}
+
+/// Was the talking model's server last started able to see pictures?
+static SEES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Can the running talking model be asked about a picture? True when its
+/// server was started with the picture encoder (`launch`). Whether that
+/// server is still up is the caller's to check.
+pub fn talking_model_sees() -> bool {
+    SEES.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// `launch`, with the server's messages in `data/logs/<log>`, and without
@@ -711,10 +800,22 @@ pub fn launch_logging(
     vars: &Vars,
     log: &str,
 ) -> Result<std::process::Child> {
+    launch_with(model, cfg, gpu_layers, vars, log, &[])
+}
+
+fn launch_with(
+    model: &Model,
+    cfg: &ModelsConfig,
+    gpu_layers: u32,
+    vars: &Vars,
+    log: &str,
+    extra: &[String],
+) -> Result<std::process::Child> {
     let tool = server_tool(cfg)
         .ok_or_else(|| AtlasError::Config("no llama-server configured in models.server".into()))?;
     let (cmd, mut args) = tool.resolved(vars);
     args.extend(server_args(model, cfg, gpu_layers));
+    args.extend(extra.iter().cloned());
     // The picked tools after the conversation (`tools_late_template`).
     if let Some(path) = tools_late_template_file(model) {
         args.push("--chat-template-file".into());
@@ -904,12 +1005,22 @@ use crate::fit::Machine;
 /// Never the other way round: a config that raises the budget past what was
 /// measured produces a model that will not load, which is the failure `fit.rs`
 /// exists to prevent, arrived at from the other side.
+/// The memory limit you set, in MB. A number up to 64 can only have meant
+/// gigabytes -- no model runs in 2 MB (1 Oct 2026: Eric's settings held
+/// `memory_budget_mb: '2'`, and Atlas ran with no language model at all,
+/// saying "there is 2MB spare" with 5 GB free).
+pub fn budget_set_mb(set: u64) -> u64 {
+    match set {
+        1..=64 => set * 1024,
+        n => n,
+    }
+}
+
 pub fn budget_bytes(cfg: &ModelsConfig, m: &Machine) -> u64 {
     let measured = m.budget_mb();
-    let mb = if cfg.memory_budget_mb == 0 {
-        measured
-    } else {
-        cfg.memory_budget_mb.min(measured)
+    let mb = match budget_set_mb(cfg.memory_budget_mb) {
+        0 => measured,
+        set => set.min(measured),
     };
     mb * 1024 * 1024
 }
@@ -1112,7 +1223,8 @@ pub fn is_graphics_build(server: &Path) -> bool {
 /// so the supervisor and the chooser cannot disagree about how big the thing
 /// they are both talking about is.
 pub fn footprint_mb(model: &Model, cfg: &ModelsConfig) -> u64 {
-    estimate_memory(model, cfg.context) / (1024 * 1024)
+    let eyes = if cfg.see_with_talking_model { projector_memory(model) } else { 0 };
+    (estimate_memory(model, cfg.context) + eyes) / (1024 * 1024)
 }
 
 /// How Atlas talks to its own model server: a POST with the request body on
@@ -2066,4 +2178,55 @@ fn chat_call_io(
         }
     }
     Ok(Ok(stream.reply()))
+}
+
+#[cfg(test)]
+mod eyes_tests {
+    use super::*;
+
+    #[test]
+    fn a_model_name_without_its_quantisation() {
+        assert_eq!(without_quant("Qwen3VL-4B-Instruct-Q4_K_M"), "qwen3vl-4b-instruct");
+        assert_eq!(without_quant("Qwen3VL-4B-Instruct-Q8_0"), "qwen3vl-4b-instruct");
+        assert_eq!(without_quant("Qwen_Qwen3.5-9B-IQ4_XS"), "qwen_qwen3.5-9b");
+        assert_eq!(without_quant("Qwen_Qwen3.5-4B-f16"), "qwen_qwen3.5-4b");
+        assert_eq!(without_quant("plain-model"), "plain-model");
+    }
+
+    fn model_at(path: &Path) -> Model {
+        Model {
+            path: path.to_path_buf(),
+            id: path.file_stem().unwrap().to_string_lossy().to_string(),
+            architecture: "qwen3vl".into(),
+            quant: "Q4_K_M".into(),
+            parameters: 4_000_000_000,
+            weight_bytes: 2_500_000_000,
+            max_context: 8192,
+            chat_template: None,
+        }
+    }
+
+    #[test]
+    fn the_talking_model_is_started_with_its_own_picture_encoder() {
+        let dir = std::env::temp_dir().join(format!("atlas-eyes-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let talk = dir.join("Qwen3VL-4B-Instruct-Q4_K_M.gguf");
+        let eyes = dir.join("mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf");
+        let other = dir.join("mmproj-SomethingElse-F16.gguf");
+        for p in [&talk, &eyes, &other] {
+            std::fs::write(p, b"x").unwrap();
+        }
+        let m = model_at(&talk);
+        assert_eq!(m.projector(), Some(eyes.clone()));
+        let cfg = ModelsConfig::default();
+        assert_eq!(projector_args(&m, &cfg), vec!["--mmproj".to_string(), eyes.display().to_string()]);
+        let off = ModelsConfig { see_with_talking_model: false, ..ModelsConfig::default() };
+        assert!(projector_args(&m, &off).is_empty());
+        // The deep model has no encoder beside it: nothing added.
+        let deep = model_at(&dir.join("Qwen_Qwen3.5-9B-IQ4_XS.gguf"));
+        assert!(projector_args(&deep, &cfg).is_empty());
+        // The encoder's memory is counted in what the server needs.
+        assert!(footprint_mb(&m, &cfg) > footprint_mb(&m, &off));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -254,6 +254,12 @@ pub struct Standby {
 impl Standby {
     /// Start the hidden box, and hand what's typed into it to `send`.
     pub fn start(send: impl Fn(String) + Send + 'static) -> Result<Standby, String> {
+        // The self-test's copy never puts anything on the screen or starts
+        // another Atlas (1 Oct 2026: a briefing panel opened on Eric's screen from
+        // inside the test).
+        if crate::selftest::in_a_test() {
+            return Err(crate::selftest::NOT_IN_A_TEST.into());
+        }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let mut child = crate::tools::command(exe)
             .args(["typebox", "--standby"])

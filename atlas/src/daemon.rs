@@ -587,6 +587,10 @@ pub struct Daemon<'a> {
     /// and most days nobody asks Atlas what a thing is. Held open afterwards,
     /// because the load is the expensive half and the run is not.
     pub looking: Option<crate::vision::Looking>,
+    /// A watch in progress ("watch me for five minutes", `camwatch`).
+    pub cam_watch: Option<crate::camwatch::Watcher>,
+    /// A watch asked for before the camera was allowed: started on the yes.
+    pub watch_after_allow: Option<(u64, bool)>,
     /// Everything Atlas has been shown and told the name of.
     ///
     /// This is the part that makes seeing open-ended. The models know a fixed
@@ -1616,6 +1620,8 @@ impl<'a> Daemon<'a> {
             steering_at: 0,
             hands: None,
             looking: None,
+            cam_watch: None,
+            watch_after_allow: None,
             album: crate::vision::Album::load(&store_for_load2),
             track: crate::handtrack::Track::default(),
             pace: crate::handtrack::Pace::default(),

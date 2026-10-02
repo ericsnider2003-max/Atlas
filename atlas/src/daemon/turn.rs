@@ -662,9 +662,27 @@ impl<'a> Daemon<'a> {
             // and does not ask the same question again. Any app action the
             // grants gate parked comes back through here.
             if let Some((app, action)) = app_action_of(&intent) {
-                if let Some(span) = crate::grants::span_from_answer(said) {
+                // "Allow the camera?" answered "I allow the camera", or
+                // heard as "I love the camera" (Eric, 1 Oct 2026): neither
+                // opens with a yes, so the answer was taken as something
+                // new, nothing was kept, and the question came back on every
+                // look. The question was "may I look whenever you ask", so a
+                // yes to it is kept for good.
+                let camera_yes = matches!(intent, Intent::CaptureWebcam) && crate::camera_ask::allows(said);
+                let span = if camera_yes { Some(crate::grants::Span::Always) } else { crate::grants::span_from_answer(said) };
+                if let Some(span) = span {
                     self.permissions.grant(&app, Some(&action), span, t);
                     let _ = self.store.save("permissions", &self.permissions);
+                    // A watch was what was asked for: it starts now.
+                    if matches!(intent, Intent::CaptureWebcam) {
+                        if let Some((secs, until_stopped)) = self.watch_after_allow.take() {
+                            self.session.pending = Pending::Nothing;
+                            let reply = self.start_watching(secs, until_stopped, t);
+                            self.session.record(said, &intent, &reply);
+                            self.persist();
+                            return reply;
+                        }
+                    }
                     self.session.pending = Pending::Nothing;
                     self.memory.record_approval(&kind, true, None);
                     let reply = self.execute(&intent);
@@ -1166,6 +1184,21 @@ impl<'a> Daemon<'a> {
             && !matches!(self.parser.parse_named(said).0, Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_))
         {
             return "Nothing to confirm.".into();
+        }
+
+        // Asking Atlas for a new ability (Eric, 1 Oct 2026): written down for
+        // his yes, never refused as impossible and never quietly switched on
+        // (`growth`).
+        if let Some(reply) = self.ability_request(said, t) {
+            return reply;
+        }
+        // "Watch me for five minutes" (`camwatch`).
+        if let Some(reply) = self.watch_request(said, t) {
+            return reply;
+        }
+        // On a call: "show Atlas off", "don't mute my calls" (`callmute`).
+        if let Some(reply) = self.call_mute_request(said, t) {
+            return reply;
         }
 
         // Naming a tool as the instrument of the task IS the permission for
@@ -2145,6 +2178,41 @@ impl<'a> Daemon<'a> {
         self.queue.pending() > 0 || self.current_flow.is_some()
     }
 
+    /// A request for a new ability, its yes or no, or the list (`growth`).
+    pub(super) fn ability_request(&mut self, said: &str, t: u64) -> Option<String> {
+        let mut wanted: crate::growth::WantedAbilities = self.store.load(crate::growth::STORE);
+        if crate::growth::asks_for_the_list(said) {
+            return Some(wanted.spoken());
+        }
+        if let Some(state) = crate::growth::answer(said) {
+            if let Some(what) = wanted.decide_latest(state) {
+                let _ = self.store.save(crate::growth::STORE, &wanted);
+                return Some(match state {
+                    crate::growth::State::Approved => format!(
+                        "Approved: \"{what}\". It's on the build list now -- the next build picks it up, and I'll tell you when it's in."
+                    ),
+                    _ => format!("Left it: \"{what}\" won't be built."),
+                });
+            }
+            return None;
+        }
+        let what = crate::growth::asks_for_an_ability(said)?;
+        // "Work that so you have this capability": the ability is whatever
+        // you were just asking about -- your previous sentence.
+        let what = if what.trim().is_empty() {
+            match self.thread.recent.iter().rev().map(|e| e.said.trim()).find(|s| !s.is_empty() && crate::growth::asks_for_an_ability(s).is_none()) {
+                Some(before) => before.trim_end_matches(['.', '?', '!']).to_string(),
+                None => return Some("Which ability? Say \"give yourself the ability to\" and what it is, and I'll write it down for your yes.".into()),
+            }
+        } else {
+            what
+        };
+        wanted.ask(&what, t);
+        let _ = self.store.save(crate::growth::STORE, &wanted);
+        self.log.info(&format!("ability asked for: {what}"));
+        Some(crate::growth::noted(&what))
+    }
+
     /// What "this" refers to right now.
     ///
     /// Returns a question when it genuinely can't tell, which stops the
@@ -2167,6 +2235,17 @@ impl<'a> Daemon<'a> {
         };
         // Only sentences that actually contain a pronoun need resolving.
         let lower = arg.to_lowercase();
+        // ...and only when the pronoun is what's being asked about. "Do some
+        // research on things that would allow you to advance your own
+        // capabilities, then present them to me" names its subject; the
+        // "them" in it is ordinary English. Asking it "what do you mean?"
+        // lost the request (Eric, 1 Oct 2026). "Research this", "look into
+        // that further" are short, or open with the pronoun.
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        let leads_with_it = words.first().is_some_and(|w| ["this", "that", "it", "these", "those"].contains(&w.trim_matches(',')));
+        if words.len() > 5 && !leads_with_it {
+            return None;
+        }
         if !["this", "that", "it", "these", "those"]
             .iter()
             .any(|w| lower.split_whitespace().any(|t| t.trim_matches(',') == *w))

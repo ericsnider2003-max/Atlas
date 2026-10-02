@@ -186,7 +186,9 @@ pub fn grant_in_instruction(said: &str, known_apps: &[String]) -> Option<(String
                     return Some((candidate, Span::Once));
                 }
                 // Something Atlas doesn't know, but you named it deliberately.
-                if *lead == "use " || *lead == "using " {
+                // Not an ordinary word: "using currently available tools" made
+                // a grant for an app called "currently" (Eric, 1 Oct 2026).
+                if (*lead == "use " || *lead == "using ") && could_be_an_app(&candidate) {
                     return Some((candidate, Span::Once));
                 }
             }
@@ -194,6 +196,20 @@ pub fn grant_in_instruction(said: &str, known_apps: &[String]) -> Option<(String
         }
     }
     None
+}
+
+/// Could this word be an app's name, rather than ordinary English after
+/// "use"/"using"? Adverbs ("currently", "only"), articles, pronouns and
+/// the like never are.
+fn could_be_an_app(word: &str) -> bool {
+    const NOT_APPS: &[&str] = &[
+        "the", "a", "an", "my", "your", "our", "their", "his", "her", "its", "it", "this", "that", "these", "those",
+        "some", "any", "all", "every", "each", "more", "less", "most", "other", "another", "what", "whatever",
+        "which", "only", "just", "them", "me", "you", "us", "him", "one", "two", "both", "less", "less", "new",
+        "free", "open", "available", "existing", "current", "local", "online", "offline", "good", "better", "best",
+        "real", "same", "different", "less", "too", "to", "and", "or", "of", "for", "in", "on", "at", "by", "with",
+    ];
+    word.len() >= 2 && !word.ends_with("ly") && !NOT_APPS.contains(&word) && !word.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Did you say yes to a permission question, and how broadly?
@@ -289,4 +305,16 @@ pub fn span_from_answer(said: &str) -> Option<Span> {
         return Some(Span::Session);
     }
     Some(Span::Once)
+}
+
+#[cfg(test)]
+mod using_words_tests {
+    use super::*;
+
+    #[test]
+    fn an_ordinary_word_after_using_is_not_an_app() {
+        assert_eq!(grant_in_instruction("research it using currently available tools", &[]), None);
+        assert_eq!(grant_in_instruction("use the camera", &[]), None);
+        assert_eq!(grant_in_instruction("use blender to model it", &[]).map(|g| g.0), Some("blender".into()));
+    }
 }

@@ -6,6 +6,15 @@
 use super::*;
 
 impl<'a> Daemon<'a> {
+    /// You're here, as of `t`: no "welcome back" on the next turn. For the
+    /// self-test, whose sentences are a minute apart on its own clock while
+    /// each one starts a fresh Atlas -- every reply came back with "Before the
+    /// break you'd been in..." (1 Oct 2026 report).
+    pub fn here_at(&mut self, t: u64) {
+        self.last_present = t;
+        self.back_from = None;
+    }
+
     pub(super) fn phone_cfg(&self) -> crate::phone::PhoneConfig {
         self.tools_ref().map(|t| t.phone.clone()).unwrap_or_default()
     }
