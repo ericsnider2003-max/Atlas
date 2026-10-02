@@ -962,7 +962,7 @@ certainty:
 # clear — with the actual numbers, so you can disagree. Never touches drivers,
 # services, the registry, or anything on the permanent no-list.
 tune:
-  enabled: false
+  enabled: true             # finds and explains; acts only on your yes
   min_mb: 200               # smaller than this isn't worth a sentence
   min_boot_secs: 0.5
   keep: [explorer, defender, security, audio, graphics, intel, nvidia, realtek, onedrive]

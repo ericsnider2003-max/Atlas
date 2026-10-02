@@ -102,6 +102,26 @@ pub fn overlay_band(screen_w: i32, screen_h: i32, cfg: &crate::overlay::OverlayC
     (x, top, w, bottom - top)
 }
 
+/// How long the overlay stays after Atlas last spoke.
+pub const IDLE_EXIT: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// Start the overlay if it isn't running: called as Atlas starts to speak,
+/// so the words still go on screen though no overlay sits idle in between.
+pub fn start_if_gone(data_dir: &std::path::Path) {
+    if !cfg!(windows) || crate::selftest::in_a_test() {
+        return;
+    }
+    let only = crate::onlyone::OnlyOne::at(&data_dir.join("overlay"));
+    if matches!(only.look(crate::store::now()), crate::onlyone::Found::Running { .. }) {
+        return;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Ok(child) = crate::firstlaunch::spawn_quietly(&exe, &["overlay"]) {
+            crate::unwaited::dont_wait(child);
+        }
+    }
+}
+
 /// Where the overlay finds what's being said and its own switch.
 pub struct Folders {
     /// Atlas's data folder: `speaking.json` and the background Atlas's lock.
@@ -174,8 +194,17 @@ pub fn run(folders: Folders) -> Result<(), String> {
                 let mut looked = std::time::Instant::now();
                 let mut atlas = crate::onlyone::Watching::default();
                 let mut checked = std::time::Instant::now();
+                let mut last_heard = std::time::Instant::now();
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(100));
+                    // Nothing said for a while: gone, rather than a hidden
+                    // window kept alive -- which held a core at 40% on Eric's
+                    // laptop (1 Oct 2026). Atlas starts one again the moment
+                    // it next speaks (`start_if_gone`).
+                    if last_heard.elapsed() >= IDLE_EXIT {
+                        own_lock.release();
+                        std::process::exit(0);
+                    }
                     // Still wanted? Asked here, not only in the window's own
                     // loop, which a hidden window may never run (29 Sep 2026:
                     // an overlay outlived its Atlas, and its lock went stale
@@ -199,6 +228,9 @@ pub fn run(folders: Folders) -> Result<(), String> {
                     if enabled && started.is_some() && started != last {
                         show_without_focus(hwnd);
                         ctx.request_repaint();
+                    }
+                    if started.is_some() {
+                        last_heard = std::time::Instant::now();
                     }
                     last = started.or(last);
                 }

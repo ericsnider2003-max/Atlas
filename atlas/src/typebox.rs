@@ -109,7 +109,7 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
                     std::process::exit(0);
                 });
             }
-            Ok(Box::new(Box_ { q, frames: if standby { u32::MAX } else { 0 }, hidden_told: 0, standby, wake: rx, was_in: front_window(), hwnd }))
+            Ok(Box::new(Box_ { q, frames: if standby { u32::MAX } else { 0 }, hidden_told: 0, hidden_since: None, standby, wake: rx, was_in: front_window(), hwnd }))
         }),
     )
     .map_err(|e| e.to_string())
@@ -124,6 +124,8 @@ struct Box_ {
     hwnd: isize,
     /// Frames told "stay hidden" since it was last put away.
     hidden_told: u8,
+    /// Since when it has sat hidden; it goes after `HIDDEN_EXIT`.
+    hidden_since: Option<std::time::Instant>,
     standby: bool,
     wake: std::sync::mpsc::Receiver<Option<isize>>,
     /// The window you were in, given back when the box goes (Windows
@@ -141,6 +143,7 @@ impl eframe::App for Box_ {
             self.q.hotkey(None, crate::store::now());
             self.frames = 0;
             self.hidden_told = 0;
+            self.hidden_since = None;
             self.was_in = was_in;
         }
         if self.frames == u32::MAX {
@@ -168,9 +171,13 @@ impl eframe::App for Box_ {
                     crate::winpark::park(self.hwnd);
                 }
             } else {
-                // Hidden and settled, still woken: a few times a second at
-                // most (`winpark::IDLE_NAP`). The key shows the box from its
-                // own thread (`show_now`), so the nap doesn't delay that.
+                // Hidden and settled for a while: gone, rather than kept
+                // alive hidden -- that held 40% of a core on Eric's laptop
+                // (1 Oct 2026). The key starts a fresh one (`Standby::show`
+                // finds this one gone and the daemon starts another).
+                if self.standby && self.hidden_since.get_or_insert_with(std::time::Instant::now).elapsed() >= HIDDEN_EXIT {
+                    std::process::exit(0);
+                }
                 std::thread::sleep(crate::winpark::IDLE_NAP);
             }
             return;
@@ -244,6 +251,9 @@ impl eframe::App for Box_ {
 pub fn run(_cfg: QuickInputConfig, _standby: bool) -> Result<(), String> {
     Err("this build of Atlas has no windows, so there's no typing box -- type in the console instead".into())
 }
+
+/// How long a hidden box waits for its key before it goes.
+pub const HIDDEN_EXIT: std::time::Duration = std::time::Duration::from_secs(90);
 
 /// The box kept ready by the background Atlas.
 pub struct Standby {

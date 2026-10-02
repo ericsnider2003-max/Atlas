@@ -767,7 +767,7 @@ fn atlas_knows_who_it_is_and_what_its_job_is() {
         assert!(prompt.contains("Your job: take things off their plate"));
         assert!(prompt.contains("research the web"));
         assert!(prompt.contains("about getting better"));
-        assert!(prompt.contains("can't do research"));
+        assert!(prompt.contains("can't research or add abilities"));
     }
     // Still says to call the tools (the second scan's check).
     assert!(p.character().contains("call the tool"));

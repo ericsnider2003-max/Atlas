@@ -504,7 +504,9 @@ fn with_himalaya_an_unsubscribe_email_goes_through_himalaya() {
     assert!(!said.contains("couldn't get at the mailbox"), "{said}");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut t = NOW + 1;
-    while std::time::Instant::now() < deadline && !got.exists() {
+    // Written by the stand-in as it reads: waited for whole, not just begun.
+    let whole = || std::fs::read_to_string(&got).is_ok_and(|s| s.contains("Subject:"));
+    while std::time::Instant::now() < deadline && !whole() {
         d.tick(t);
         t += 1;
         std::thread::sleep(std::time::Duration::from_millis(20));

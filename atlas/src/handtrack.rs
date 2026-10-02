@@ -278,12 +278,18 @@ impl Pace {
         if self.per_second(cfg) > cfg.floor_per_second {
             return None;
         }
+        // Under one a second it's said as "one every N seconds" (1 Oct 2026:
+        // "I'm only managing 0 looks a second").
+        let rate = match self.per_second(cfg) {
+            0 => format!("one look every {:.0} seconds", (self.wait_ms(cfg) as f32 / 1000.0).max(1.0)),
+            1 => "one look a second".to_string(),
+            n => format!("{n} looks a second"),
+        };
         Some(format!(
             "Reading your hands is taking about {}ms a go on this machine, so \
-             I'm only managing {} looks a second. It'll feel laggy — worth \
-             turning off until there's a lighter model.",
+             I'm only managing {rate}. It'll feel laggy -- closing something \
+             heavy gives it room, or it's worth turning off for now.",
             self.typical_ms.round(),
-            self.per_second(cfg)
         ))
     }
 }

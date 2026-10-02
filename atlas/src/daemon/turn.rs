@@ -553,6 +553,29 @@ impl<'a> Daemon<'a> {
         // asked for last, run now -- not a chat about research (29 Sep 2026:
         // three of these went to the model, which said "I'm already on it"
         // and started nothing). With nothing asked yet, it says how to ask.
+        // "Take that off my outstanding list" (1 Oct 2026: there was no way).
+        if let Some(removal) = crate::backlog::removal_asked(said) {
+            let reply = match self.backlog.find_for_removal(&removal) {
+                Ok(ids) => {
+                    let named: Vec<String> = ids
+                        .iter()
+                        .filter_map(|id| self.backlog.outstanding().into_iter().find(|i| i.id == *id).map(|i| i.request.trim().to_string()))
+                        .collect();
+                    for id in &ids {
+                        self.backlog.dismiss(*id);
+                    }
+                    match self.backlog.save(&self.store) {
+                        Err(e) => format!("I took it off, but couldn't save the list ({e}) -- it may come back after a restart."),
+                        Ok(()) if named.len() == 1 => format!("Done -- \"{}\" is off your outstanding list.", named[0]),
+                        Ok(()) => format!("Done -- cleared {} things off your outstanding list.", named.len()),
+                    }
+                }
+                Err(say) => say,
+            };
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
         let research_again;
         // "research it again", "look that up again": the topic is the last
         // one, not the word "it" (30 Sep 2026: searched for "it").
@@ -621,6 +644,12 @@ impl<'a> Daemon<'a> {
                 let _ = text;
                 said
             }
+            // A long sentence's "it" is its own (1 Oct 2026: "research how an
+            // AI system can add its own features when it gets approval"
+            // reached Atlas as "... when <the last topic> gets approval").
+            // Only a short command leans on what came before: "close it",
+            // "move it to the other screen".
+            Resolution::Resolved { .. } if crate::references::word_count(said) > 6 => said,
             Resolution::Resolved { text, .. } => {
                 said_owned = text;
                 said_owned.as_str()
@@ -897,16 +926,35 @@ impl<'a> Daemon<'a> {
             // The desktop's loose files, filed on a yes (29 Sep 2026).
             if let Some(plan) = self.pending_desktop.take() {
                 self.session.pending = Pending::Nothing;
-                if !is_yes(said) {
+                if is_no(said) {
                     return "Alright, your desktop stays as it is.".into();
                 }
+                if !is_yes(said) {
+                    return self.turn_from(said, t, how);
+                }
                 return self.carry_out_desktop_plan(plan);
+            }
+            // An optimization run's offer: all of it, on one yes.
+            if let Some(plan) = self.pending_optimize.take() {
+                self.session.pending = Pending::Nothing;
+                if is_no(said) {
+                    return "Alright, I left everything as it is.".into();
+                }
+                // Anything else is a new request, not an answer: it's heard
+                // as one (1 Oct 2026: a different question was taken as "no").
+                if !is_yes(said) {
+                    return self.turn_from(said, t, how);
+                }
+                return self.carry_out_optimize(plan, t);
             }
             // Moving big folders to another drive (G5).
             if let Some(plan) = self.pending_storage.take() {
                 self.session.pending = Pending::Nothing;
-                if !is_yes(said) {
+                if is_no(said) {
                     return "Alright, nothing moved.".into();
+                }
+                if !is_yes(said) {
+                    return self.turn_from(said, t, how);
                 }
                 return self.carry_out_storage_plan(plan, t);
             }
@@ -2239,23 +2287,13 @@ impl<'a> Daemon<'a> {
             Intent::UseClipboard(_) => return None,
             _ => return None,
         };
-        // Only sentences that actually contain a pronoun need resolving.
-        let lower = arg.to_lowercase();
-        // ...and only when the pronoun is what's being asked about. "Do some
-        // research on things that would allow you to advance your own
-        // capabilities, then present them to me" names its subject; the
-        // "them" in it is ordinary English. Asking it "what do you mean?"
-        // lost the request (Eric, 1 Oct 2026). "Research this", "look into
-        // that further" are short, or open with the pronoun.
-        let words: Vec<&str> = lower.split_whitespace().collect();
-        let leads_with_it = words.first().is_some_and(|w| ["this", "that", "it", "these", "those"].contains(&w.trim_matches(',')));
-        if words.len() > 5 && !leads_with_it {
-            return None;
-        }
-        if !["this", "that", "it", "these", "those"]
-            .iter()
-            .any(|w| lower.split_whitespace().any(|t| t.trim_matches(',') == *w))
-        {
+        // Only an argument that *is* a reference -- "research this", "note
+        // that", "find it" -- needs resolving. One that merely contains a
+        // pronoun is ordinary English (1 Oct 2026: "do some research on
+        // things that would allow you to advance your own capabilities" got
+        // "I can't tell what you mean -- nothing copied, nothing selected",
+        // and so did "... when it gets approval").
+        if !crate::references::argument_leans_on_earlier(arg) {
             return None;
         }
         // Only what the daemon genuinely knows. Filling these in with guesses

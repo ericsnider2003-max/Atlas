@@ -360,7 +360,7 @@ impl Thread {
         if self.is_empty() || self.gap(t) < cfg.gap_secs {
             return None;
         }
-        let topic = self.current_topic.as_ref()?;
+        let topic = spoken_topic(self.current_topic.as_ref()?);
         Some(match self.gap(t) {
             g if g < 6 * 3600 => format!("We were on {topic}."),
             g if g < 48 * 3600 => format!("Last time we were on {topic}."),
@@ -391,6 +391,21 @@ impl Thread {
             return None;
         }
         self.recent.iter().rev().find(|e| normalize(&e.said) == n)
+    }
+}
+
+/// A topic as it's said out loud: its first clause, a dozen words at most
+/// (1 Oct 2026: a research brief two sentences long was read out whole,
+/// "We were on Practical ways to extend ... and what would require platform
+/// or source-code changes.." in answer to "Speak.").
+pub fn spoken_topic(topic: &str) -> String {
+    let first = topic.split(['.', ',', ';', ':', '(']).next().unwrap_or(topic).trim();
+    let first = first.split(" especially ").next().unwrap_or(first).trim();
+    let words: Vec<&str> = first.split_whitespace().collect();
+    if words.len() > 12 {
+        format!("{}…", words[..12].join(" "))
+    } else {
+        words.join(" ")
     }
 }
 
