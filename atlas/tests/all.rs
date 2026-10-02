@@ -299,6 +299,8 @@ mod hands_read_the_model;
 mod handshape;
 #[path = "handtrack.rs"]
 mod handtrack;
+#[path = "handweight.rs"]
+mod handweight;
 #[path = "health_modes.rs"]
 mod health_modes;
 #[path = "health_readings.rs"]

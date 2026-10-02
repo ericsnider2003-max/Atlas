@@ -2363,7 +2363,8 @@ impl<'a> Daemon<'a> {
         if !missing.is_empty() {
             return crate::infer::spoken(&missing);
         }
-        let Some(mut eyes) = self.build_eyes(&models) else {
+        let plan = self.hands_plan();
+        let Some(mut eyes) = self.build_eyes(&models, &plan) else {
             return "I couldn't start the camera.".into();
         };
         let (n, d) = (name.clone(), does.clone());

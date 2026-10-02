@@ -1008,6 +1008,27 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         "The picture is deleted the moment it's read. Recognising your face never approves anything.",
         t.gaze.enabled, Weight::Sensitive, "What it can see"));
 
+    // How heavy hand tracking may be (2 Oct 2026: "may need a lighter model
+    // for gestures" -- the laptop's fans spun while it watched his hands).
+    // Automatic picks from the machine; this is the way to overrule it.
+    let weight_options: Vec<String> = crate::handweight::Weight::WORDS.iter().map(|s| s.to_string()).collect();
+    items.push(Setting {
+        key: "hands.weight".into(),
+        name: "Hand tracking weight".into(),
+        what: "Auto picks from this machine (processors, memory, battery, and how long reading a hand took here last time). Light uses a smaller picture and fewer looks a second; full uses the whole picture and pace.".into(),
+        cost: "Light is easier on the fans and battery and a little less precise at the edges of the picture.".into(),
+        value: Value::Choice { value: t.hands.weight.word().into(), options: weight_options.clone() },
+        // Placeholder; `registry` derives the real default. See `build`.
+        default: Value::Choice { value: t.hands.weight.word().into(), options: weight_options },
+        weight: Weight::Preference,
+        group: "What it can see".into(),
+    });
+
+    items.push(toggle("hands.npu", "NPU for hands",
+        "Read your hands on the laptop's Intel NPU when it has one, instead of the processor.",
+        "Needs the NPU engine (the same download search and voice ID use). Anything the NPU refuses stays on the processor.",
+        t.hands.npu, Weight::Preference, "What it can see"));
+
     items.push(toggle("vision.enabled", "Recognising things",
         "Name the things in front of the camera, tell faces apart, and learn anything you show it and name.",
         "Runs on this machine — no picture is sent anywhere. Needs a one-off download (the seeing models).",

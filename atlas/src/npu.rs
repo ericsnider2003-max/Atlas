@@ -205,6 +205,13 @@ pub fn npu_ready(root: &Path) -> bool {
     engine(root).is_ok_and(|e| e.npu)
 }
 
+/// Is ONNX Runtime itself usable from here, NPU or not? It comes with the
+/// Kokoro voice. The hands use it on the processor too (2 Oct 2026): it ran
+/// the two hand models seven to ten times faster than `tract` when measured.
+pub fn runtime_ready(root: &Path) -> bool {
+    engine(root).is_ok()
+}
+
 /// Why the NPU isn't used, in words, or `None` when it is.
 pub fn why_not(root: &Path) -> Option<String> {
     if !has_intel_npu() && cfg!(windows) {
@@ -252,8 +259,24 @@ impl Session {
     /// Open `model` with these fixed input shapes: on the NPU when `want`
     /// is `Where::Npu` and the NPU is ready, else on the processor.
     pub fn open(root: &Path, model: &Path, shapes: &[(String, Vec<i64>)], want: Where) -> Result<Session, String> {
+        Session::open_with(root, model, shapes, want, false)
+    }
+
+    /// `open`, and with `quiet` the processor side kept to one thread that
+    /// sleeps rather than spins between runs. For a model run many times a
+    /// second (the hands, 2 Oct 2026): ONNX Runtime's default is a thread
+    /// per core spinning while it waits, which is the fan noise this was
+    /// moved to the NPU to stop.
+    pub fn open_with(root: &Path, model: &Path, shapes: &[(String, Vec<i64>)], want: Where, quiet: bool) -> Result<Session, String> {
         let e = engine(root)?;
         let mut b = ort::session::Session::builder().map_err(|e| e.to_string())?;
+        if quiet {
+            b = b
+                .with_intra_threads(1)
+                .and_then(|b| b.with_intra_op_spinning(false))
+                .and_then(|b| b.with_inter_op_spinning(false))
+                .map_err(|e| e.to_string())?;
+        }
         let mut on = Where::Cpu;
         if want == Where::Npu && e.npu {
             let cache = cache_dir();

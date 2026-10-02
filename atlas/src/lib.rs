@@ -210,6 +210,7 @@ pub mod checks;
 pub mod handloop;
 pub mod handshape;
 pub mod handtrack;
+pub mod handweight;
 pub mod hollow;
 pub mod hollowcode;
 pub mod revise;

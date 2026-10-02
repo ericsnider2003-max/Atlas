@@ -236,6 +236,13 @@ impl Pace {
         self.seen += 1;
     }
 
+    /// The rolling cost of one look in milliseconds, once one has been
+    /// measured. Kept by `handloop` so the next start can choose a lighter
+    /// plan on a machine where it struggled (2 Oct 2026).
+    pub fn typical_ms(&self) -> Option<u32> {
+        (self.seen > 0).then(|| self.typical_ms.round() as u32)
+    }
+
     /// Milliseconds to wait before looking again.
     ///
     /// Falls back to looking less often when detection gets expensive, rather

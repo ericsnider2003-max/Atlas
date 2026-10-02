@@ -108,6 +108,8 @@ fn setup(frames: Vec<Option<Landmarks>>, looks: Arc<AtomicUsize>, noted: Arc<Not
         vocabulary: Vocabulary::default(),
         smoothing: SmoothConfig::default(),
         pace: PaceConfig::default(),
+        idle_per_second: 4,
+        hands: atlas::handweight::HandsConfig::default(),
     }
 }
 
@@ -380,4 +382,53 @@ fn tracking_does_not_run_on_the_daemon_tick() {
         );
     }
     let _ = unused;
+}
+
+// ---------------------------------------------------------------------------
+// Not running when nothing needs it (2 Oct 2026)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn with_no_hand_for_the_quiet_spell_it_stops_itself_and_says_so() {
+    // Nothing used to stop it: once on, the camera and both models ran until
+    // Eric said stop, with the room empty and the fans going.
+    let looks = Arc::new(AtomicUsize::new(0));
+    let noted = Arc::new(Noted::default());
+    let mut s = setup(vec![None; 10_000], looks.clone(), noted);
+    s.hands.stop_after_quiet_secs = 1;
+    let t = start(s);
+    std::thread::sleep(std::time::Duration::from_millis(1600));
+    let said = t.heard();
+    assert!(!t.running(), "a thread that ended is not still watching");
+    assert!(
+        said.iter().any(|s| matches!(s, Said::Trouble(w) if w.contains("stopped watching your hands"))),
+        "{said:?}"
+    );
+    assert!(said.contains(&Said::HandsGone), "so the daemon leaves steering too: {said:?}");
+    let after = looks.load(Ordering::Relaxed);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(looks.load(Ordering::Relaxed), after, "and the camera really is off");
+}
+
+#[test]
+fn an_empty_room_is_looked_at_far_less_often_than_a_hand() {
+    // Counted over two seconds that start after the first second and a bit,
+    // once a hand has been gone long enough to count as an empty room.
+    let window = |frames: Vec<Option<Landmarks>>| {
+        let looks = Arc::new(AtomicUsize::new(0));
+        let mut s = setup(frames, looks.clone(), Arc::new(Noted::default()));
+        s.idle_per_second = 4;
+        let mut t = start(s);
+        std::thread::sleep(std::time::Duration::from_millis(1300));
+        let from = looks.load(Ordering::Relaxed);
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        let to = looks.load(Ordering::Relaxed);
+        t.stop();
+        to - from
+    };
+    let with_hand = window(vec![Some(hand_at(0.5, 0.5, false)); 10_000]);
+    let empty = window(vec![None; 10_000]);
+    // Four a second for two seconds, with a look's slack either side.
+    assert!(empty <= 10, "{empty} looks at an empty room in two seconds");
+    assert!(empty * 2 < with_hand, "{empty} looks at an empty room against {with_hand} at a hand");
 }
