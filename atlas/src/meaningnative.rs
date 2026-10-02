@@ -64,6 +64,14 @@ impl Native {
         self.embed_where(text, true)
     }
 
+    /// Which padded lengths run on the NPU now (true) or were sent back to
+    /// the processor (false), for `atlas npu-check`.
+    pub fn npu_lengths(&self) -> Vec<(usize, bool)> {
+        let mut v: Vec<(usize, bool)> = self.npu.iter().map(|(n, s)| (*n, s.is_some())).collect();
+        v.sort();
+        v
+    }
+
     /// The same, on the processor only (`tract`): what `atlas npu-check`
     /// compares the NPU against.
     pub fn embed_on_processor(&mut self, text: &str) -> Option<Vec<f32>> {
@@ -104,6 +112,10 @@ impl Native {
             let model = root.join(MODEL);
             let names = crate::npu::Session::input_names(&root, &model).ok()?;
             let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|nm| (nm.clone(), vec![1, n as i64])).collect();
+            // Lost to the processor last time, with this engine: not tried again.
+            if crate::npu::lost_before(&model, &shapes) {
+                return None;
+            }
             match crate::npu::Session::open(&root, &model, &shapes, crate::npu::Where::Npu) {
                 Ok(s) => Some((s, names)),
                 Err(why) => {
@@ -113,6 +125,7 @@ impl Native {
             }
         });
         let (s, names) = session.as_ref()?;
+        let names_c = names.clone();
         // The export's own names, in its own order: ids, mask, segment.
         let name = |want: &str, i: usize| names.iter().find(|x| x.contains(want)).or(names.get(i)).cloned().unwrap_or_default();
         let real = ids.len().min(n);
@@ -137,7 +150,11 @@ impl Native {
             let cpu = self.embed_where_tract(ids, n);
             let cpu_took = t.elapsed();
             let agree = cpu.as_ref().map(|c| crate::npu::agreement(c, &v)).unwrap_or(0.0);
-            if !crate::npu::worth_keeping(npu_took, cpu_took, agree) {
+            let keep = crate::npu::worth_keeping(npu_took, cpu_took, agree);
+            let model = self.root.join(MODEL);
+            let shapes: Vec<(String, Vec<i64>)> = names_c.iter().map(|x| (x.clone(), vec![1, n as i64])).collect();
+            crate::npu::remember(&model, &shapes, keep);
+            if !keep {
                 crate::outln!(
                     "search stays on the processor for {n}-word texts: the NPU took {} ms against {} ms (answers agree to {agree:.3})",
                     npu_took.as_millis(),

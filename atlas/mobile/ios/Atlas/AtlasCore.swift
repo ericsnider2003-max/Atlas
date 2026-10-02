@@ -47,8 +47,10 @@ final class AtlasCore {
             return nil
         }.value
         guard let s = url else { return false }
-        // Apple's model as the first brain where this iPhone has it (decision 2).
+        // Apple's model as the first brain where this iPhone has it (decision 2),
+        // and Apple's weather for weather answers.
         AppleBrain.register()
+        AppleWeather.register()
         hubURL = URL(string: s)
         token = URLComponents(string: s)?.queryItems?.first(where: { $0.name == "t" })?.value
         if !watching {

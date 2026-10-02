@@ -230,6 +230,52 @@ pub struct Session {
     pub on: Where,
 }
 
+/// A copy of `model` with these input sizes written in, kept in the NPU
+/// cache (made once). `None` if it can't be made.
+fn fixed_copy(model: &Path, shapes: &[(String, Vec<i64>)]) -> Option<PathBuf> {
+    let stem = model.file_stem()?.to_string_lossy().to_string();
+    let sig: String = shapes.iter().map(|(_, d)| d.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("x")).collect::<Vec<_>>().join("-");
+    let out = cache_dir().join(format!("{stem}-{sig}.onnx"));
+    if out.is_file() {
+        return Some(out);
+    }
+    let bytes = std::fs::read(model).ok()?;
+    let fixed = crate::onnxfix::with_fixed_inputs(&bytes, shapes)?;
+    std::fs::create_dir_all(cache_dir()).ok()?;
+    let tmp = out.with_extension("part");
+    std::fs::write(&tmp, fixed).ok()?;
+    std::fs::rename(&tmp, &out).ok()?;
+    Some(out)
+}
+
+// ------------------------------------------------------------------ verdicts
+
+/// Where each model and size ran best when last measured, kept so a model
+/// that lost to the processor isn't compiled for the NPU again on every
+/// start (each try costs a few seconds). Keyed by the NPU engine's version
+/// too, so a new engine is tried afresh.
+fn verdict_key(model: &Path, shapes: &[(String, Vec<i64>)]) -> String {
+    let version = piece().map(|p| p.sha256.get(..12).unwrap_or("").to_string()).unwrap_or_default();
+    format!("{}|{}|{version}", model.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(), reshape_value(shapes))
+}
+
+fn verdicts() -> std::collections::BTreeMap<String, String> {
+    std::fs::read(cache_dir().join("verdicts.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Did this model and size lose to the processor before, with this engine?
+pub fn lost_before(model: &Path, shapes: &[(String, Vec<i64>)]) -> bool {
+    verdicts().get(&verdict_key(model, shapes)).is_some_and(|v| v == "processor")
+}
+
+/// Remember which won.
+pub fn remember(model: &Path, shapes: &[(String, Vec<i64>)], npu_won: bool) {
+    let mut v = verdicts();
+    v.insert(verdict_key(model, shapes), if npu_won { "npu" } else { "processor" }.into());
+    let _ = std::fs::create_dir_all(cache_dir());
+    let _ = std::fs::write(cache_dir().join("verdicts.json"), serde_json::to_vec_pretty(&v).unwrap_or_default());
+}
+
 /// Each free dimension's name in `model`'s inputs, with the size `shapes`
 /// gives it there: what `with_dimension_override` fixes.
 fn free_dimensions(model: &Path, shapes: &[(String, Vec<i64>)]) -> Result<Vec<(String, i64)>, String> {
@@ -304,7 +350,11 @@ impl Session {
             b = b.with_devices(npu_devices(&e.env), Some(&opts)).map_err(|e| format!("the NPU wouldn't take the model: {e}"))?;
             on = Where::Npu;
         }
-        let s = b.commit_from_file(model).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()))?;
+        // On the NPU, a copy of the model with the sizes written into the
+        // file itself (`onnxfix`): measured on the laptop, the NPU compiler
+        // ignored both the provider's reshape and the runtime's overrides.
+        let file = if on == Where::Npu { fixed_copy(model, shapes).unwrap_or_else(|| model.to_path_buf()) } else { model.to_path_buf() };
+        let s = b.commit_from_file(&file).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()))?;
         Ok(Session { s: Mutex::new(s), on })
     }
 
@@ -382,10 +432,13 @@ pub fn check(root: &Path) -> String {
         None => out.push("Search: the meaning model isn't downloaded, so there's nothing to measure".into()),
         Some(mut enc) => {
             let (mut cpu_ms, mut npu_ms, mut worst) = (0u128, 0u128, 1.0f32);
-            // Once each first: the first run compiles (and fills the cache).
-            let _ = enc.embed_on_processor(CHECK_TEXTS[0]);
+            // Every text once first: each length compiles on its first use
+            // (and fills the cache) and is checked against the processor.
             let t = std::time::Instant::now();
-            let _ = enc.embed(CHECK_TEXTS[0]);
+            for text in CHECK_TEXTS {
+                let _ = enc.embed_on_processor(text);
+                let _ = enc.embed(text);
+            }
             let first = t.elapsed().as_millis();
             for text in CHECK_TEXTS {
                 let t = std::time::Instant::now();
@@ -399,12 +452,18 @@ pub fn check(root: &Path) -> String {
                 }
             }
             let n = CHECK_TEXTS.len() as u128;
+            let lengths: Vec<String> = enc
+                .npu_lengths()
+                .iter()
+                .map(|(len, on)| format!("{len} words: {}", if *on { "NPU" } else { "processor" }))
+                .collect();
             out.push(format!(
-                "Search: {} ms a sentence on the processor, {} ms the way Atlas now runs it (first, compiling: {first} ms); \
-                 answers agree to {:.4} at worst",
+                "Search: {} ms a sentence on the processor, {} ms the way Atlas now runs it (setting up: {first} ms); \
+                 answers agree to {:.4} at worst. {}",
                 cpu_ms / n,
                 npu_ms / n,
-                worst
+                worst,
+                if lengths.is_empty() { "Nothing tried on the NPU.".to_string() } else { lengths.join(", ") }
             ));
         }
     }

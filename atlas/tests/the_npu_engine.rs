@@ -130,3 +130,51 @@ fn the_npu_is_kept_only_when_it_agrees_and_is_quicker() {
     // Quicker but a different answer: dropped.
     assert!(!npu::worth_keeping(ms(8), ms(20), 0.9));
 }
+
+#[test]
+fn the_sizes_are_written_into_a_copy_of_the_model() {
+    // A tiny ONNX model, hand-encoded: graph { input { name: "x", type {
+    // tensor_type { elem_type: 1, shape { dim { dim_param: "batch" } dim {
+    // dim_param: "len" } } } } } }, plus a field the rewrite must keep (ir_version 8).
+    fn ld(field: u8, body: &[u8]) -> Vec<u8> {
+        let mut v = vec![(field << 3) | 2, body.len() as u8];
+        v.extend_from_slice(body);
+        v
+    }
+    let dim_batch = ld(1, &ld(2, b"batch"));
+    let dim_len = ld(1, &ld(2, b"len"));
+    let shape = ld(2, &[dim_batch, dim_len].concat());
+    let tensor = ld(1, &[vec![0x08, 0x01], shape].concat());
+    let value = [ld(1, b"x"), ld(2, &tensor)].concat();
+    let graph = ld(7, &ld(11, &value));
+    let model = [vec![0x08, 0x08], graph].concat();
+
+    assert_eq!(atlas::onnxfix::input_shapes(&model).unwrap(), vec![("x".to_string(), vec![-1, -1])]);
+    let fixed = atlas::onnxfix::with_fixed_inputs(&model, &[("x".into(), vec![1, 32])]).unwrap();
+    assert_eq!(atlas::onnxfix::input_shapes(&fixed).unwrap(), vec![("x".to_string(), vec![1, 32])]);
+    // The rest of the file is untouched: ir_version still first.
+    assert_eq!(&fixed[..2], &[0x08, 0x08]);
+    // An input that isn't there is refused rather than half-done.
+    assert!(atlas::onnxfix::with_fixed_inputs(&model, &[("y".into(), vec![1])]).is_none());
+}
+
+/// The real search model, when `ATLAS_ORT_TEST_ROOT` has it: written with
+/// fixed sizes, it still loads in ONNX Runtime and declares them.
+#[test]
+fn the_real_search_model_takes_fixed_sizes() {
+    let Ok(root) = std::env::var("ATLAS_ORT_TEST_ROOT") else { return };
+    let model = std::path::PathBuf::from(root).join(atlas::meaningnative::MODEL);
+    let bytes = std::fs::read(&model).unwrap();
+    let names: Vec<String> = atlas::onnxfix::input_shapes(&bytes).unwrap().into_iter().map(|(n, _)| n).collect();
+    let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|n| (n.clone(), vec![1, 16])).collect();
+    let fixed = atlas::onnxfix::with_fixed_inputs(&bytes, &shapes).unwrap();
+    for (_, dims) in atlas::onnxfix::input_shapes(&fixed).unwrap() {
+        assert_eq!(dims, vec![1, 16]);
+    }
+    let out = std::env::temp_dir().join("atlas-fixed-minilm.onnx");
+    std::fs::write(&out, &fixed).unwrap();
+    let root = std::path::PathBuf::from(std::env::var("ATLAS_ORT_TEST_ROOT").unwrap());
+    let back = npu::Session::input_names(&root, &out).unwrap();
+    assert_eq!(back, names);
+    let _ = std::fs::remove_file(out);
+}

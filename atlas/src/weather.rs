@@ -1,4 +1,5 @@
-//! The weather, from Open-Meteo: free, no account, no key.
+//! The weather: Apple's where it can be had (`applewx`), else Open-Meteo:
+//! free, no account, no key.
 //!
 //! 30 Sep 2026: "what's the weather" had no answer anywhere in Atlas. It
 //! went to the local model, which can't know, and was followed by "want me
@@ -211,7 +212,12 @@ fn place_here() -> Result<Place, String> {
 }
 
 /// The whole answer for a question already known to be about the weather.
-pub fn answer(cfg: &WeatherConfig, asked: &Asked, remembered: Option<&Place>) -> Result<(String, Place), String> {
+pub fn answer(
+    cfg: &WeatherConfig,
+    asked: &Asked,
+    remembered: Option<&Place>,
+    apple: Option<&crate::apns::ApnsConfig>,
+) -> Result<(String, Place), String> {
     let place = match (&asked.place, cfg.place.trim()) {
         (Some(p), _) => find_place(p)?,
         (None, set) if !set.is_empty() => match remembered {
@@ -224,6 +230,13 @@ pub fn answer(cfg: &WeatherConfig, asked: &Asked, remembered: Option<&Place>) ->
         },
     };
     let f = fahrenheit(&cfg.units, &place.country);
+    // Apple's weather first where it can be had (the phone's own service,
+    // or the laptop's key); Open-Meteo otherwise, or if Apple's fails.
+    if let Some(apple) = apple {
+        if let Some(said) = crate::applewx::reading(&place, apple).and_then(|r| crate::applewx::said(&place, &r, asked.tomorrow, f)) {
+            return Ok((said, place));
+        }
+    }
     let raw = get(&forecast_url(&place, f)).map_err(|e| format!("the weather service didn't answer ({e})"))?;
     let said = forecast_said(&place, &raw, asked.tomorrow, f).ok_or("the weather service's answer didn't make sense")?;
     Ok((said, place))

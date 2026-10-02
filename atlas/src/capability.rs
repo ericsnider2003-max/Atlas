@@ -1550,7 +1550,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 462;
+pub const MODULES_IN_TREE: usize = 464;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1588,9 +1588,11 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("judgment", "the shared scale graded judgments are expressed on, borrowed by a dozen capabilities"),
     ("lifecycle", "starts heavyweight helpers when needed and reaps them when idle"),
     ("voicefirst", "lowers the model server's priority while a reply plays, so the voice keeps up"),
+    ("applewx", "Apple's weather for the weather answer: the iPhone's own, or the laptop's Apple key; part of the weather"),
     ("apns", "reaches your iPhone with Atlas closed through Apple's push service, signed with your own key; part of reaching your phone"),
     ("phonealarms", "lists the reminders still to come so the iPhone app can hand them to iOS and they ring with the app closed"),
     ("applebrain", "on an iPhone with Apple Intelligence, asks Apple's on-device model first and hands each request it refuses or can't do to Atlas's own model"),
+    ("onnxfix", "writes fixed input sizes into a copy of a model, which the NPU needs"),
     ("npu", "runs the search and voice-ID models on the laptop's NPU when it has one, checked against the processor (`atlas npu-check`)"),
     ("whystopped", "writes down when Atlas started and why each run ended, and asks Windows to start it again after an update restart"),
     ("look", "the palette and catenary constants the native windows are painted from"),

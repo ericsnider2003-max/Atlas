@@ -62,11 +62,11 @@ fn the_real_weather_for_a_named_town() {
         return;
     }
     let cfg = atlas::weather::WeatherConfig { place: "Columbus, Ohio".into(), units: "auto".into() };
-    let (said, place) = atlas::weather::answer(&cfg, &Asked { place: None, tomorrow: false }, None).expect("answered");
+    let (said, place) = atlas::weather::answer(&cfg, &Asked { place: None, tomorrow: false }, None, None).expect("answered");
     println!("{said}");
     assert!(said.starts_with("In Columbus: ") && said.contains("°F"), "{said}");
     assert_eq!(place.country, "US");
-    let (t, _) = atlas::weather::answer(&cfg, &Asked { place: Some("London".into()), tomorrow: true }, None).unwrap();
+    let (t, _) = atlas::weather::answer(&cfg, &Asked { place: Some("London".into()), tomorrow: true }, None, None).unwrap();
     println!("{t}");
     assert!(t.starts_with("Tomorrow in London: ") && t.contains("°C"), "{t}");
 }

@@ -947,3 +947,5 @@ mod apple_first_then_atlas;
 mod reminders_ring_with_the_app_closed;
 #[path = "reaching_the_iphone_with_atlas_closed.rs"]
 mod reaching_the_iphone_with_atlas_closed;
+#[path = "apple_weather_first.rs"]
+mod apple_weather_first;
