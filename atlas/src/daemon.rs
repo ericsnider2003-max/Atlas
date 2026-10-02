@@ -75,6 +75,7 @@ mod execute;
 mod turn;
 mod tasks;
 mod operating;
+mod learning;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -932,6 +933,22 @@ pub struct Daemon<'a> {
     running: crate::awake::Running,
     /// Something about how well Atlas is hearing you, said on the next tick.
     heard_note: Option<String>,
+    /// How you talk: wordings learned from being corrected (`phrasebook`,
+    /// 2 Oct 2026).
+    pub phrasebook: crate::phrasebook::Phrasebook,
+    /// What Atlas got wrong, and what it misheard (`misses`).
+    pub misses: crate::misses::MissLog,
+    /// The last turn, as it ended: what a correction, a rephrase or an undo
+    /// is about (`learning`).
+    last_outcome: Option<learning::Outcome>,
+    /// A turn is being watched for how it ends; one inside it (a correction
+    /// running the words it meant) is not watched twice.
+    watching_turn: bool,
+    /// The words this turn came in by voice as, when it did.
+    spoken_turn: Option<String>,
+    /// This turn was routed by a learned wording: which, and whether it is
+    /// sure yet.
+    routed_by_phrase: Option<(String, bool)>,
     /// The connection lines last written to the log, so each is written once.
     connections_logged: Vec<String>,
     /// The tier-mix line last logged, so it is logged once each time it changes.
@@ -1803,6 +1820,12 @@ impl<'a> Daemon<'a> {
             folding: false,
             running: crate::awake::Running::Awake,
             heard_note: None,
+            phrasebook: crate::phrasebook::Phrasebook::load(&store_for_load),
+            misses: crate::misses::MissLog::load(&store_for_load),
+            last_outcome: None,
+            watching_turn: false,
+            spoken_turn: None,
+            routed_by_phrase: None,
             connections_logged: Vec::new(),
             tier_mix_logged: None,
             typebox: None,

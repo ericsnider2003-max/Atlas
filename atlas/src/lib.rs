@@ -228,6 +228,10 @@ pub mod taste;
 pub mod motion;
 pub mod explain;
 pub mod mend;
+// How you talk, learned from being corrected, and what Atlas got wrong
+// (2 Oct 2026).
+pub mod phrasebook;
+pub mod misses;
 pub mod contents;
 pub mod integrations;
 pub mod opportunity;

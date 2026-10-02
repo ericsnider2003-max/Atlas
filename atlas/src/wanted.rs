@@ -166,14 +166,18 @@ pub fn ask_which() -> &'static str {
 
 /// Your answer to that.
 pub fn answer_to_ask(said: &str) -> Option<Wanted> {
-    let t = said.to_lowercase();
-    if ["listen", "just listen", "nothing", "no", "neither", "vent"].iter().any(|w| t.contains(w)) {
+    // By whole words (2 Oct 2026): "open notepad" holds "no" and was taken
+    // as "just listen", so the request after the question was lost -- and
+    // "know", "note", "nothing to do with it" the same way.
+    let t = format!(" {} ", crate::intent::normalize(said));
+    let has = |w: &&str| t.contains(&format!(" {w} "));
+    if ["listen", "just listen", "nothing", "no", "neither", "vent", "nope"].iter().any(has) {
         return Some(Wanted::Hearing);
     }
-    if ["think", "ideas", "solve", "options", "yes", "help", "fix"].iter().any(|w| t.contains(w)) {
+    if ["think", "thinking", "think it through", "ideas", "solve", "options", "yes", "help", "fix"].iter().any(has) {
         return Some(Wanted::Solutions);
     }
-    if ["both", "either", "up to you", "whatever"].iter().any(|w| t.contains(w)) {
+    if ["both", "either", "up to you", "whatever"].iter().any(has) {
         return Some(Wanted::Both);
     }
     None

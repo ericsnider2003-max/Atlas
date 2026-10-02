@@ -519,6 +519,8 @@ mod decision_list_remainder;
 mod errand_pause;
 #[path = "personal_atlas_is_its_own.rs"]
 mod personal_atlas_is_its_own;
+#[path = "learning_how_you_talk.rs"]
+mod learning_how_you_talk;
 #[path = "own_server_wireguard.rs"]
 mod own_server_wireguard;
 #[path = "launcher_line_endings.rs"]

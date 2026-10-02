@@ -735,7 +735,9 @@ impl Daemon<'_> {
                 // Ways Atlas can get better on the hardware he already has.
                 // `improve` listed them and nothing ever asked.
                 let free = self.free_wins();
-                hub::recommendations_page(&recs, None, &free)
+                // How you talk, and what went wrong this week (2 Oct 2026,
+                // `learning`).
+                with_block(hub::recommendations_page(&recs, None, &free), &self.how_you_talk_block(now))
             }
             Page::Status => {
                 let settings = crate::settings::registry(&self.tools_cfg());
@@ -3713,6 +3715,16 @@ impl Daemon<'_> {
                     field_of(f, "which"),
                     field_of(f, "drop").as_deref() == Some("1"),
                 );
+                hub::back_with(Page::Recommendations.href(), "", &said)
+            }
+            // A learned wording's Forget button (Improvements, `learning`).
+            "/hub/phrasebook" => {
+                let wording = field_of(f, "wording").unwrap_or_default();
+                let said = if wording.trim().is_empty() {
+                    "Nothing was named, so nothing was forgotten.".to_string()
+                } else {
+                    self.forget_phrase_from_hub(&wording)
+                };
                 hub::back_with(Page::Recommendations.href(), "", &said)
             }
             "/hub/help" => {

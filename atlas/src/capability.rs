@@ -343,6 +343,9 @@ pub fn all() -> Vec<Capability> {
         // doesn't hear you talk to Atlas, and "add your own capabilities".
         Capability { id: "camwatch", what: "watch you for a while and say when something changes, keeping nothing", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 44, runs: &[Needs::Camera], modules: &["camwatch"] },
         Capability { id: "callmute", what: "mute you on a call while you talk to me, or let the call hear me when you show me off", area: Hearing, state: Untested, needs: Some("a call on this laptop"), offline: true, added: 44, runs: &[Needs::Audio], modules: &["callmute"] },
+        // 2 Oct 2026, "Atlas doesn't really understand me".
+        Capability { id: "phrasebook", what: "learn the words you use for things from being corrected -- \"no, I meant open Spotify\" -- and do what you meant next time without guessing; \"what have you learned about how I talk\" lists them and \"forget that phrase\" drops one", area: Thinking, state: Untested, needs: None, offline: true, added: 45, runs: &[Needs::JustThinking], modules: &["phrasebook"] },
+        Capability { id: "misses", what: "keep a list of what it got wrong -- not understood, asked back, corrected, undone or misheard -- and read the week's back with how well it's been hearing you (\"what did you misunderstand this week\"); a mishearing you correct twice is put right from then on", area: Itself, state: Untested, needs: None, offline: true, added: 45, runs: &[Needs::JustThinking], modules: &["misses"] },
         Capability { id: "growth", what: "take down a new ability you ask me for, and keep it for your yes", area: Itself, state: Working, needs: None, offline: true, added: 44, runs: &[Needs::Files], modules: &["growth"] },
         Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
@@ -1552,7 +1555,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
 // 2 Oct 2026: `organize` (sorting a folder -- part of `system`), on top
 // of the other chat's 463.
-pub const MODULES_IN_TREE: usize = 465;
+// 2 Oct 2026: `phrasebook` and `misses` (learning how you talk, and what
+// went wrong). 465 -> 467.
+pub const MODULES_IN_TREE: usize = 467;
 
 /// Every module no capability claims, and why it is not one.
 ///

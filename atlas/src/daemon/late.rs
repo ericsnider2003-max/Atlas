@@ -2276,6 +2276,9 @@ impl<'a> Daemon<'a> {
     /// A turn heard through the current microphone, counted for or against
     /// it, so the ear that actually understands you wins (H13e).
     pub(super) fn heard_through_this_ear(&mut self, said: &str) {
+        // The turn knows it came by voice: a correction of it may be a
+        // mishearing (`learning`, 2 Oct 2026).
+        self.heard_by_voice(said);
         let understood = !matches!(self.parser.parse(said), Intent::Unknown(_)) || said.split_whitespace().count() >= 3;
         if let Some(line) = self.note_how_well_i_heard(understood) {
             self.heard_note = Some(line);
