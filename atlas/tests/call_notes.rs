@@ -159,8 +159,13 @@ fn a_finished_call_is_written_up_from_both_transcripts() {
     std::fs::write(dir.join("call-1-you.fixture"), "1\n00:00:01,000 --> 00:00:03,000\nShall we ship Friday?\n\n").unwrap();
     std::fs::write(dir.join("call-1-them.fixture"), "1\n00:00:04,000 --> 00:00:05,000\nFriday works.\n\n").unwrap();
     // Stands in for whisper: writes the timed transcript it was asked for.
-    let timed: atlas::tools::ExternalTool =
-        serde_yaml::from_str("command: sh\nargs: [\"-c\", \"cp {stem}.fixture {srt}\"]\nresult_file: \"{srt}\"\n").unwrap();
+    // `sh` and `cp` aren't on Windows; `cmd /c copy` is.
+    let stand_in = if cfg!(windows) {
+        "command: cmd\nargs: [\"/c\", \"copy /y {stem}.fixture {srt} >nul\"]\nresult_file: \"{srt}\"\n"
+    } else {
+        "command: sh\nargs: [\"-c\", \"cp {stem}.fixture {srt}\"]\nresult_file: \"{srt}\"\n"
+    };
+    let timed: atlas::tools::ExternalTool = serde_yaml::from_str(stand_in).unwrap();
     let done = Finished { app: "Zoom".into(), started: 1_790_000_000, ended: 1_790_000_600, yours: Some(you), theirs: Some(them) };
     let notes_dir = dir.join("notes");
     let path = write_up(&done, &timed, &Default::default(), None, &notes_dir).expect("written");

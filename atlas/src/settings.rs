@@ -159,7 +159,7 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
     ("Reaching outside this machine", "Anything that leaves the laptop: the web, your phone, your mail, a paid model."),
     ("Social", "Your social accounts' numbers and the people you watch: which of them Atlas reads on its own."),
     ("Looking for opportunities", "Gigs, grants and niches found once a day: where from, how many requests, and what makes the brief."),
-    ("Your devices", "Where your devices meet to carry things between them, and what this one is called. Set on the Sync page."),
+    ("Your devices", "Where your devices meet to carry things between them, what this one is called, and where Atlas's own source is. Set on the Sync page."),
 ];
 
 /// The settings that only take effect when Atlas starts, because what they
@@ -685,13 +685,15 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     // when empty, set here when it's somewhere unusual.
     items.push(Setting {
         key: "self_work.source_dir".into(),
-        name: "Where my source is".into(),
+        name: "Atlas's source".into(),
         what: "The folder holding Atlas's own source code, for fixing itself. Empty: I look for it.".into(),
         cost: "".into(),
         value: Value::Text(t.self_work.source_dir.clone()),
         default: Value::Text(t.self_work.source_dir.clone()),
         weight: Sensitive,
-        group: "What it may touch".into(),
+        // Not "What it may touch": that group was at twelve, and this is a
+        // place on this machine, like the sync folder, not a permission.
+        group: "Your devices".into(),
     });
     // Your own handles, for the Social page's refresh (29 Sep 2026).
     items.push(Setting {

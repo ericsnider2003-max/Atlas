@@ -287,3 +287,29 @@ fn a_bundle_written_before_this_existed_still_opens_as_personal() {
     assert!(atlas::sync::from_the_same_atlas(&b, "personal").is_ok());
     assert!(atlas::sync::from_the_same_atlas(&b, "homelab").is_err());
 }
+
+#[test]
+fn a_cloud_folder_the_machine_already_syncs_is_found_and_a_test_never_reaches_the_real_one() {
+    // H13i: with no folder set, a cloud folder this machine already syncs.
+    let home = std::env::temp_dir().join(format!("atlas-bestfolder-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    assert!(atlas::sync::best_folder_from(Some(&home), &[], None).is_none(), "found a cloud folder in an empty home");
+    std::fs::create_dir_all(home.join("Dropbox")).unwrap();
+    let (found, _) = atlas::sync::best_folder_from(Some(&home), &[], None).expect("Dropbox is found");
+    assert_eq!(found, home.join("Dropbox").join("Atlas sync"));
+    // OneDrive's own variable comes first.
+    std::fs::create_dir_all(home.join("od")).unwrap();
+    let (found, _) = atlas::sync::best_folder_from(Some(&home), &[home.join("od")], None).unwrap();
+    assert_eq!(found, home.join("od").join("Atlas sync"));
+    let _ = std::fs::remove_dir_all(&home);
+
+    // The mock machine has none, so a test's sync can't land in Eric's
+    // Dropbox (it did on 2 Oct), and the daemon and the hub ask the platform.
+    use atlas::platform::Platform;
+    assert!(plat().cloud_folder().is_none());
+    for module in ["daemon", "hubvault"] {
+        let src = crate::common::source_of(module);
+        assert!(!src.contains("sync::best_folder()"), "{module} reaches the real machine's cloud folder directly");
+    }
+}

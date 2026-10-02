@@ -2056,8 +2056,8 @@ impl<'a> Daemon<'a> {
         // cloud folder this machine already syncs.
         let mut dir = cfg.folder.trim().to_string();
         if dir.is_empty() {
-            match crate::sync::best_folder() {
-                Some((p, _)) => dir = p.display().to_string(),
+            match self.plat.cloud_folder() {
+                Some(p) => dir = p.display().to_string(),
                 // No folder: straight to your named devices (`carry_direct_only`).
                 None if self.has_named_peers() => return self.carry_direct_only(&cfg, now),
                 None => return NOWHERE_TO_SYNC.into(),

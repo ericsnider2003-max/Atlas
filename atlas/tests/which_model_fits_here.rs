@@ -453,6 +453,9 @@ fn having_a_model_but_no_server_is_said_rather_than_implied() {
     let models = &mut c.tools.as_mut().unwrap().models;
     models.dir = dir.display().to_string();
     models.server = None;
+    // A port nothing answers on: on a machine where Atlas is installed, its
+    // own llama-server is up on the shipped port and answers "running".
+    models.port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
     let p = plat();
     let mut d = daemon_with(&c, &p, "noserver-store");
 

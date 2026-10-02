@@ -193,6 +193,11 @@ impl MockPlatform {
 }
 
 impl Platform for MockPlatform {
+    /// A mock machine syncs no cloud folder (a test that wants one sets
+    /// `sync.folder`), so nothing a test does lands in the real one.
+    fn cloud_folder(&self) -> Option<std::path::PathBuf> {
+        None
+    }
     fn active_window(&self) -> Result<Option<ActiveWindow>> {
         Ok(self.active.borrow().clone())
     }

@@ -299,6 +299,13 @@ impl OsQuiet {
 }
 
 pub trait Platform {
+    /// A cloud folder this machine already syncs, for bundles when no
+    /// `sync.folder` is set (`sync::best_folder`, H13i). Behind the platform
+    /// so a test's mock machine has none: the real one is Eric's Dropbox.
+    fn cloud_folder(&self) -> Option<std::path::PathBuf> {
+        crate::sync::best_folder().map(|(p, _)| p)
+    }
+
     /// The focused window, or None if nothing is focused.
     fn active_window(&self) -> Result<Option<ActiveWindow>> {
         Ok(None)
