@@ -2202,7 +2202,7 @@ impl<'a> Daemon<'a> {
         let what = if what.trim().is_empty() {
             match self.thread.recent.iter().rev().map(|e| e.said.trim()).find(|s| !s.is_empty() && crate::growth::asks_for_an_ability(s).is_none()) {
                 Some(before) => before.trim_end_matches(['.', '?', '!']).to_string(),
-                None => return Some("Which ability? Say \"give yourself the ability to …\" and I'll write it down for your yes.".into()),
+                None => return Some("Which ability? Say \"give yourself the ability to\" and what it is, and I'll write it down for your yes.".into()),
             }
         } else {
             what

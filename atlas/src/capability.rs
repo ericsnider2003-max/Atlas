@@ -339,6 +339,11 @@ pub fn all() -> Vec<Capability> {
         // tell.
         Capability { id: "vision", what: "name what's in front of the camera, and tell faces apart", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["vision", "frames", "camera_ask"] },
         Capability { id: "callnotes", what: "notice a call, note your side, record the others only after they say yes, and write up who said what", area: Hearing, state: Untested, needs: Some("a call on this laptop"), offline: true, added: 31, runs: &[Needs::Audio], modules: &["callnotes", "callrec", "callwatch", "consent"] },
+        // Eric, 1 Oct 2026: "watch me for a five minute period", a call that
+        // doesn't hear you talk to Atlas, and "add your own capabilities".
+        Capability { id: "camwatch", what: "watch you for a while and say when something changes, keeping nothing", area: Seeing, state: Untested, needs: Some("the seeing models"), offline: true, added: 44, runs: &[Needs::Camera], modules: &["camwatch"] },
+        Capability { id: "callmute", what: "mute you on a call while you talk to me, or let the call hear me when you show me off", area: Hearing, state: Untested, needs: Some("a call on this laptop"), offline: true, added: 44, runs: &[Needs::Audio], modules: &["callmute"] },
+        Capability { id: "growth", what: "take down a new ability you ask me for, and keep it for your yes", area: Itself, state: Working, needs: None, offline: true, added: 44, runs: &[Needs::Files], modules: &["growth"] },
         Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
         Capability { id: "recovery", what: "get you back in when you've lost the way in", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files], modules: &["recovery", "codes"] },
@@ -1545,7 +1550,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 453;
+pub const MODULES_IN_TREE: usize = 456;
 
 /// Every module no capability claims, and why it is not one.
 ///

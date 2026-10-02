@@ -235,6 +235,16 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
     if atlas::attention::hear(phrase).is_some() {
         return true;
     }
+    // Read at the turn's front door, before the parser (1 Oct 2026): asking
+    // for an ability, watching, and being on a call.
+    if atlas::growth::asks_for_an_ability(phrase).is_some()
+        || atlas::growth::answer(phrase).is_some()
+        || atlas::growth::asks_for_the_list(phrase)
+        || atlas::camwatch::asks(phrase).is_some()
+        || atlas::callmute::asks(phrase).is_some()
+    {
+        return true;
+    }
     // While dictating, the parser is not consulted at all -- `dictate::parse`
     // reads the stop phrase itself, so a phrase that produces a `Stop` piece
     // is heard even though nothing in `commands.yaml` mentions it.

@@ -206,13 +206,13 @@ pub fn asks_for_the_list(said: &str) -> bool {
 pub fn noted(what: &str) -> String {
     format!(
         "I can't switch on a new ability by myself -- new abilities wait for your yes -- but I've written it \
-         down as a request: \"{what}\". Say \"build that ability\" to approve it and it goes on the build list; \
+         down as a request: \"{what}\". Say \"approve that ability\" and it goes on the build list; \
          \"what abilities have I asked for\" lists them."
     )
 }
 
 /// The truth when the model says it can't gain abilities (`backed`).
-pub const CAN_GROW: &str = "Actually, I can take a request for a new ability: say \"give yourself the ability to …\" and I'll write it down for your yes, then it goes on the build list. Bug fixes I make myself; new abilities wait for you.";
+pub const CAN_GROW: &str = "Actually, I can take a request for a new ability: say \"give yourself the ability to read my texts out loud\" (or whatever you'd like) and I'll write it down for your yes, then it goes on the build list. Bug fixes I make myself; new abilities wait for you.";
 
 #[cfg(test)]
 mod tests {

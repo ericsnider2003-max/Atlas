@@ -332,6 +332,13 @@ fn a_research_request_that_names_its_subject_is_not_asked_what_it_means() {
     let c = config_with_a_camera(&dir);
     let p = plat();
     let mut d = Daemon::new(&c, &p, None, Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
-    let r = d.turn("research ways an assistant can safely add new abilities, then present them to me for approval", 100);
-    assert!(!r.contains("nothing copied, nothing selected"), "{r}");
+    let named = d.turn("research ways an assistant can safely add new abilities, then present them to me for approval", 100);
+    // It is a research request (not something else that happened to answer).
+    let asked = parser().parse("research ways an assistant can safely add new abilities, then present them to me for approval");
+    let Intent::Research(topic) = asked else { panic!("not research: {asked:?}") };
+    assert!(topic.starts_with("ways an assistant can safely add new abilities"), "{topic}");
+    // The research went ahead on the subject it named, rather than asking
+    // what "them" meant.
+    assert!(named.contains("safely add new abilities"), "{named}");
+    assert!(!named.contains("nothing copied"), "{named}");
 }
