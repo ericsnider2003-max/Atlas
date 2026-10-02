@@ -949,3 +949,5 @@ mod reminders_ring_with_the_app_closed;
 mod reaching_the_iphone_with_atlas_closed;
 #[path = "apple_weather_first.rs"]
 mod apple_weather_first;
+#[path = "friends_get_nothing_of_erics.rs"]
+mod friends_get_nothing_of_erics;
