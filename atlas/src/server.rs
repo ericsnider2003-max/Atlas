@@ -667,6 +667,9 @@ pub enum Action {
     /// The phone's calendar, read on the phone and sent here to be merged;
     /// the answer carries Atlas's own events back (H7).
     PhoneCalendar(String),
+    /// The iPhone app's push address, for its own Atlas to carry to the
+    /// laptop (item 15).
+    PushToken(String),
     /// A voice's sample, to hear it before downloading it (`voicepick`).
     VoiceSample(String),
     /// The Accounts page's vault forms: set a first passphrase, change it,
@@ -1194,6 +1197,7 @@ pub fn route(r: &Request) -> Option<Action> {
         ("GET", "/hub/talk.json") => Some(Action::TalkJson),
         ("GET", "/hub/changed.json") => Some(Action::Changed(query_field(&r.query, "p").unwrap_or_default())),
         ("POST", "/hub/calendar/phone") => Some(Action::PhoneCalendar(r.body.clone())),
+        ("POST", "/hub/push-token") => Some(Action::PushToken(r.body.clone())),
         ("GET", "/hub/voice-sample") => Some(Action::VoiceSample(query_field(&r.query, "id")?)),
         ("GET", path) => crate::hub::route(path).map(|p| {
             // Only the pages that read their query get it; everything else

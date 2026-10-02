@@ -230,6 +230,36 @@ pub struct Session {
     pub on: Where,
 }
 
+/// Each free dimension's name in `model`'s inputs, with the size `shapes`
+/// gives it there: what `with_dimension_override` fixes.
+fn free_dimensions(model: &Path, shapes: &[(String, Vec<i64>)]) -> Result<Vec<(String, i64)>, String> {
+    let s = ort::session::Session::builder()
+        .and_then(|mut b| b.commit_from_file(model))
+        .map_err(|e| format!("couldn't open {}: {e}", model.display()))?;
+    let mut out: Vec<(String, i64)> = Vec::new();
+    for input in s.inputs() {
+        let Some((_, want)) = shapes.iter().find(|(n, _)| n == input.name()) else { continue };
+        if let ort::value::ValueType::Tensor { dimension_symbols, .. } = input.dtype() {
+            out.extend(free_dimensions_of(dimension_symbols, want));
+        }
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+/// The named dimensions of one input, paired with the sizes wanted.
+pub fn free_dimensions_of(symbols: &[String], want: &[i64]) -> Vec<(String, i64)> {
+    symbols.iter().zip(want).filter(|(s, _)| !s.is_empty()).map(|(s, w)| (s.clone(), *w)).collect()
+}
+
+/// Should a model stay on the NPU, from its first run beside the processor's?
+/// Only when it gives the same answer (cosine 0.99 or better) and is faster
+/// -- the NPU is there to make Atlas quicker, never slower.
+pub fn worth_keeping(npu: std::time::Duration, cpu: std::time::Duration, agree: f32) -> bool {
+    agree >= 0.99 && npu < cpu
+}
+
 /// The `reshape_input` value for fixed shapes: `name[1,16],other[1,16]`.
 pub fn reshape_value(shapes: &[(String, Vec<i64>)]) -> String {
     shapes
@@ -254,6 +284,15 @@ impl Session {
     pub fn open(root: &Path, model: &Path, shapes: &[(String, Vec<i64>)], want: Where) -> Result<Session, String> {
         let e = engine(root)?;
         let mut b = ort::session::Session::builder().map_err(|e| e.to_string())?;
+        // The sizes fixed in the graph itself, by the names the model gives
+        // its free dimensions ("batch_size", "sequence_length"): measured on
+        // the laptop (2 Oct 2026), the provider's own `reshape_input` alone
+        // left them free, the NPU compiler refused the graph ("upper bounds
+        // are not specified"), and every sentence fell back -- 326 ms against
+        // tract's 20. Fixed here, before any provider sees the graph.
+        for (sym, size) in free_dimensions(model, shapes)? {
+            b = b.with_dimension_override(&sym, size).map_err(|e| e.to_string())?;
+        }
         let mut on = Where::Cpu;
         if want == Where::Npu && e.npu {
             let cache = cache_dir();
@@ -267,6 +306,13 @@ impl Session {
         }
         let s = b.commit_from_file(model).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()))?;
         Ok(Session { s: Mutex::new(s), on })
+    }
+
+    /// Run, timed: the values and how long the model took.
+    pub fn run_timed(&self, inputs: Vec<In>) -> Result<(Vec<Vec<f32>>, std::time::Duration), String> {
+        let t = std::time::Instant::now();
+        let out = self.run(inputs)?;
+        Ok((out, t.elapsed()))
     }
 
     /// Run, returning each output's values as f32, in the model's order.

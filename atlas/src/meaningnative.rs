@@ -37,6 +37,8 @@ pub struct Native {
     /// On the NPU (item 20), one fixed length per bucket: `None` once a
     /// length was tried there and refused, so it stays on `tract`.
     npu: HashMap<usize, Option<(crate::npu::Session, Vec<String>)>>,
+    /// Lengths whose first NPU run was checked against the processor's.
+    npu_judged: Vec<usize>,
     root: std::path::PathBuf,
 }
 
@@ -50,7 +52,7 @@ impl Native {
         let raw = std::fs::read_to_string(&v).ok()?;
         let vocab = raw.lines().enumerate().map(|(i, w)| (w.to_string(), i as i64)).collect();
         let proto = tract_onnx::onnx().model_for_path(&m).ok()?;
-        Some(Native { vocab, proto, compiled: HashMap::new(), npu: HashMap::new(), root: root.to_path_buf() })
+        Some(Native { vocab, proto, compiled: HashMap::new(), npu: HashMap::new(), npu_judged: Vec::new(), root: root.to_path_buf() })
     }
 
     /// Are the files there?
@@ -125,8 +127,36 @@ impl Native {
         if names.len() > 2 {
             inputs.push(crate::npu::In::I64(name("token_type", 2), vec![1, n as i64], vec![0; n]));
         }
-        let hidden = s.run(inputs).ok()?.into_iter().next()?;
-        Some(pool_flat(&hidden, real, n))
+        let (out, npu_took) = s.run_timed(inputs).ok()?;
+        let v = pool_flat(out.first()?, real, n);
+        // The first sentence at this length runs on both, once: the NPU stays
+        // only if it gives the processor's answer and is quicker.
+        if !self.npu_judged.contains(&n) {
+            self.npu_judged.push(n);
+            let t = std::time::Instant::now();
+            let cpu = self.embed_where_tract(ids, n);
+            let cpu_took = t.elapsed();
+            let agree = cpu.as_ref().map(|c| crate::npu::agreement(c, &v)).unwrap_or(0.0);
+            if !crate::npu::worth_keeping(npu_took, cpu_took, agree) {
+                crate::outln!(
+                    "search stays on the processor for {n}-word texts: the NPU took {} ms against {} ms (answers agree to {agree:.3})",
+                    npu_took.as_millis(),
+                    cpu_took.as_millis()
+                );
+                self.npu.insert(n, None);
+                return cpu;
+            }
+        }
+        Some(v)
+    }
+
+    /// `tract`'s answer for already-tokenized ids at length `n`.
+    fn embed_where_tract(&mut self, ids: &[i64], n: usize) -> Option<Vec<f32>> {
+        if !self.compiled.contains_key(&n) {
+            let m = shaped(self.proto.clone(), n).ok()?;
+            self.compiled.insert(n, m);
+        }
+        pooled(self.compiled.get(&n)?, ids, n).ok()
     }
 }
 

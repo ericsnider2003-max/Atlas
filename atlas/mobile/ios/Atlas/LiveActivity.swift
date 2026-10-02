@@ -17,7 +17,13 @@ final class LiveActivity {
     private var lastSaid: Int64 = 0
     private var askedToNotify = false
 
+    /// The reminders handed to iOS when the app last went to the background.
+    private var ahead: [LiveState.Upcoming] = []
+
     func begin() {
+        // In front again: Atlas rings its own reminders, so the ones handed
+        // to iOS are taken back -- never both (item 15).
+        Reminders.takeBack()
         // Runs whether or not Live Activities are allowed: the widgets' glance
         // is refreshed by the same loop.
         timer?.invalidate()
@@ -37,6 +43,11 @@ final class LiveActivity {
             if let g = await AtlasCore.shared.glance(), GlanceStore.keep(g) {
                 WidgetCenter.shared.reloadAllTimelines()
             }
+            // Reminders still to come, handed to iOS: they ring on time with
+            // the app closed (item 15). The last list read stands in if Atlas
+            // doesn't answer in time.
+            let upcoming = await AtlasCore.shared.live()?.upcoming ?? self.ahead
+            await Reminders.handOver(upcoming)
             await activity?.end(nil, dismissalPolicy: .immediate)
             activity = nil
         }
@@ -51,6 +62,7 @@ final class LiveActivity {
             WidgetCenter.shared.reloadAllTimelines()
         }
         guard let s = await AtlasCore.shared.live() else { return }
+        ahead = s.upcoming ?? []
         await tell(s.said ?? [])
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let state = AtlasActivity.ContentState(
@@ -93,5 +105,34 @@ final class LiveActivity {
             c.sound = .default
             try? await center.add(UNNotificationRequest(identifier: "atlas-said-\(line.id)", content: c, trigger: nil))
         }
+    }
+}
+
+/// Reminders handed to iOS while Atlas is away (item 15). Each is a local
+/// notification at its time -- the phone's own scheduler, nothing online.
+enum Reminders {
+    static let prefix = "atlas-reminder-"
+
+    static func handOver(_ upcoming: [LiveState.Upcoming]) async {
+        let center = UNUserNotificationCenter.current()
+        _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        await takeBackNow()
+        let now = Date().timeIntervalSince1970
+        for r in upcoming where Double(r.due) > now + 1 {
+            let c = UNMutableNotificationContent()
+            c.title = "Atlas"
+            c.body = r.text
+            c.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(r.due) - now, repeats: false)
+            try? await center.add(UNNotificationRequest(identifier: "\(prefix)\(r.id)-\(r.due)", content: c, trigger: trigger))
+        }
+    }
+
+    static func takeBack() { Task { await takeBackNow() } }
+
+    private static func takeBackNow() async {
+        let center = UNUserNotificationCenter.current()
+        let ids = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 }

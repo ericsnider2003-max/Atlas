@@ -1182,6 +1182,8 @@ pub fn everything_else() -> Vec<Piece> {
         picture_making(),
         // The NPU engine, on a computer with an Intel NPU (item 20).
         crate::npu::pieces(),
+        // curl with HTTP/2, for Apple's push service (item 15).
+        crate::apns::curl_piece().into_iter().collect(),
     ]
         .into_iter()
         .flatten()

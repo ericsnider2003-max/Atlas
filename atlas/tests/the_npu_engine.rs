@@ -109,3 +109,24 @@ fn the_runtime_path_gives_the_same_answers_as_tract() {
     let out = vs.run(vec![npu::In::F32(vnames[0].clone(), vec![1, 200, 80], frames)]).unwrap();
     assert_eq!(out[0].len(), 512);
 }
+
+#[test]
+fn the_free_dimensions_are_fixed_by_their_own_names() {
+    // MiniLM's export: input_ids is [batch_size, sequence_length].
+    let fixed = npu::free_dimensions_of(&["batch_size".into(), "sequence_length".into()], &[1, 32]);
+    assert_eq!(fixed, vec![("batch_size".to_string(), 1), ("sequence_length".to_string(), 32)]);
+    // An already-fixed dimension has no name and is left alone.
+    let fixed = npu::free_dimensions_of(&["".into(), "frames".into(), "".into()], &[1, 200, 80]);
+    assert_eq!(fixed, vec![("frames".to_string(), 200)]);
+}
+
+#[test]
+fn the_npu_is_kept_only_when_it_agrees_and_is_quicker() {
+    use std::time::Duration;
+    let ms = Duration::from_millis;
+    // Measured on the laptop before the fix: 326 ms against 20 -- dropped.
+    assert!(!npu::worth_keeping(ms(326), ms(20), 1.0));
+    assert!(npu::worth_keeping(ms(8), ms(20), 0.9999));
+    // Quicker but a different answer: dropped.
+    assert!(!npu::worth_keeping(ms(8), ms(20), 0.9));
+}

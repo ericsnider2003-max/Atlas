@@ -1859,6 +1859,14 @@ impl<'a> Daemon<'a> {
         lines
     }
 
+    /// This phone's push address, carried to your other devices as a sync
+    /// event so the laptop can reach it with Atlas closed (item 15, `apns`).
+    pub(crate) fn carry_push_address(&mut self, token: &str, env: &str, now: u64) {
+        let (id, field, to) = crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
+        self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+        let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+    }
+
     /// Record what changed about your add-ons since your other devices were
     /// last told, as ordinary sync events (`plugins::changes_to_carry`).
     fn note_addon_changes(&mut self, now: u64) {
@@ -1897,6 +1905,12 @@ impl<'a> Daemon<'a> {
                     let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok();
                     if let Some(s) = crate::groups::take_synced(&self.store, me.as_ref(), id, to, sealed) {
                         said.push(s);
+                    }
+                }
+                // An iPhone's push address (item 15), from your own devices only.
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::apns::SYNC_PREFIX) => {
+                    if let Some(s) = crate::apns::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                        self.log.info(&s);
                     }
                 }
                 crate::sync::What::Changed { id, field, to } if id.starts_with(crate::plugins::SYNC_PREFIX) => {

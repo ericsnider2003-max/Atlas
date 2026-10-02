@@ -943,3 +943,7 @@ mod greet_once;
 mod the_npu_engine;
 #[path = "apple_first_then_atlas.rs"]
 mod apple_first_then_atlas;
+#[path = "reminders_ring_with_the_app_closed.rs"]
+mod reminders_ring_with_the_app_closed;
+#[path = "reaching_the_iphone_with_atlas_closed.rs"]
+mod reaching_the_iphone_with_atlas_closed;
