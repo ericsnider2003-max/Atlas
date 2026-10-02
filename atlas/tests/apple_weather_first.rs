@@ -38,9 +38,9 @@ fn apples_answer_is_read_and_said_with_its_mark() {
 
 #[test]
 fn apples_condition_codes_become_words() {
-    assert_eq!(applewx::sky_words("MostlyClear"), "mostly clear");
-    assert_eq!(applewx::sky_words("HeavyRain"), "heavy rain");
-    assert_eq!(applewx::sky_words("SunShowers"), "sun showers");
+    assert_eq!(applewx::apple_sky_words("MostlyClear"), "mostly clear");
+    assert_eq!(applewx::apple_sky_words("HeavyRain"), "heavy rain");
+    assert_eq!(applewx::apple_sky_words("SunShowers"), "sun showers");
 }
 
 #[test]

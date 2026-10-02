@@ -51,13 +51,13 @@ pub const PLUGIN: &str = "tools/npu/onnxruntime_providers_openvino_plugin.dll";
 pub const PROVIDER: &str = "OpenVINOExecutionProvider";
 
 /// Compiled models, kept between starts.
-pub fn cache_dir() -> PathBuf {
+fn cache_dir() -> PathBuf {
     crate::roots::data_dir().join("cache").join("npu")
 }
 
 /// Intel's plugin package, pinned. Windows on x86-64 only: it's the only
 /// build Intel publishes.
-pub fn piece() -> Option<Piece> {
+pub fn npu_piece() -> Option<Piece> {
     if !cfg!(all(windows, target_arch = "x86_64")) {
         return None;
     }
@@ -75,7 +75,7 @@ pub fn piece() -> Option<Piece> {
 /// Intel NPU. Nothing anywhere else.
 pub fn pieces() -> Vec<Piece> {
     if has_intel_npu() {
-        piece().into_iter().collect()
+        npu_piece().into_iter().collect()
     } else {
         Vec::new()
     }
@@ -163,7 +163,7 @@ struct Engine {
 static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
 
 /// The runtime library: the one the Kokoro voice brought.
-pub fn runtime_path(root: &Path) -> Option<PathBuf> {
+fn runtime_path(root: &Path) -> Option<PathBuf> {
     let (ort, _) = crate::kokoro::runtime_files()?;
     let p = root.join(crate::kokoro::RUNTIME_DIR).join(ort);
     p.is_file().then_some(p)
@@ -206,7 +206,7 @@ pub fn npu_ready(root: &Path) -> bool {
 }
 
 /// Why the NPU isn't used, in words, or `None` when it is.
-pub fn why_not(root: &Path) -> Option<String> {
+fn why_not_on_npu(root: &Path) -> Option<String> {
     if !has_intel_npu() && cfg!(windows) {
         return Some("this computer has no Intel NPU".into());
     }
@@ -255,7 +255,7 @@ fn fixed_copy(model: &Path, shapes: &[(String, Vec<i64>)]) -> Option<PathBuf> {
 /// start (each try costs a few seconds). Keyed by the NPU engine's version
 /// too, so a new engine is tried afresh.
 fn verdict_key(model: &Path, shapes: &[(String, Vec<i64>)]) -> String {
-    let version = piece().map(|p| p.sha256.get(..12).unwrap_or("").to_string()).unwrap_or_default();
+    let version = npu_piece().map(|p| p.sha256.get(..12).unwrap_or("").to_string()).unwrap_or_default();
     format!("{}|{}|{version}", model.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(), reshape_value(shapes))
 }
 
@@ -423,7 +423,7 @@ pub fn check(root: &Path) -> String {
         "Intel NPU: {}",
         if has_intel_npu() { "yes" } else if cfg!(windows) { "no" } else { "not looked for (not Windows)" }
     ));
-    match why_not(root) {
+    match why_not_on_npu(root) {
         None => out.push("NPU engine: ready".into()),
         Some(why) => out.push(format!("NPU engine: not in use -- {why}")),
     }

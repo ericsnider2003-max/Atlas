@@ -150,7 +150,7 @@ fn b64url(bytes: &[u8]) -> String {
 }
 
 /// The signed token Apple asks for: ES256 over `{"alg","kid"}.{"iss","iat"}`.
-pub fn signed_token(key_pem: &str, key_id: &str, team_id: &str, now: u64) -> Result<String, String> {
+pub fn provider_token(key_pem: &str, key_id: &str, team_id: &str, now: u64) -> Result<String, String> {
     use p256::ecdsa::signature::Signer;
     use p256::pkcs8::DecodePrivateKey;
     let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem).map_err(|e| format!("the push key isn't a key Apple gives: {e}"))?;
@@ -163,7 +163,7 @@ pub fn signed_token(key_pem: &str, key_id: &str, team_id: &str, now: u64) -> Res
 
 /// What goes to the phone: the title, and the line `phone::body_for` would
 /// give (no detail unless you allowed it, and never for something private).
-pub fn payload(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> String {
+pub fn push_payload(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> String {
     let detail = if note.private || !cfg.include_detail {
         "Ask me when you're ready.".to_string()
     } else {
@@ -197,7 +197,7 @@ pub fn curl_piece() -> Option<Piece> {
 }
 
 /// The curl to use: the fetched one on Windows, the system's elsewhere.
-pub fn curl(root: &Path) -> PathBuf {
+fn curl(root: &Path) -> PathBuf {
     let ours = root.join("tools").join("curl").join(if cfg!(windows) { "curl.exe" } else { "curl" });
     if ours.is_file() {
         ours
@@ -208,7 +208,7 @@ pub fn curl(root: &Path) -> PathBuf {
 
 /// The arguments for one push. The token goes in a header file rather than
 /// on the command line, where other programs could read it.
-pub fn curl_args(headers_file: &Path, device: &Device) -> Vec<String> {
+pub fn push_args(headers_file: &Path, device: &Device) -> Vec<String> {
     let host = if device.env == "sandbox" { SANDBOX } else { PRODUCTION };
     vec![
         "--http2".into(),
@@ -257,8 +257,8 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
         return Err("no iPhone has given Atlas its push address yet".into());
     }
     let pem = std::fs::read_to_string(&key_path).map_err(|e| format!("couldn't read the push key: {e}"))?;
-    let jwt = signed_token(&pem, &cfg.apns.key_id, &cfg.apns.team_id, crate::store::now())?;
-    let body = payload(note, cfg);
+    let jwt = provider_token(&pem, &cfg.apns.key_id, &cfg.apns.team_id, crate::store::now())?;
+    let body = push_payload(note, cfg);
     let headers = crate::roots::data_dir().join("tmp").join(format!("apns-{}.txt", std::process::id()));
     let _ = std::fs::create_dir_all(headers.parent().unwrap_or(&state));
     let priority = if note.urgency == crate::notify::Urgency::Urgent { "10" } else { "5" };
@@ -299,7 +299,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
 fn run_curl(root: &Path, headers: &Path, d: &Device, body: &str) -> Outcome {
     use std::io::Write;
     let mut child = match crate::tools::command(curl(root))
-        .args(curl_args(headers, d))
+        .args(push_args(headers, d))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

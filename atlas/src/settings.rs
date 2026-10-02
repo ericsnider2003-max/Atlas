@@ -687,7 +687,7 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         key: "self_work.source_dir".into(),
         name: "Atlas's source".into(),
         what: "The folder holding Atlas's own source code, for fixing itself. Empty: I look for it.".into(),
-        cost: "".into(),
+        cost: "Self-repair changes whatever code is in this folder, so point it only at Atlas's own.".into(),
         value: Value::Text(t.self_work.source_dir.clone()),
         default: Value::Text(t.self_work.source_dir.clone()),
         weight: Sensitive,

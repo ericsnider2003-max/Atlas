@@ -14,7 +14,7 @@ use atlas::npu;
 fn the_plugin_is_pinned_and_lands_where_atlas_looks() {
     // Built for every platform so the pin is checked everywhere; only
     // Windows fetches it.
-    if let Some(p) = npu::piece() {
+    if let Some(p) = npu::npu_piece() {
         assert_eq!(p.sha256.len(), 64);
         assert_eq!(p.bytes, 117_914_126);
         assert_eq!(p.key_path(), npu::PLUGIN);

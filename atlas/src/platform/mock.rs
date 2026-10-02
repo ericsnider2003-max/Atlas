@@ -131,7 +131,7 @@ impl MockPlatform {
     /// Seed the fake OS clipboard, standing in for the person having copied
     /// something. What `read_clipboard` then hands back.
     /// The disk, memory and battery this mock machine reports.
-    pub fn set_readings(&self, r: crate::health::Readings) {
+    pub fn set_readings_for_test(&self, r: crate::health::Readings) {
         *self.readings.borrow_mut() = r;
     }
 

@@ -452,7 +452,7 @@ pub fn ask_atlas_to_stop(root: &Path, wait: std::time::Duration) -> bool {
 
 /// The same, saying why in the request (`goodbye::UPDATING` for a new
 /// version moving in), so the record of runs says it (`whystopped`, item 33).
-pub fn ask_atlas_to_stop_because(root: &Path, wait: std::time::Duration, why: &str) -> bool {
+fn ask_atlas_to_stop_because(root: &Path, wait: std::time::Duration, why: &str) -> bool {
     if !atlas_running(root) {
         return true;
     }

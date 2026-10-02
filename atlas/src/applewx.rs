@@ -38,7 +38,7 @@ pub struct Reading {
 }
 
 /// Apple's condition codes ("MostlyClear", "HeavyRain") in plain words.
-pub fn sky_words(code: &str) -> String {
+pub fn apple_sky_words(code: &str) -> String {
     let words = match code {
         "Clear" => "clear",
         "MostlyClear" => "mostly clear",
@@ -93,7 +93,7 @@ pub fn from_apple_json(json: &str) -> Option<Reading> {
                         f(d, "temperatureMax")?,
                         f(d, "temperatureMin")?,
                         f(d, "precipitationChance").unwrap_or(0.0),
-                        sky_words(d.get("conditionCode").and_then(|c| c.as_str()).unwrap_or("")),
+                        apple_sky_words(d.get("conditionCode").and_then(|c| c.as_str()).unwrap_or("")),
                     ))
                 })
                 .collect()
@@ -103,7 +103,7 @@ pub fn from_apple_json(json: &str) -> Option<Reading> {
         now_c,
         feels_c: f(cur, "temperatureApparent").unwrap_or(now_c),
         wind_kmh: f(cur, "windSpeed").unwrap_or(0.0),
-        sky: sky_words(cur.get("conditionCode").and_then(|c| c.as_str()).unwrap_or("")),
+        sky: apple_sky_words(cur.get("conditionCode").and_then(|c| c.as_str()).unwrap_or("")),
         days,
     })
 }

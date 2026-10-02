@@ -26,7 +26,7 @@ fn unb64url(s: &str) -> Vec<u8> {
 #[test]
 fn the_token_is_es256_with_the_key_id_and_team_and_it_verifies() {
     let (pem, public) = a_key();
-    let jwt = apns::signed_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", 1_790_000_000).unwrap();
+    let jwt = apns::provider_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", 1_790_000_000).unwrap();
     let parts: Vec<&str> = jwt.split('.').collect();
     assert_eq!(parts.len(), 3);
     let header: serde_json::Value = serde_json::from_slice(&unb64url(parts[0])).unwrap();
@@ -46,10 +46,10 @@ fn the_token_is_es256_with_the_key_id_and_team_and_it_verifies() {
 
 #[test]
 fn a_file_that_isnt_a_key_is_said_plainly() {
-    let e = apns::signed_token("not a key", "G3D89YSJD4", "Z6NSM9AXB7", 1).unwrap_err();
+    let e = apns::provider_token("not a key", "G3D89YSJD4", "Z6NSM9AXB7", 1).unwrap_err();
     assert!(e.contains("isn't a key Apple gives"), "{e}");
     // While a real key signs.
-    assert_eq!(apns::signed_token(&a_key().0, "G3D89YSJD4", "Z6NSM9AXB7", 1).map(|t| t.split('.').count()), Ok(3));
+    assert_eq!(apns::provider_token(&a_key().0, "G3D89YSJD4", "Z6NSM9AXB7", 1).map(|t| t.split('.').count()), Ok(3));
 }
 
 #[test]
@@ -84,22 +84,22 @@ fn the_phones_address_is_only_taken_from_your_own_devices() {
 fn the_lock_screen_gets_the_title_and_never_the_detail_unless_allowed() {
     let note = atlas::notify::Note::new("Your render finished", "card 4111 1111 1111 1111 on the invoice", atlas::notify::Urgency::Routine, 1);
     let cfg = atlas::phone::PhoneConfig::default();
-    let p: serde_json::Value = serde_json::from_str(&apns::payload(&note, &cfg)).unwrap();
+    let p: serde_json::Value = serde_json::from_str(&apns::push_payload(&note, &cfg)).unwrap();
     assert_eq!(p["aps"]["alert"]["title"], "Your render finished");
     assert_eq!(p["aps"]["alert"]["body"], "Ask me when you're ready.");
-    assert!(!apns::payload(&note, &cfg).contains("4111"));
+    assert!(!apns::push_payload(&note, &cfg).contains("4111"));
 }
 
 #[test]
 fn the_signed_token_goes_in_a_header_file_not_on_the_command_line() {
     let d = apns::Device { name: "p".into(), token: "c".repeat(64), env: "production".into(), since: 0 };
-    let args = apns::curl_args(std::path::Path::new("/tmp/h.txt"), &d);
+    let args = apns::push_args(std::path::Path::new("/tmp/h.txt"), &d);
     assert!(args.contains(&"--http2".to_string()));
     assert!(args.contains(&"@/tmp/h.txt".to_string()));
     assert!(!args.iter().any(|a| a.contains("bearer")));
     assert!(args.last().unwrap().starts_with("https://api.push.apple.com/3/device/"));
     let sandbox = apns::Device { env: "sandbox".into(), ..d };
-    assert!(apns::curl_args(std::path::Path::new("h"), &sandbox).last().unwrap().starts_with(apns::SANDBOX));
+    assert!(apns::push_args(std::path::Path::new("h"), &sandbox).last().unwrap().starts_with(apns::SANDBOX));
 }
 
 #[test]

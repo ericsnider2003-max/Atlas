@@ -255,7 +255,7 @@ fn automation_a_rule_on_a_real_machine_reading_fires_through_the_tick() {
     let p = plat();
     // The reading comes through the platform, so the mock machine says what
     // its disk holds (the real one was read here before 2 Oct).
-    p.set_readings(atlas::health::Readings { disk_free_gb: 120.0, disk_total_gb: 500.0, ..Default::default() });
+    p.set_readings_for_test(atlas::health::Readings { disk_free_gb: 120.0, disk_total_gb: 500.0, ..Default::default() });
     let mut d = daemon(&c, &p, tmp("auto"));
     let first = d.tick(WED);
     let at_4 = d.tick(WED + 240);

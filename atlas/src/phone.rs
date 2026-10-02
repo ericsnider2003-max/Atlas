@@ -215,7 +215,7 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
 
 /// Is an iPhone reachable through Apple's push service: the key set up, and
 /// at least one phone has given its address?
-pub fn apple_can_reach(cfg: &PhoneConfig) -> bool {
+fn apple_can_reach(cfg: &PhoneConfig) -> bool {
     cfg.apns.ready(&crate::roots::install_root()).is_ok()
         && !crate::apns::Devices::load(&crate::roots::state_dir()).devices.is_empty()
 }

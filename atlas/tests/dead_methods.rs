@@ -57,10 +57,6 @@ use std::collections::{BTreeSet, HashSet};
 ///
 /// The `KNOWN` list of `new_capabilities_are_wired.rs`, for methods.
 const TEST_ONLY_METHODS: &[&str] = &[
-    // 2 Oct 2026 (decision 2): which model answered the last phone request,
-    // for the tests; on the phone the hand-over itself is written to the log
-    // (`applebrain::AppleFirst::chat`).
-    "applebrain::last_answered_by",
     // --- 28 Sep: the second scan ----------------------------------------------
     //
     // `serve_once` lost its one caller when settings-only mode moved to the

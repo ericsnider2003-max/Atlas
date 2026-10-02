@@ -73,15 +73,15 @@ fn a_longer_setting_of_your_own_is_left_alone() {
 
 #[test]
 fn the_model_server_is_lowered_only_while_a_reply_plays() {
-    use atlas::voicefirst::{model_lowered, model_started, speaking};
+    use atlas::voicefirst::{model_lowered_for_test, model_started, speaking};
     model_started(0); // no real process: only the state is switched
-    assert!(!model_lowered());
+    assert!(!model_lowered_for_test());
     speaking(true);
-    assert!(model_lowered());
+    assert!(model_lowered_for_test());
     speaking(true); // a second sentence changes nothing
-    assert!(model_lowered());
+    assert!(model_lowered_for_test());
     speaking(false);
-    assert!(!model_lowered());
+    assert!(!model_lowered_for_test());
 }
 
 #[test]

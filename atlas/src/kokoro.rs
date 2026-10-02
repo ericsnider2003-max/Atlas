@@ -513,17 +513,6 @@ pub fn thread_count() -> i32 {
     (n / 2).clamp(2, 4).min(n) as i32
 }
 
-/// Load Kokoro for the install at `root` on a thread of its own, so the
-/// first reply doesn't wait the two to four seconds loading takes. Nothing
-/// when it isn't here: `engine` says so when it's first needed.
-pub fn warm_up(root: PathBuf) {
-    if check(&root).is_ok() {
-        std::thread::spawn(move || {
-            let _ = engine(&root);
-        });
-    }
-}
-
 // ---------------------------------------------------------------- one per process
 
 type Loaded = Result<Arc<Mutex<Kokoro>>, String>;

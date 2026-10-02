@@ -119,7 +119,7 @@ fn string_field(b: &[u8], n: u32) -> Option<String> {
 }
 
 /// A shape message with exactly these sizes.
-fn shape_of(sizes: &[i64]) -> Vec<u8> {
+fn shape_message(sizes: &[i64]) -> Vec<u8> {
     let mut shape = Vec::new();
     for s in sizes {
         let mut dim = Vec::new();
@@ -145,7 +145,7 @@ pub fn with_fixed_inputs(model: &[u8], shapes: &[(String, Vec<i64>)]) -> Option<
                 rewrite(ty, TYPE_TENSOR, &mut |tensor| {
                     // The shape replaced whole; a tensor with none gets one.
                     let has_shape = fields(tensor)?.iter().any(|f| f.number == TENSOR_SHAPE);
-                    let new_shape = shape_of(sizes);
+                    let new_shape = shape_message(sizes);
                     if has_shape {
                         rewrite(tensor, TENSOR_SHAPE, &mut |_| Some(new_shape.clone()))
                     } else {
@@ -161,7 +161,16 @@ pub fn with_fixed_inputs(model: &[u8], shapes: &[(String, Vec<i64>)]) -> Option<
             Some(new)
         })
     })?;
-    (fixed == shapes.len()).then_some(out)
+    if fixed != shapes.len() {
+        return None;
+    }
+    // Read back what was written: every named input carries exactly the
+    // sizes asked for, or the copy isn't handed to the NPU compiler.
+    let written = input_shapes(&out)?;
+    shapes
+        .iter()
+        .all(|(n, want)| written.iter().any(|(m, got)| m == n && got == want))
+        .then_some(out)
 }
 
 /// The sizes each input of `model` declares: `(name, dims)`, a dimension

@@ -135,7 +135,7 @@ fn an_optimization_run_measures_and_offers_what_it_found() {
     let p = plat();
     // A machine with room, reported through the platform (2 Oct): the real
     // one's memory was read here, and under a build it was "nearly full".
-    p.set_readings(atlas::health::Readings { disk_free_gb: 120.0, disk_total_gb: 500.0, ram_used_gb: 6.0, ram_total_gb: 16.0, ..Default::default() });
+    p.set_readings_for_test(atlas::health::Readings { disk_free_gb: 120.0, disk_total_gb: 500.0, ram_used_gb: 6.0, ram_total_gb: 16.0, ..Default::default() });
     let mut d = daemon_at(&c, &p, "optimize");
     // (The long way Eric said it goes through the language model, which
     // picks this tool by its description; the short ways need no model.)

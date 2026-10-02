@@ -76,12 +76,12 @@ fn apple_answers_first_and_atlas_takes_what_it_refuses_one_request_at_a_time() {
 
     let r = b.chat(&talk("tell me a joke about cats"), &mut |_| true).unwrap();
     assert_eq!(r.text, "From Apple's model.");
-    assert_eq!(b.last_answered_by(), Some("apple"));
+    assert_eq!(b.last_answered_by_for_test(), Some("apple"));
 
     // A guardrail refusal: this request goes to Atlas's own model...
     let r = b.chat(&talk("how do I pick the lock on my own shed"), &mut |_| true).unwrap();
     assert_eq!(r.text, "From Atlas's model.");
-    assert_eq!(b.last_answered_by(), Some("atlas"));
+    assert_eq!(b.last_answered_by_for_test(), Some("atlas"));
     // ...and the next goes back to Apple's.
     let r = b.chat(&talk("write me a two-line poem"), &mut |_| true).unwrap();
     assert_eq!(r.text, "From Apple's model.");
@@ -97,20 +97,20 @@ fn apple_answers_first_and_atlas_takes_what_it_refuses_one_request_at_a_time() {
 fn some_requests_never_go_to_apples_model() {
     let _g = alone();
     // World knowledge and anything current.
-    assert_eq!(applebrain::skip(&talk("who is the prime minister of Canada"), true), Some(Skip::WorldKnowledge));
-    assert_eq!(applebrain::skip(&talk("what's the weather today"), true), Some(Skip::WorldKnowledge));
-    assert_eq!(applebrain::skip(&talk("is the iPhone 17 Pro worth it"), true), Some(Skip::WorldKnowledge));
+    assert_eq!(applebrain::skip_apple(&talk("who is the prime minister of Canada"), true), Some(Skip::WorldKnowledge));
+    assert_eq!(applebrain::skip_apple(&talk("what's the weather today"), true), Some(Skip::WorldKnowledge));
+    assert_eq!(applebrain::skip_apple(&talk("is the iPhone 17 Pro worth it"), true), Some(Skip::WorldKnowledge));
     // Over Apple's ~4K context.
     let long = "word ".repeat(4_000);
-    assert_eq!(applebrain::skip(&talk(&long), true), Some(Skip::TooLong));
+    assert_eq!(applebrain::skip_apple(&talk(&long), true), Some(Skip::TooLong));
     // Work that has to go through one of Atlas's tools.
     let mut act = talk("set a timer for ten minutes");
     act.tools = vec![serde_json::json!({"type": "function", "function": {"name": "timer"}})];
-    assert_eq!(applebrain::skip(&act, true), Some(Skip::NeedsATool));
+    assert_eq!(applebrain::skip_apple(&act, true), Some(Skip::NeedsATool));
     // No Apple model on this phone (Android, an older iPhone).
-    assert_eq!(applebrain::skip(&talk("hi"), false), Some(Skip::NotOnThisPhone));
+    assert_eq!(applebrain::skip_apple(&talk("hi"), false), Some(Skip::NotOnThisPhone));
     // Everyday talk is Apple's.
-    assert_eq!(applebrain::skip(&talk("help me word a thank-you note to my aunt"), true), None);
+    assert_eq!(applebrain::skip_apple(&talk("help me word a thank-you note to my aunt"), true), None);
 }
 
 #[test]
@@ -146,8 +146,8 @@ fn the_request_and_answer_are_the_shapes_the_shell_reads_and_writes() {
     assert_eq!(v["turns"].as_array().unwrap().len(), 2);
     assert_eq!(v["turns"][1]["content"], "hello there");
     assert_eq!(v["max_tokens"], 200);
-    assert_eq!(applebrain::read_answer(code::OK, r#"{"text":" Sure. "}"#), applebrain::Apple::Answered("Sure.".into()));
-    assert_eq!(applebrain::read_answer(code::TOO_LONG, ""), applebrain::Apple::TooLong);
-    assert_eq!(applebrain::read_answer(code::UNAVAILABLE, ""), applebrain::Apple::Unavailable);
-    assert!(matches!(applebrain::read_answer(code::OK, "not json"), applebrain::Apple::Failed(_)));
+    assert_eq!(applebrain::read_apple_answer(code::OK, r#"{"text":" Sure. "}"#), applebrain::Apple::Answered("Sure.".into()));
+    assert_eq!(applebrain::read_apple_answer(code::TOO_LONG, ""), applebrain::Apple::TooLong);
+    assert_eq!(applebrain::read_apple_answer(code::UNAVAILABLE, ""), applebrain::Apple::Unavailable);
+    assert!(matches!(applebrain::read_apple_answer(code::OK, "not json"), applebrain::Apple::Failed(_)));
 }

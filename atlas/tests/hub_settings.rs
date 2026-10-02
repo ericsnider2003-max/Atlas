@@ -85,6 +85,17 @@ fn the_permissions_page_gathers_everything_consequential() {
 /// was always there, finally shows up.
 const DELIBERATELY_DIFFERENT: &[(&str, &str)] = &[
     (
+        "tts_engine.engine",
+        "kokoro in the shipped file since Phase 0.8 (1 Oct 2026): Kokoro is the voice Atlas ships with and \
+         piper the fallback when its model isn't there yet. The struct default stays piper, the engine that \
+         needs nothing downloaded beyond its own voice.",
+    ),
+    (
+        "voice_settings.voice",
+        "af_bella in the shipped file, a Kokoro preset, because Kokoro ships as the engine (Phase 0.8). The \
+         struct default stays a piper voice, to match the struct's own engine.",
+    ),
+    (
         "self_work.enabled",
         "on in the shipped file by Eric's ruling of 30 Sep 2026: bug fixes Atlas may make itself, landing \
          still waits for his yes. It's the Self-repair switch, and from 1 Oct 2026 the one that's read. \

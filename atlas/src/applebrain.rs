@@ -30,7 +30,7 @@
 //! older iPhones never register one, so they always use Atlas's own model.
 
 use crate::brain::{ChatReply, ChatRequest, Llm, Role};
-use crate::error::{AtlasError, Result};
+use crate::error::Result;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Mutex;
 
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn atlas_mobile_apple_model(f: Option<AppleFn>) {
 }
 
 /// Is Apple's model there to ask?
-pub fn registered() -> bool {
+fn registered() -> bool {
     APPLE.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 
@@ -103,7 +103,7 @@ pub enum Apple {
 
 /// About four characters a token: Apple's tokenizer isn't available here,
 /// and over-estimating only sends a long request to Atlas's own model.
-pub fn tokens_in(req: &ChatRequest) -> usize {
+fn tokens_in(req: &ChatRequest) -> usize {
     let chars: usize = req.messages.iter().map(|m| m.content.len()).sum::<usize>()
         + req.tools.iter().map(|t| t.to_string().len()).sum::<usize>();
     chars / 4 + 8 * req.messages.len()
@@ -115,7 +115,7 @@ fn last_said(req: &ChatRequest) -> &str {
 }
 
 /// Should this request skip Apple's model? `None`: ask it first.
-pub fn skip(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
+pub fn skip_apple(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
     if !apple_here {
         return Some(Skip::NotOnThisPhone);
     }
@@ -135,7 +135,7 @@ pub fn skip(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
 /// A question about the world, or anything current, that a small on-device
 /// model isn't built for (Apple: "not designed to be a chatbot for general
 /// world knowledge").
-pub fn needs_world_knowledge(said: &str) -> bool {
+fn needs_world_knowledge(said: &str) -> bool {
     use crate::freshness::Shelf;
     let s = said.to_lowercase();
     if matches!(crate::freshness::shelf_for(&s), Shelf::Volatile | Shelf::Quick) {
@@ -150,7 +150,7 @@ pub fn needs_world_knowledge(said: &str) -> bool {
 }
 
 /// A refusal written as an answer.
-pub fn soft_refusal(text: &str) -> bool {
+fn soft_refusal(text: &str) -> bool {
     let t = text.trim().to_lowercase().replace('\u{2019}', "'");
     const SAYS_NO: &[&str] = &[
         "i can't help with", "i cannot help with", "i can't assist with", "i cannot assist with", "i'm not able to help",
@@ -180,7 +180,7 @@ pub fn request_json(req: &ChatRequest) -> String {
 }
 
 /// What the shell's code and buffer come to.
-pub fn read_answer(code: i32, out: &str) -> Apple {
+pub fn read_apple_answer(code: i32, out: &str) -> Apple {
     match code {
         code::OK => match serde_json::from_str::<serde_json::Value>(out) {
             Ok(v) => match v.get("text").and_then(|t| t.as_str()) {
@@ -204,7 +204,7 @@ fn ask_apple(req: &ChatRequest) -> Apple {
     let mut buf = vec![0u8; ANSWER_BYTES];
     let rc = unsafe { f(body.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
     let out = unsafe { CStr::from_ptr(buf.as_ptr().cast()) }.to_string_lossy().into_owned();
-    read_answer(rc, &out)
+    read_apple_answer(rc, &out)
 }
 
 /// The iPhone's brain: Apple's model first, Atlas's own model for each
@@ -227,7 +227,7 @@ impl AppleFirst {
     }
 
     /// Who answered the last request: "apple" or "atlas".
-    pub fn last_answered_by(&self) -> Option<&'static str> {
+    pub fn last_answered_by_for_test(&self) -> Option<&'static str> {
         self.last.lock().ok().and_then(|g| *g)
     }
 }
@@ -239,7 +239,7 @@ impl Llm for AppleFirst {
             max_tokens: 512,
             ..Default::default()
         };
-        if skip(&req, registered()).is_none() {
+        if skip_apple(&req, registered()).is_none() {
             if let Apple::Answered(t) = ask_apple(&req) {
                 self.answered_by("apple");
                 return Ok(t);
@@ -254,7 +254,7 @@ impl Llm for AppleFirst {
     }
 
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
-        if skip(req, registered()).is_none() {
+        if skip_apple(req, registered()).is_none() {
             match ask_apple(req) {
                 Apple::Answered(t) => {
                     self.answered_by("apple");
@@ -287,7 +287,3 @@ impl Llm for AppleFirst {
     }
 }
 
-/// For tests and the shell's own checks: the error when nothing answers.
-pub fn nothing_answered() -> AtlasError {
-    AtlasError::Platform("neither Apple's model nor Atlas's own answered".into())
-}
