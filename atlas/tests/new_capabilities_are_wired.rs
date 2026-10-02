@@ -134,7 +134,6 @@ const KNOWN: &[&str] = &[
     // no-list itself stays enforced by tests/guards.rs.
     "checks::is_refused",
     // 26 Sep 2026: its only caller was trading-system code that left personal Atlas on 26 Sep 2026 (Eric: personal Atlas keeps general trading knowledge and nothing specific to his own trading system). General market knowledge, kept for the next trading caller.
-    "claims::over",
     // connectivity::deferral_message came off 21 Sep 2026: `research()`'s
     // offline branch hand-wrote its own deferral sentence beside a comment
     // calling it "the spoken half"; it now calls `deferral_message`, so the

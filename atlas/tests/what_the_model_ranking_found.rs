@@ -196,9 +196,12 @@ fn get_to_know_me_fills_the_stores_from_your_answers() {
     d.turn("skip", NOW + 30);
     d.turn("posting twice a week", NOW + 40);
     d.turn("Desktop and Dropbox", NOW + 50);
+    d.turn("video editing and T-shirt design", NOW + 55);
     let end = d.turn("no", NOW + 60);
     assert!(end.contains("Here's what I kept") && end.contains("YouTube channel"), "{end}");
-    assert_eq!(d.facts.facts.len(), before + 6, "name, three projects, push, folders");
+    assert!(end.contains("I'll look out for video editing, t-shirt design."), "{end}");
+    assert_eq!(d.facts.facts.len(), before + 8, "name, three projects, push, folders, and the hunt's two lists");
+    assert_eq!(atlas::hunt::Interests::from_facts(&d.facts).want, vec!["video editing", "t-shirt design"]);
     assert!(d.interview.is_none());
     // A question part way through ends it rather than being kept as an answer.
     d.turn("get to know me", NOW + 100);

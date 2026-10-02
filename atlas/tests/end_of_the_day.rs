@@ -92,6 +92,7 @@ fn asked_by_voice_it_reads_your_list() {
     assert!(said.contains("Done: post the T-shirt designs."), "{said}");
     assert!(said.contains("Slipping: edit the bakery video, carried 3 days."), "{said}");
     assert!(said.contains("Tomorrow, start with edit the bakery video."), "{said}");
+    assert_eq!(said.matches("Done:").count(), 1, "{said}");
 }
 
 // ---------- one thing I noticed (idea 11) ----------

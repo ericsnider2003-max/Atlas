@@ -22,7 +22,8 @@ fn it_checks_in_once_halfway_and_says_what_the_record_shows() {
     assert!(!s.check_in_due(1000 + 4000));
     assert!(s.over(1000 + 7200));
     let log = atlas::worklog::summarise(&[]);
-    assert_eq!(how_it_went(&s, 1000 + 3600, &log, 2), "That's the session on the edit: 1 h (ended early). I held 2 things for you -- say \"what did I miss\" to hear them.");
+    assert_eq!(how_it_went(&s, 1000 + 3600, &log, "Your build finished."), "That's the session on the edit: 1 h (ended early). While you worked: Your build finished.");
+    assert_eq!(how_it_went(&s, 1000 + 7200, &log, ""), "That's the session on the edit: 2 h.");
 }
 
 #[test]

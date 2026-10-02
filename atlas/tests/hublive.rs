@@ -217,8 +217,10 @@ fn an_api_action_that_is_not_a_page_does_not_render_a_broken_shell() {
     let c = cfg();
     let p = plat();
     let mut d = daemon(&c, &p, "notapage");
+    // 2 Oct 2026: /health is the plain API another Atlas reads, and answers
+    // "ok" in plain text rather than the "isn't a page" shell it fell into.
     let reply = atlas::hublive::reply(&mut d, Action::Health);
-    assert!(reply.body.contains("isn't a page"));
+    assert_eq!(reply.body, "ok");
     // Not "no mention of the word Health" — that is now the name of a page and
     // sits in the menu of every screen. What must never appear is the action
     // printed at you, which is what `{:?}` on the enum would produce.

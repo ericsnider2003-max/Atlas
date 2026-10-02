@@ -391,7 +391,6 @@ const ORPHAN_METHODS: &[&str] = &[
     // 26 Sep 2026, claims::over and session::is_overlap: their only caller was
     // trading-system code that left personal Atlas (Eric: general trading
     // knowledge only). Kept for the next trading caller.
-    "claims::over",
     // backends::spec came off 22 Sep 2026: deleted. A redundant lookup accessor
     // (`self.specs.iter().find(...)`) that nothing called; `choose`/`eligible`
     // reach the spec table directly. Also removed from KNOWN in

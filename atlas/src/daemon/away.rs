@@ -364,8 +364,12 @@ impl<'a> Daemon<'a> {
         self.proactive.quiet_until = 0;
         let ended = t.min(s.until);
         let log = crate::worklog::summarise(&self.worklog.between(s.started, ended));
-        let held = self.outbox.ready(t, &self.notify_cfg()).len();
-        let said = crate::worksession::how_it_went(&s, ended, &log, held);
+        // What was held back during it, said now and taken off the outbox
+        // -- the same hand-over the welcome back does.
+        let cfg = self.notify_cfg();
+        let held = self.outbox.collect(t, &cfg);
+        let held = if held.is_empty() { String::new() } else { crate::notify::spoken(&held) };
+        let said = crate::worksession::how_it_went(&s, ended, &log, &held);
         let off = crate::localclock::offset_secs();
         let clock = |u: u64| {
             let l = (u as i64 + off).rem_euclid(86_400) as u64;
@@ -379,6 +383,17 @@ impl<'a> Daemon<'a> {
             }
         }
         said
+    }
+
+    /// "Why did Nvidia move today?" -- a research question with today's date
+    /// on it, so the answer is about today's move and not a year-old one
+    /// (the general market desk: general trading knowledge only).
+    pub(super) fn why_moved_help(&mut self, said: &str, t: u64) -> Option<String> {
+        let what = crate::tradeday::why_it_moved(said)?;
+        let off = crate::localclock::offset_secs();
+        let (y, m, d) = crate::civil::civil_from_days(((t as i64) + off).div_euclid(86_400));
+        let month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][(m - 1) as usize];
+        Some(self.research(&format!("why {what} moved on {d} {month} {y}: the news and figures behind the move")))
     }
 
     /// The last eight days of the work log, reduced for `daily::one_thing_noticed`.

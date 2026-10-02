@@ -774,7 +774,14 @@ impl<'a> Daemon<'a> {
             crate::getknow::Next::Done { keep, say } => (keep, say, false),
         };
         for f in keep {
-            self.facts.learn(f, t);
+            // The hunt's two lists are lists, kept whole under their own
+            // names -- `learn` would merge the second into the first, their
+            // words being the same.
+            if f.name == crate::facts::slug(crate::hunt::FACT_WANT) || f.name == crate::facts::slug(crate::hunt::FACT_SKILLS) {
+                self.facts.put(f);
+            } else {
+                self.facts.learn(f, t);
+            }
         }
         let _ = self.facts.save(&self.store);
         if more {

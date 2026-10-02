@@ -1147,7 +1147,7 @@ impl<'a> Daemon<'a> {
         let Some(llm) = self.llm.clone() else { return kept_line };
         let sample = crate::recall::summary_sample(text, 2500);
         let source = text.to_string();
-        let out = dir.join(format!("{name}.summary.md"));
+        let summary_at = dir.join(format!("{name}.summary.md"));
         let title = name.clone();
         let work: crew::Work = Box::new(move |ctl| {
             if ctl.checkpoint() {
@@ -1161,7 +1161,7 @@ impl<'a> Daemon<'a> {
             if said.is_empty() {
                 return Err("the summary had nothing in it I could check against the document".into());
             }
-            let _ = std::fs::write(&out, format!("# {title}, summarised\n\n{said}\n"));
+            let _ = std::fs::write(&summary_at, format!("# {title}, summarised\n\n{said}\n"));
             Ok(format!("{title}, in short: {said}"))
         });
         if self.hand_off("summary", crate::store::now(), work, None, SpeakPolicy::Always) {

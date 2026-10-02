@@ -112,7 +112,9 @@ pub fn halfway(s: &Session, now: u64) -> String {
 }
 
 /// How it went: what the work log shows for the session's span.
-pub fn how_it_went(s: &Session, ended: u64, log: &crate::worklog::Summary, held: usize) -> String {
+/// `held` is what was held back during it, already said in words (empty
+/// when nothing was).
+pub fn how_it_went(s: &Session, ended: u64, log: &crate::worklog::Summary, held: &str) -> String {
     let span = ended.saturating_sub(s.started);
     let mut out = format!("That's the session on {}: {}", s.what, crate::worklog::duration_words(span));
     if ended < s.until {
@@ -131,8 +133,8 @@ pub fn how_it_went(s: &Session, ended: u64, log: &crate::worklog::Summary, held:
             out.push_str(&format!(" You switched about {:.0} times an hour.", (log.switches as f64 / hours).max(1.0)));
         }
     }
-    if held > 0 {
-        out.push_str(&format!(" I held {held} thing{} for you -- say \"what did I miss\" to hear them.", if held == 1 { "" } else { "s" }));
+    if !held.trim().is_empty() {
+        out.push_str(&format!(" While you worked: {}", held.trim()));
     }
     out
 }
