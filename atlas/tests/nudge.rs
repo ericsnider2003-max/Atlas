@@ -244,3 +244,15 @@ fn a_commitment_outranks_a_greeting() {
     let out = n.consider(T0 + 8 * 3600 + 5 * DAY, 8, 0, 0).unwrap();
     assert_eq!(out.trigger, Trigger::Stalled);
 }
+
+#[test]
+fn gone_half_an_hour_is_away_not_drifting() {
+    // 30 Sep 2026: "Looks like we've slowed down" eight times overnight to an
+    // empty room.
+    let mut n = nudger();
+    n.track(Goal::new("ads", "the ad review", T0).offering("the ad review"));
+    assert!(beyond_greeting(&mut n, T0, 14, 3600, atlas::nudge::DRIFT_AWAY_SECS - 1).is_some_and(|o| o.trigger == Trigger::Drifting));
+    let mut n = nudger();
+    n.track(Goal::new("ads", "the ad review", T0).offering("the ad review"));
+    assert!(beyond_greeting(&mut n, T0, 14, 3600, 6 * 3600).map_or(true, |o| o.trigger != Trigger::Drifting));
+}

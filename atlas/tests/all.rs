@@ -961,3 +961,15 @@ mod the_npu_engine;
 mod apple_first_then_atlas;
 #[path = "sorting_a_folder.rs"]
 mod sorting_a_folder;
+#[path = "end_of_the_day.rs"]
+mod end_of_the_day;
+#[path = "lets_work.rs"]
+mod lets_work;
+#[path = "after_the_call.rs"]
+mod after_the_call;
+#[path = "the_plain_api_answers.rs"]
+mod the_plain_api_answers;
+#[path = "market_desk.rs"]
+mod market_desk;
+#[path = "video_studio.rs"]
+mod video_studio;

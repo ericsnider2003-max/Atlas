@@ -161,7 +161,6 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // given a forced one -- it looks alive only because other modules define
     // `check`.
     "explain::check",
-    "facts::slug",
     "faithful::check",
     // `feeds::text_of` left 29 Sep 2026: `social::watchlist` now calls it as
     // `crate::feeds::text_of` to read Mastodon posts and feed titles, a real

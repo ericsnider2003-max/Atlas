@@ -92,3 +92,29 @@ fn asked_by_voice_the_answer_is_checked_before_it_is_said() {
     assert!(!out.contains("90 days"), "the figure its passage doesn't hold is dropped: {out}");
     assert!(out.contains("I left out 1 sentence"), "{out}");
 }
+
+// ---------- a summary on read ----------
+
+#[test]
+fn a_long_document_is_sampled_from_start_middle_and_end() {
+    let words: Vec<String> = (0..3000).map(|i| format!("w{i}")).collect();
+    let text = words.join(" ");
+    let s = atlas::recall::summary_sample(&text, 500);
+    assert!(s.starts_with("[The start]\nw0 w1"), "{}", &s[..40]);
+    let mid = s.split("[The middle]\n").nth(1).unwrap();
+    let first: usize = mid.split_whitespace().next().unwrap().trim_start_matches('w').parse().unwrap();
+    assert!((1000..2000).contains(&first), "the middle starts at word {first}");
+    assert!(s.contains("[The end]") && s.trim_end().ends_with("w2999"));
+    assert!(s.chars().count() < 1700);
+    // Odd whitespace doesn't split a character.
+    let odd = "\u{3000}".repeat(2000) + &"é ".repeat(2000);
+    let _ = atlas::recall::summary_sample(&odd, 500);
+    assert_eq!(atlas::recall::summary_sample("short text", 500), "short text");
+}
+
+#[test]
+fn a_summary_sentence_with_a_figure_the_document_lacks_is_taken_out() {
+    let doc = "The lease runs 12 months. Rent is 1,450 a month.";
+    let said = atlas::recall::summary_checked("It's a 12 month lease. Rent is 1,450. Deposits total 3,900.", doc);
+    assert_eq!(said, "It's a 12 month lease. Rent is 1,450.");
+}

@@ -73,7 +73,7 @@ fn number(word: &str) -> Option<u64> {
 
 /// How long, from "for five minutes", "for 10 mins", "for half an hour",
 /// "for an hour", "for 90 seconds".
-fn length_in(said: &str) -> Option<u64> {
+pub(crate) fn length_in(said: &str) -> Option<u64> {
     let t = plain(said);
     if t.contains("half an hour") || t.contains("half hour") {
         return Some(30 * 60);

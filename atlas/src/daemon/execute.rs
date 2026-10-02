@@ -1080,7 +1080,7 @@ impl<'a> Daemon<'a> {
         if b.is_empty() { tail } else { format!("{head} {tail}") }
     }
 
-    fn on_queued(&mut self) -> String {
+    pub(crate) fn on_queued(&mut self) -> String {
         // Used to answer only about posts waiting to be sent, while
         // `crew::queued`, `crew::in_hand` and `crew::why_waiting` --
         // written for exactly this question -- had no caller at all.

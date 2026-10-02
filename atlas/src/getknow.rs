@@ -4,7 +4,7 @@
 //! Atlas's own records on the laptop showed every store about you empty --
 //! no saved facts, no projects, no traits -- and an assistant with nothing
 //! to work from has nothing new to say, so it talks about itself. This asks
-//! six short questions, one at a time, and keeps each answer as something
+//! seven short questions, one at a time, and keeps each answer as something
 //! you said (`facts::Kind::You`, `Project`, `Instruction`, `Reference` --
 //! never `Noticed`): who to call you, what you're working on, your day,
 //! what to push you on, which folders matter, and what to connect. At the
@@ -24,6 +24,7 @@ pub enum Slot {
     Day,
     Push,
     Folders,
+    Money,
     Connect,
 }
 
@@ -33,6 +34,7 @@ pub const QUESTIONS: &[(Slot, &str)] = &[
     (Slot::Day, "What does your day look like -- when do you usually work, film, and switch off?"),
     (Slot::Push, "What should I push you on? Habits, posting, deadlines -- whatever you want me to keep you honest about."),
     (Slot::Folders, "Which folders hold your work -- Desktop, Documents, Dropbox, somewhere else?"),
+    (Slot::Money, "What kinds of extra-money work should I look out for -- a few words each, like T-shirt design or video editing?"),
     (Slot::Connect, "Last one: want to connect your email and calendar so I can keep track of them? Yes or no."),
 ];
 
@@ -200,8 +202,34 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
             let line = format!("Their work is in: {a}");
             vec![(Fact::new("where their work is", &line, &line, Kind::Reference, now), format!("Where your work is: {}.", clipped(&said_back(a), 25)))]
         }
+        // What to hunt for (why-stale idea 8): the short pieces, as the
+        // opportunity hunt's own two lists, so "look for" and "my skills
+        // are" start from what you said here.
+        Slot::Money => {
+            let items: Vec<String> = pieces(&without_money_lead(a))
+                .into_iter()
+                .filter(|p| p.split_whitespace().count() <= 6)
+                .map(|p| p.to_lowercase())
+                .collect();
+            if items.is_empty() {
+                return Vec::new();
+            }
+            let line = format!("I'll look out for {}.", items.join(", "));
+            vec![
+                (crate::hunt::Interests::fact(crate::hunt::FACT_WANT, &items, now), line),
+                (crate::hunt::Interests::fact(crate::hunt::FACT_SKILLS, &items, now), String::new()),
+            ]
+        }
         Slot::Connect => Vec::new(),
     }
+}
+
+/// "I'm good at T-shirt design and video editing" is about the last part.
+fn without_money_lead(answer: &str) -> String {
+    let a = answer.trim();
+    let low = a.to_ascii_lowercase();
+    const LEADS: &[&str] = &["i'm good at ", "im good at ", "i am good at ", "look for ", "look out for ", "anything in ", "things like ", "stuff like "];
+    LEADS.iter().find_map(|l| low.strip_prefix(l).map(|_| a[l.len()..].to_string())).unwrap_or_else(|| a.to_string())
 }
 
 /// Does this answer say yes?
@@ -225,7 +253,7 @@ impl Interview {
         (
             Interview::default(),
             format!(
-                "Six quick questions so I know what you're working on -- skip any you like, or tell me to stop. {}",
+                "Seven quick questions so I know what you're working on -- skip any you like, or tell me to stop. {}",
                 QUESTIONS[0].1
             ),
         )
@@ -242,7 +270,9 @@ impl Interview {
         if !skipped(said) {
             for (f, line) in facts_from(slot, said, now) {
                 keep.push(f);
-                self.kept.push(line);
+                if !line.is_empty() {
+                    self.kept.push(line);
+                }
             }
             if slot == Slot::Connect {
                 extra = if said_yes(said) {

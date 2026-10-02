@@ -635,12 +635,34 @@ impl Daemon<'_> {
                 crate::yourchanges::forget(&crate::roots::config_dir(), &file, &path)
                     .map(|_| "Put back to how it shipped.".to_string()),
             ),
+            // The plain API another Atlas reads (`elsewhere::ask`: "how's the
+            // homelab Atlas?"). These were routed and then fell through to
+            // "That isn't a page", so every check-in read HTML as its answer
+            // (2 Oct 2026).
+            Action::Health => Reply::ok("ok"),
+            Action::Status => Reply::ok(self.api_status()),
+            Action::Outstanding => Reply::ok(
+                crate::brief::from_backlog(&self.backlog).iter().map(|i| i.headline()).collect::<Vec<_>>().join("\n"),
+            ),
+            Action::Queued => Reply::ok(self.on_queued()),
+            Action::Say(text) => {
+                let _ = self.hub_post("/hub/talk", &[("text".to_string(), text)]);
+                Reply::ok("heard")
+            }
             // Everything else on this port belongs to the API, not the hub.
             _ => Reply::html(hub::shell(
                 "Atlas",
                 "<p class=note>That isn't a page.</p>",
             )),
         }
+    }
+
+    /// One line: running, what's in hand, what's waiting.
+    fn api_status(&self) -> String {
+        let doing = self.crew.active();
+        let waiting = self.crew.queued();
+        let paused = if self.attention.is_paused() { " Paused." } else { "" };
+        format!("Running. {doing} errand{} in hand, {waiting} waiting.{paused}", if doing == 1 { "" } else { "s" })
     }
 
     fn hub_page(&mut self, page: Page) -> String {

@@ -82,3 +82,19 @@ fn erics_own_answers_are_read_back_turned_round_and_short() {
     let work = facts_from(Slot::Work, "the bakery, my YouTube channel and Atlas", 0);
     assert_eq!(work.iter().map(|w| w.1.as_str()).collect::<Vec<_>>(), vec!["You're working on the bakery.", "You're working on your YouTube channel.", "You're working on Atlas."]);
 }
+
+/// The seventh question fills the opportunity hunt's two lists, so it has
+/// something of yours to look for (why-stale idea 8).
+#[test]
+fn what_to_look_out_for_feeds_the_opportunity_hunt() {
+    use atlas::getknow::{facts_from, Slot};
+    let f = facts_from(Slot::Money, "I'm good at T-shirt design, video editing and selling on Etsy", 0);
+    assert_eq!(f[0].1, "I'll look out for t-shirt design, video editing, selling on etsy.");
+    let mut book = atlas::facts::Book::default();
+    for (fact, _) in f {
+        book.put(fact);
+    }
+    let you = atlas::hunt::Interests::from_facts(&book);
+    assert_eq!(you.want, vec!["t-shirt design", "video editing", "selling on etsy"]);
+    assert_eq!(you.skills, you.want);
+}

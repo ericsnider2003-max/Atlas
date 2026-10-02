@@ -238,3 +238,50 @@ impl Journal {
 
 /// Words a line here must never use: this is about process, not markets.
 pub const NEVER_SAYS: &[&str] = &["buy", "sell", "long", "short", "entry", "target", "stop loss", "bullish", "bearish"];
+
+/// The scheduled releases inside a day, said for the pre-market check
+/// (why-stale idea 7, the general market desk, 1 Oct 2026): the ones that
+/// move markets (impact 2 and 3) from `market::events`' checked tables, in
+/// time order, at your clock. `None` when there are none, or the tables
+/// refuse the month.
+pub fn releases_in(events: &[crate::market::events::Event], from_ms: i64, to_ms: i64, offset_secs: i64) -> Option<String> {
+    let mut today: Vec<&crate::market::events::Event> =
+        events.iter().filter(|e| e.at >= from_ms && e.at < to_ms && e.impact >= 2).collect();
+    if today.is_empty() {
+        return None;
+    }
+    today.sort_by_key(|e| e.at);
+    let said: Vec<String> = today
+        .iter()
+        .take(6)
+        .map(|e| {
+            let local = (e.at / 1000 + offset_secs).rem_euclid(86_400);
+            let (h, m) = (local / 3600, (local % 3600) / 60);
+            let (h12, ap) = match h {
+                0 => (12, "am"),
+                1..=11 => (h, "am"),
+                12 => (12, "pm"),
+                _ => (h - 12, "pm"),
+            };
+            format!("{} ({}) at {h12}:{m:02} {ap}{}", e.name, e.currency, if e.impact >= 3 { ", a big one" } else { "" })
+        })
+        .collect();
+    Some(format!("Scheduled today: {}.", said.join("; ")))
+}
+
+/// "Why did Nvidia move today?", "why is the S&P down", "why did gold drop":
+/// the thing asked about, for a dated research question. `None` when it isn't
+/// that question.
+pub fn why_it_moved(said: &str) -> Option<String> {
+    let t = said.trim().trim_end_matches(['?', '.', '!']).to_ascii_lowercase();
+    let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ");
+    let rest = ["why did ", "why is ", "why's ", "why are "].iter().find_map(|p| t.strip_prefix(p))?;
+    const MOVES: &[&str] = &[
+        " move today", " moving today", " move", " moving", " up today", " down today", " up", " down", " drop today",
+        " drop", " dropping", " jump today", " jump", " fall today", " fall", " falling", " rally", " rallying",
+        " spike", " tank", " tanking", " crash", " sell off", " surge",
+    ];
+    let what = MOVES.iter().find_map(|m| rest.strip_suffix(m))?.trim().trim_start_matches("the ").trim();
+    let what = what.strip_suffix(" stock").unwrap_or(what).trim();
+    (!what.is_empty() && what.split_whitespace().count() <= 4).then(|| what.to_string())
+}

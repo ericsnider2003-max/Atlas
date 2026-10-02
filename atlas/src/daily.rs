@@ -660,3 +660,209 @@ pub fn worth_saying_again(now_hour: u32, said: Option<(u32, u64)>, t: u64) -> bo
         }
     }
 }
+
+// ---------- the evening wrap-up and the Friday review ----------
+//
+// The why-stale report, idea 2 (1 Oct 2026): at the end of the day, what got
+// done, what slipped, and tomorrow's first move; on Fridays, the week in
+// numbers. From what Atlas already holds -- your list, the work log, the
+// jobs it ran -- and nothing guessed: an empty part is left out, not padded.
+
+/// The week, in numbers.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Week {
+    /// Seconds at the machine, Monday to now.
+    pub active_secs: u64,
+    /// Days with at least half an hour at the machine.
+    pub days_worked: u32,
+    /// Stretches of 25 minutes or more on one thing.
+    pub focus_blocks: usize,
+    /// Things on your list finished this week.
+    pub finished: usize,
+}
+
+/// One day, closed.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Wrap {
+    /// Finished today, in your list's words.
+    pub finished: Vec<String>,
+    /// Still open, and for how many days each has been carried.
+    pub carried: Vec<(String, u32)>,
+    /// Jobs Atlas ran for you today.
+    pub handled: usize,
+    /// Seconds at the machine today.
+    pub active_secs: u64,
+    /// Where the time went, most first.
+    pub top: Vec<(String, u64)>,
+    /// The longest stretch on one thing: what, and how long.
+    pub longest_focus: Option<(String, u64)>,
+    /// Tomorrow's piece of the push you asked for ("your habits"), said as
+    /// tomorrow's first move when nothing has slipped.
+    pub push: Option<String>,
+    /// Fridays only.
+    pub week: Option<Week>,
+}
+
+/// "Wrap up my day", "how did today go", "how did my week go".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WrapAsked {
+    Day,
+    Week,
+}
+
+pub fn wrap_asked(said: &str) -> Option<WrapAsked> {
+    let t = said.trim().trim_end_matches(['?', '.', '!']).to_ascii_lowercase();
+    let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ");
+    const WEEK: &[&str] = &["how did my week go", "how was my week", "weekly review", "review my week", "wrap up my week", "my week in review", "friday review"];
+    const DAY: &[&str] = &["wrap up my day", "wrap up the day", "how did today go", "how did my day go", "end of day", "end of day wrap up", "day wrap up", "what did i get done today", "wrap up today"];
+    if WEEK.iter().any(|p| t == *p) {
+        Some(WrapAsked::Week)
+    } else if DAY.iter().any(|p| t == *p) {
+        Some(WrapAsked::Day)
+    } else {
+        None
+    }
+}
+
+/// The earliest hour the wrap-up is offered unasked, and the latest.
+pub const WRAP_FROM_HOUR: u8 = 18;
+pub const WRAP_UNTIL_HOUR: u8 = 23;
+/// Less than this at the machine today and there's no day to wrap.
+pub const WRAP_AFTER_ACTIVE_SECS: u64 = 3600;
+
+/// Whether to offer the wrap-up now, unasked: evening, you're here, there
+/// was a real day, and it hasn't been said today.
+pub fn wrap_due(hour: u8, today: u64, wrapped_on: u64, active_today: u64, here: bool) -> bool {
+    here && (WRAP_FROM_HOUR..WRAP_UNTIL_HOUR).contains(&hour) && wrapped_on != today && active_today >= WRAP_AFTER_ACTIVE_SECS
+}
+
+fn hm(secs: u64) -> String {
+    crate::worklog::duration_words(secs)
+}
+
+/// The wrap-up, said. Short: done, slipped, tomorrow's first move; the week
+/// on Fridays.
+pub fn wrap_said(w: &Wrap) -> String {
+    let mut out: Vec<String> = Vec::new();
+    if w.active_secs > 0 {
+        let top: Vec<String> = w.top.iter().take(3).map(|(c, s)| format!("{c} {}", hm(*s))).collect();
+        let mut s = format!("Today: {} at the machine", hm(w.active_secs));
+        if !top.is_empty() {
+            s.push_str(&format!(" -- {}", top.join(", ")));
+        }
+        s.push('.');
+        if let Some((what, secs)) = &w.longest_focus {
+            s.push_str(&format!(" Best stretch: {} on {what}.", hm(*secs)));
+        }
+        out.push(s);
+    }
+    match w.finished.len() {
+        0 => {}
+        1 => out.push(format!("Done: {}.", w.finished[0])),
+        n => out.push(format!("Done: {n} things, including {}.", w.finished[..2.min(n)].join(" and "))),
+    }
+    if w.handled > 0 {
+        out.push(format!("I ran {} job{} for you.", w.handled, if w.handled == 1 { "" } else { "s" }));
+    }
+    // What slipped: the one carried longest, named; the rest counted.
+    let mut carried = w.carried.clone();
+    carried.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    match carried.first() {
+        Some((title, days)) if *days >= 2 => {
+            let more = carried.len() - 1;
+            out.push(format!(
+                "Slipping: {title}, carried {days} days{}.",
+                if more > 0 { format!(", and {more} more still open") } else { String::new() }
+            ));
+        }
+        Some(_) => out.push(format!("{} still open.", carried.len())),
+        None => {}
+    }
+    // Tomorrow's first move: the one that's slipped longest, or your push.
+    match (carried.first(), &w.push) {
+        (Some((title, _)), _) => out.push(format!("Tomorrow, start with {title}.")),
+        (None, Some(p)) => out.push(format!("Tomorrow, push on {p}.")),
+        (None, None) => {}
+    }
+    if let Some(wk) = &w.week {
+        let mut s = format!(
+            "This week: {} at the machine over {} day{}",
+            hm(wk.active_secs),
+            wk.days_worked,
+            if wk.days_worked == 1 { "" } else { "s" }
+        );
+        s.push_str(&format!(", {} long stretch{} of focus", wk.focus_blocks, if wk.focus_blocks == 1 { "" } else { "es" }));
+        s.push_str(&format!(", {} thing{} finished.", wk.finished, if wk.finished == 1 { "" } else { "s" }));
+        out.push(s);
+    }
+    if out.is_empty() {
+        return "Nothing to wrap up -- I've no record of today's work.".into();
+    }
+    out.join(" ")
+}
+
+// ---------- one thing I noticed ----------
+//
+// The why-stale report, idea 11 (1 Oct 2026): one observation a day, from
+// your own record, said once and only to someone who's there. Each kind
+// needs a week of record to compare against, so nothing is said from a
+// single day, and every line names the numbers it rests on.
+
+/// One day of the work log, reduced to what the observations compare.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DayLog {
+    /// Seconds at the machine.
+    pub active_secs: u64,
+    /// Seconds per category.
+    pub by_category: Vec<(String, u64)>,
+    /// Stretches of 25 minutes or more on one thing.
+    pub focus_blocks: usize,
+    /// Seconds at the machine between midnight and 4am.
+    pub small_hours_secs: u64,
+}
+
+/// What Atlas noticed, from the last days (oldest first, today last).
+/// `None` when there isn't a week to compare against or nothing stands out.
+pub fn one_thing_noticed(days: &[DayLog]) -> Option<String> {
+    if days.len() < 7 {
+        return None;
+    }
+    let week = &days[days.len() - 7..];
+    // Late nights: three or more of the last seven with a quarter of an hour
+    // or more after midnight.
+    let late = week.iter().filter(|d| d.small_hours_secs >= 15 * 60).count();
+    if late >= 3 {
+        return Some(format!("You've been at the machine after midnight on {late} of the last seven nights."));
+    }
+    let (today, before) = week.split_last()?;
+    let worked: Vec<&DayLog> = before.iter().filter(|d| d.active_secs >= 1800).collect();
+    if worked.len() < 3 || today.active_secs < 1800 {
+        return None;
+    }
+    // Focus: none today, when most days had some.
+    let with_focus = worked.iter().filter(|d| d.focus_blocks > 0).count();
+    if today.focus_blocks == 0 && with_focus * 3 >= worked.len() * 2 {
+        return Some(format!(
+            "No stretch of 25 minutes on one thing today -- you had one on {with_focus} of your last {} working days.",
+            worked.len()
+        ));
+    }
+    // One thing taking far more of the day than usual.
+    for (cat, secs) in &today.by_category {
+        if *secs < 3600 {
+            continue;
+        }
+        let usual: u64 = worked.iter().map(|d| d.by_category.iter().find(|(c, _)| c == cat).map(|(_, s)| *s).unwrap_or(0)).sum::<u64>() / worked.len() as u64;
+        if usual > 0 && *secs >= usual * 2 {
+            return Some(format!(
+                "{} on {cat} today -- about twice your usual {}.",
+                crate::worklog::duration_words(*secs),
+                crate::worklog::duration_words(usual)
+            ));
+        }
+        if usual == 0 {
+            return Some(format!("{} on {cat} today, which you hadn't done all week.", crate::worklog::duration_words(*secs)));
+        }
+    }
+    None
+}

@@ -48,7 +48,7 @@ pub fn hello_now(last_greeted_at: u64, now: u64, quiet_for: u64) -> Hello {
 /// says once how to fix that; after that, an empty hello isn't said.
 pub fn empty_hello(greeting: &str, knows_you: bool, offered_before: bool) -> Option<String> {
     (!knows_you && !offered_before).then(|| {
-        format!("{greeting}. I don't know what you're working on yet -- say \"get to know me\" and I'll ask you six quick questions.")
+        format!("{greeting}. I don't know what you're working on yet -- say \"get to know me\" and I'll ask you seven quick questions.")
     })
 }
 
