@@ -48,6 +48,11 @@ use std::path::Path;
 /// different shape to the same file.
 const SHARED_ON_PURPOSE: &[(&str, &str)] = &[
     (
+        "dropped",
+        "Same field, the daemon's own `dropped` list: the hub's Outstanding page takes an item off it \
+         (Chat A, 2 Oct 2026) and saves it exactly as `daemon/late.rs` does -- one value, two places it changes.",
+    ),
+    (
         "synclog",
         "Same type (sync::Log), one writer at a time: `atlas doc` takes queued edits into the log only \
          while it holds the OnlyOne lock, which a running daemon holds for its whole life, so the CLI \

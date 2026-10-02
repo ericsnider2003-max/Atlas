@@ -364,7 +364,7 @@ pub fn all() -> Vec<Capability> {
         // the tree. See `CAPABILITY_UNWIRED` in `tests/capability_wiring.rs`.
         Capability { id: "mesh", what: "reach your laptop directly from another network, not by leaving it a note", area: Keeping, state: Planned, needs: Some("a private network, and a transport this build doesn't have"), offline: false, added: 29, runs: &[Needs::Background, Needs::Files], modules: &["mesh"] },
 
-        Capability { id: "handloop", what: "follow your hand and move things with it", area: Seeing, state: Untested, needs: Some("the hand models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["handloop", "handtrack", "handshape", "frames"] },
+        Capability { id: "handloop", what: "follow your hand and move things with it", area: Seeing, state: Untested, needs: Some("the hand models"), offline: true, added: 26, runs: &[Needs::Camera], modules: &["handloop", "handtrack", "handshape", "frames", "handweight"] },
         Capability { id: "delegate", what: "draft a reply in the window in front, or carry the conversation on while you're away — typing only in gaps in yours, and never sending a reply that didn't land as written", area: Windows, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 32, runs: &[Needs::ActInApps, Needs::Background], modules: &["delegate", "idle"] },
         Capability { id: "resume", what: "pick back up what a restart cut off — windows it was working, research and council redone once, project work carried on from its last finished phase — and say what it didn't redo", area: Itself, state: Working, needs: None, offline: true, added: 32, runs: &[Needs::Background], modules: &["resume", "phases"] },
         Capability { id: "twofactor", what: "type a two-factor code you read out or that's in your email or texts, sign you in and make accounts in its own browser, and turn two-factor on or off after reading it back", area: Keeping, state: Untested, needs: Some("a live run against your real accounts"), offline: false, added: 33, runs: &[Needs::ActInApps, Needs::RealEncryption], modules: &["twofactor", "webrun"] },
@@ -467,7 +467,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "booking", what: "work through times other people propose against your calendar, and write one in only when you accept", area: Time, state: Off, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["booking"] },
         Capability { id: "content", what: "run your content -- why a post worked, a signal told from a fluke, the mistake you're about to repeat", area: Writing, state: Untested, needs: Some("your posts' numbers"), offline: true, added: 40, runs: &[Needs::Files], modules: &["content", "reach"] },
         Capability { id: "opsec", what: "check a post before it goes out for what's visible in the frame -- a patch, a tail number -- until the date the rules stop applying to you", area: Writing, state: Off, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["opsec"] },
-        Capability { id: "edit", what: "edit a video from what you describe -- the plan first, then the cut -- with ffmpeg or an editor you already own", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["edit", "editors"] },
+        Capability { id: "edit", what: "edit a video from what you describe -- the plan first, then the cut -- with ffmpeg or an editor you already own; 'get this video ready' cuts the dead air, writes captions, picks thumbnail frames and suggests a title", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["edit", "editors", "studio"] },
         // 29 Sep 2026: photos, by voice or typing, on a new copy. Run for
         // real here with ffmpeg 9.0 and the two cut-out models in tract;
         // never yet on Eric's laptop, hence untested.
@@ -1550,7 +1550,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 461;
+pub const MODULES_IN_TREE: usize = 463;
 
 /// Every module no capability claims, and why it is not one.
 ///

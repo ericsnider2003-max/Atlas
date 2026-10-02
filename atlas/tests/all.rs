@@ -969,3 +969,5 @@ mod after_the_call;
 mod the_plain_api_answers;
 #[path = "market_desk.rs"]
 mod market_desk;
+#[path = "video_studio.rs"]
+mod video_studio;

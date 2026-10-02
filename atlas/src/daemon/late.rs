@@ -1786,6 +1786,92 @@ impl<'a> Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
+    /// "Get this video ready: C:\clips\bakery.mp4" -- the studio (`studio`):
+    /// dead air cut, captions, thumbnail frames, a title, all on a copy.
+    pub(super) fn studio_help(&mut self, said: &str, t: u64) -> Option<String> {
+        let low = said.to_ascii_lowercase();
+        if !["get this video ready", "get my video ready", "get the video ready", "video studio", "prep this video", "prepare this video", "ready this video", "studio this"]
+            .iter()
+            .any(|p| low.contains(p))
+        {
+            return None;
+        }
+        let Some((path, _)) = crate::edit::path_and_wish(said) else {
+            return Some("Which video? Give me its path -- get this video ready: \"C:\\clips\\bakery.mp4\".".into());
+        };
+        let original = std::path::PathBuf::from(&path);
+        if !original.is_file() {
+            return Some(format!("I can't find {path}."));
+        }
+        let tools = self.tools_cfg();
+        let video = tools.video.clone();
+        let timed = tools.stt_timed.clone();
+        let mut vars = tools.vars.clone();
+        self.add_language_vars(&mut vars);
+        let llm = self.background_llm();
+        let stem = original.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
+        let folder = original.with_file_name(format!("{stem} - ready"));
+        let work: crew::Work = Box::new(move |ctl| {
+            let run = |tool: &crate::tools::ExternalTool, args: Vec<String>| -> std::result::Result<std::process::Output, String> {
+                crate::tools::command(&tool.command).args(args).output().map_err(|e| format!("couldn't run {}: {e}", tool.command))
+            };
+            std::fs::create_dir_all(&folder).map_err(|e| format!("couldn't make {}: {e}", folder.display()))?;
+            let s = |p: &std::path::Path| p.display().to_string();
+            let src = s(&original);
+            let probed = run(&video.ffprobe, crate::edit::probe_args(&src))?;
+            let before = crate::edit::duration_from_probe(&String::from_utf8_lossy(&probed.stdout)).ok_or("I couldn't read how long the video is")?;
+            if ctl.checkpoint() {
+                return Err("stopped".into());
+            }
+            let found = run(&video.ffmpeg, crate::studio::silence_args(&src))?;
+            let spans = crate::studio::keep_spans(&crate::studio::silences(&String::from_utf8_lossy(&found.stderr), before), before);
+            let cut = folder.join(format!("{stem} - cut.mp4"));
+            let made = run(&video.ffmpeg, crate::studio::cut_args(&src, &spans, &s(&cut)))?;
+            if !made.status.success() || !cut.is_file() {
+                return Err("ffmpeg couldn't make the cut".into());
+            }
+            let after: f64 = spans.iter().map(|(a, b)| b - a).sum();
+            let _ = run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg"))));
+            let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-")).count()).unwrap_or(0);
+            let mut transcript = String::new();
+            if let Some(timed) = &timed {
+                let wav = folder.join("sound.wav");
+                if run(&video.ffmpeg, crate::studio::audio_args(&s(&cut), &s(&wav))).is_ok() {
+                    let mut v = vars.clone();
+                    let stem_path = wav.with_extension("");
+                    v.insert("in_wav".into(), s(&wav));
+                    v.insert("stem".into(), s(&stem_path));
+                    v.insert("srt".into(), format!("{}.srt", s(&stem_path)));
+                    v.entry("task_opt".into()).or_default();
+                    v.entry("lang_opt".into()).or_default();
+                    v.entry("lang_val".into()).or_default();
+                    let mut tool = timed.clone();
+                    tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
+                    if let Ok(srt) = tool.run(&v, None) {
+                        let _ = std::fs::write(folder.join(format!("{stem} - cut.srt")), &srt);
+                        transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
+                    }
+                    let _ = std::fs::remove_file(&wav);
+                    let _ = std::fs::remove_file(format!("{}.srt", s(&stem_path)));
+                }
+            }
+            let mut title = None;
+            if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
+                let quoted = crate::untrusted::Read::new("the video", &transcript, crate::store::now()).quoted();
+                if let Some((t, d)) = m.complete(crate::studio::TITLE_PROMPT, &quoted).ok().and_then(|r| crate::studio::title_and_description(&r, &transcript)) {
+                    let _ = std::fs::write(folder.join("title and description.txt"), format!("{t}\n\n{d}\n"));
+                    title = Some(t);
+                }
+            }
+            Ok(crate::studio::ready_said(&s(&folder), before, after, !transcript.is_empty(), thumbs, title.as_deref()))
+        });
+        Some(if self.hand_off("studio", t, work, Some(path.clone()), SpeakPolicy::Always) {
+            format!("Getting {path} ready on a copy -- dead air, captions, thumbnails and a title. I'll tell you when it's done.")
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        })
+    }
+
     pub(super) fn edit_media(&mut self, said: &str, t: u64) -> String {
         let Some((path, wish)) = crate::edit::path_and_wish(said) else {
             return "Which video? Give me its path — \"edit \"C:\\clips\\trip.mp4\" to cut the dead air\".".into();

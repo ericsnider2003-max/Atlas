@@ -204,6 +204,7 @@ pub mod daily;
 pub mod proactive;
 pub mod worklog;
 pub mod worksession;
+pub mod studio;
 pub mod when;
 pub mod notify;
 pub mod nudge;
