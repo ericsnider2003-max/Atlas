@@ -268,6 +268,11 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
     (
+        "forget the phrase",
+        "heard before the parser by `phrasebook::asked_about_phrasebook` in `daemon/learning.rs`, \
+         always with the wording to forget after it (tests/learning_how_you_talk.rs).",
+    ),
+    (
         "use online models",
         "the phone app's yes to the free online models, heard before the parser by \
          `phonemode::online_answer` in `daemon/away.rs` `phone_online_help` (tests/phone_mode.rs).",

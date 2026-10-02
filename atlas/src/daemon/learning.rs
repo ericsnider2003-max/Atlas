@@ -171,6 +171,11 @@ impl<'a> Daemon<'a> {
                     && !worked_badly(&now.reply)
                     && crate::phrasebook::meant_instead(said).is_none()
                     && names_something(&p.said)
+                    // Atlas asked you for something ("Tell me \"Sam's email
+                    // is\" ..."): what came next is the answer, not the same
+                    // request said better (2 Oct 2026, merge: "email Sam
+                    // saying I'll be late" was learned as "Sam's email is").
+                    && !asked_you_for_something(&p.reply)
             }
             _ => false,
         };
@@ -614,6 +619,12 @@ fn names_something(said: &str) -> bool {
 }
 
 /// A reply that reads as the action failing: not something to learn from.
+/// Did this reply ask you to tell Atlas something, in words to say?
+fn asked_you_for_something(reply: &str) -> bool {
+    let l = reply.to_lowercase();
+    l.contains("tell me \"")
+}
+
 fn worked_badly(reply: &str) -> bool {
     let l = reply.to_lowercase();
     l.starts_with("error") || l.contains("couldn't") || l.contains("could not") || l.contains("failed") || l.contains("can't find") || l.contains("not found")
