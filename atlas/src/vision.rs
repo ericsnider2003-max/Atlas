@@ -190,6 +190,9 @@ pub struct Scene {
     /// Anything that went wrong on the way, in words. Never empty *and*
     /// silent: a look that half-failed says so.
     pub could_not: Vec<String>,
+    /// A hand answering a question ("thumb_up", how sure), on a look made
+    /// for one.
+    pub gesture: Option<(String, f32)>,
 }
 
 impl Scene {
@@ -293,6 +296,9 @@ impl Scene {
             // Nothing found, and the look worked: that is a real reading of
             // zero, which is what tells `presence` the room is empty.
             out.push("faces: 0 1.000".to_string());
+        }
+        if let Some((g, sure)) = &self.gesture {
+            out.push(format!("gesture: {g} {sure:.3}"));
         }
         if let Some(f) = self.you_are_here(you) {
             out.push(format!("you: yes {:.3}", f.sure_who));
@@ -983,6 +989,24 @@ impl Looking {
     /// the faces could be found and the things could not is a real and useful
     /// answer; refusing the whole look because one model stumbled is not.
     pub fn look(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album) -> Sight {
+        self.look_for(rgb, w, h, cfg, album, true)
+    }
+
+    /// A look for whether you're there and what your hand says: faces and the
+    /// two small hand models only. Naming things and describing the picture
+    /// are the heavy part, and nothing here needs them.
+    pub fn look_at_you(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album) -> Sight {
+        let mut sight = self.look_for(rgb, w, h, cfg, album, false);
+        if let Some(hand) = self.hand(rgb, w, h) {
+            let g = crate::handshape::answer_from(&hand).map(|(g, s)| (g.to_string(), s));
+            if let Sight::Looked(scene) = &mut sight {
+                scene.gesture = g;
+            }
+        }
+        sight
+    }
+
+    fn look_for(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album, name_things: bool) -> Sight {
         if w == 0 || h == 0 || rgb.len() < w * h * 3 {
             return Sight::Unread("the camera handed back a picture I couldn't read".into());
         }
@@ -1028,7 +1052,7 @@ impl Looking {
             }
         }
 
-        if let Some(model) = self.naming_things.as_mut() {
+        if let (Some(model), true) = (self.naming_things.as_mut(), name_things) {
             let (pixels, placed) = letterbox(rgb, w, h, Kind::Objects);
             match model.run(&pixels).and_then(|out| things(&out, &placed, cfg)) {
                 Ok(found) => scene.things = found,
@@ -1036,7 +1060,7 @@ impl Looking {
             }
         }
 
-        if let Some(model) = self.describing.as_mut() {
+        if let (Some(model), true) = (self.describing.as_mut(), name_things) {
             let pixels = crate::infer::prepare(rgb, w, h, Kind::Picture);
             match model.run(&pixels) {
                 Ok(out) => match out.only() {
@@ -1077,6 +1101,33 @@ impl Looking {
         Sight::Looked(scene)
     }
 
+    /// The hand in this picture, as joints in the picture's terms: the palm
+    /// found by the first small model, its joints read by the second.
+    pub fn hand(&mut self, rgb: &[u8], w: usize, h: usize) -> Option<crate::handshape::Landmarks> {
+        let finding = self.finding_hands.as_mut()?;
+        let (fw, fh) = Kind::HandPresence.wants();
+        let small = crate::infer::fit(rgb, w, h, fw, fh);
+        let found = finding.run(&small).ok()?;
+        let hand = crate::handloop::where_the_hand_is(&found)?;
+        let reading = self.reading_hands.as_mut()?;
+        let (cx, cy, cw, ch) = hand.in_pixels(w, h, 0.5);
+        if cw == 0 || ch == 0 {
+            return None;
+        }
+        let cut = crate::infer::prepare_crop(rgb, w, h, (cx, cy, cw, ch), Kind::HandLandmarks);
+        let out = reading.run(&cut).ok()?;
+        let joints = out.at(0).ok()?;
+        let sure = out.at(1).ok().and_then(|s| s.first().copied()).unwrap_or(1.0);
+        let (rw, rh) = Kind::HandLandmarks.wants();
+        crate::handshape::from_model(&crate::handshape::in_the_frame(
+            joints,
+            sure,
+            (rw as f32, rh as f32),
+            (cx as f32 / w as f32, cy as f32 / h as f32),
+            (cw as f32 / w as f32, ch as f32 / h as f32),
+        ))
+    }
+
     /// Where the pointing finger is in this picture, as fractions of it.
     ///
     /// The join between the two halves of this work. Hand tracking knew where
@@ -1088,29 +1139,7 @@ impl Looking {
     /// `None` when the hand models are not installed, or no hand is up. Both
     /// are ordinary, and both fall back to the thing in the middle.
     pub fn finger(&mut self, rgb: &[u8], w: usize, h: usize) -> Option<(f32, f32)> {
-        let finding = self.finding_hands.as_mut()?;
-        let (fw, fh) = Kind::HandPresence.wants();
-        let small = crate::infer::fit(rgb, w, h, fw, fh);
-        let found = finding.run(&small).ok()?;
-        let hand = crate::handloop::where_the_hand_is(&found)?;
-
-        let reading = self.reading_hands.as_mut()?;
-        let (cx, cy, cw, ch) = hand.in_pixels(w, h, 0.5);
-        if cw == 0 || ch == 0 {
-            return None;
-        }
-        let cut = crate::infer::prepare_crop(rgb, w, h, (cx, cy, cw, ch), Kind::HandLandmarks);
-        let out = reading.run(&cut).ok()?;
-        let joints = out.at(0).ok()?;
-        let sure = out.at(1).ok().and_then(|s| s.first().copied()).unwrap_or(1.0);
-        let (rw, rh) = Kind::HandLandmarks.wants();
-        let marks = crate::handshape::from_model(&crate::handshape::in_the_frame(
-            joints,
-            sure,
-            (rw as f32, rh as f32),
-            (cx as f32 / w as f32, cy as f32 / h as f32),
-            (cw as f32 / w as f32, ch as f32 / h as f32),
-        ))?;
+        let marks = self.hand(rgb, w, h)?;
         // The index fingertip. Point eight of twenty-one — the same joint the
         // pointer follows, so the ring on screen and the answer to "what's
         // this" can never disagree about which part of the hand is doing the

@@ -160,7 +160,10 @@ fn a_tidy_machine_is_left_alone() {
 
 #[test]
 fn it_does_nothing_unless_you_turn_it_on() {
-    assert!(examine(&laptop(), &TuneConfig::default()).is_empty());
+    // On by default since 1 Oct 2026 (Eric: optimizing should do the work);
+    // it only finds and explains, and acts on a yes. Off is still off.
+    assert!(examine(&laptop(), &TuneConfig { enabled: false, ..TuneConfig::default() }).is_empty());
+    assert!(TuneConfig::default().enabled);
 }
 
 // ================= where the big files go =================

@@ -81,7 +81,9 @@ pub struct TuneConfig {
 impl Default for TuneConfig {
     fn default() -> Self {
         TuneConfig {
-            enabled: false,
+            // On (1 Oct 2026): it only finds and explains; nothing is done
+            // without your yes.
+            enabled: true,
             min_mb: 200,
             min_boot_secs: 0.5,
             keep: vec![
@@ -457,4 +459,288 @@ pub fn move_folder(from: &std::path::Path, to: &std::path::Path, now: u64) -> Re
     );
     let _ = std::fs::write(from.with_extension("MOVED.txt"), note);
     Ok(Moved { from: from.display().to_string(), to: to.display().to_string(), mb: before / 1_000_000, at: now })
+}
+
+
+// ---------------------------------------------------------------------------
+// Measuring, so there is something to find (1 Oct 2026: "optimise my PC"
+// answered only "276 GB free, memory at 90 percent" -- the survey was handed
+// in empty, and `tune` was off, so nothing could ever be found).
+// ---------------------------------------------------------------------------
+
+/// Memory by program, from Windows' `tasklist /FO CSV /NH`: each program's
+/// processes added together, largest first.
+pub fn parse_tasklist(csv: &str) -> Vec<(String, u64)> {
+    let mut by: std::collections::BTreeMap<String, u64> = Default::default();
+    for line in csv.lines() {
+        let cells: Vec<&str> = line.split("\",\"").map(|c| c.trim_matches('"')).collect();
+        if cells.len() < 5 {
+            continue;
+        }
+        let name = cells[0].trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+        let kb: u64 = cells[4].chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+        *by.entry(name).or_default() += kb / 1024;
+    }
+    let mut v: Vec<(String, u64)> = by.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v
+}
+
+/// The same from `ps -eo comm=,rss=` elsewhere.
+pub fn parse_ps(text: &str) -> Vec<(String, u64)> {
+    let mut by: std::collections::BTreeMap<String, u64> = Default::default();
+    for line in text.lines() {
+        let mut parts = line.split_whitespace().collect::<Vec<_>>();
+        let Some(kb) = parts.pop().and_then(|k| k.parse::<u64>().ok()) else { continue };
+        if parts.is_empty() {
+            continue;
+        }
+        *by.entry(parts.join(" ")).or_default() += kb / 1024;
+    }
+    let mut v: Vec<(String, u64)> = by.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v
+}
+
+/// What's holding memory right now, by program.
+pub fn memory_by_app() -> Vec<(String, u64)> {
+    if cfg!(windows) {
+        crate::tools::command("tasklist")
+            .args(["/FO", "CSV", "/NH"])
+            .output()
+            .map(|o| parse_tasklist(&String::from_utf8_lossy(&o.stdout)))
+            .unwrap_or_default()
+    } else {
+        crate::tools::command("ps")
+            .args(["-eo", "comm=,rss="])
+            .output()
+            .map(|o| parse_ps(&String::from_utf8_lossy(&o.stdout)))
+            .unwrap_or_default()
+    }
+}
+
+/// Megabytes in a folder and everything under it, counted for at most
+/// `budget` so a huge folder can't hold the turn.
+pub fn folder_mb(dir: &std::path::Path, budget: std::time::Duration) -> u64 {
+    let until = std::time::Instant::now() + budget;
+    let mut bytes = 0u64;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        if std::time::Instant::now() > until {
+            break;
+        }
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let Ok(m) = e.metadata() else { continue };
+            if m.is_dir() {
+                stack.push(e.path());
+            } else {
+                bytes += m.len();
+            }
+        }
+    }
+    bytes / (1024 * 1024)
+}
+
+/// What clearing temporary files did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Cleared {
+    pub files: u64,
+    pub mb: u64,
+    /// In use, or not ours to delete: left, as `TEMP_FILES` says is fine.
+    pub skipped: u64,
+}
+
+/// Delete what in `dir` hasn't been touched for `older_than` seconds. Anything
+/// in use refuses and is skipped; folders left empty are removed. Only ever
+/// called on the temporary folder, and only on your yes.
+pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
+    let mut c = Cleared::default();
+    let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(older_than);
+    let mut dirs = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let Ok(m) = e.metadata() else { continue };
+            if m.file_type().is_symlink() {
+                continue;
+            }
+            if m.is_dir() {
+                stack.push(e.path());
+                dirs.push(e.path());
+                continue;
+            }
+            if m.modified().map(|t| t > cutoff).unwrap_or(true) {
+                c.skipped += 1;
+                continue;
+            }
+            match std::fs::remove_file(e.path()) {
+                Ok(()) => {
+                    c.files += 1;
+                    c.mb += m.len();
+                }
+                Err(_) => c.skipped += 1,
+            }
+        }
+    }
+    // Deepest first, and only the empty ones (`remove_dir` refuses the rest).
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+    for d in dirs {
+        let _ = std::fs::remove_dir(&d);
+    }
+    c.mb /= 1024 * 1024;
+    c
+}
+
+
+/// Programs with a window of their own, from `tasklist /V /FO CSV /NH` (its
+/// last column is the window title, "N/A" for background processes). Only
+/// these are ever offered for closing: a program you can see is one you
+/// opened; a background process may be part of Windows.
+pub fn parse_windowed(csv: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in csv.lines() {
+        let cells: Vec<&str> = line.split("\",\"").map(|c| c.trim_matches('"')).collect();
+        if cells.len() < 9 {
+            continue;
+        }
+        let title = cells[cells.len() - 1].trim();
+        if title.is_empty() || title == "N/A" || title.eq_ignore_ascii_case("OleMainThreadWndName") {
+            continue;
+        }
+        let name = cells[0].trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+pub fn windowed_programs() -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    crate::tools::command("tasklist")
+        .args(["/V", "/FO", "CSV", "/NH"])
+        .output()
+        .map(|o| parse_windowed(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default()
+}
+
+/// Never closed, never stopped from starting, whatever they hold: Windows
+/// itself, security, the shell, sync, and the assistants in use.
+pub const NEVER_CLOSE: &[&str] = &[
+    "explorer", "dwm", "csrss", "winlogon", "svchost", "sihost", "ctfmon", "fontdrvhost", "runtimebroker",
+    "searchhost", "startmenuexperiencehost", "textinputhost", "shellexperiencehost", "applicationframehost",
+    "securityhealth", "msmpeng", "audiodg", "memory compression", "system", "registry", "lsass", "smss",
+    "wininit", "services", "taskhostw", "dllhost", "conhost", "atlas", "llama-server", "claude", "taskmgr",
+    "systemsettings", "lockapp", "widgets", "nissrv", "mpdefendercoreservice",
+];
+
+pub fn may_close(name: &str, keep: &[String]) -> bool {
+    let n = name.to_lowercase();
+    !NEVER_CLOSE.iter().any(|k| n == *k || n.starts_with(k)) && !keep.iter().any(|k| n.contains(&k.to_lowercase()))
+}
+
+/// Ask a program to close, the way its window's X does: it can save first.
+/// Never forced.
+pub fn close_program(name: &str) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Err("closing programs is only done on Windows".into());
+    }
+    let out = crate::tools::command("taskkill")
+        .args(["/IM", &format!("{name}.exe")])
+        .output()
+        .map_err(|e| format!("couldn't ask {name} to close: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// What starts with Windows for you (`reg query` of your Run key): names.
+pub fn parse_reg_run(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            let mut parts = l.splitn(3, "    ");
+            let name = parts.next()?.trim();
+            let kind = parts.next()?.trim();
+            kind.starts_with("REG_").then(|| name.to_string())
+        })
+        .filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case("(Default)"))
+        .collect()
+}
+
+const RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const APPROVED: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+/// Your startup programs. (Only your own: the machine-wide ones need an
+/// administrator, and are yours to change in Task Manager.)
+pub fn startup_programs() -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    crate::tools::command("reg")
+        .args(["query", RUN])
+        .output()
+        .map(|o| parse_reg_run(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default()
+}
+
+/// Stop one starting with Windows, the way Task Manager's "Disable" does:
+/// the entry stays, marked off, and "Enable" there puts it back.
+pub fn stop_starting(name: &str) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Err("startup programs are only changed on Windows".into());
+    }
+    let out = crate::tools::command("reg")
+        .args(["add", APPROVED, "/v", name, "/t", "REG_BINARY", "/d", "030000000000000000000000", "/f"])
+        .output()
+        .map_err(|e| format!("couldn't change {name}'s startup: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// What an optimization run offers to do, all of it on one yes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Plan {
+    /// Programs open, holding memory, unused today: (name, MB).
+    pub close: Vec<(String, u64)>,
+    /// Startup programs you haven't opened this week.
+    pub stop_starting: Vec<String>,
+    /// The temporary folder and its size.
+    pub temp: Option<(std::path::PathBuf, u64)>,
+}
+
+impl Plan {
+    pub fn is_empty(&self) -> bool {
+        self.close.is_empty() && self.stop_starting.is_empty() && self.temp.is_none()
+    }
+
+    /// The offer, said with the numbers.
+    pub fn offer(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if !self.close.is_empty() {
+            let mb: u64 = self.close.iter().map(|c| c.1).sum();
+            let names: Vec<String> = self.close.iter().map(|c| format!("{} ({} MB)", c.0, c.1)).collect();
+            parts.push(format!("close {} -- open but not used today, about {:.1} GB back", names.join(", "), mb as f32 / 1024.0));
+        }
+        if !self.stop_starting.is_empty() {
+            parts.push(format!(
+                "stop {} starting with Windows -- not opened this week, and Task Manager can turn {} back on",
+                self.stop_starting.join(", "),
+                if self.stop_starting.len() == 1 { "it" } else { "them" }
+            ));
+        }
+        if let Some((_, mb)) = &self.temp {
+            parts.push(format!("clear {mb} MB of temporary files, leaving anything in use"));
+        }
+        format!("I can {}. Go ahead?", parts.join("; "))
+    }
 }

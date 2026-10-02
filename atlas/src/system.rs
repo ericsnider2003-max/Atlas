@@ -199,9 +199,25 @@ fn paths_touched(c: &Change) -> Vec<String> {
 
 fn within_roots(path: &str, roots: &[String]) -> bool {
     let p = crate::doctor::expand_env(path).replace('\\', "/").to_lowercase();
+    let profile = crate::doctor::lookup_env("USERPROFILE")
+        .or_else(|| crate::doctor::lookup_env("HOME"))
+        .map(|h| h.replace('\\', "/").to_lowercase().trim_end_matches('/').to_string())
+        .unwrap_or_default();
     roots.iter().any(|r| {
-        let r = crate::doctor::expand_env(r).replace('\\', "/").to_lowercase();
-        !r.is_empty() && p.starts_with(&r)
+        // `%USERPROFILE%` where Windows' own name for home isn't set (the
+        // same folder, `HOME`, on the other systems).
+        let r = crate::doctor::expand_env(r).replace('\\', "/").to_lowercase().replace("%userprofile%", &profile);
+        if r.is_empty() {
+            return false;
+        }
+        // Windows moves Desktop, Documents and Pictures into OneDrive when it
+        // backs them up: "%USERPROFILE%/Desktop" is then really
+        // "%USERPROFILE%/OneDrive/Desktop" (1 Oct 2026: on Eric's laptop every
+        // file on the desktop was refused as outside the folders Atlas may
+        // work in, so "organize my desktop" moved nothing).
+        let onedrive = (!profile.is_empty() && r.starts_with(&profile))
+            .then(|| format!("{profile}/onedrive{}", &r[profile.len()..]));
+        p.starts_with(&r) || onedrive.is_some_and(|o| p.starts_with(&o))
     })
 }
 

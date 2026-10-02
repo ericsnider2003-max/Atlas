@@ -122,7 +122,8 @@ impl Outcome {
                 if notes.is_empty() {
                     base
                 } else {
-                    format!("{base} A couple of things worth a look, none blocking: {}", notes.join("; "))
+                    let plain: Vec<String> = notes.iter().map(|n| plain_note(n)).filter(|n| !n.is_empty()).take(3).collect();
+                    format!("{base} Worth a look, none blocking: {}.", plain.join("; "))
                 }
             }
             Outcome::Struggled { rounds, last_failure, .. } => format!(
@@ -626,4 +627,45 @@ pub fn ask_for_help(
             "I asked the bigger model for help and it explained without giving a fix.".into(),
         ),
     }
+}
+
+
+/// A checker's note as a sentence: its first line, without the rule code
+/// and the tool's markers (1 Oct 2026: a whole ruff report, arrows and
+/// ASCII art included, was read out as the result).
+pub fn plain_note(note: &str) -> String {
+    let first = note.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let mut words: Vec<&str> = first.split_whitespace().collect();
+    // A leading rule code: F401, E501, W0611, clippy::foo, TS2345:, C4996...
+    if let Some(w) = words.first() {
+        let w = w.trim_end_matches(':');
+        let code = w.len() <= 40
+            && (w.contains("::") || (w.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && w.chars().skip(1).any(|c| c.is_ascii_digit()) && w.chars().all(|c| c.is_ascii_alphanumeric())));
+        if code {
+            words.remove(0);
+        }
+    }
+    words.retain(|w| *w != "[*]" && *w != "-->" && *w != "|");
+    words.join(" ").replace('`', "").trim_end_matches('.').to_string()
+}
+
+/// A file name for what was built, from its description: a few of its words,
+/// and never over the top of one built before.
+pub fn file_name_for(dir: &std::path::Path, description: &str, ext: &str) -> std::path::PathBuf {
+    const SKIP: &[&str] = &["a", "an", "the", "me", "my", "that", "which", "to", "in", "of", "for", "and", "write", "build", "make", "script", "program", "code", "python", "rust", "go", "javascript", "typescript"];
+    let words: Vec<String> = description
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty() && !SKIP.contains(w))
+        .take(5)
+        .map(str::to_string)
+        .collect();
+    let stem = if words.is_empty() { "build".to_string() } else { words.join("-") };
+    let mut path = dir.join(format!("{stem}.{ext}"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{stem}-{n}.{ext}"));
+        n += 1;
+    }
+    path
 }

@@ -547,6 +547,29 @@ impl<'a> Daemon<'a> {
         // asked for last, run now -- not a chat about research (29 Sep 2026:
         // three of these went to the model, which said "I'm already on it"
         // and started nothing). With nothing asked yet, it says how to ask.
+        // "Take that off my outstanding list" (1 Oct 2026: there was no way).
+        if let Some(removal) = crate::backlog::removal_asked(said) {
+            let reply = match self.backlog.find_for_removal(&removal) {
+                Ok(ids) => {
+                    let named: Vec<String> = ids
+                        .iter()
+                        .filter_map(|id| self.backlog.outstanding().into_iter().find(|i| i.id == *id).map(|i| i.request.trim().to_string()))
+                        .collect();
+                    for id in &ids {
+                        self.backlog.dismiss(*id);
+                    }
+                    match self.backlog.save(&self.store) {
+                        Err(e) => format!("I took it off, but couldn't save the list ({e}) -- it may come back after a restart."),
+                        Ok(()) if named.len() == 1 => format!("Done -- \"{}\" is off your outstanding list.", named[0]),
+                        Ok(()) => format!("Done -- cleared {} things off your outstanding list.", named.len()),
+                    }
+                }
+                Err(say) => say,
+            };
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
         let research_again;
         // "research it again", "look that up again": the topic is the last
         // one, not the word "it" (30 Sep 2026: searched for "it").
@@ -879,16 +902,35 @@ impl<'a> Daemon<'a> {
             // The desktop's loose files, filed on a yes (29 Sep 2026).
             if let Some(plan) = self.pending_desktop.take() {
                 self.session.pending = Pending::Nothing;
-                if !is_yes(said) {
+                if is_no(said) {
                     return "Alright, your desktop stays as it is.".into();
                 }
+                if !is_yes(said) {
+                    return self.turn_from(said, t, how);
+                }
                 return self.carry_out_desktop_plan(plan);
+            }
+            // An optimization run's offer: all of it, on one yes.
+            if let Some(plan) = self.pending_optimize.take() {
+                self.session.pending = Pending::Nothing;
+                if is_no(said) {
+                    return "Alright, I left everything as it is.".into();
+                }
+                // Anything else is a new request, not an answer: it's heard
+                // as one (1 Oct 2026: a different question was taken as "no").
+                if !is_yes(said) {
+                    return self.turn_from(said, t, how);
+                }
+                return self.carry_out_optimize(plan, t);
             }
             // Moving big folders to another drive (G5).
             if let Some(plan) = self.pending_storage.take() {
                 self.session.pending = Pending::Nothing;
-                if !is_yes(said) {
+                if is_no(said) {
                     return "Alright, nothing moved.".into();
+                }
+                if !is_yes(said) {
+                    return self.turn_from(said, t, how);
                 }
                 return self.carry_out_storage_plan(plan, t);
             }

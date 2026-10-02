@@ -167,7 +167,7 @@ impl<'a> Daemon<'a> {
             // has never once run on a real picture.
             return if tools.vision.enabled {
                 let you = tools.vision.your_face.clone();
-                self.see().as_lines(&you)
+                self.see_you().as_lines(&you)
             } else {
                 "could_not: seeing is switched off in settings".into()
             };
@@ -389,6 +389,22 @@ impl<'a> Daemon<'a> {
         let album = self.album.clone();
         let looking = self.start_looking();
         looking.look(&frame, w, h, &cfg, &album)
+    }
+
+    /// `see`, for whether you're there and what your hand says: the light
+    /// look (`Looking::look_at_you`), never the models that name things.
+    fn see_you(&mut self) -> crate::vision::Sight {
+        let cfg = self.tools_cfg().vision.clone();
+        if !cfg.enabled {
+            return crate::vision::Sight::Unread("seeing is switched off".into());
+        }
+        let (frame, w, h) = match self.one_frame() {
+            Ok(f) => f,
+            Err(why) => return crate::vision::Sight::Unread(why),
+        };
+        let album = self.album.clone();
+        let looking = self.start_looking();
+        looking.look_at_you(&frame, w, h, &cfg, &album)
     }
 
     /// "Look at my screen", "what does this chart show?" — a picture taken

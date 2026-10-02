@@ -1064,6 +1064,7 @@ impl<'a> Voice<'a> {
         let data = crate::roots::data_dir();
         if let Some(wav) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
             let _ = crate::speaking::begin(&data, text, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS);
+            crate::overlaywin::start_if_gone(&data);
         }
         let t1 = std::time::Instant::now();
         // Ended mid-way when you speak over it (`micthread`, cutting in by

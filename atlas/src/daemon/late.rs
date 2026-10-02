@@ -510,6 +510,7 @@ impl<'a> Daemon<'a> {
         let lang = s.lang;
         let what = s.description.clone();
         let hcfg = self.tools_cfg().handoff.clone();
+        let named = what.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let mut sandbox = crate::sandbox::Sandbox::create(&base, "build")
                 .map_err(|e| format!("couldn't make a sandbox to build in: {e}"))?;
@@ -544,8 +545,12 @@ impl<'a> Daemon<'a> {
             let _ = sandbox.discard();
             if let Some(code) = outcome.code() {
                 let _ = std::fs::create_dir_all(&out_dir);
-                let name = if outcome.is_built() { "build.verified" } else { "build.draft" };
-                let _ = std::fs::write(out_dir.join(format!("{name}.{}", ext_for(lang))), code);
+                let ext = if outcome.is_built() { ext_for(lang).to_string() } else { format!("draft.{}", ext_for(lang)) };
+                let path = crate::build_it::file_name_for(&out_dir, &named, &ext);
+                said = match std::fs::write(&path, code) {
+                    Ok(()) => format!("{said} Saved as {}, in {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), out_dir.display()),
+                    Err(e) => format!("{said} (I couldn't save it to {} -- {e}.)", path.display()),
+                };
             }
             if outcome.is_built() {
                 let _ = std::fs::remove_file(crate::build_it::Struggle::path());
@@ -1281,19 +1286,67 @@ impl<'a> Daemon<'a> {
             return "I couldn't work out where your home folder is, so I can't find your desktop.".into();
         };
         let home = std::path::PathBuf::from(home);
-        // Windows moves the desktop into OneDrive when OneDrive backs it up.
-        let desktop = [home.join("OneDrive").join("Desktop"), home.join("Desktop")]
-            .into_iter()
-            .find(|d| d.is_dir())
-            .unwrap_or_else(|| home.join("Desktop"));
-        let root = home.join("Documents").join("Filed");
-        let plan = crate::filing::plan_folder(&desktop, &root, crate::store::now());
-        let words = crate::filing::tidy_plan_words("your desktop", &plan, &root);
+        // Windows moves the desktop (and Documents) into OneDrive when
+        // OneDrive backs them up.
+        let known = |name: &str| {
+            [home.join("OneDrive").join(name), home.join(name)].into_iter().find(|d| d.is_dir()).unwrap_or_else(|| home.join(name))
+        };
+        let desktop = known("Desktop");
+        let root = known("Documents").join("Filed");
+        // The desktop and Downloads, the two places loose files pile up
+        // (1 Oct 2026: "organize my PC" only ever looked at the desktop).
+        let now = crate::store::now();
+        let mut plan = crate::filing::plan_folder(&desktop, &root, now);
+        let downloads = home.join("Downloads");
+        if downloads.is_dir() {
+            plan.extend(crate::filing::plan_folder(&downloads, &root, now));
+        }
+        let words = crate::filing::tidy_plan_words("your desktop and Downloads", &plan, &root);
         if plan.iter().any(|(_, s)| matches!(s, crate::filing::Suggestion::Move { .. })) {
             self.session.ask(&words);
             self.pending_desktop = Some(plan);
         }
         words
+    }
+
+    /// An optimization run's plan, done: each program asked to close (never
+    /// forced), each startup entry marked off the way Task Manager does it,
+    /// the old temporary files cleared. What happened to each is said.
+    pub(super) fn carry_out_optimize(&mut self, plan: crate::tune::Plan, t: u64) -> String {
+        let mut done: Vec<String> = Vec::new();
+        let mut not: Vec<String> = Vec::new();
+        for (app, mb) in &plan.close {
+            match crate::tune::close_program(app) {
+                Ok(()) => {
+                    done.push(format!("closed {app} ({mb} MB)"));
+                    self.journal.record_at(Act::Upkeep, &format!("closed {app} to free memory"), true, t);
+                }
+                Err(e) => not.push(format!("{app} didn't close ({e})")),
+            }
+        }
+        for name in &plan.stop_starting {
+            match crate::tune::stop_starting(name) {
+                Ok(()) => {
+                    done.push(format!("{name} won't start with Windows"));
+                    self.journal.record_at(Act::Upkeep, &format!("stopped {name} starting with Windows (Task Manager > Startup turns it back on)"), true, t);
+                }
+                Err(e) => not.push(format!("{name}'s startup ({e})")),
+            }
+        }
+        if let Some((dir, _)) = &plan.temp {
+            let c = crate::tune::clear_old_files(dir, 86_400);
+            done.push(format!("cleared {} MB of temporary files ({} files; {} in use or recent, left)", c.mb, c.files, c.skipped));
+            self.journal.record_at(Act::Upkeep, &format!("cleared {} MB of temporary files", c.mb), true, t);
+        }
+        let mut said = if done.is_empty() { "Nothing changed.".to_string() } else { format!("Done: {}.", done.join("; ")) };
+        if !not.is_empty() {
+            said.push_str(&format!(" Not done: {}.", not.join("; ")));
+        }
+        let r = crate::health::read_machine();
+        if r.ram_total_gb > 0.0 {
+            said.push_str(&format!(" Memory is at {:.0}% now.", r.ram_used_gb / r.ram_total_gb * 100.0));
+        }
+        said
     }
 
     /// The desktop plan, carried out: each move judged and done
@@ -1324,8 +1377,8 @@ impl<'a> Daemon<'a> {
         }
         let mut said = match (&into, filed) {
             (_, 0) => "Nothing moved.".to_string(),
-            (Some(root), n) => format!("Filed {n} from your desktop, into folders under {}.", root.display()),
-            (None, n) => format!("Filed {n} from your desktop."),
+            (Some(root), n) => format!("Filed {n} from your desktop and Downloads, into folders under {}.", root.display()),
+            (None, n) => format!("Filed {n} from your desktop and Downloads."),
         };
         if !not.is_empty() {
             said.push_str(&format!(" Not moved: {}.", not.join("; ")));

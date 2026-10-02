@@ -211,7 +211,14 @@ commands:
   - intent: machine_health
     describe: "Check the computer's health: memory, disk, CPU and what is slowing it down."
     phrases: ["how's the machine", "hows the machine", "system status", "machine health", "what's slowing this down", "whats slowing this down",
-              "check the laptop", "why is this slow"]
+              "check the laptop", "why is this slow",
+              # Eric, 1 Oct 2026: "do an optimization run on my computer and
+              # tell me what can be cleared or fixed".
+              "optimization run", "optimisation run", "optimize my computer", "optimise my computer",
+              "optimize my pc", "optimise my pc", "optimize my laptop", "optimise my laptop",
+              "speed up my computer", "speed up my pc", "speed up my laptop", "tune up my computer",
+              "what can be cleared", "what's eating the memory", "whats eating the memory",
+              "what's using my memory", "whats using my memory"]
 
   - intent: self_check
     describe: "Run Atlas's self-check and say what setup is still missing."
@@ -806,9 +813,14 @@ commands:
   # filed into folders by kind (`filing::plan_folder`), the plan said first
   # and carried out only on a yes. Shortcuts and folders are never touched.
   - intent: tidy_desktop
-    describe: "Tidy the user's desktop: file its loose files into folders. Says the plan and asks first; never deletes anything."
+    describe: "Organize the user's PC: file the loose files on the desktop and in Downloads into folders. Says the plan and asks first; never deletes anything."
     phrases: ["tidy my desktop", "tidy up my desktop", "tidy the desktop", "organize my desktop", "organise my desktop",
-              "clean up my desktop", "sort my desktop", "sort out my desktop"]
+              "clean up my desktop", "sort my desktop", "sort out my desktop",
+              # Eric, 1 Oct 2026: "can't organize my PC properly".
+              "organize my pc", "organise my pc", "organize my computer", "organise my computer",
+              "organize my laptop", "organise my laptop", "organize my files", "organise my files",
+              "organize my downloads", "organise my downloads", "tidy my downloads", "clean up my downloads",
+              "sort my files", "sort out my files", "tidy up my files", "tidy my files"]
 
   # "Use my webcam mic" (Eric, 29 Sep 2026): record from the microphone
   # named by kind, and keep to it (`hearing::mic_by_kind`).

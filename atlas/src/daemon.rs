@@ -1285,6 +1285,8 @@ pub struct Daemon<'a> {
     pending_press: Option<(u64, String, String)>,
     /// A storage plan shown and waiting for your yes.
     pending_storage: Option<crate::tune::StoragePlan>,
+    /// What an optimization run offered to do, waiting on your yes.
+    pending_optimize: Option<crate::tune::Plan>,
     /// The desktop's loose files and where each would go, shown and waiting
     /// for your yes ("tidy my desktop", 29 Sep 2026).
     pending_desktop: Option<Vec<(std::path::PathBuf, crate::filing::Suggestion)>>,
@@ -1915,6 +1917,7 @@ impl<'a> Daemon<'a> {
             posting: Vec::new(),
             pending_press: None,
             pending_storage: None,
+            pending_optimize: None,
             pending_desktop: None,
             pending_undo: None,
             pending_media_keep: None,

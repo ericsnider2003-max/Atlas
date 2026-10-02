@@ -1355,3 +1355,31 @@ fn sentence_list(items: &[&str]) -> String {
         ),
     }
 }
+
+
+/// A hand answering a question, from its joints: a thumb up, a thumb down,
+/// or an open palm, with how sure. Read only when Atlas asked something, and
+/// from the two small hand models alone (1 Oct 2026: the look that was meant
+/// to catch a thumbs-up ran every seeing model there is -- faces, things,
+/// what the picture shows -- and took 400-700 ms, and never read a hand).
+pub fn answer_from(hand: &Landmarks) -> Option<(&'static str, f32)> {
+    let mut r = Reading::of(hand);
+    let folded = (1..5).filter(|f| r.curl(*f) > 0.55).count();
+    let out = r.extended();
+    let span = hand.span().max(1e-3);
+    let wrist = hand.points[0];
+    let thumb = hand.points[4];
+    let thumb_out = r.curl(0) < 0.4;
+    // Image y grows downward: a thumb well above the wrist is "up".
+    let up = (wrist.y - thumb.y) / span;
+    if thumb_out && folded >= 3 && up > 0.6 {
+        return Some(("thumb_up", hand.sure.min(1.0)));
+    }
+    if thumb_out && folded >= 3 && up < -0.6 {
+        return Some(("thumb_down", hand.sure.min(1.0)));
+    }
+    if out >= 4 {
+        return Some(("open_palm", hand.sure.min(1.0)));
+    }
+    None
+}
