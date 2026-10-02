@@ -1156,15 +1156,27 @@ pub fn talk_page(exchanges: &[(String, String)], pending: &[String], listening_h
          <svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><rect x=9 y=3 width=6 height=12 rx=3 />\
          <path d='M6 11a6 6 0 0 0 12 0M12 17v4'/></svg>Hold to talk</button>\
          <p id=holdnote class=note>Press and hold, speak, let go. Or press it once to start and again to stop. \
-         Listening happens on this device.</p></div>\
+         Listening happens on this device.</p>\
+         <button type=button id=handsfree class=secondary aria-pressed=false hidden>Hands-free</button>\
+         <p id=handsnote class=note hidden>Hands-free: talk, pause, and Atlas answers and listens again -- through AirPods \
+         too. Say \"that's all\" to stop.</p></div>\
          <script>(function(){{var s=window.AtlasShell;var b=document.getElementById('holdtalk');\
          if(!b)return;if(!s||!s.listen){{b.parentNode.hidden=true;return;}}b.parentNode.hidden=false;var on=false;\
          function go(){{if(on)return;on=true;b.setAttribute('aria-pressed','true');s.listen();}}\
          function stop(){{if(!on)return;on=false;b.setAttribute('aria-pressed','false');s.stop();}}\
          b.addEventListener('pointerdown',go);b.addEventListener('pointerup',stop);b.addEventListener('pointercancel',stop);\
          b.addEventListener('keydown',function(e){{if(e.key===' '||e.key==='Enter'){{e.preventDefault();on?stop():go();}}}});\
-         window.atlasHeard=function(t){{if(!t)return;var f=document.getElementById('talktext');f.value=t;\
+         var h=document.getElementById('handsfree'),hn=document.getElementById('handsnote');\
+         function hf(){{try{{return sessionStorage.getItem('atlasHandsFree')==='1';}}catch(e){{return false;}}}}\
+         function setHf(v){{try{{sessionStorage.setItem('atlasHandsFree',v?'1':'0');}}catch(e){{}}h.setAttribute('aria-pressed',v?'true':'false');}}\
+         if(s.converse&&h){{h.hidden=false;hn.hidden=false;setHf(hf());\
+         h.addEventListener('click',function(){{var v=!hf();setHf(v);if(v)s.converse();else s.stop();}});}}\
+         window.atlasSpoke=function(){{if(hf()&&s.converse)s.converse();}};\
+         window.atlasQuiet=function(){{setHf(false);var n=document.getElementById('holdnote');if(n){{n.textContent='Hands-free is off -- I didn\\'t hear anything.';n.setAttribute('role','status');}}}};\
+         window.atlasHeard=function(t){{if(!t)return;if(/^(that'?s all|stop|stop listening|goodbye|end)[.!]?$/i.test(t.trim())){{setHf(false);return;}}\
+         var f=document.getElementById('talktext');f.value=t;\
          document.getElementById('talkspoken').value='1';f.form.submit();}};\
+         if(hf()&&s.converse&&!/[?&]say=1/.test(location.search)&&{pending_none})s.converse();\
          if(/[?&]say=1/.test(location.search)&&s.speak&&{pending_none}){{var r=document.querySelectorAll('.msg:not(.mine) .bubble');\
          if(r.length)s.speak(r[r.length-1].textContent.replace(/^Atlas: /,''));}}}})();</script>",
         hide = if listening_here { "" } else { " hidden" },

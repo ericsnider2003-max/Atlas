@@ -7,19 +7,38 @@ import WebKit
 /// stay on the device (`requiresOnDeviceRecognition`): if the phone can't do
 /// that for the chosen language, hold-to-talk says so instead of sending audio
 /// anywhere.
-final class Shell: NSObject, WKScriptMessageHandler {
+///
+/// Hands-free (2 Oct 2026, the "why stale" report, idea 10): `converse`
+/// listens until you pause, sends what you said, and once Atlas has spoken
+/// the answer the page asks it to listen again -- so a conversation runs
+/// through AirPods away from the desk. Bluetooth headsets are allowed for
+/// both the microphone and the voice.
+final class Shell: NSObject, WKScriptMessageHandler, AVSpeechSynthesizerDelegate {
     weak var web: WKWebView?
     private let engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var heard = ""
     private let voice = AVSpeechSynthesizer()
+    /// Listening ends itself after this long without a new word.
+    private let pause: TimeInterval = 1.5
+    /// And gives up after this long with no words at all.
+    private let nothing: TimeInterval = 8
+    private var conversing = false
+    private var pauseTimer: Timer?
+    private var startedAt = Date()
+
+    override init() {
+        super.init()
+        voice.delegate = self
+    }
 
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
         guard let body = m.body as? [String: Any], let what = body["do"] as? String else { return }
         switch what {
-        case "listen": listen()
-        case "stop": finish()
+        case "listen": conversing = false; listen()
+        case "converse": conversing = true; listen()
+        case "stop": conversing = false; finish()
         case "speak": speak(body["text"] as? String ?? "")
         default: break
         }
@@ -42,17 +61,58 @@ final class Shell: NSObject, WKScriptMessageHandler {
         req.shouldReportPartialResults = true
         request = req
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
+        // AirPods and other headsets: their microphone (HFP) and their
+        // speaker (A2DP), with the phone's speaker when none is connected.
+        try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.duckOthers, .defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
         try? session.setActive(true)
         let input = engine.inputNode
         input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { b, _ in req.append(b) }
         try? engine.start()
+        startedAt = Date()
         task = rec.recognitionTask(with: req) { r, _ in
-            if let r { self.heard = r.bestTranscription.formattedString }
+            if let r {
+                self.heard = r.bestTranscription.formattedString
+                if self.conversing { DispatchQueue.main.async { self.armPause() } }
+            }
+        }
+        if conversing { armPause() }
+    }
+
+    /// Hands-free: finish once you've paused, or give up if nothing came.
+    private func armPause() {
+        pauseTimer?.invalidate()
+        let wait = heard.isEmpty ? nothing : pause
+        pauseTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { _ in
+            if self.heard.isEmpty {
+                self.conversing = false
+                self.stopEngine()
+                self.web?.evaluateJavaScript("window.atlasQuiet && window.atlasQuiet()")
+            } else {
+                self.finish()
+            }
+        }
+    }
+
+    private func stopEngine() {
+        pauseTimer?.invalidate()
+        if engine.isRunning {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+        }
+        request?.endAudio()
+        task?.cancel()
+    }
+
+    /// Atlas has finished speaking: the page decides whether to listen again.
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) {
+        DispatchQueue.main.async {
+            self.web?.evaluateJavaScript("window.atlasSpoke && window.atlasSpoke()")
         }
     }
 
     private func finish() {
+        pauseTimer?.invalidate()
+        guard engine.isRunning else { return }
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         request?.endAudio()

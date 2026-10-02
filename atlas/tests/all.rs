@@ -971,3 +971,5 @@ mod the_plain_api_answers;
 mod market_desk;
 #[path = "video_studio.rs"]
 mod video_studio;
+#[path = "hands_free.rs"]
+mod hands_free;
