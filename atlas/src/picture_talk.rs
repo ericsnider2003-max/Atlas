@@ -236,6 +236,80 @@ pub fn ask_until(
     Ok(answer)
 }
 
+// ---------------------------------------------------------------------------
+// Asking the model that is already running (Eric, 1 Oct 2026, item 79).
+//
+// The talking model is Qwen3-VL 4B -- the same model this file starts a
+// second copy of for every picture. When its server was started with the
+// picture encoder (`models::launch`, `--mmproj`), the picture goes to that
+// server instead: nothing to load, about 0.45 GB more instead of 3.6 GB, and
+// "the picture reader needs about 3.5 GB and only 2.7 GB is free" stops
+// being the answer to "look at me".
+// ---------------------------------------------------------------------------
+
+/// The request body for one picture and one question, in the OpenAI shape
+/// llama-server's `/v1/chat/completions` takes images in (`image_url` with a
+/// data address). Slot 1: a look is work beside the conversation, and must
+/// not throw away the conversation's cached prompt in slot 0.
+pub fn server_body(question: &str, png: &[u8], most_words: u32) -> String {
+    let url = format!("data:image/png;base64,{}", crate::b64::encode(png));
+    serde_json::json!({
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": url}},
+                {"type": "text", "text": question},
+            ],
+        }],
+        "max_tokens": most_words,
+        "temperature": 0.2,
+        "stream": false,
+        "id_slot": 1,
+    })
+    .to_string()
+}
+
+/// The answer in a `/v1/chat/completions` reply; `Err` says what came back
+/// instead, in words.
+pub fn server_answer(raw: &str) -> Result<String, String> {
+    let v: serde_json::Value =
+        serde_json::from_str(raw.trim()).map_err(|_| format!("the model's reply wasn't readable ({})", raw.chars().take(120).collect::<String>()))?;
+    if let Some(e) = v.get("error") {
+        let msg = e.get("message").and_then(|m| m.as_str()).unwrap_or("an error");
+        return Err(format!("the model couldn't read the picture: {msg}"));
+    }
+    let text = v
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let text = the_answer_in(&text);
+    if text.is_empty() {
+        return Err("the model gave no answer about the picture".into());
+    }
+    Ok(text)
+}
+
+/// Ask the running talking model about `image`. `Err` when it isn't up, has
+/// no eyes, or didn't answer -- the caller then falls back to `ask_until`
+/// if there's room for it.
+pub fn ask_server(url: &str, image: &Path, question: &str, most_words: u32) -> Result<String, String> {
+    let png = std::fs::read(image).map_err(|e| format!("I couldn't read the picture back ({e})"))?;
+    ask_server_png(url, &png, question, most_words)
+}
+
+/// `ask_server` for a picture held in memory, never written to disk -- what
+/// watching uses (`camwatch`).
+pub fn ask_server_png(url: &str, png: &[u8], question: &str, most_words: u32) -> Result<String, String> {
+    let body = server_body(question, png, most_words);
+    let mut tool = crate::models::server_post();
+    tool.timeout_secs = 120;
+    let mut vars = crate::tools::Vars::new();
+    vars.insert("url".into(), url.to_string());
+    let raw = tool.run(&vars, Some(&body)).map_err(|e| format!("the model didn't answer ({e})"))?;
+    server_answer(&raw)
+}
+
 /// How long one question may take. A 4B model on a laptop answers in well
 /// under a minute; five minutes means something is stuck.
 pub const ASK_TIMEOUT_SECS: u64 = 300;
@@ -265,5 +339,30 @@ pub fn smaller(image: &Path) -> Option<std::path::PathBuf> {
     } else {
         let _ = std::fs::remove_file(&small);
         None
+    }
+}
+
+#[cfg(test)]
+mod server_tests {
+    use super::*;
+
+    #[test]
+    fn the_picture_goes_to_the_running_model_as_an_image_url() {
+        let body = server_body("Can you see me?", &[137, 80, 78, 71], 300);
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let parts = &v["messages"][0]["content"];
+        assert_eq!(parts[0]["type"], "image_url");
+        assert!(parts[0]["image_url"]["url"].as_str().unwrap().starts_with("data:image/png;base64,iVBORw"));
+        assert_eq!(parts[1]["text"], "Can you see me?");
+        assert_eq!(v["id_slot"], 1);
+    }
+
+    #[test]
+    fn the_answer_or_the_reason_comes_back() {
+        let ok = r#"{"choices":[{"message":{"role":"assistant","content":"You're at your desk.<|im_end|>"}}]}"#;
+        assert_eq!(server_answer(ok).unwrap(), "You're at your desk.");
+        let no_eyes = r#"{"error":{"code":500,"message":"image input is not supported - hint: if this is unexpected, you may need to provide the mmproj"}}"#;
+        assert!(server_answer(no_eyes).unwrap_err().contains("not supported"));
+        assert!(server_answer("").is_err());
     }
 }

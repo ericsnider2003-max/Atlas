@@ -226,3 +226,112 @@ fn the_picture_reader_is_asked_about_you_from_the_frame() {
     assert_eq!(line[at("--image") + 1], "/tmp/webcam_1.png");
     assert_eq!(line[at("-p") + 1], q);
 }
+
+// ---------------------------------------------------------------------------
+// Eric, 1 Oct 2026, about 4:30-5:00 pm: "Look at me." -- "Allow the camera?"
+// -- "I allow the camera." (seen) -- "Can you see me?" -- "Allow the camera?"
+// again, and again, six times in sixteen minutes. permissions.json held no
+// camera grant at all: "I allow the camera" didn't open with a yes, so it was
+// taken as a new request and nothing was kept.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn erics_own_answer_is_kept_and_not_asked_again() {
+    for answer in ["I allow the camera.", "I Allow The Camera.", "I love the camera."] {
+        let dir = tmp(&format!("erics-answer-{}", answer.len() + answer.chars().filter(|c| c.is_uppercase()).count()));
+        let c = config_with_a_camera(&dir);
+        let p = plat();
+        let store = Store::new(dir.join("state"));
+        let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        assert_eq!(d.turn("Look at me.", 100), atlas::camera_ask::ALLOW);
+        let yes = d.turn(answer, 110);
+        assert!(yes.starts_with(atlas::camera_ask::LOOKING), "{answer} is a yes: {yes}");
+        let perms: atlas::grants::Permissions = store.load("permissions");
+        assert!(perms.grants.iter().any(|g| g.app == "camera" && g.span == atlas::grants::Span::Always), "{answer}: {:?}", perms.grants);
+        let again = d.turn("Can you see me?", 130);
+        assert_ne!(again, atlas::camera_ask::ALLOW, "{answer}: asked again");
+        assert!(again.starts_with(atlas::camera_ask::LOOKING), "{again}");
+    }
+}
+
+/// "What do you see?" with Recognising things on went straight to a frame:
+/// no question, no "Looking now" (1 Oct 2026: "I can see someone I don't
+/// recognise, a person, a bed" came with neither).
+#[test]
+fn every_way_of_looking_goes_through_the_one_gate() {
+    let dir = tmp("one-gate");
+    let mut c = config_with_a_camera(&dir);
+    if let Some(t) = c.tools.as_mut() {
+        t.vision.enabled = true;
+    }
+    let p = plat();
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    assert_eq!(d.turn("what do you see", 100), atlas::camera_ask::ALLOW, "not allowed yet: asked first");
+    let r = d.turn("yes", 101);
+    assert!(r.starts_with(atlas::camera_ask::LOOKING), "{r}");
+    let r = d.turn("what do you see", 120);
+    assert!(r.starts_with(atlas::camera_ask::LOOKING), "allowed now, and said: {r}");
+}
+
+/// "Can you watch me for a five minute period?" -- "I can't continuously
+/// watch for five minutes with the current setup." Now it can: asked for the
+/// camera first, started on the yes, asked about, and stopped.
+#[test]
+fn watching_for_a_while() {
+    let dir = tmp("watching");
+    let mut c = config_with_a_camera(&dir);
+    if let Some(t) = c.tools.as_mut() {
+        // A camera that keeps sending frames, like the real one.
+        let cam = t.capture_webcam.as_mut().unwrap();
+        cam.args = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=5", "-frames:v", "1", "-y", "{out_png}"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    }
+    let p = plat();
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    let asked = d.turn("Atlas, can you watch me for a five minute period?", 100);
+    assert_eq!(asked, atlas::camera_ask::ALLOW, "the camera is asked about first");
+    let started = d.turn("I allow the camera.", 105);
+    assert!(started.starts_with("Watching now, for 5 minutes"), "{started}");
+    let status = d.turn("are you watching me?", 110);
+    assert!(status.starts_with("Yes"), "{status}");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let stopped = d.turn("stop watching", 120);
+    assert!(stopped.starts_with("Stopped watching"), "{stopped}");
+    assert!(stopped.contains("nothing was kept"), "{stopped}");
+    assert_eq!(d.turn("are you watching me?", 130), "No, I'm not watching. Say \"watch me for five minutes\" and I will.");
+}
+
+/// "Ok so can you work that so you have this capability." -- "I can't add
+/// that capability with the current setup." A request for an ability is
+/// written down for Eric's yes.
+#[test]
+fn asking_for_an_ability_is_written_down_for_your_yes() {
+    let dir = tmp("ability");
+    let c = config_with_a_camera(&dir);
+    let p = plat();
+    let store = Store::new(dir.join("state"));
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let r = d.turn("Give yourself the ability to read my texts out loud", 100);
+    assert!(r.contains("written it down"), "{r}");
+    let w: atlas::growth::WantedAbilities = store.load(atlas::growth::STORE);
+    assert_eq!(w.waiting().map(|x| x.what.as_str()), Some("read my texts out loud"));
+    let r = d.turn("yes, build that ability", 110);
+    assert!(r.starts_with("Approved"), "{r}");
+    let w: atlas::growth::WantedAbilities = store.load(atlas::growth::STORE);
+    assert_eq!(w.items[0].state, atlas::growth::State::Approved);
+}
+
+/// "Do some research on things that would allow you to advance your own
+/// capabilities, then you can present them to me for approval" -- "I can't
+/// tell what you mean -- nothing copied, nothing selected, nothing open."
+#[test]
+fn a_research_request_that_names_its_subject_is_not_asked_what_it_means() {
+    let dir = tmp("research-them");
+    let c = config_with_a_camera(&dir);
+    let p = plat();
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    let r = d.turn("research ways an assistant can safely add new abilities, then present them to me for approval", 100);
+    assert!(!r.contains("nothing copied, nothing selected"), "{r}");
+}

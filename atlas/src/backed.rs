@@ -48,6 +48,12 @@ pub fn claims_work_started(sentence: &str) -> bool {
         " i've turned on ", " i have turned on ", " i turned on ", " i've switched on ", " i've enabled ",
         " i'm looking through your camera ", " looking through your camera ", " can definitely see you ",
         " i can see you right now ",
+        // A sight described with no picture taken (Eric, 1 Oct 2026: "I see
+        // you -- standing there, holding the camera like it's a microphone",
+        // and the log shows no look at all). A real look comes from the
+        // camera's own tool, which counts as work started.
+        " i see you ", " i can see you ", " i can see someone ", " i can see a person ", " you're holding ",
+        " you are holding ", " holding the camera ", " i see you're standing ", " i see you're sitting ",
         // Doing it, said by a model that did nothing (30 Sep 2026, Atlas's
         // own self-test on the laptop: "I'm focusing on the quarterly budget
         // now", "I'll add the quarterly budget to your calendar" -- no tool).
@@ -105,13 +111,26 @@ pub fn without_unbacked_claims(text: &str, started: bool) -> String {
     if !sentences.iter().any(|s| claims_work_started(s)) {
         return text.to_string();
     }
+    let saw = sentences.iter().any(|s| claims_sight(s));
+    let truth = if saw { NOT_LOOKED } else { NOT_STARTED };
     let kept: Vec<String> = sentences.into_iter().filter(|s| !claims_work_started(s)).collect();
     let kept = kept.join(" ");
     if kept.trim().is_empty() {
-        NOT_STARTED.to_string()
+        truth.to_string()
     } else {
-        format!("{} {NOT_STARTED}", kept.trim())
+        format!("{} {truth}", kept.trim())
     }
+}
+
+/// Said in place of a sight nothing was looked at for.
+pub const NOT_LOOKED: &str = "I haven't actually looked -- say \"look at me\" and I will.";
+
+/// Does this sentence describe something seen through the camera?
+pub fn claims_sight(sentence: &str) -> bool {
+    let t = format!(" {} ", norm(sentence));
+    [" i see you ", " i can see you ", " i can see someone ", " i can see a person ", " you're holding ", " you are holding ", " holding the camera ", " looking through your camera ", " can definitely see you "]
+        .iter()
+        .any(|c| t.contains(c))
 }
 
 /// Does this sentence say Atlas lacks, or may not use, an ability it has?
@@ -148,6 +167,24 @@ pub fn denies_an_ability(sentence: &str) -> Option<&'static str> {
         (" can't see your screen", "screen"),
         (" can't look at your screen", "screen"),
         (" can't see what's on your screen", "screen"),
+        // "I can't add capabilities to myself -- that's a system architecture
+        // thing" (Eric, 1 Oct 2026): a request for a new ability is always
+        // taken down for his yes (`growth`).
+        (" can't add capabilities", "grow"),
+        (" can't add capability", "grow"),
+        (" can't add that capability", "grow"),
+        (" can't add new capabilities", "grow"),
+        (" can't add abilities", "grow"),
+        (" can't add features", "grow"),
+        (" can't add new features", "grow"),
+        (" can't give myself", "grow"),
+        (" can't build new capabilities", "grow"),
+        (" can't build new abilities", "grow"),
+        (" can't extend myself", "grow"),
+        (" can't add to myself", "grow"),
+        (" can't change my own", "grow"),
+        (" can't improve myself", "grow"),
+        (" system architecture thing", "grow"),
         (" i'm not supposed to", ""),
         (" i am not supposed to", ""),
         (" i'm not allowed to", ""),
@@ -306,4 +343,25 @@ pub fn install(c: Box<dyn MeaningCheck>) {
 /// What the meaning check says of a sentence; `Neither` with none installed.
 pub fn check_meaning(sentence: &str) -> Meant {
     CHECKER.get().map(|c| c.check(sentence)).unwrap_or(Meant::Neither)
+}
+
+#[cfg(test)]
+mod growth_tests {
+    use super::*;
+
+    #[test]
+    fn a_sight_with_no_look_is_taken_back() {
+        let said = without_unbacked_claims("I see you — standing there, holding the camera like it's a microphone. What's up?", false);
+        assert!(said.contains(NOT_LOOKED), "{said}");
+        assert!(!said.contains("standing there"), "{said}");
+        let real = "I can see you at your desk.";
+        assert_eq!(without_unbacked_claims(real, true), real);
+        assert!(!claims_work_started("I see you're asking about the weather."));
+    }
+
+    #[test]
+    fn saying_it_cant_gain_abilities_is_a_denial() {
+        assert_eq!(denies_an_ability("I can't add capabilities to myself — that's a system architecture thing."), Some("grow"));
+        assert_eq!(denies_an_ability("I can't add that capability with the current setup."), Some("grow"));
+    }
 }

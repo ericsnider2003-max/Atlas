@@ -103,6 +103,35 @@ pub fn question(said: &str) -> String {
     }
 }
 
+/// Is this a yes to "Allow the camera?"?
+///
+/// The ways Eric answered it (1 Oct 2026) that weren't heard as one: "I allow
+/// the camera.", "I Allow The Camera.", and "I love the camera." -- the
+/// speech-to-text's hearing of "allow". Only ever asked while that question
+/// is waiting, so a sentence that grants it, or the common mishearings of
+/// "allow" beside the camera, count; anything that takes it back doesn't.
+pub fn allows(said: &str) -> bool {
+    let t = plain(said);
+    if t.is_empty() || REFUSALS.iter().any(|r| has(&t, r)) || has(&t, "no") || has(&t, "not") || has(&t, "won't") {
+        return false;
+    }
+    if crate::session::is_yes(&t) || crate::grants::span_from_answer(&t).is_some() {
+        return true;
+    }
+    let grants = [
+        "i allow", "allow it", "allow that", "allow the camera", "allow the webcam", "allow you", "allowed",
+        "you can", "you may", "you have permission", "permission granted", "i give you permission",
+        "go on", "go for it", "that's fine", "thats fine", "fine by me",
+    ];
+    if grants.iter().any(|g| has(&t, g)) {
+        return true;
+    }
+    // "allow" misheard, next to the thing being allowed.
+    let about_it = ["camera", "webcam", "it", "that"].iter().any(|w| has(&t, w));
+    let heard_as = ["love", "a low", "aloud", "hallow", "i low"];
+    about_it && heard_as.iter().any(|h| has(&t, h)) && t.split_whitespace().count() <= 6
+}
+
 /// What Atlas asks before it first looks.
 pub const ALLOW: &str = "Allow the camera? I'll only look when you ask, and I don't keep the picture. Say yes to allow it.";
 
@@ -112,6 +141,16 @@ pub const LOOKING: &str = "Looking now";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn erics_answers_to_allow_the_camera_are_yes() {
+        for s in ["I allow the camera.", "I Allow The Camera.", "I love the camera.", "yes", "yes, always", "allow it", "you can", "go on then"] {
+            assert!(allows(s), "{s}");
+        }
+        for s in ["no", "don't", "not now", "I don't allow the camera", "stop", "what's the weather", "I love pizza"] {
+            assert!(!allows(s), "{s}");
+        }
+    }
 
     #[test]
     fn erics_sentences_are_requests_to_look() {

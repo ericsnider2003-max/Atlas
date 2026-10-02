@@ -919,6 +919,9 @@ pub fn answer_can(what: &str, research_on: bool) -> Option<String> {
 /// said with its state. `topic` is the denial's word ("camera", "research",
 /// "screen"), or anything else to be searched for.
 pub fn truth_about(topic: &str, research_on: bool) -> Option<String> {
+    if topic == "grow" {
+        return Some(crate::growth::CAN_GROW.to_string());
+    }
     let id = match topic {
         "camera" => Some("vision"),
         "research" => Some("research"),

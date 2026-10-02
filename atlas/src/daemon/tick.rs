@@ -173,6 +173,8 @@ impl<'a> Daemon<'a> {
         // Calls: notice one starting or ending, and hand back finished notes.
         out.extend(self.call_notes_tick(t));
         self.tick_laps.mark("calls");
+        // Watching you, when asked to (`camwatch`): what changed, and the end.
+        out.extend(self.watch_tick(t));
         // A window being worked for you.
         // (Windows being worked for you go further down, once Atlas knows
         // whether you're at the keyboard.)
