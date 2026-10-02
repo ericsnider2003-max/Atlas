@@ -981,3 +981,5 @@ mod video_studio;
 mod hands_free;
 #[path = "a_model_for_code.rs"]
 mod a_model_for_code;
+#[path = "job_applications.rs"]
+mod job_applications;

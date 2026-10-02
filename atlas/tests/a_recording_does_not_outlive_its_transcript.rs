@@ -176,11 +176,18 @@ fn the_guard_is_what_the_transcription_paths_actually_use() {
     // Otherwise this file tests a struct nobody constructs — the same shape
     // as the defect it is about. `discard_audio` had a doc, a config flag,
     // tests, and no caller.
-    let daemon = crate::common::source_of("daemon");
-    let live = match daemon.find("#[cfg(test)]") {
-        Some(at) => &daemon[..at],
-        None => &daemon[..],
-    };
+    // Each file's own tests cut off on their own: one `#[cfg(test)]` in an
+    // earlier file (making.rs, 2 Oct) must not hide every file after it.
+    let live: String = crate::common::source_files_of("daemon")
+        .iter()
+        .map(|f| {
+            let text = std::fs::read_to_string(f).unwrap_or_default();
+            match text.find("#[cfg(test)]") {
+                Some(at) => text[..at].to_string(),
+                None => text,
+            }
+        })
+        .collect();
     let uses = live.matches("retention::Recording::new(").count();
     assert!(
         uses >= 2,

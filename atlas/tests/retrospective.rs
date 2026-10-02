@@ -105,6 +105,10 @@ fn no_test_asserts_nothing() {
 /// thing it refused), so it is not prose-only here any more. The second
 /// assertion below is what would have caught that drift.
 const PROSE_ONLY_BASELINE: &[&str] = &[
+    // 2 Oct 2026, merge of Chat A's PC organizing: drives a real Daemon
+    // turn with system changes off and checks the refusal it gives back; the
+    // shape heuristic reads `ProactiveConfig::default()` as a constant.
+    "sorting_a_folder::with_system_changes_off_it_says_so_and_moves_nothing",
     // 28 Sep 2026, round 3 merge: both drive a real Daemon through
     // hublive::reply (a failed save; Pause) and check what comes back; the
     // shape heuristic reads the constants they also check as the whole test.

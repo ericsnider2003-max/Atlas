@@ -502,11 +502,13 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
 fn without_test_blocks(body: &str) -> String {
     let mut out = Vec::new();
     let mut in_test = false;
+    let mut opened = false;
     let mut depth: i32 = 0;
     let mut opened = false;
     for line in body.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             in_test = true;
+            opened = false;
             depth = 0;
             opened = false;
             continue;
@@ -515,11 +517,10 @@ fn without_test_blocks(body: &str) -> String {
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
             opened |= line.contains('{');
-            // Ends where its braces close (2 Oct 2026: it waited for a line
-            // holding a `{` as well, so a test block at the end of one child
-            // file -- `daemon/making.rs` -- swallowed the next one,
-            // `daemon/model.rs`, whose calls then counted for nothing). A
-            // one-line item (`#[cfg(test)] use ...;`) ends on its own line.
+            // The block ends where its braces close -- on a line of its own
+            // ("}") too: 2 Oct 2026, a `mod naming_a_project` in making.rs
+            // hid every daemon file after it, and live methods read as dead.
+            // `#[cfg(test)] use x;` -- one item with no braces.
             if (opened && depth <= 0) || (!opened && line.trim_end().ends_with(';')) {
                 in_test = false;
             }

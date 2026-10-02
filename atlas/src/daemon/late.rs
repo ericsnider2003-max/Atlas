@@ -1846,6 +1846,18 @@ impl<'a> Daemon<'a> {
             let mut transcript = String::new();
             if let Some(timed) = &timed {
                 let wav = folder.join("sound.wav");
+                // The sound pulled out for the transcriber, and the .srt it
+                // writes beside it, are scratch: gone however this ends, an
+                // early return or a panic included.
+                struct Scratch(Vec<std::path::PathBuf>);
+                impl Drop for Scratch {
+                    fn drop(&mut self) {
+                        for f in &self.0 {
+                            let _ = std::fs::remove_file(f);
+                        }
+                    }
+                }
+                let _scratch = Scratch(vec![wav.clone(), wav.with_extension("srt")]);
                 if run(&video.ffmpeg, crate::studio::audio_args(&s(&cut), &s(&wav))).is_ok() {
                     let mut v = vars.clone();
                     let stem_path = wav.with_extension("");
@@ -1861,8 +1873,6 @@ impl<'a> Daemon<'a> {
                         let _ = std::fs::write(folder.join(format!("{stem} - cut.srt")), &srt);
                         transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
                     }
-                    let _ = std::fs::remove_file(&wav);
-                    let _ = std::fs::remove_file(format!("{}.srt", s(&stem_path)));
                 }
             }
             let mut title = None;

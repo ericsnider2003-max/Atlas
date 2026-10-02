@@ -120,7 +120,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | post something, with approval | built, never run for real | `publish` `publishing` `delivery` | ready | ready | ready | ready | ready | ready |
 | follow sites by their feeds, list what's new, read one here or keep it for later, trackers taken off every link | built, never run for real | `feeds` | ready | would | would | catch | would | **no** |
 | watch the channels, hashtags and topics you name through their public feeds -- YouTube, Mastodon, Bluesky, Hacker News, Product Hunt, Google trends, Reddit -- and say what's working for them; TikTok, Instagram and X one page when you ask, never on a schedule | built, never run for real | `social` | ready | would | would | catch | would | **no** |
-| look once a day for gigs, jobs, grants, contracts and niches -- Hacker News hiring threads, Grants.gov, SAM.gov, Reddit, Product Hunt, the App Store charts, GitHub, your feeds and searches, and job alerts in your mail -- and bring the best few with why, to read more, drop or save; it never applies or replies | switched off | `hunt` `hunting` | ready | would | would | catch | would | **no** |
+| look once a day for gigs, jobs, grants, contracts and niches -- Hacker News hiring threads, Grants.gov, SAM.gov, Reddit, Product Hunt, the App Store charts, GitHub, your feeds and searches, and job alerts in your mail -- and bring the best few with why, to read more, drop or save; it never applies or replies | switched off | `hunt` `hunting` `applied` | ready | would | would | catch | would | **no** |
 
 ## Writing
 
@@ -364,4 +364,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-245 things, across 428 of 469 source files. The other 41 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+245 things, across 429 of 470 source files. The other 41 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
