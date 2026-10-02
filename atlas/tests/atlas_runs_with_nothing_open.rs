@@ -57,7 +57,11 @@ fn the_task_starts_one_atlas_at_your_sign_in_with_nothing_elevated() {
     assert!(xml.contains("<LogonTrigger>"), "{xml}");
     // Your sign-in, not anyone's; and only while you're signed in
     // (InteractiveToken: your desktop, your microphone, no stored password).
-    assert_eq!(between(&xml, "UserId"), vec![r"LAPTOP\erics", r"LAPTOP\erics"]);
+    // Three since item 33 (1 Oct 2026): the sign-in, the unlock (Windows
+    // locks and unlocks with the lid shut rather than signing in again), and
+    // the principal. The wake trigger is a system event and names no one.
+    assert_eq!(between(&xml, "UserId"), vec![r"LAPTOP\erics", r"LAPTOP\erics", r"LAPTOP\erics"]);
+    assert!(xml.contains("<StateChange>SessionUnlock</StateChange>"), "{xml}");
     assert_eq!(between(&xml, "LogonType"), vec!["InteractiveToken"]);
     assert_eq!(between(&xml, "RunLevel"), vec!["LeastPrivilege"]);
     // Normal priority: a task's default (7) starts the program below normal.
@@ -284,7 +288,8 @@ fn pause_and_resume_reach_the_run_loop_and_nothing_else_does() {
 fn quitting_from_the_icon_is_the_clean_way_out() {
     let src = std::fs::read_to_string("src/notifyicon.rs").unwrap();
     let quit = src.split_once("TrayAction::Quit => {").expect("Quit handled").1.split('}').next().unwrap().to_string();
-    assert!(quit.contains("goodbye::please_stop()"), "{quit}");
+    // The same door, saying why (item 33: the record of runs says "you closed it").
+    assert!(quit.contains("goodbye::please_stop_because(crate::goodbye::Why::YouClosedIt)"), "{quit}");
     // Removed on the way out, and put back when Explorer restarts.
     assert!(src.contains("NIM_DELETE"));
     assert!(src.contains("TaskbarCreated"));

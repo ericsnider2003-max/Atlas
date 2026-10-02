@@ -618,7 +618,16 @@ impl ToolsConfig {
 impl<'a> Voice<'a> {
     pub fn new(cfg: &'a ToolsConfig) -> Self {
         if cfg.enabled && cfg.tts_engine.engine == crate::tts::Engine::Kokoro {
-            crate::kokoro::warm_up(crate::roots::install_root());
+            // Loaded on a thread of its own, then the lines Atlas says most
+            // are made ahead (Phase 0.8), so "Yes?" never waits on synthesis.
+            let (voice, pace, volume) = (cfg.voice_settings.voice.clone(), cfg.voice_settings.speed, cfg.sound.volume);
+            if crate::kokoro::check(&crate::roots::install_root()).is_ok() {
+                std::thread::spawn(move || {
+                    if let Ok(synth) = kokoro_synth_for(&voice, pace, volume) {
+                        crate::kokoro::prepare_stock(synth, crate::kokoro::made_for(&voice, pace, volume));
+                    }
+                });
+            }
         }
         Voice {
             cfg,
@@ -1114,11 +1123,22 @@ impl<'a> Voice<'a> {
     /// How one sentence becomes Kokoro audio: the voice, your pace and your
     /// volume. `Err` (with why, in words) when Kokoro can't be had.
     fn kokoro_synth(&self) -> std::result::Result<crate::kokoro::Synth, String> {
+        kokoro_synth_for(&self.cfg.voice_settings.voice, self.cfg.voice_settings.speed, self.cfg.sound.volume)
+    }
+
+    /// What the stock lines are made with, for these settings.
+    fn stock_made_for(&self) -> String {
+        crate::kokoro::made_for(&self.cfg.voice_settings.voice, self.cfg.voice_settings.speed, self.cfg.sound.volume)
+    }
+}
+
+/// Kokoro saying text in `voice` at `pace` and `volume` -- loaded the first
+/// time (`kokoro::engine`), so this can wait seconds; call it off the loop.
+fn kokoro_synth_for(voice: &str, pace: f32, volume: u8) -> std::result::Result<crate::kokoro::Synth, String> {
         let root = crate::roots::install_root();
         let engine = crate::kokoro::engine(&root)?;
-        let (_, sid) = crate::kokoro::voice_or_default(&self.cfg.voice_settings.voice);
-        let speed = crate::tts::Engine::Kokoro.speed_value(self.cfg.voice_settings.speed);
-        let volume = self.cfg.sound.volume;
+        let (_, sid) = crate::kokoro::voice_or_default(voice);
+        let speed = crate::tts::Engine::Kokoro.speed_value(pace);
         Ok(std::sync::Arc::new(move |text: &str| {
             let k = engine.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut wav = k.synth_wav(text, sid, speed)?;
@@ -1128,8 +1148,9 @@ impl<'a> Voice<'a> {
             }
             Ok(wav)
         }))
-    }
+}
 
+impl Voice<'_> {
     /// A whole reply, before its first sentence is spoken, so Kokoro can
     /// make each next sentence while the one before it plays. The sentences
     /// are the ones `speakthread::Saying` will hand to `speak`, as `speak` will
@@ -1199,7 +1220,8 @@ impl<'a> Voice<'a> {
         let (mut synth_ms, mut play_ms) = (0u128, 0u128);
         for (i, s) in sentences.iter().enumerate() {
             let t0 = std::time::Instant::now();
-            let wav = match self.ahead.take(s).unwrap_or_else(|| synth(s)) {
+            let made_for = self.stock_made_for();
+            let wav = match self.ahead.take(s).or_else(|| crate::kokoro::stock(s, &made_for).map(Ok)).unwrap_or_else(|| synth(s)) {
                 Ok(w) => w,
                 Err(why) => {
                     // Fails mid-reply: say why once, and piper says the rest
@@ -1631,7 +1653,10 @@ impl crate::daemon::Ears for Voice<'_> {
         Some(Box::new(Voice::mic_work(self)))
     }
     fn last_listen_split_ms(&self) -> Option<(u32, u32)> {
-        unpack(self.last_listen.load(std::sync::atomic::Ordering::Relaxed))
+        // Taken, not read (Phase 0.2): about 60 of 107 turns on 30 Sep
+        // carried the listening and hearing figures of an earlier turn,
+        // because a typed or follow-up turn left the last ones in place.
+        unpack(self.last_listen.swap(UNMEASURED, std::sync::atomic::Ordering::Relaxed))
     }
     fn voiceprint(&self) -> Option<Vec<f32>> {
         Voice::voiceprint(self)
@@ -1934,7 +1959,7 @@ impl crate::daemon::Mouth for Voice<'_> {
         Some(Box::new(self.speaker()))
     }
     fn last_speak_split_ms(&self) -> Option<(u32, u32)> {
-        unpack(self.last_speak.load(std::sync::atomic::Ordering::Relaxed))
+        unpack(self.last_speak.swap(UNMEASURED, std::sync::atomic::Ordering::Relaxed))
     }
 }
 

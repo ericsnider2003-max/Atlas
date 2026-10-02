@@ -568,7 +568,13 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         let (voice, _) = crate::kokoro::voice_or_default(&vset.voice);
         match k {
             Ok(_) => (true, format!("Kokoro, spoken inside Atlas, as {voice}")),
-            Err(m) => (false, format!("Kokoro is chosen, but {}; until it is, Atlas speaks in piper", m.plain())),
+            // Atlas fetches Kokoro itself (`getpieces::setup_pieces`), and
+            // speaks in piper meanwhile -- not a fault while piper is here
+            // (Phase 0.8: Kokoro is what friends get, piper behind it).
+            Err(m) => (
+                have_exe,
+                format!("Kokoro, as {voice}, is chosen, but {}; until it is, Atlas speaks in piper", m.plain()),
+            ),
         }
     } else if !eng.is_consistent() {
         (
@@ -598,6 +604,14 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         (true, format!("{}, speaking as {}", eng.engine.name(), vset.voice))
     };
     f.push(Finding { label: "speech engine".into(), ok: eok, detail: edetail });
+
+    // How Atlas last stopped (item 33): a run that ended without warning is
+    // worth seeing; one you closed, or Windows ending, is fine.
+    let runs = crate::whystopped::Runs::load(&crate::roots::state_dir());
+    if let Some(detail) = runs.last_stop(crate::store::now()) {
+        let ok = !matches!(runs.past.last().and_then(|r| r.ended.as_ref()), Some(crate::whystopped::Ended::EndedWithoutWarning));
+        f.push(Finding { label: "last stop".into(), ok, detail });
+    }
 
     // What this machine can actually run, and what Atlas decided because of it.
     //

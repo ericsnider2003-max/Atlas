@@ -45,6 +45,7 @@ const EVERY_DEPENDENCY: &[(&str, &str)] = &[
     ("chacha20poly1305", "actually encrypting the vault"),
     ("miniz_oxide", "inflating what PDFs and zips store deflated, so \"read this PDF\" and unzipping need no outside program (already in the tree under the image decoders)"),
     ("tract-onnx", "running models inside atlas.exe rather than shelling out to Python"),
+    ("ort", "putting the search and voice models on the laptop's NPU (item 20): ONNX Runtime opened at run time, the copy Kokoro already brings, with Intel's OpenVINO plugin -- the NPU has no other open route"),
     ("windows", "talking to the operating system at all"),
     ("cpal", "Windows builds only: recording a call -- your microphone, and what the laptop plays (WASAPI loopback) once the others have said yes (Eric, 24 Sep 2026). Talking to the sound devices is Windows' own COM plumbing; this is the maintained wrapper rather than several hundred lines of unsafe FFI"),
     ("wry", "Windows builds only: the hub shown inside Atlas's own window through the web view that ships with Windows (WebView2) -- Eric's 23 Sep ruling; a web engine is not something Atlas should write, and this borrows the one Windows already has rather than bundling one"),

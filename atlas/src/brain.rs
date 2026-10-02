@@ -1907,7 +1907,12 @@ fn made_up_action(d: &Decision, transcript: &str) -> bool {
         // question about Atlas -- not to "what should I make for dinner" or
         // "where did I put that lease" (1 Oct 2026: every model ranked reached
         // for the capability list on those). Asked again without tools.
-        Intent::Capabilities(_) | Intent::Recommend => !about_atlas_itself(&t),
+        Intent::Capabilities(_) => !about_atlas_itself(&t),
+        // Its own timings are an answer to "why are you slow" or "what would
+        // make you faster", never to a complaint ("you're responding slowly"
+        // got "the slowest part of a turn is speak, about 9.6 seconds" on 30
+        // Sep) or to "is it smart to upgrade my phone" (Phase 0.4).
+        Intent::Recommend => !asks_how_it_could_be_faster(&t),
         // A small model reaches for the web on any question ("tell me a fun
         // fact about octopuses" came back as research, 27 Sep 2026, with a
         // 0.6B model): looking something up is for when you asked for it, or
@@ -1928,8 +1933,60 @@ fn made_up_action(d: &Decision, transcript: &str) -> bool {
     }
 }
 
+/// The sentence without its opening name: "Atlas, you're slow" is a
+/// complaint addressed to Atlas, not a question about it, and the name alone
+/// mustn't make it one.
+fn without_the_name(t: &str) -> String {
+    let t = t.trim_start();
+    for name in ["atlas,", "atlas", "hey atlas,", "hey atlas", "ok atlas,", "ok atlas"] {
+        if let Some(rest) = t.strip_prefix(name) {
+            if rest.is_empty() || rest.starts_with(|c: char| !c.is_alphanumeric()) {
+                return rest.trim_start_matches(|c: char| c == ',' || c.is_whitespace()).to_string();
+            }
+        }
+    }
+    t.to_string()
+}
+
+/// A question about Atlas's own speed or what would make it better: the
+/// only sentences its timings and recommendations answer (Phase 0.4).
+/// A complaint about speed is not one -- that gets an apology and the
+/// conversation carries on (`complains_of_speed`).
+pub fn asks_how_it_could_be_faster(t: &str) -> bool {
+    let t = without_the_name(&t.to_lowercase().replace('\u{2019}', "'"));
+    const ASKS: &[&str] = &[
+        "why are you slow", "why are you so slow", "why are you taking", "why is this slow", "why's this slow",
+        "why are you lagging", "why the lag", "what's slow", "whats slow", "what is slow", "what's making you slow",
+        "what makes you slow", "what's slowing you", "what is slowing you", "what slows you", "what would make you",
+        "what could make you", "how could you be", "how can you be", "how do i make you", "how can i make you",
+        "what would help you", "what am i missing", "what would speed you", "how do we speed you", "how can we speed you",
+        "how can you get faster", "how could you get faster", "can you be faster", "could you be faster",
+        "what would make atlas", "how could atlas be",
+    ];
+    ASKS.iter().any(|a| t.contains(a))
+}
+
+/// A complaint about how slow Atlas is, said as a statement ("you're
+/// responding slowly", "this is taking forever"): acknowledged and acted on,
+/// never answered with timing figures.
+pub fn complains_of_speed(t: &str) -> bool {
+    let t = without_the_name(&t.to_lowercase().replace('\u{2019}', "'"));
+    if asks_how_it_could_be_faster(&t) {
+        return false;
+    }
+    const SAYS: &[&str] = &[
+        "you're slow", "youre slow", "you are slow", "you're so slow", "you are so slow", "responding slow",
+        "you're responding slowly", "you're taking forever", "taking forever", "taking so long", "taking too long",
+        "you're lagging", "you are lagging", "so laggy", "too slow", "really slow", "slow today", "slow tonight",
+        "hurry up", "speed it up", "faster please", "be quicker",
+    ];
+    SAYS.iter().any(|s| t.contains(s))
+}
+
 /// Is this sentence about Atlas -- what it can do, how it could be better?
 fn about_atlas_itself(t: &str) -> bool {
+    let t = without_the_name(t);
+    let t = t.as_str();
     [
         "what can you", "can you do", "could you do", "are you able", "what can't you", "what cant you", "your abilities",
         "what's new", "whats new", "what are you", "who are you", "make you", "help you", "you be better", "you better",

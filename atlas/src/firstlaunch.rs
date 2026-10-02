@@ -144,7 +144,7 @@ pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::t
         && crate::upgrade::sha256_of(exe).is_some_and(|a| Some(a) == crate::upgrade::sha256_of(&target));
     if !same_place(exe, &target) && !same_bytes {
         if target.is_file() {
-            if stop_first && !ask_atlas_to_stop(home, stop_wait) {
+            if stop_first && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING) {
                 // It finishes what it's saving on the way out when asked. One
                 // that doesn't is ended; one that can't be is said, rather
                 // than left running the old version from the file it would be
@@ -447,12 +447,18 @@ pub fn hub_port_at(root: &Path, configured: u16) -> u16 {
 /// and lets go of its lock last -- which is what's waited for, so a restart
 /// never starts the new one while the old one is still saving.
 pub fn ask_atlas_to_stop(root: &Path, wait: std::time::Duration) -> bool {
+    ask_atlas_to_stop_because(root, wait, "")
+}
+
+/// The same, saying why in the request (`goodbye::UPDATING` for a new
+/// version moving in), so the record of runs says it (`whystopped`, item 33).
+pub fn ask_atlas_to_stop_because(root: &Path, wait: std::time::Duration, why: &str) -> bool {
     if !atlas_running(root) {
         return true;
     }
     let state = root.join("data").join("state");
     if std::fs::create_dir_all(&state).is_err()
-        || std::fs::write(crate::goodbye::stop_file(&state), b"").is_err()
+        || std::fs::write(crate::goodbye::stop_file(&state), why.as_bytes()).is_err()
     {
         return false;
     }

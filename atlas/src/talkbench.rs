@@ -29,6 +29,11 @@ pub const SCRIPT: &[&str] = &[
     "what did I ask you about earlier?",
     "what would make you better at your job?",
     "remind me in 20 minutes to stretch",
+    // From the 30 Sep thread (Phase 0.4 and 0.5): an advice question that
+    // got "I'm asking why you're asking" and a timing figure, and a speed
+    // complaint answered with "the slowest part of a turn is speak".
+    "is it smart to upgrade from the 15 Pro Max to the iPhone 17 Pro?",
+    "you're responding slowly",
 ];
 
 /// One answer, measured.
@@ -72,6 +77,19 @@ pub fn faults_in(reply: &str, max_sentences: usize) -> Vec<String> {
     // Made-up shared history or a life of its own (the laptop, 30 Sep 2026:
     // "that time we got stuck in traffic", "that Thai place you like", "an
     // anomaly in network traffic from last Tuesday").
+    // Its own timings or a dodge where an answer was wanted (Phase 0.4, 0.5).
+    for dodge in [
+        "slowest part of a turn",
+        "asking why you're asking",
+        "not giving you an answer",
+        "why do you ask",
+        "you're not alone in asking",
+        "some folks",
+    ] {
+        if low.contains(dodge) {
+            out.push(format!("talks about itself or dodges (\"{dodge}\")"));
+        }
+    }
     for invented in [
         "that time we",
         "remember when",

@@ -846,6 +846,8 @@ fn launch_with(
         .stderr(model_server_log(log))
         .spawn()
         .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))?;
+    // Lowered while a reply plays, so the voice keeps up (`voicefirst`).
+    crate::voicefirst::model_started(child.id());
     Ok(child)
 }
 

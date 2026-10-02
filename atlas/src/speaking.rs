@@ -81,6 +81,7 @@ fn path(data_dir: &Path) -> PathBuf {
 
 /// Playback is starting: write what is being said and how loud it is.
 pub fn begin(data_dir: &Path, text: &str, wav: &[u8], now_ms: u64) -> std::io::Result<()> {
+    heard_now();
     let s = Speaking {
         text: text.to_string(),
         started_ms: now_ms,
@@ -92,6 +93,39 @@ pub fn begin(data_dir: &Path, text: &str, wav: &[u8], now_ms: u64) -> std::io::R
     let tmp = data_dir.join("speaking.json.part");
     std::fs::write(&tmp, serde_json::to_vec(&s).unwrap_or_default())?;
     std::fs::rename(tmp, path(data_dir))
+}
+
+/// The first sound of the turn being timed (Phase 0.2): set by the first
+/// sentence whose playback begins after `listen_for_first_sound`, taken by
+/// the turn's timing line. What Eric feels is the silence from the end of
+/// his speech to this moment, not how long the model or the voice took.
+static FIRST_SOUND: std::sync::Mutex<(bool, Option<std::time::Instant>)> = std::sync::Mutex::new((false, None));
+
+/// Start watching for the turn's first sound.
+pub fn listen_for_first_sound() {
+    if let Ok(mut g) = FIRST_SOUND.lock() {
+        *g = (true, None);
+    }
+}
+
+/// Playback is starting: the first time since `listen_for_first_sound`,
+/// that moment is kept. Both voices call this through `begin`; a test or a
+/// voice with nothing to draw can call it directly.
+pub fn heard_now() {
+    if let Ok(mut g) = FIRST_SOUND.lock() {
+        if g.0 && g.1.is_none() {
+            g.1 = Some(std::time::Instant::now());
+        }
+    }
+}
+
+/// When the turn's first sound began, once; watching stops.
+pub fn take_first_sound() -> Option<std::time::Instant> {
+    FIRST_SOUND.lock().ok().and_then(|mut g| {
+        let at = g.1.take();
+        g.0 = false;
+        at
+    })
 }
 
 /// Playback has finished (or failed): the line goes back to rest.

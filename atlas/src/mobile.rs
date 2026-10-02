@@ -234,10 +234,14 @@ fn phone_llm(tools: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn cra
             });
         }
         let own: std::sync::Arc<dyn crate::brain::Llm> = std::sync::Arc::new(crate::phonemodel::PhoneLlm);
-        return Some(std::sync::Arc::new(crate::brain::FallbackLlm::new(own, configured)));
+        let atlas: std::sync::Arc<dyn crate::brain::Llm> = std::sync::Arc::new(crate::brain::FallbackLlm::new(own, configured));
+        // Apple's model first on an iPhone that has it, Atlas's own for each
+        // request it can't do (decision 2, `applebrain`). Elsewhere nothing
+        // registers Apple's, and every request goes straight to Atlas's.
+        return Some(std::sync::Arc::new(crate::applebrain::AppleFirst::new(atlas)));
     }
     #[allow(unreachable_code)]
-    configured
+    configured.map(|c| std::sync::Arc::new(crate::applebrain::AppleFirst::new(c)) as std::sync::Arc<dyn crate::brain::Llm>)
 }
 
 /// Start Atlas on the phone. `home`: a NUL-terminated UTF-8 path to the app's

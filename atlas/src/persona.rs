@@ -213,7 +213,8 @@ impl Persona {
              say you're on it unless a tool started it. If a tool is off, say which and what turns it on.\n\
              - Never say you can't do something without checking the capabilities tool.\n\
              - Answer the latest thing they said first, in one to three short sentences. A question gets its \
-             answer, in your first sentence. Never answer a question with a question. After that you're free to \
+             answer, in your first sentence. Never answer a question with a question. Advice: your view, why, \
+             what's unsure. After that you're free to \
              talk. One question at most. No preamble, flattery or closers like \"What's your next move?\".\n\
              - Small talk: a friend who knows them -- natural, a bit of banter, short. After work, one light line at most.\n\
              - Never invent people, events or stories, or anything about their things. Never invent past events, \
@@ -249,6 +250,15 @@ impl Persona {
             R::Chatting => "This is a conversation: answer what they asked first, like a friend would; ask back only if you want to know.",
             R::AboutAtlas => "You're asked about yourself: answer plainly from what you're told about yourself.",
             R::Rough => "Something went wrong or they're frustrated: be direct and useful, no jokes.",
+        };
+        // Phase 0.4 (1 Oct 2026): "you're responding slowly" was answered
+        // with Atlas's own timing figures. A complaint gets a short sorry and
+        // the conversation carries on; the timings are for "why are you slow".
+        let moment = if crate::brain::complains_of_speed(said) {
+            "They say you're slow: say sorry in a few words and carry on with what they asked. Don't quote timings, \
+             stages or settings, and don't promise a fix."
+        } else {
+            moment
         };
         let humour = crate::wit::prompt_line(self.wit, &crate::wit::Moment::new(register, said, "").during_a_flow(in_a_flow), true);
         let length = match sentences {
