@@ -34,6 +34,10 @@ pub struct Native {
     vocab: HashMap<String, i64>,
     proto: InferenceModel,
     compiled: HashMap<usize, Runnable>,
+    /// On the NPU (item 20), one fixed length per bucket: `None` once a
+    /// length was tried there and refused, so it stays on `tract`.
+    npu: HashMap<usize, Option<(crate::npu::Session, Vec<String>)>>,
+    root: std::path::PathBuf,
 }
 
 impl Native {
@@ -46,7 +50,7 @@ impl Native {
         let raw = std::fs::read_to_string(&v).ok()?;
         let vocab = raw.lines().enumerate().map(|(i, w)| (w.to_string(), i as i64)).collect();
         let proto = tract_onnx::onnx().model_for_path(&m).ok()?;
-        Some(Native { vocab, proto, compiled: HashMap::new() })
+        Some(Native { vocab, proto, compiled: HashMap::new(), npu: HashMap::new(), root: root.to_path_buf() })
     }
 
     /// Are the files there?
@@ -55,6 +59,16 @@ impl Native {
     }
 
     pub fn embed(&mut self, text: &str) -> Option<Vec<f32>> {
+        self.embed_where(text, true)
+    }
+
+    /// The same, on the processor only (`tract`): what `atlas npu-check`
+    /// compares the NPU against.
+    pub fn embed_on_processor(&mut self, text: &str) -> Option<Vec<f32>> {
+        self.embed_where(text, false)
+    }
+
+    fn embed_where(&mut self, text: &str, npu: bool) -> Option<Vec<f32>> {
         let mut ids = tokenize(text, &self.vocab);
         let most = *BUCKETS.last().unwrap();
         if ids.len() > most {
@@ -62,12 +76,72 @@ impl Native {
             ids.push(*self.vocab.get(SEP).unwrap_or(&102));
         }
         let n = BUCKETS.iter().copied().find(|b| *b >= ids.len()).unwrap_or(most);
+        // The NPU first, where there is one; the same vector either way.
+        if npu {
+            if let Some(v) = self.on_npu(&ids, n) {
+                return Some(v);
+            }
+        }
         if !self.compiled.contains_key(&n) {
             let m = shaped(self.proto.clone(), n).ok()?;
             self.compiled.insert(n, m);
         }
         pooled(self.compiled.get(&n)?, &ids, n).ok()
     }
+}
+
+impl Native {
+    /// The vector from the NPU, or `None` to use `tract` (no NPU, or this
+    /// length was refused there -- said once).
+    fn on_npu(&mut self, ids: &[i64], n: usize) -> Option<Vec<f32>> {
+        if !crate::npu::npu_ready(&self.root) {
+            return None;
+        }
+        let root = self.root.clone();
+        let session = self.npu.entry(n).or_insert_with(|| {
+            let model = root.join(MODEL);
+            let names = crate::npu::Session::input_names(&root, &model).ok()?;
+            let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|nm| (nm.clone(), vec![1, n as i64])).collect();
+            match crate::npu::Session::open(&root, &model, &shapes, crate::npu::Where::Npu) {
+                Ok(s) => Some((s, names)),
+                Err(why) => {
+                    crate::outln!("search stays on the processor for {n}-word texts: {why}");
+                    None
+                }
+            }
+        });
+        let (s, names) = session.as_ref()?;
+        // The export's own names, in its own order: ids, mask, segment.
+        let name = |want: &str, i: usize| names.iter().find(|x| x.contains(want)).or(names.get(i)).cloned().unwrap_or_default();
+        let real = ids.len().min(n);
+        let mut padded = ids[..real].to_vec();
+        padded.resize(n, 0);
+        let mut mask = vec![1i64; real];
+        mask.resize(n, 0);
+        let mut inputs = vec![
+            crate::npu::In::I64(name("input_ids", 0), vec![1, n as i64], padded),
+            crate::npu::In::I64(name("attention_mask", 1), vec![1, n as i64], mask),
+        ];
+        if names.len() > 2 {
+            inputs.push(crate::npu::In::I64(name("token_type", 2), vec![1, n as i64], vec![0; n]));
+        }
+        let hidden = s.run(inputs).ok()?.into_iter().next()?;
+        Some(pool_flat(&hidden, real, n))
+    }
+}
+
+/// Mean over the real tokens of a `[1, n, width]` hidden state, unit length:
+/// the same pooling `pooled` does, for a flat output.
+pub fn pool_flat(hidden: &[f32], real: usize, n: usize) -> Vec<f32> {
+    let width = hidden.len() / n.max(1);
+    let mut v = vec![0.0f32; width];
+    for t in 0..real.min(n) {
+        for d in 0..width {
+            v[d] += hidden[t * width + d];
+        }
+    }
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
+    v.into_iter().map(|x| x / norm).collect()
 }
 
 fn shaped(model: InferenceModel, n: usize) -> TractResult<Runnable> {

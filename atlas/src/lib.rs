@@ -130,6 +130,7 @@ pub mod references;
 pub mod talkbench;
 pub mod voicefirst;
 pub mod whystopped;
+pub mod npu;
 pub mod freeonline;
 pub mod parakeet;
 pub mod kws;

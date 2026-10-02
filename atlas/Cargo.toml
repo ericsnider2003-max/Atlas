@@ -62,6 +62,10 @@ curve25519-dalek = { version = "4", default-features = false, features = ["zeroi
 # does; `infer::Model` then reports the capability as unavailable rather than
 # failing to compile. See `20_PHONE_AS_PEER`.
 tract-onnx = { version = "0.23", optional = true }
+# The NPU (item 20, Eric's yes, 1 Oct 2026): ONNX Runtime opened at run time
+# (`load-dynamic`, nothing linked in) -- the copy the Kokoro voice already
+# brings -- with Intel's OpenVINO plugin registered for the NPU. See `npu`.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "std", "api-22"] }
 # The mail client's transport. Uses the system's OpenSSL rather than a
 # vendored Rust TLS stack (rustls pulls in its own crypto backend, which
 # is a much heavier build for one socket's worth of TLS) -- lighter, and
@@ -140,6 +144,8 @@ windows = { version = "0.58", features = [
     # stops: Windows starts Atlas again after an update restarts the
     # computer (RegisterApplicationRestart, item 33).
     "Win32_System_Recovery",
+    # npu: is there an Intel NPU (the compute-accelerator device class)?
+    "Win32_System_Registry",
     "Win32_Storage_FileSystem",
     "Win32_Security_Cryptography",
     "Win32_System_Power",

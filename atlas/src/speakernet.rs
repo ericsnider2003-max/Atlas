@@ -200,9 +200,27 @@ static LOADED: std::sync::Mutex<Option<(std::path::PathBuf, Plan)>> = std::sync:
 /// the model, the results averaged, unit length.
 #[cfg(feature = "onnx")]
 pub fn embed(samples: &[f32], models_dir: &Path) -> Result<Vec<f32>> {
+    embed_where(samples, models_dir, true)
+}
+
+/// The same on the processor only (`tract`), for `atlas npu-check`.
+#[cfg(feature = "onnx")]
+pub fn embed_on_processor(samples: &[f32], models_dir: &Path) -> Result<Vec<f32>> {
+    embed_where(samples, models_dir, false)
+}
+
+#[cfg(feature = "onnx")]
+fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>> {
     use tract_onnx::prelude::*;
     let wins = windows(&fbank(samples)).ok_or_else(|| AtlasError::Platform("under half a second of speech in that".into()))?;
     let path = models_dir.join(FILE);
+    // The NPU first, where there is one (item 20): the same windows, the
+    // same averaging.
+    if npu {
+        if let Some(v) = on_npu(&wins, models_dir) {
+            return Ok(v);
+        }
+    }
     let plan = {
         let mut g = LOADED.lock().map_err(|_| AtlasError::Platform("the voice model's lock broke".into()))?;
         match g.as_ref() {
@@ -241,8 +259,55 @@ pub fn embed(samples: &[f32], models_dir: &Path) -> Result<Vec<f32>> {
     Ok(normalised(sum))
 }
 
+/// The model on the NPU: opened once, `None` inside once refused (said
+/// once), so it stays on `tract`.
+#[cfg(feature = "onnx")]
+static ON_NPU: std::sync::Mutex<Option<Option<(crate::npu::Session, String)>>> = std::sync::Mutex::new(None);
+
+/// The voice embedding from the NPU, or `None` to use `tract`.
+#[cfg(feature = "onnx")]
+fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
+    let root = models_dir.parent()?;
+    if !crate::npu::npu_ready(root) {
+        return None;
+    }
+    let mut g = ON_NPU.lock().ok()?;
+    if g.is_none() {
+        let model = models_dir.join(FILE);
+        let opened = crate::npu::Session::input_names(root, &model).ok().and_then(|names| {
+            let name = names.first()?.clone();
+            match crate::npu::Session::open(root, &model, &[(name.clone(), vec![1, WINDOW as i64, BINS as i64])], crate::npu::Where::Npu) {
+                Ok(s) => Some((s, name)),
+                Err(why) => {
+                    crate::outln!("telling voices apart stays on the processor: {why}");
+                    None
+                }
+            }
+        });
+        *g = Some(opened);
+    }
+    let (s, name) = g.as_ref()?.as_ref()?;
+    let mut sum = vec![0f32; DIMS];
+    for w in wins {
+        let out = s.run(vec![crate::npu::In::F32(name.clone(), vec![1, WINDOW as i64, BINS as i64], w.clone())]).ok()?;
+        let v = out.into_iter().next()?;
+        if v.len() != DIMS {
+            return None;
+        }
+        for (acc, x) in sum.iter_mut().zip(normalised(v)) {
+            *acc += x;
+        }
+    }
+    Some(normalised(sum))
+}
+
 #[cfg(not(feature = "onnx"))]
 pub fn embed(_samples: &[f32], _models_dir: &Path) -> Result<Vec<f32>> {
+    Err(AtlasError::Config("this build has no ONNX engine for the voice model".into()))
+}
+
+#[cfg(not(feature = "onnx"))]
+pub fn embed_on_processor(_samples: &[f32], _models_dir: &Path) -> Result<Vec<f32>> {
     Err(AtlasError::Config("this build has no ONNX engine for the voice model".into()))
 }
 

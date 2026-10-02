@@ -1179,6 +1179,8 @@ pub fn everything_else() -> Vec<Piece> {
         vec![draft_model()],
         vec![deep_model()],
         picture_making(),
+        // The NPU engine, on a computer with an Intel NPU (item 20).
+        crate::npu::pieces(),
     ]
         .into_iter()
         .flatten()

@@ -937,3 +937,5 @@ mod answers_not_timings;
 mod the_silence_after_you_speak;
 #[path = "there_when_you_sit_down.rs"]
 mod there_when_you_sit_down;
+#[path = "the_npu_engine.rs"]
+mod the_npu_engine;
