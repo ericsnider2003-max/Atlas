@@ -260,6 +260,7 @@ pub const NEVER: &[(&str, &str)] = &[
     ("later", "it's your own list"),
     ("goals", "it's your own goals"),
     ("keep_at_it", "it keeps changing Atlas's own code"),
+    ("run_build", "it runs a program on your computer"),
     // 25k's, decided when 25k was merged in (26 Sep 2026).
     ("clock", "it's yours to ask; an add-on can read the time itself"),
     // Round 6's four, decided when they were merged onto the split (29 Sep

@@ -175,6 +175,9 @@ pub fn classify(intent: &Intent) -> Decision {
         Intent::TwoFactor(_) => Decision::AutoProceed,
         // You asked for it, and it works in a scratch copy.
         Intent::KeepAtIt => Decision::AutoProceed,
+        // It asks for itself, naming the file and how it will be run
+        // (`Daemon::run_build`); a second, vaguer question would be a nag.
+        Intent::RunBuild(_) => Decision::AutoProceed,
         // Your own list of what you're aiming at.
         Intent::Goals(_) => Decision::AutoProceed,
         Intent::Later(_) => Decision::AutoProceed,

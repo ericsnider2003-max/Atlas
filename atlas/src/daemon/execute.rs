@@ -187,6 +187,7 @@ impl<'a> Daemon<'a> {
             Intent::TwoFactor(said) => self.two_factor(said),
             // The last build that ran out of tries, as a long job (E3).
             Intent::KeepAtIt => self.keep_at_it(crate::store::now()),
+            Intent::RunBuild(what) => self.run_build(what),
             // Goals, for the nudges toward them (F4).
             Intent::Goals(said) => self.goals(said, crate::store::now()),
             // The list for later (F8).

@@ -257,6 +257,7 @@ const APPLIED_IN_CODE: &[(&str, &str)] = &[
     ("push_to_talk.key", "hotkeys::Keys::from_settings hands it to the keyboard hook at start-up"),
     ("quick_input.hotkey", "hotkeys::Keys::from_settings registers it with Windows at start-up"),
     ("persona.tone", "persona::spoken shapes the reply"),
+    ("build.coding_agent", "Daemon::coding_agent_here reads it before offering a build or a project change to Claude Code or Codex"),
     ("sound.speak_replies", "Daemon::say asks SoundConfig::may_speak_now, with whether the turn was typed"),
     ("sound.volume", "Voice::speak scales the synthesised WAV before it plays (sound::scale_wav)"),
     ("sound.quiet_from", "the start of that window"),

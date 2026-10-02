@@ -130,6 +130,13 @@ impl FreeOnline {
 
     /// Ask each service that isn't resting, in order, until one answers.
     pub fn ask(&self, system: &str, user: &str) -> Result<String> {
+        self.ask_for(system, user, 700).map(|(text, _)| text)
+    }
+
+    /// `ask`, with room for `max_tokens`, and whether the service said it
+    /// ran out of room (`finish_reason: "length"`) -- what the code builder
+    /// needs (2 Oct 2026: 700 was a sentence's worth, not a file's).
+    fn ask_for(&self, system: &str, user: &str, max_tokens: u32) -> Result<(String, bool)> {
         // Scrubbed here as well as in `FallbackLlm`: with no model on this
         // machine this is the only model, and nothing else scrubs for it.
         let mut scrub = crate::redact::Scrubber::default();
@@ -144,14 +151,14 @@ impl FreeOnline {
             if self.is_resting(p.name) {
                 continue;
             }
-            match (self.send)(p.url, &body(p, &system, &user, 700)).map(|raw| reply_from(&raw)) {
-                Ok(Ok(text)) => {
+            match (self.send)(p.url, &body(p, &system, &user, max_tokens)).map(|raw| (reply_from(&raw), cut_off_in(&raw))) {
+                Ok((Ok(text), cut)) => {
                     if let Ok(mut l) = self.last_answered_by.lock() {
                         *l = Some(p.name);
                     }
-                    return Ok(scrub.put_back(&text));
+                    return Ok((scrub.put_back(&text), cut));
                 }
-                Ok(Err((refused, w))) => {
+                Ok((Err((refused, w)), _)) => {
                     self.rest(p.name, if refused { REST_AFTER_REFUSAL_SECS } else { REST_AFTER_FAILURE_SECS });
                     why.push(format!("{}: {w}", p.name));
                 }
@@ -179,19 +186,34 @@ impl Llm for FreeOnline {
     fn complete(&self, system: &str, user: &str) -> Result<String> {
         self.ask(system, user)
     }
+
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+        self.ask_for(system, user, max_tokens).map(|(text, cut_off)| crate::brain::LongReply { text, cut_off })
+    }
+
+    /// What these services take in at least; each says more of its own.
+    fn context_tokens(&self) -> Option<u32> {
+        Some(32_000)
+    }
 }
 
-/// One POST through `curl`: the body on stdin, a minute at most.
+/// Did a service's raw reply say it stopped for want of room?
+fn cut_off_in(raw: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(raw.trim()).map(|v| crate::brain::says_cut_off(&v)).unwrap_or(false)
+}
+
+/// One POST through `curl`: the body on stdin, three minutes at most (a
+/// whole file of code takes longer than a sentence; 2 Oct 2026).
 fn send_with_curl(url: &str, body: &str) -> Result<String> {
     let tool = crate::tools::ExternalTool {
         command: "curl".into(),
-        args: ["-s", "-S", "-m", "60", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", url]
+        args: ["-s", "-S", "-m", "180", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", url]
             .iter()
             .map(|s| s.to_string())
             .collect(),
         stdin_text: true,
         result_file: None,
-        timeout_secs: 70,
+        timeout_secs: 190,
     };
     tool.run(&Default::default(), Some(body))
 }

@@ -970,6 +970,20 @@ impl crate::brain::Llm for WaitsForServer {
         self.inner.complete(system, user)
     }
 
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+        let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
+        if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
+            let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
+        }
+        self.inner.complete_long(system, user, max_tokens)
+    }
+
+    /// The server's context as the settings start it; 0 there means the
+    /// model's own, which isn't known from here.
+    fn context_tokens(&self) -> Option<u32> {
+        (self.cfg.context > 0).then(|| self.cfg.context.min(u64::from(u32::MAX)) as u32)
+    }
+
     fn native_chat(&self) -> bool {
         self.inner.native_chat()
     }

@@ -155,6 +155,7 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
     ("When it speaks first", "Whether Atlas starts a conversation, and when it holds off."),
     ("What it can see", "The screen, the camera, the clipboard, and what it notices about how you work."),
     ("What it may touch", "Changes it can make to this machine and to its own work, without asking each time."),
+    ("Writing code", "Who writes the code you ask for: a coding agent installed here, and whether it asks first."),
     ("Your accounts and secrets", "The vault, signing in, and how carefully it treats what it holds."),
     ("Reaching outside this machine", "Anything that leaves the laptop: the web, your phone, your mail, a paid model."),
     ("Social", "Your social accounts' numbers and the people you watch: which of them Atlas reads on its own."),
@@ -938,6 +939,32 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Weight::Preference,
         group: "Sound".into(),
     });
+
+    // Writing code (2 Oct 2026): a coding agent installed on this computer
+    // -- Claude Code or Codex -- may be handed builds and project changes.
+    let agent_options = vec!["auto".to_string(), "off".to_string()];
+    items.push(Setting {
+        key: "build.coding_agent".into(),
+        name: "Coding agent".into(),
+        what: "When Claude Code or Codex is installed here, offer it the code you ask for, since it writes code far better than Atlas's own models.".into(),
+        cost: "It runs on this computer and writes files in the folder it's given; Atlas checks what it writes, and asks before it touches a project of yours.".into(),
+        value: Value::Choice {
+            value: format!("{:?}", t.build.coding_agent).to_lowercase(),
+            options: agent_options.clone(),
+        },
+        default: Value::Choice { value: "auto".into(), options: agent_options },
+        weight: Weight::Permission,
+        group: "Writing code".into(),
+    });
+    items.push(toggle(
+        "build.agent_asks_first",
+        "Confirm hand-overs",
+        "Ask each time before handing a new build to the coding agent.",
+        "Off, a new build goes straight to it. A change to one of your own projects is asked about either way.",
+        t.build.agent_asks_first,
+        Weight::Permission,
+        "Writing code",
+    ));
     items.push(toggle("sound.muted", "Mute Atlas",
         "Nothing is said out loud. Everything still works and is shown.",
         "Replies and notes appear on screen instead.",

@@ -768,6 +768,12 @@ impl<'a> Daemon<'a> {
                         self.scheduler.complete(jid, t, &r, !r.starts_with("error"));
                     }
                     r
+                } else if let Some(own) = crate::coding_agent::declined(&intent) {
+                    // A no to handing it to a coding agent is a no to the
+                    // agent, not to the work: Atlas writes it itself (2 Oct
+                    // 2026).
+                    self.pending_job = None;
+                    self.execute(&own)
                 } else {
                     self.pending_job = None;
                     // Worth learning once, per its own doc comment -- not a rule

@@ -334,6 +334,32 @@ impl Llm for DeepLlm {
         Ok(reply.text)
     }
 
+    /// The deep model with room for a whole file (2 Oct 2026: it had
+    /// `COMPLETE_TOKENS`, 1024, for everything). Whether it was cut off is
+    /// read from the text by the caller (`build_it::looks_cut_off`).
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+        let _busy = self.gate.begin();
+        if !self.gate.wait_up(self.load_wait) {
+            self.gate.fell_back.fetch_add(1, Ordering::SeqCst);
+            return self.talk.complete_long(system, user, max_tokens);
+        }
+        let req = ChatRequest {
+            messages: vec![Msg::system(system), Msg::user(user)],
+            max_tokens: max_tokens.max(COMPLETE_TOKENS),
+            aside: true,
+            ..Default::default()
+        };
+        let reply = self.yielding(&req, &mut |_| true)?;
+        if reply.text.trim().is_empty() && !reply.tool_calls.is_empty() {
+            return Err(AtlasError::Platform("the deep model answered with a tool call, not words".into()));
+        }
+        Ok(crate::brain::LongReply { text: reply.text, cut_off: false })
+    }
+
+    fn context_tokens(&self) -> Option<u32> {
+        self.talk.context_tokens()
+    }
+
     fn native_chat(&self) -> bool {
         true
     }

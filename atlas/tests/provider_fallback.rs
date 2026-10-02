@@ -88,7 +88,7 @@ fn the_self_fix_draft_path_really_uses_the_stronger_model() {
     // configured the draft comes from the stronger model.
     let f = FallbackLlm::new(Arc::new(Named("local model output")), Some(Arc::new(Named("stronger model output"))))
         .secondary_is_your_own();
-    let drafted = atlas::build_it::fix_draft("some broken code", "the tool complained", &f)
+    let drafted = atlas::build_it::fix_draft("some broken code", "the tool complained", atlas::craft::Lang::Python, &f)
         .expect("it drafts a fix");
     assert_eq!(drafted, "stronger model output", "the fix draft routed to the secondary via complete_hard");
 }

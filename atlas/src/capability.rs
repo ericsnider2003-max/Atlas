@@ -222,7 +222,7 @@ pub fn all() -> Vec<Capability> {
 
         Capability { id: "research", what: "look something up, and save the write-up as a Word or PDF file with its sources as links", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable", "report"] },
         Capability { id: "delegate_online", what: "hand heavy background work to an online worker and check what comes back", area: Web, state: Blocked, needs: Some("a Cloudflare account and token"), offline: false, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["online"] },
-        Capability { id: "build_it", what: "write code from your description and check it against the compiler and tests before trusting it -- in Rust, Python, Go, JavaScript, TypeScript or C++, with the checkers Atlas downloads itself", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["build_it", "craft", "goal", "codetools"] },
+        Capability { id: "build_it", what: "write code from your description and check it against the compiler and tests before trusting it -- in Python unless you name Rust, Go, JavaScript, TypeScript or C++, with the checkers Atlas downloads itself; your stronger models first, room for a whole file, and a coding agent (Claude Code, Codex) used when one is installed and you say yes; saved where you say, and run when you ask", area: Thinking, state: Untested, needs: Some("a model to draft with, or a coding agent installed"), offline: true, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["build_it", "craft", "goal", "codetools", "coding_agent"] },
         Capability { id: "design", what: "review a page's design against a house style — spacing, colour tokens, accessibility — and say what's off, honestly not claiming to judge whether it looks good; also gate a page it builds against the same rules", area: Thinking, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["taste"] },
         Capability { id: "animate", what: "draw a self-contained SVG animation from your description, check it renders and moves to the size and length you asked for, and iterate until it does", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::Background, Needs::JustThinking], modules: &["motion"] },
         Capability { id: "explain", what: "explain code in plain English — a recent build, a change waiting to be implemented, a file or a paste — at the depth you ask for, honest that it can't prove it's right", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["explain"] },
@@ -1552,7 +1552,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
 // 2 Oct 2026: `organize` (sorting a folder -- part of `system`), on top
 // of the other chat's 463.
-pub const MODULES_IN_TREE: usize = 464;
+pub const MODULES_IN_TREE: usize = 465;
 
 /// Every module no capability claims, and why it is not one.
 ///

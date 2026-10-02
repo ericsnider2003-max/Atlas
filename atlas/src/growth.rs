@@ -139,6 +139,13 @@ pub fn asks_for_an_ability(said: &str) -> Option<String> {
                 if lead.starts_with("learn") && !t.contains("yourself") && !t.contains("your own") {
                     continue;
                 }
+                // "Add a feature to my app" is work on your code, not a new
+                // ability for Atlas (2 Oct 2026): your app, project or a
+                // folder named means the project, and `improve` takes it.
+                let yours = [" my app", " my project", " my code", " my script", " my program", " my site", " my website", " my repo", " my tool", " the app", " project"];
+                if lead.contains("feature") && (yours.iter().any(|y| format!(" {t}").contains(y)) || crate::build_it::folder_named(said).is_some()) {
+                    continue;
+                }
                 if !rest.is_empty() {
                     return Some(rest.to_string());
                 }

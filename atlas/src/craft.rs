@@ -410,7 +410,10 @@ pub fn ladder(lang: Lang) -> Vec<Gate> {
 fn missing_program(r: &Ran) -> Option<String> {
     let program = r.command.split_whitespace().next()?.to_string();
     let out = r.output.to_lowercase();
+    // "couldn't run": `sandbox::run_within`'s words for a program that
+    // wouldn't start, which the checks now run through (2 Oct 2026).
     let missing = out.starts_with("could not start")
+        || out.starts_with("couldn't run")
         || out.contains("is not recognized as an internal or external command")
         || (out.contains("not found") && out.contains(&program.to_lowercase()) && out.lines().count() <= 2);
     missing.then_some(program)

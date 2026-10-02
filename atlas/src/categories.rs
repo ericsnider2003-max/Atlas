@@ -129,6 +129,8 @@ pub fn category_of(intent: &Intent) -> Category {
         Intent::TwoFactor(_) => Category::StandardExternal,
         // Building on this machine, in a scratch copy.
         Intent::KeepAtIt => Category::LocalCreative,
+        // Running what was built: a program on this machine, asked first.
+        Intent::RunBuild(_) => Category::LocalOperational,
         Intent::Goals(_) => Category::LocalOperational,
         Intent::Later(_) => Category::LocalOperational,
         // A pairing is a commitment made as you, exactly like a signup --
