@@ -235,6 +235,16 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
     if atlas::attention::hear(phrase).is_some() {
         return true;
     }
+    // Read at the turn's front door, before the parser (1 Oct 2026): asking
+    // for an ability, watching, and being on a call.
+    if atlas::growth::asks_for_an_ability(phrase).is_some()
+        || atlas::growth::answer(phrase).is_some()
+        || atlas::growth::asks_for_the_list(phrase)
+        || atlas::camwatch::asks(phrase).is_some()
+        || atlas::callmute::asks(phrase).is_some()
+    {
+        return true;
+    }
     // While dictating, the parser is not consulted at all -- `dictate::parse`
     // reads the stop phrase itself, so a phrase that produces a `Stop` piece
     // is heard even though nothing in `commands.yaml` mentions it.
@@ -257,6 +267,12 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// silently, which is the same rule `tests/new_capabilities_are_wired.rs`
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
+    (
+        "get to know me",
+        "heard before the parser, by `getknow::asked_to_start` in `daemon/late.rs` \
+         `interview_turn`, because the six questions after it are answers, not commands \
+         (`tests/greet_once.rs` offers it; `tests/what_the_model_ranking_found.rs` runs it).",
+    ),
     (
         "always",
         "an answer to an add-on step's own \"go ahead?\" -- a yes that also means \

@@ -248,6 +248,18 @@ impl Nudger {
         Nudger { cfg, goals: Vec::new(), last_part: None }
     }
 
+    /// The part of the day last greeted, kept across a restart: on 30 Sep
+    /// "Good evening. Nothing outstanding on my side" was said six times in
+    /// one evening, once after every restart, because this started empty.
+    pub fn last_daypart(&self) -> Option<(u64, Part)> {
+        self.last_part
+    }
+
+    /// Put back the part of the day already greeted (from the store).
+    pub fn set_last_daypart(&mut self, p: Option<(u64, Part)>) {
+        self.last_part = p;
+    }
+
     pub fn track(&mut self, g: Goal) {
         self.goals.retain(|x| x.id != g.id);
         self.goals.push(g);

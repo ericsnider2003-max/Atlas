@@ -1244,8 +1244,9 @@ impl<'a> Daemon<'a> {
             (_, true) => "On: a helper model guesses ahead for the main one.".to_string(),
             (true, false) => "Fetched, and not in use -- Settings, \u{201c}Helper model\u{201d}, turns it on.".into(),
             (false, false) => format!(
-                "Off. A small helper model ({} MB) can guess a few words ahead for the main one, which then \
-                 only has to check them. How much faster depends on this laptop; it hasn't been measured here.",
+                "Off, on purpose. A small helper model ({} MB) can guess a few words ahead for the main one -- \
+                 but measured on this laptop (1 Oct 2026) it made replies four times slower, because most of \
+                 its guesses were wrong. Replies already use the free kind of guessing ahead, which was faster.",
                 piece.megabytes()
             ),
         };

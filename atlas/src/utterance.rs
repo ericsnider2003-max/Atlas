@@ -336,6 +336,9 @@ pub fn wait_for_name(
                         Ok(check) => match after_the_name(check) {
                             Some(rest) => {
                                 seg.set_hint(&rest);
+                                // The name, mid-sentence: on a call, the rest
+                                // of it isn't heard there (`callmute`).
+                                crate::callmute::addressed();
                                 found = Some((from, rest));
                             }
                             None => from = len.saturating_sub(samples_of(OVERLAP_MS)),
@@ -360,6 +363,11 @@ pub fn wait_for_name(
                         Err(e) => return Err(e.to_string()),
                     }
                 };
+                if rest.is_some() {
+                    // Talking to Atlas now: Atlas's answer and what you say
+                    // back aren't heard on the call either.
+                    crate::callmute::addressed();
+                }
                 match rest {
                     None => continue,
                     Some(r) if r.chars().any(|c| c.is_alphanumeric()) => return Ok(Some(Woke::Request(r))),

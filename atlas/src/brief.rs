@@ -230,11 +230,16 @@ pub struct Brief {
     pub conflicts: Vec<String>,
     /// The single thing holding up the most other things.
     pub blocking: Option<String>,
+    /// The one push you asked for (1 Oct 2026, "why Atlas feels stale",
+    /// idea 1): what you told "get to know me" to keep you honest about,
+    /// one piece a day. Yours, so it's said in your words.
+    #[serde(default)]
+    pub push: Option<String>,
 }
 
 impl Brief {
     pub fn is_empty(&self) -> bool {
-        self.yours.is_empty() && self.drafted.is_empty() && self.conflicts.is_empty()
+        self.yours.is_empty() && self.drafted.is_empty() && self.conflicts.is_empty() && self.push.is_none()
     }
 
     /// Lines it would print. Used to keep it under `MAX_LINES`.
@@ -257,6 +262,7 @@ pub fn run(items: &[Item], day: &[Commitment], cfg: &BriefConfig) -> Brief {
         ignored: 0,
         conflicts: Vec::new(),
         blocking: None,
+        push: None,
     };
     if !cfg.enabled {
         return b;
@@ -386,8 +392,12 @@ pub fn spoken(b: &Brief) -> String {
     if b.handled > 0 {
         out.push(format!("I handled {}.", b.handled));
     }
-    // Truncated rather than allowed to sprawl.
-    out.truncate(MAX_LINES);
+    // Truncated rather than allowed to sprawl -- but the push is kept: it
+    // is the one line that's about you rather than about the queue.
+    out.truncate(MAX_LINES - usize::from(b.push.is_some()));
+    if let Some(p) = &b.push {
+        out.push(p.clone());
+    }
     out.join(" ")
 }
 
@@ -759,6 +769,25 @@ pub fn from_here(s: &Sources, cfg: &BriefConfig, now: u64, since: u64) -> Brief 
         b.handled += handled_since(s.scheduler, since);
     }
     b
+}
+
+/// Today's push, from what you asked to be pushed on (`getknow`'s "Push them
+/// on: habits, posting and deadlines"): one piece a day, in turn, so a
+/// list of three isn't read out every morning. `None` when there's nothing.
+pub fn push_for_day(asked: &str, day: u64) -> Option<String> {
+    let asked = asked.trim();
+    let asked = asked.strip_prefix("Push them on:").unwrap_or(asked).trim();
+    let pieces: Vec<&str> = asked
+        .split([',', ';'])
+        .flat_map(|p| p.split(" and "))
+        .map(|p| p.trim().trim_start_matches("and ").trim_end_matches(['.', '!']).trim())
+        .filter(|p| p.len() > 1)
+        .collect();
+    if pieces.is_empty() {
+        return None;
+    }
+    let one = pieces[(day % pieces.len() as u64) as usize];
+    Some(format!("You asked me to push you on {one} -- what's today's step?"))
 }
 
 /// First `n` words, so a note or a post body reads as a subject line.

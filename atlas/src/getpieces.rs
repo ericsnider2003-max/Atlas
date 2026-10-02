@@ -1176,7 +1176,8 @@ pub fn everything_else() -> Vec<Piece> {
         photos(),
         crate::codetools::tool_pieces(),
         vec![multilingual_listening_model()],
-        vec![draft_model()],
+        // Not the draft model: measured four times slower on the laptop
+        // (1 Oct 2026, `models.rs` `speculate`), so nothing needs it.
         vec![deep_model()],
         picture_making(),
     ]

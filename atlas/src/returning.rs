@@ -10,6 +10,48 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The least time between two greetings of any kind -- a welcome back, the
+/// morning brief, a part-of-day hello. One combined hello, not three in a
+/// row (1 Oct 2026, idea 4).
+pub const GREET_GAP_SECS: u64 = 3 * 3600;
+
+/// How recently you must have shown you're here for an unprompted hello.
+/// Overnight on 30 Sep the greeting went to an empty room.
+pub const GREET_HERE_WITHIN_SECS: u64 = 120;
+
+/// What to do with a part-of-day hello that's due.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hello {
+    /// Say it.
+    Say,
+    /// You're not here: keep it for when you are.
+    Hold,
+    /// Already greeted recently: this part of the day counts as done.
+    Spent,
+}
+
+/// Whether a due part-of-day hello is said now. `quiet_for` is how long
+/// since you last spoke or touched the keyboard or mouse.
+pub fn hello_now(last_greeted_at: u64, now: u64, quiet_for: u64) -> Hello {
+    if quiet_for >= GREET_HERE_WITHIN_SECS {
+        Hello::Hold
+    } else if last_greeted_at > 0 && now.saturating_sub(last_greeted_at) < GREET_GAP_SECS {
+        Hello::Spent
+    } else {
+        Hello::Say
+    }
+}
+
+/// The hello when there's nothing in the brief and nothing open. "Nothing
+/// outstanding on my side -- what do you want to start on?" every evening
+/// is what stale sounds like. When Atlas knows nothing about you yet, it
+/// says once how to fix that; after that, an empty hello isn't said.
+pub fn empty_hello(greeting: &str, knows_you: bool, offered_before: bool) -> Option<String> {
+    (!knows_you && !offered_before).then(|| {
+        format!("{greeting}. I don't know what you're working on yet -- say \"get to know me\" and I'll ask you six quick questions.")
+    })
+}
+
 /// How Atlas addresses you. Yours to choose, including "don't".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Address {

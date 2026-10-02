@@ -486,13 +486,15 @@ uia:
 # prompt for each model's trained chat format, and drives llama.cpp's own
 # server binary directly.
 models:
-  # Speculative decoding (llama.cpp b10456), both off. `draft`: a small model
+  # Speculative decoding (llama.cpp b10456): free guessing on, draft off. `draft`: a small model
   # of the same family in the models folder -- for the shipped Qwen3-VL 4B,
   # Qwen3-0.6B-Q8_0.gguf (same vocabulary; about 640 MB; the Connections page
   # can fetch it). `speculate`: off, or ngram-mod / ngram-simple /
   # ngram-map-k / ngram-map-k4v / ngram-cache (no second model).
   draft: ""
-  speculate: "off"
+  # Measured on the laptop 1 Oct 2026: ngram-mod 23.9 vs 22.2 off; the
+  # 0.6B draft model was four times slower, so `draft` stays empty.
+  speculate: "ngram-mod"
   # How the model picks its words, sent with every request (29 Sep 2026).
   # llama-server's own defaults never discourage repeating; these are Qwen's
   # published settings for the shipped Qwen3-VL (temperature 0.7, top_p 0.8,

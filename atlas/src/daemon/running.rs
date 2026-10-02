@@ -924,6 +924,7 @@ impl<'a> Daemon<'a> {
         }
         self.ensure_mic(ears);
         self.steer_mic();
+        self.call_mute_setting();
         let heard = self.mic_heard.take().or_else(|| self.mic.as_ref().and_then(|m| m.poll()));
         let Some(heard) = heard else { return false };
         // A follow-up nobody is waiting for any more (`follow_up` gave up).
@@ -977,6 +978,13 @@ impl<'a> Daemon<'a> {
                     }
                 }
             }
+        }
+        // Done talking with Atlas: the call hears you again (`callmute`).
+        let muted = crate::callmute::muted_now();
+        crate::callmute::release();
+        if !muted.is_empty() {
+            let names: Vec<&str> = muted.iter().map(|m| m.exe.rsplit(['\\', '/']).next().unwrap_or(&m.exe)).collect();
+            self.log.info(&format!("call: unmuted {} after talking with Atlas", names.join(", ")));
         }
         if let Some(m) = self.mic.as_ref() {
             m.rearm();
