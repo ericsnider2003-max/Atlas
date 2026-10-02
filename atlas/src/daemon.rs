@@ -1764,7 +1764,11 @@ impl<'a> Daemon<'a> {
             notebook: notebook_at_start,
             workday: Default::default(),
             gate: crate::interrupt::Gate::default(),
-            workspace: Vec::new(),
+            // Loaded, so an item taken off Outstanding stays off after a
+            // restart (2 Oct 2026). Nothing was ever kept here before, so the
+            // first start after this finds nothing and begins empty, as it
+            // always did.
+            workspace: store_for_load.load("workspace"),
             layout: crate::layout_prefs::Layout::default_layout(),
             last_seen: 0,
             carried: Vec::new(),

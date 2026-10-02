@@ -286,6 +286,8 @@ const APPLIED_IN_CODE: &[(&str, &str)] = &[
     // Offered since 29 Sep 2026 (opportunity hunting).
     ("hunt.top_n", "hunting::brief_items and the voice list take the best top_n from HuntState::top"),
     ("hunt.max_requests_per_day", "HuntConfig::budget caps a day's requests at it (never above hunt::HARD_CEILING); hunting::tick skips a source that would pass it"),
+    // Offered since 2 Oct 2026 ("may need a lighter model for gestures").
+    ("hands.weight", "handweight::plan reads it (Daemon::hands_plan) every time hand tracking starts: the picture size, pace and idle rate follow from it"),
 ];
 
 #[test]

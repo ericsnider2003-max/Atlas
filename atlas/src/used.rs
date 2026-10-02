@@ -116,6 +116,7 @@ pub const FOR_KIND: &[(&str, &str)] = &[
     ("review_post", "publish"),
     ("press_button", "uia"),
     ("move_big_files", "reclaim"),
+    ("pc_tune", "tune"),
     ("tidy_desktop", "filing"),
     ("refile", "filing"),
     ("use_mic", "audio"),

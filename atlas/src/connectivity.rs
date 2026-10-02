@@ -420,6 +420,7 @@ pub fn need_of(intent: &Intent) -> Need {
         // A button in a window on this desk.
         | Intent::PressButton(_)
         | Intent::MoveBigFiles(_)
+        | Intent::PcTune(_)
         | Intent::TidyDesktop
         | Intent::UseMic(_)
         // ffmpeg and the local model.

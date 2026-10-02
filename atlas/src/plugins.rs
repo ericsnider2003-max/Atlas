@@ -253,6 +253,7 @@ pub const NEVER: &[(&str, &str)] = &[
     ("set_key", "it changes Atlas's keys"),
     ("edit_media", "it writes files beside yours"),
     ("move_big_files", "it moves folders between your drives"),
+    ("pc_tune", "it closes your programs and changes what starts with Windows"),
     ("press_button", "it presses buttons in other apps as if it were you"),
     ("schedule_post", "it decides when your posts go out"),
     ("sort_mail", "it moves your mail"),

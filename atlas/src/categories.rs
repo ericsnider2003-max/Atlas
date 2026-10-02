@@ -180,6 +180,9 @@ pub fn category_of(intent: &Intent) -> Category {
         // taken back ask first, in the handler.
         Intent::PressButton(_) => Category::LocalOperational,
         Intent::MoveBigFiles(_) => Category::LocalOperational,
+        // Looks, then offers; closing, startup changes, clearing and moving
+        // happen only on the yes to that offer (2 Oct 2026).
+        Intent::PcTune(_) => Category::LocalOperational,
         // Shows the plan and waits for a yes; every move through `system::judge`.
         Intent::TidyDesktop => Category::LocalOperational,
         Intent::UseMic(_) => Category::LocalOperational,

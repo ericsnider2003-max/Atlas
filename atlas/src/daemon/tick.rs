@@ -1059,7 +1059,9 @@ impl<'a> Daemon<'a> {
         // One file of Atlas's own code broken on purpose a day, to find
         // what no test notices (`mutation`; research report, Stage 2 item
         // 12). Only where Atlas runs from its source with self-repair on.
+        self.tick_laps.mark("reminders, room, night");
         self.maybe_mutation_sweep(t);
+        self.tick_laps.mark("self-repair sweep");
 
         // Gated on `may_interrupt` before the look rather than after it. The
         // clock is only marked when it actually looked, so a week spent in

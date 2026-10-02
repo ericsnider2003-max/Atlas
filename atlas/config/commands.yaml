@@ -220,6 +220,35 @@ commands:
               "what can be cleared", "what's eating the memory", "whats eating the memory",
               "what's using my memory", "whats using my memory"]
 
+  # Looking after the machine, more than a reading (Eric, 2 Oct 2026: "for
+  # optimization I want Atlas to be able to do more as it is a very tedious
+  # process. Like closing things in the task manager that aren't needed,
+  # moving files, doing deeper dives"). The whole sentence is read
+  # (`tune::tune_ask`); each looks, says what it found, and offers -- nothing
+  # is closed, switched off, cleared or moved before a yes.
+  - intent: pc_tune
+    describe: "Look after the computer: close programs that aren't needed, say what's slowing it down (CPU measured over a few seconds), list or switch off what starts with Windows, find big and duplicate files and clear temp files, or move big downloads into a folder the user names. Offers first, acts on a yes, undo reverses. arg: the user's sentence."
+    phrases: ["close what i don't need", "close what i dont need", "close what i do not need", "close what isn't needed",
+              "close what isnt needed", "close the things i don't need", "close the things i dont need",
+              "close what i'm not using", "close what im not using", "close stuff i'm not using", "close stuff im not using",
+              "close unneeded programs", "close unnecessary programs", "close background programs",
+              "what's slowing my computer down", "whats slowing my computer down", "what is slowing my computer down",
+              "what's slowing my pc down", "whats slowing my pc down", "what is slowing my pc down",
+              "what's slowing my laptop down", "whats slowing my laptop down", "what is slowing my laptop down",
+              "what's slowing down my computer", "whats slowing down my computer", "what's slowing my computer",
+              "whats slowing my computer", "what's using my cpu", "whats using my cpu", "what's using the cpu", "whats using the cpu",
+              "what starts with windows", "what starts up with windows", "what runs at startup", "what runs on startup",
+              "what launches at startup", "my startup programs", "show my startup programs", "list my startup programs",
+              "startup programs", "stop things starting with windows", "clean up my startup",
+              "clear my temp files", "clear temp files", "clean my temp files", "clean up temp files", "delete temp files",
+              "clear temporary files", "clean up my temporary files",
+              "what's taking up my space", "whats taking up my space", "what's taking up space", "whats taking up space",
+              "find duplicate files", "find my duplicate files", "find big files", "find my big files",
+              "move my big downloads", "move the big downloads", "move the big files in my downloads",
+              "move my downloads to", "move the duplicates to", "move my duplicates to"]
+    takes_argument: true
+    argument_optional: true
+
   - intent: self_check
     describe: "Run Atlas's self-check and say what setup is still missing."
     phrases: ["check yourself", "self check", "run a self check", "run a checkup",

@@ -2427,6 +2427,19 @@ gaze:
   # conversation", and watching every one is a camera on most of the day.
   watch_while_talking: false
 
+# How heavy hand tracking may be (2 Oct 2026: "may need a lighter model for
+# gestures" -- the laptop's fans spun while it watched his hands).
+# Settings: What it can see -> Hand tracking weight, NPU for hands.
+hands:
+  # auto picks from the machine: processors, memory, battery, and what
+  # reading a hand cost here last time. light: a smaller picture and fewer
+  # looks a second. full: the whole picture and pace.
+  weight: auto
+  # Read hands on the Intel NPU when there is one and its engine is here.
+  npu: true
+  # Stop watching after this many seconds with no hand in view (0: never).
+  stop_after_quiet_secs: 120
+
 # ---------------------------------------------------------------------------
 # Reading a market
 # ---------------------------------------------------------------------------

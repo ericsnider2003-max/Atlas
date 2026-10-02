@@ -267,8 +267,19 @@ fn outstanding_says_what_it_tried_what_stopped_it_and_what_it_needs() {
         }],
         in_progress: vec![("Report export".into(), "Handed to a worker.".into())],
         carried: vec![("Sort the receipts".into(), 3)],
+        // 2 Oct 2026: every item that can come off has its button; the
+        // worker's errand is stopped rather than dropped.
+        drops: hub::Drops {
+            waiting: vec![Some("w:a".into())],
+            blocked: vec![Some("b:1".into())],
+            in_progress: vec![Some("e:4".into())],
+            carried: vec![None],
+        },
     };
     let html = hub::outstanding_page(&o);
+    assert_eq!(html.matches("action=/hub/outstanding").count(), 3, "one button for each item with a key");
+    assert!(html.contains("value='b:1'><button class=quiet aria-label='Drop it: Connect your mailbox'>Drop it</button>"), "{html}");
+    assert!(html.contains(">Stop it</button>"));
     let lanes = ["Waiting on you", "Blocked", "In progress", "Carried over"];
     let mut at = 0;
     for l in lanes {

@@ -78,6 +78,14 @@ impl<'a> Daemon<'a> {
             steering: self.steering_until.is_some_and(|until| t < until),
             watch_while_talking: cfg.watch_while_talking,
         };
+        // The hands thread has the camera (2 Oct 2026). While it runs, this
+        // path opened a second ffmpeg on the same camera every second of
+        // steering, and ran the face models over what it got -- work the
+        // thread was already doing for the hands, and the second open
+        // fights the first for the device.
+        if self.hands.as_ref().is_some_and(|h| h.running()) {
+            return None;
+        }
         let Some(reason) = crate::gaze::why_look(&now, &cfg) else {
             // Nothing needs looking at. Not an error and not worth saying —
             // but the camera really is off, rather than idling.
@@ -1215,18 +1223,38 @@ impl<'a> Daemon<'a> {
         format!("Got it — I'll know {who}. {looks}; show me again from another angle and I'll be surer.")
     }
 
-    pub(super) fn build_eyes(&self, models: &std::path::Path) -> Option<Box<dyn crate::handloop::Eyes>> {
+    /// How heavy hand tracking may be here (2 Oct 2026): from this machine,
+    /// what a look cost last time, and the `hands.weight` setting.
+    pub(super) fn hands_plan(&self) -> crate::handweight::Plan {
+        let tools = self.tools_cfg();
+        crate::handweight::plan(
+            &tools.hands,
+            &crate::handweight::Machine::this_one(),
+            crate::handloop::last_cost_ms(),
+            &tools.pace,
+        )
+    }
+
+    pub(super) fn build_eyes(&self, models: &std::path::Path, plan: &crate::handweight::Plan) -> Option<Box<dyn crate::handloop::Eyes>> {
         let tools = self.tools_cfg();
         // The one-shot capture command already knows which device and backend
         // this machine uses. Re-deriving that here would be two places to get
         // right and one of them silently rotting.
         let capture = tools.capture_webcam.as_ref()?;
+        // The picture size is the plan's: a quarter of the bytes on a light
+        // machine (2 Oct 2026).
         let feed = crate::frames::Feed {
             open_with: crate::frames::from_capture_args(&resolved(&capture.args, &tools.vars)),
-            ..crate::frames::Feed::default()
+            width: plan.width,
+            height: plan.height,
         };
-        match crate::handloop::Seeing::start(&feed, models) {
-            Ok(seeing) => Some(Box::new(seeing)),
+        // ONNX Runtime and the NPU engine live under the install folder,
+        // which holds `models/` -- the same way `speakernet` finds them.
+        match crate::handloop::Seeing::start(&feed, models, models.parent(), tools.hands.npu) {
+            Ok(seeing) => {
+                self.log.info(&format!("hand tracking: {}, on {}", plan.why, seeing.engine_in_use()));
+                Some(Box::new(seeing))
+            }
             Err(e) => {
                 // Named once, here, rather than twenty times a second there.
                 self.log.warn(&format!("couldn't start hand tracking: {e}"));
@@ -1287,7 +1315,8 @@ impl<'a> Daemon<'a> {
                     machine yet."
                 .into();
         };
-        let Some(eyes) = self.build_eyes(&models) else {
+        let plan = self.hands_plan();
+        let Some(eyes) = self.build_eyes(&models, &plan) else {
             return "I couldn't start the camera.".into();
         };
 
@@ -1297,7 +1326,9 @@ impl<'a> Daemon<'a> {
             pointer,
             vocabulary: self.gestures.clone(),
             smoothing: tools.smoothing,
-            pace: tools.pace,
+            pace: plan.pace,
+            idle_per_second: plan.idle_per_second,
+            hands: tools.hands.clone(),
         }));
         self.steering_until = Some(t + crate::gaze::STEERING_STOPS_AFTER);
         self.steering_hand = crate::gaze::Steering::default();
