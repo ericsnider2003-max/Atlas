@@ -502,17 +502,24 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
 fn without_test_blocks(body: &str) -> String {
     let mut out = Vec::new();
     let mut in_test = false;
+    let mut opened = false;
     let mut depth: i32 = 0;
     for line in body.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             in_test = true;
+            opened = false;
             depth = 0;
             continue;
         }
         if in_test {
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
-            if line.contains('{') && depth <= 0 {
+            opened |= line.contains('{');
+            // The block ends where its braces close -- on a line of its own
+            // ("}") too: 2 Oct 2026, a `mod naming_a_project` in making.rs
+            // hid every daemon file after it, and live methods read as dead.
+            // `#[cfg(test)] use x;` -- one item with no braces.
+            if (opened && depth <= 0) || (!opened && line.trim_end().ends_with(';')) {
                 in_test = false;
             }
             continue;

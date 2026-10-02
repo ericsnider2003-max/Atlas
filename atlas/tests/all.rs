@@ -977,3 +977,5 @@ mod market_desk;
 mod video_studio;
 #[path = "hands_free.rs"]
 mod hands_free;
+#[path = "job_applications.rs"]
+mod job_applications;

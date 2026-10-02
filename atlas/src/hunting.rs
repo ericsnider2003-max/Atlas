@@ -430,8 +430,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
 /// question about what to look for.
 pub fn brief_items(d: &mut Daemon, t: u64) -> Vec<crate::brief::Item> {
     use crate::brief::{Item, Outcome, Source as From, Weight};
-    let cfg = d.tools_cfg().hunt.clone();
-    if !cfg.enabled || d.handover().stance.handed_over() {
+    if d.handover().stance.handed_over() {
         return Vec::new();
     }
     let item = |id: String, subject: String| Item {
@@ -445,6 +444,19 @@ pub fn brief_items(d: &mut Daemon, t: u64) -> Vec<crate::brief::Item> {
         conflicts_with: None,
     };
     let mut out = Vec::new();
+    // Applications gone quiet for a week (`applied`), whether or not
+    // hunting is on: they're yours, not found.
+    let mut apps: crate::applied::Applications = d.store.load(crate::applied::FILE);
+    let due = apps.due_follow_ups(t);
+    if !due.is_empty() && d.store.save(crate::applied::FILE, &apps).is_ok() {
+        for (i, line) in due.into_iter().enumerate() {
+            out.push(Item { from: "Application".into(), ..item(format!("application:{t}:{i}"), line) });
+        }
+    }
+    let cfg = d.tools_cfg().hunt.clone();
+    if !cfg.enabled {
+        return out;
+    }
     if Interests::from_facts(&d.facts).is_empty() && !state(d).asked {
         state(d).asked = true;
         let _ = keep(d);
@@ -641,5 +653,24 @@ pub fn fit_asked(d: &mut Daemon, said: &str) -> Option<String> {
             "I don't know your skills yet, so I can't score it honestly. Say \"my skills are\" and list them, then ask again.".into()
         }
         None => "I couldn't find what that posting asks for -- it doesn't name any skills I can match.".into(),
+    })
+}
+
+/// "I applied for …", "… said no", "my applications" (`applied`). `None`
+/// when that isn't what was said.
+pub fn applied_asked(d: &mut Daemon, said: &str, t: u64) -> Option<String> {
+    let heard = crate::applied::heard(said)?;
+    if d.handover().stance.handed_over() {
+        return Some("The application list is the owner's.".into());
+    }
+    let mut apps: crate::applied::Applications = d.store.load(crate::applied::FILE);
+    let listing = heard == crate::applied::Heard::List;
+    let reply = apps.take(heard, t);
+    if listing {
+        return Some(reply);
+    }
+    Some(match d.store.save(crate::applied::FILE, &apps) {
+        Ok(()) => reply,
+        Err(e) => format!("I couldn't keep that: {e}"),
     })
 }

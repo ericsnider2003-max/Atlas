@@ -47,6 +47,19 @@ const NEEDS_A_WHOLE_SENTENCE: &[(&str, &str)] = &[
     ("remove", "remove Sam from the Friends group"),
     ("make", "make Maya a reader in the Friends group"),
     ("let", "let Maya post in the Friends group"),
+    // The short code leads (2 Oct 2026) count only when what follows names
+    // code -- "write a haiku" is a poem, not a build.
+    ("write a", "write a python script that renames my photos"),
+    ("write an", "write an app that tracks my runs"),
+    ("create a", "create a tool that merges csv files"),
+    ("create an", "create an api for my notes"),
+    ("create me a", "create me a scraper for job posts"),
+    ("make me a", "make me a script that backs up my notes"),
+    ("make me an", "make me an app that tracks my shopping"),
+    ("code a", "code a game of snake"),
+    ("program a", "program a calculator"),
+    ("build a", "build a website for my bakery"),
+    ("build an", "build an app that logs my workouts"),
 ];
 
 fn example(phrase: &str, takes_argument: bool, optional: bool) -> String {

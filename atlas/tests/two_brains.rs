@@ -601,6 +601,7 @@ fn every_background_call_site_asks_for_the_background_model() {
         ("src/daemon/inbox.rs", "fn draft_outreach("),
         ("src/daemon/helping.rs", "fn decision_help("),
         ("src/daemon/making.rs", "fn build_from_description("),
+        ("src/daemon/making.rs", "fn code_writers("),
         ("src/daemon/making.rs", "fn improve_project("),
         ("src/daemon/model.rs", "fn ask_the_room("),
         ("src/daemon/hands.rs", "fn carry_out("),
@@ -610,7 +611,12 @@ fn every_background_call_site_asks_for_the_background_model() {
         let body = &s[at..];
         let end = body[3..].find("\n    pub").or_else(|| body[3..].find("\n    fn ")).map(|e| e + 3).unwrap_or(body.len());
         let body = &body[..end];
-        assert!(body.contains("self.background_llm()"), "{fun} in {file} doesn't use the background model");
+        // `code_writers` (2 Oct 2026) is the background model first, then the
+        // stronger ones -- checked in this list on its own.
+        assert!(
+            body.contains("self.background_llm()") || body.contains("self.code_writers("),
+            "{fun} in {file} doesn't use the background model"
+        );
         assert!(!body.contains("self.llm.clone()"), "{fun} in {file} still takes the talking model");
     }
     // And every talking call holds the guard the deep model gives way to.
