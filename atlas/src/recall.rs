@@ -869,3 +869,38 @@ pub fn docs_reply(a: &DocsAnswer, passages: &[(String, String)]) -> String {
     }
     out
 }
+
+
+// ---------- a summary on read ----------
+
+/// What the model reads to summarise a long document: the start, the middle
+/// and the end, each about `each` characters, cut at whitespace -- a
+/// summary of only the first page reads like the whole thing was the
+/// introduction.
+pub fn summary_sample(text: &str, each: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= each * 3 {
+        return text.to_string();
+    }
+    let take = |from: usize| -> String {
+        let s: String = chars[from..(from + each).min(chars.len())].iter().collect();
+        let s = s.trim();
+        let start = if from == 0 { 0 } else { s.char_indices().find(|(_, c)| c.is_whitespace()).map(|(i, c)| i + c.len_utf8()).unwrap_or(0) };
+        let end = if from + each >= chars.len() { s.len() } else { s.rfind(char::is_whitespace).unwrap_or(s.len()) };
+        s[start..end.max(start)].trim().to_string()
+    };
+    let mid = chars.len() / 2 - each / 2;
+    let end = chars.len() - each;
+    format!("[The start]\n{}\n\n[The middle]\n{}\n\n[The end]\n{}", take(0), take(mid), take(end))
+}
+
+/// The summary with every sentence that names a figure the document
+/// doesn't hold taken out (`research::figures_not_in`).
+pub fn summary_checked(summary: &str, document: &str) -> String {
+    summary
+        .split_inclusive(['.', '!', '?'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && crate::research::figures_not_in(s, document).is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}

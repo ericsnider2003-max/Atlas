@@ -235,6 +235,9 @@ pub fn which_goal<'a>(goals: &'a [Goal], words: &str) -> Option<&'a Goal> {
         .map(|(g, _)| g)
 }
 
+/// Idle this long is away, not drifting.
+pub const DRIFT_AWAY_SECS: u64 = 1800;
+
 #[derive(Debug, Default)]
 pub struct Nudger {
     pub cfg: NudgeConfig,
@@ -369,7 +372,10 @@ impl Nudger {
     }
 
     fn drifting(&self, dwell_secs: u64, idle_secs: u64) -> Option<Nudge> {
-        if dwell_secs < self.cfg.drift_dwell_secs || idle_secs < 600 {
+        // Gone half an hour isn't slowing down, it's away (30 Sep 2026:
+        // "Looks like we've slowed down" said eight times overnight to an
+        // empty room).
+        if dwell_secs < self.cfg.drift_dwell_secs || !(600..DRIFT_AWAY_SECS).contains(&idle_secs) {
             return None;
         }
         // Only offer relief that actually exists.

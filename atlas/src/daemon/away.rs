@@ -285,6 +285,86 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// The evening wrap-up (and, on Fridays or when asked, the week), from
+    /// your list, the work log and the jobs Atlas ran (`daily::wrap_said`).
+    pub(super) fn wrap_now(&mut self, t: u64, week: bool) -> crate::daily::Wrap {
+        let off = crate::localclock::offset_secs();
+        let today = crate::localclock::midnight(t, off);
+        let summary = crate::worklog::summarise(&self.worklog.between(today, t));
+        let done = |i: &crate::workspace_view::Item, from: u64| {
+            i.status == crate::workspace_view::Status::Done && i.closed_at.is_some_and(|c| c >= from && c <= t)
+        };
+        let carried: Vec<(String, u32)> = self
+            .workspace
+            .iter()
+            .filter(|i| i.status.live())
+            .map(|i| (i.title.clone(), self.carried.iter().find(|(c, _)| *c == i.title).map(|(_, n)| *n).unwrap_or(0)))
+            .collect();
+        let tomorrow = crate::localclock::day_here(t + 86_400) as u64;
+        let week = (week || crate::localclock::weekday(t, off) == 4).then(|| {
+            let monday = today - crate::localclock::weekday(t, off) as u64 * 86_400;
+            let spans = self.worklog.between(monday, t);
+            let mut per_day: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::new();
+            for s in &spans {
+                *per_day.entry(crate::localclock::midnight(s.start, off)).or_default() += s.secs();
+            }
+            let w = crate::worklog::summarise(&spans);
+            crate::daily::Week {
+                active_secs: w.active,
+                days_worked: per_day.values().filter(|s| **s >= 1800).count() as u32,
+                focus_blocks: w.blocks.len(),
+                finished: self.workspace.iter().filter(|i| done(i, monday)).count(),
+            }
+        });
+        crate::daily::Wrap {
+            finished: self.workspace.iter().filter(|i| done(i, today)).map(|i| i.title.clone()).collect(),
+            carried,
+            handled: crate::brief::handled_since(&self.scheduler, today),
+            active_secs: summary.active,
+            top: summary.by_category.clone(),
+            longest_focus: summary.blocks.first().map(|b| (b.category.clone(), b.end.saturating_sub(b.start))),
+            push: self.facts.get("push them on").and_then(|f| crate::brief::push_piece(&f.summary, tomorrow)),
+            week,
+        }
+    }
+
+    /// The last eight days of the work log, reduced for `daily::one_thing_noticed`.
+    pub(super) fn noticed_days(&self, t: u64) -> Vec<crate::daily::DayLog> {
+        let off = crate::localclock::offset_secs();
+        let today = crate::localclock::midnight(t, off);
+        (0..8u64)
+            .rev()
+            .map(|back| {
+                let from = today.saturating_sub(back * 86_400);
+                let to = if back == 0 { t } else { from + 86_400 };
+                let s = crate::worklog::summarise(&self.worklog.between(from, to));
+                let small = self.worklog.between(from, (from + 4 * 3600).min(to)).iter().map(|x| x.secs()).sum();
+                crate::daily::DayLog { active_secs: s.active, by_category: s.by_category, focus_blocks: s.blocks.len(), small_hours_secs: small }
+            })
+            .collect()
+    }
+
+    /// "What have you noticed?" -- the one observation, asked for.
+    pub(super) fn noticed_help(&mut self, said: &str, t: u64) -> Option<String> {
+        let low = said.trim().trim_end_matches(['?', '.', '!']).to_ascii_lowercase();
+        if !["what have you noticed", "noticed anything", "what did you notice", "notice anything", "anything you noticed"]
+            .iter()
+            .any(|p| low.ends_with(p))
+        {
+            return None;
+        }
+        Some(crate::daily::one_thing_noticed(&self.noticed_days(t)).unwrap_or_else(|| {
+            "Nothing that stands out yet -- I need a week of your work log to compare against.".into()
+        }))
+    }
+
+    /// "Wrap up my day", "how did my week go".
+    pub(super) fn wrapup_help(&mut self, said: &str, t: u64) -> Option<String> {
+        let asked = crate::daily::wrap_asked(said)?;
+        let w = self.wrap_now(t, asked == crate::daily::WrapAsked::Week);
+        Some(crate::daily::wrap_said(&w))
+    }
+
     /// "Where did my time go?" — today, yesterday or this week, from the
     /// work log.
     pub(super) fn time_spent(&mut self, what: &str, t: u64) -> String {

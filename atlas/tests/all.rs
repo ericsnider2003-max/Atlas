@@ -953,3 +953,5 @@ mod ask_my_documents;
 mod the_npu_engine;
 #[path = "apple_first_then_atlas.rs"]
 mod apple_first_then_atlas;
+#[path = "end_of_the_day.rs"]
+mod end_of_the_day;

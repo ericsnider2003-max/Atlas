@@ -1331,6 +1331,17 @@ impl<'a> Daemon<'a> {
                 // on with the rest." -- which is the right answer to someone
                 // who just asked and the wrong thing to volunteer every
                 // morning for the rest of your life.
+                // One thing noticed (idea 11): once a day, with the brief --
+                // said to someone who's arrived, never to an empty room.
+                let mut b = b;
+                let today = crate::localclock::midnight(t, crate::localclock::offset_secs());
+                let noticed_on: u64 = self.store.load("noticed_on");
+                if noticed_on != today {
+                    if let Some(n) = crate::daily::one_thing_noticed(&self.noticed_days(t)) {
+                        b.noticed = Some(n);
+                        let _ = self.store.save("noticed_on", &today);
+                    }
+                }
                 if !b.is_empty() {
                     self.last_greeted_at = t;
                     let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
@@ -1344,6 +1355,27 @@ impl<'a> Daemon<'a> {
                         Some(night) => self.morning_brief = Some(format!("{night} {line}")),
                         None => self.morning_brief = Some(line),
                     }
+                }
+            }
+        }
+
+        // The evening wrap-up (why-stale idea 2, 1 Oct 2026): once an
+        // evening, while you're here, after a real day at the machine --
+        // done, slipping, tomorrow's first move; the week on Fridays. It is
+        // the evening's hello, so the part-of-day greeting after it is spent.
+        {
+            let off = crate::localclock::offset_secs();
+            let today = crate::localclock::midnight(t, off);
+            let wrapped_on: u64 = self.store.load("wrapped_on");
+            let here = self.quiet_for(t) < crate::returning::GREET_HERE_WITHIN_SECS;
+            let hour = crate::localclock::hour_here(t);
+            if wrapped_on != today && here && (crate::daily::WRAP_FROM_HOUR..crate::daily::WRAP_UNTIL_HOUR).contains(&hour) {
+                let w = self.wrap_now(t, false);
+                if crate::daily::wrap_due(hour, today, wrapped_on, w.active_secs, here) {
+                    let _ = self.store.save("wrapped_on", &today);
+                    self.last_greeted_at = t;
+                    let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
+                    out.push(crate::daily::wrap_said(&w));
                 }
             }
         }
