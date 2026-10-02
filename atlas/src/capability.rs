@@ -1550,7 +1550,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 459;
+pub const MODULES_IN_TREE: usize = 460;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1588,6 +1588,7 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("judgment", "the shared scale graded judgments are expressed on, borrowed by a dozen capabilities"),
     ("lifecycle", "starts heavyweight helpers when needed and reaps them when idle"),
     ("voicefirst", "lowers the model server's priority while a reply plays, so the voice keeps up"),
+    ("applebrain", "on an iPhone with Apple Intelligence, asks Apple's on-device model first and hands each request it refuses or can't do to Atlas's own model"),
     ("npu", "runs the search and voice-ID models on the laptop's NPU when it has one, checked against the processor (`atlas npu-check`)"),
     ("whystopped", "writes down when Atlas started and why each run ended, and asks Windows to start it again after an update restart"),
     ("look", "the palette and catenary constants the native windows are painted from"),

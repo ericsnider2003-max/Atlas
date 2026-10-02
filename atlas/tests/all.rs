@@ -939,3 +939,5 @@ mod the_silence_after_you_speak;
 mod there_when_you_sit_down;
 #[path = "the_npu_engine.rs"]
 mod the_npu_engine;
+#[path = "apple_first_then_atlas.rs"]
+mod apple_first_then_atlas;

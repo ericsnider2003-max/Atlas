@@ -131,6 +131,7 @@ pub mod talkbench;
 pub mod voicefirst;
 pub mod whystopped;
 pub mod npu;
+pub mod applebrain;
 pub mod freeonline;
 pub mod parakeet;
 pub mod kws;

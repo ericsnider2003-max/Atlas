@@ -20,4 +20,13 @@ int32_t atlas_mobile_url(char *buf, size_t len);
 void atlas_mobile_network(int32_t unmetered);
 /* Ask Atlas to stop; it finishes the turn it is on. */
 void atlas_mobile_stop(void);
+/* Apple's on-device model as the first brain (iOS 26+, src/applebrain.rs).
+   The shell passes a function that reads a request as JSON
+   ({"instructions": "...", "turns": [{"role", "content"}], "max_tokens"})
+   and writes {"text": "..."} into `out` (NUL-terminated, at most `out_len`
+   bytes), returning 0 answered, 1 refused, 2 too long, 3 unavailable,
+   4 failed. Called from Atlas's own threads, never the main one. NULL takes
+   it back. Each request it can't do goes to Atlas's own model. */
+typedef int32_t (*atlas_apple_fn)(const char *req, char *out, size_t out_len);
+void atlas_mobile_apple_model(atlas_apple_fn f);
 #endif

@@ -113,6 +113,16 @@ jobs:
           mkdir -p mobile/ios/rustlib
           cp target/aarch64-apple-ios/release/libatlas.a mobile/ios/rustlib/
 
+      - name: Xcode 26, for Apple's on-device model
+        if: env.CHECK_ONLY != '1'
+        # FoundationModels (Apple's model as the first brain, decision 2)
+        # needs the iOS 26 SDK. Picked when the runner has it; an older Xcode
+        # still builds, and AppleBrain.swift then leaves Apple's model out.
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+
       - name: The Xcode project, from project.yml
         if: env.CHECK_ONLY != '1'
         working-directory: atlas/mobile/ios
