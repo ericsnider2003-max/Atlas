@@ -40,14 +40,23 @@ final class Shell: NSObject, WKScriptMessageHandler, AVSpeechSynthesizerDelegate
         case "converse": conversing = true; listen()
         case "stop": conversing = false; finish()
         case "speak": speak(body["text"] as? String ?? "")
+        // The calendar is asked for only when you tap for it, never at launch.
+        case "calendar": CalendarSync.shared.maybeSync(force: true, ask: true)
         default: break
         }
     }
 
     private func listen() {
-        SFSpeechRecognizer.requestAuthorization { ok in
-            guard ok == .authorized else { return self.tell("Atlas needs permission to hear you. It's in Settings → Atlas.") }
-            DispatchQueue.main.async { self.begin() }
+        // Both yeses, the microphone's and speech recognition's, before
+        // anything touches the microphone: a "no" to the microphone left
+        // installTap on an input with no format, which throws and closes the
+        // app (the TestFlight review audit, 2 Oct 2026).
+        AVAudioApplication.requestRecordPermission { mic in
+            guard mic else { return self.tell("Atlas needs the microphone to hear you. Turn it on in Settings → Atlas, or type instead.") }
+            SFSpeechRecognizer.requestAuthorization { ok in
+                guard ok == .authorized else { return self.tell("Atlas needs permission to hear you. It's in Settings → Atlas.") }
+                DispatchQueue.main.async { self.begin() }
+            }
         }
     }
 
@@ -66,8 +75,21 @@ final class Shell: NSObject, WKScriptMessageHandler, AVSpeechSynthesizerDelegate
         try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.duckOthers, .defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
         try? session.setActive(true)
         let input = engine.inputNode
-        input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { b, _ in req.append(b) }
-        try? engine.start()
+        // Listening twice (a second tap while the first is on) throws: the
+        // old one goes first, and the engine is stopped before it's restarted.
+        if engine.isRunning { engine.stop() }
+        input.removeTap(onBus: 0)
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            request = nil
+            return tell("Atlas can't reach a microphone right now — type instead.")
+        }
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { b, _ in req.append(b) }
+        do { try engine.start() } catch {
+            input.removeTap(onBus: 0)
+            request = nil
+            return tell("Atlas couldn't start the microphone — type instead.")
+        }
         startedAt = Date()
         task = rec.recognitionTask(with: req) { r, _ in
             if let r {

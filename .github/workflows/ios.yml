@@ -37,14 +37,22 @@ on:
         type: boolean
         default: false
       testflight:
-        description: "Also send this build to TestFlight (needs the app made once in App Store Connect)"
+        description: "Also send this build to TestFlight -- only when Eric says Atlas is ready for it"
         type: boolean
-        default: true
+        default: false
   push:
     tags: ["v*"]
+  # A fresh TestFlight build on the 1st and 15th, so no build ever reaches
+  # TestFlight's 90-day expiry and phones update by themselves. OFF until
+  # Eric says Atlas is ready: it runs only when the repository variable
+  # TESTFLIGHT_SCHEDULE is "on" (Settings -> Secrets and variables ->
+  # Actions -> Variables).
+  schedule:
+    - cron: "17 9 1,15 * *"
 
 jobs:
   ios:
+    if: github.event_name != 'schedule' || vars.TESTFLIGHT_SCHEDULE == 'on'
     runs-on: macos-15
     timeout-minutes: 75
     env:
@@ -194,7 +202,9 @@ jobs:
       # step says so and the ad hoc build still comes out.
       - name: Send it to TestFlight
         id: testflight
-        if: env.CHECK_ONLY != '1' && (github.event_name != 'workflow_dispatch' || inputs.testflight)
+        # Only when asked for, by hand (Eric, 2 Oct 2026: "I want things
+        # fixed first"). A tag push never sends a build to TestFlight.
+        if: env.CHECK_ONLY != '1' && ((github.event_name == 'workflow_dispatch' && inputs.testflight) || github.event_name == 'schedule')
         continue-on-error: true
         working-directory: atlas/mobile/ios
         env:

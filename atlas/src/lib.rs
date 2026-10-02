@@ -206,6 +206,7 @@ pub mod worklog;
 pub mod worksession;
 pub mod studio;
 pub mod applied;
+pub mod phonemode;
 pub mod when;
 pub mod notify;
 pub mod nudge;

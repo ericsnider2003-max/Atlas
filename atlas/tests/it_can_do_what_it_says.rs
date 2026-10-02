@@ -268,6 +268,16 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
     (
+        "use online models",
+        "the phone app's yes to the free online models, heard before the parser by \
+         `phonemode::online_answer` in `daemon/away.rs` `phone_online_help` (tests/phone_mode.rs).",
+    ),
+    (
+        "stop using online models",
+        "the phone app's no to the free online models, heard before the parser by \
+         `phonemode::online_answer` in `daemon/away.rs` `phone_online_help` (tests/phone_mode.rs).",
+    ),
+    (
         "I applied for <role> at <company>",
         "heard before the parser by `applied::heard`, from `hunting::applied_asked` in both \
          local-answer chains of `daemon/turn.rs` (`tests/job_applications.rs` parses it).",

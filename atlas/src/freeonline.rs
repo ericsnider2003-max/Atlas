@@ -137,6 +137,11 @@ impl FreeOnline {
     /// ran out of room (`finish_reason: "length"`) -- what the code builder
     /// needs (2 Oct 2026: 700 was a sentence's worth, not a file's).
     fn ask_for(&self, system: &str, user: &str, max_tokens: u32) -> Result<(String, bool)> {
+        // The phone app sends nothing to these until you've said yes
+        // (`phonemode`): the question goes back to you instead.
+        if crate::phonemode::on() && !crate::phonemode::online_ok() {
+            return Err(crate::error::AtlasError::Platform(crate::phonemode::ASK_ONLINE.into()));
+        }
         // Scrubbed here as well as in `FallbackLlm`: with no model on this
         // machine this is the only model, and nothing else scrubs for it.
         let mut scrub = crate::redact::Scrubber::default();

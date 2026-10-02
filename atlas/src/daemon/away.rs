@@ -385,6 +385,27 @@ impl<'a> Daemon<'a> {
         said
     }
 
+    /// On the phone app, your answer to the free online models: "use online
+    /// models" or "stop using online models" (`phonemode`). Kept, so it's
+    /// asked once. `None` anywhere else.
+    pub(super) fn phone_online_help(&mut self, said: &str) -> Option<String> {
+        if !crate::phonemode::on() {
+            return None;
+        }
+        let yes = crate::phonemode::online_answer(said)?;
+        crate::phonemode::set_online_ok(yes);
+        let kept = self.store.save(crate::phonemode::ONLINE_ASKED, &yes).is_ok();
+        let mut out = if yes {
+            "Done: until this phone has a model of its own, your questions go to the free online models. Ask me again.".to_string()
+        } else {
+            "Done: nothing goes to the online models. Say \"get your own model\" and I'll fetch one onto this phone.".to_string()
+        };
+        if !kept {
+            out.push_str(" I couldn't keep that choice, so I'll ask again next time Atlas starts.");
+        }
+        Some(out)
+    }
+
     /// "Why did Nvidia move today?" -- a research question with today's date
     /// on it, so the answer is about today's move and not a year-old one
     /// (the general market desk: general trading knowledge only).

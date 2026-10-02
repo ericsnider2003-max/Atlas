@@ -318,30 +318,85 @@ impl ExternalTool {
     }
 }
 
-/// A `curl` to a plain `http://` address, done in-process: what Atlas's own
-/// model calls (`models::server_post`, `server_get`) and hand-written
-/// `tools.llm` settings ask for. `None` when it isn't that (another program,
-/// https, a flag this doesn't read), so the caller runs the real `curl`.
+/// A `curl` done in-process, on a phone, where no program can be started:
+/// Atlas's own model calls (`models::server_post`, `server_get`), hand-written
+/// `tools.llm` settings, and -- since 2 Oct 2026 -- the https ones too: the
+/// free online models and web search. `None` when it isn't a curl this
+/// reads (`curl_call`), so the caller runs the real one.
 ///
 /// Reads: `-X METHOD`, `-d`/`--data`/`--data-binary` (`@-` is stdin),
-/// `-m`/`--max-time`, and ignores `-s`, `-S`, `-f`, `--noproxy <x>` and
-/// `-H` (the body is JSON either way). Anything else declines, so nothing is
+/// `-m`/`--max-time`, `-H`, `-A`, and ignores `-s`, `-S`, `-f`, `-L`,
+/// `--compressed` and `--noproxy <x>`. Anything else declines, so nothing is
 /// silently dropped. Failing the way curl with `-f` would: a status of 400 or
 /// more is an error, not a body.
 pub fn curl_in_process(cmd: &str, args: &[String], stdin: Option<&str>, timeout_secs: u64) -> Option<Result<String>> {
+    let call = curl_call(cmd, args, stdin, timeout_secs)?;
+    let timeout = std::time::Duration::from_secs(if call.secs == 0 { default_timeout() } else { call.secs });
+    let got = if call.https {
+        // 2 Oct 2026, Eric's iPhone: the free online models and web search
+        // are `curl` to https:// addresses, and an iPhone can't start curl --
+        // "could not start 'curl'" for every question. Answered here, over
+        // the system's own TLS.
+        let headers: Vec<(&str, &str)> = call.headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let body = call.body.as_deref().map(|b| ("application/json", b));
+        crate::http::https_call(&call.method, &call.host, &call.path, &headers, body, timeout).map(|(r, _)| r)
+    } else {
+        let host = if call.host.contains(':') { call.host.clone() } else { format!("{}:80", call.host) };
+        match call.method.as_str() {
+            "GET" => crate::http::get(&host, &call.path, timeout),
+            "POST" => crate::http::post_json(&host, &call.path, call.body.as_deref().unwrap_or(""), timeout),
+            _ => return None,
+        }
+    };
+    Some(got.and_then(|r| {
+        if r.status >= 400 {
+            Err(AtlasError::Platform(format!("{} answered {}: {}", call.url, r.status, r.body.trim())))
+        } else {
+            Ok(r.body)
+        }
+    }))
+}
+
+/// A `curl` command line, read: what `curl_in_process` makes of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurlCall {
+    pub method: String,
+    pub https: bool,
+    pub host: String,
+    pub path: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<String>,
+    pub secs: u64,
+}
+
+/// Read a `curl` call this process can make itself; `None` for anything
+/// else (another program, or a curl option it doesn't know -- run as is).
+pub fn curl_call(cmd: &str, args: &[String], stdin: Option<&str>, timeout_secs: u64) -> Option<CurlCall> {
     // Either separator: a Windows path read anywhere.
     let name = cmd.rsplit(['/', '\\']).next()?.to_lowercase();
     if name != "curl" && name != "curl.exe" {
         return None;
     }
     let (mut method, mut body, mut url, mut secs) = (None::<String>, None::<String>, None::<String>, timeout_secs);
+    let mut headers: Vec<(String, String)> = Vec::new();
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
         let next = || args.get(i + 1).cloned();
         match a {
-            "-s" | "-S" | "-sS" | "-f" | "--fail" | "--silent" | "--show-error" => {}
-            "--noproxy" | "-H" | "--header" => i += 1,
+            "-s" | "-S" | "-sS" | "-f" | "--fail" | "--silent" | "--show-error" | "-L" | "--location" | "--compressed" => {}
+            "--noproxy" => i += 1,
+            "-H" | "--header" => {
+                let h = next()?;
+                let (k, v) = h.split_once(':')?;
+                headers.push((k.trim().to_string(), v.trim().to_string()));
+                i += 1;
+            }
+            "-A" | "--user-agent" => {
+                headers.push(("User-Agent".into(), next()?));
+                i += 1;
+            }
             "-X" | "--request" => {
                 method = Some(next()?);
                 i += 1;
@@ -355,32 +410,24 @@ pub fn curl_in_process(cmd: &str, args: &[String], stdin: Option<&str>, timeout_
                 secs = next()?.parse::<f64>().ok()?.ceil() as u64;
                 i += 1;
             }
-            u if u.starts_with("http://") && url.is_none() => url = Some(u.to_string()),
+            u if (u.starts_with("http://") || u.starts_with("https://")) && url.is_none() => url = Some(u.to_string()),
             _ => return None,
         }
         i += 1;
     }
     let url = url?;
-    let rest = url.strip_prefix("http://")?;
+    let (https, rest) = match url.strip_prefix("https://") {
+        Some(r) => (true, r),
+        None => (false, url.strip_prefix("http://")?),
+    };
     let (host, path) = match rest.find('/') {
         Some(k) => (&rest[..k], &rest[k..]),
         None => (rest, "/"),
     };
-    let host = if host.contains(':') { host.to_string() } else { format!("{host}:80") };
-    let timeout = std::time::Duration::from_secs(if secs == 0 { default_timeout() } else { secs });
+    // The JSON body's own type is sent by `https_call`; a second one isn't.
+    headers.retain(|(k, _)| !k.eq_ignore_ascii_case("content-type"));
     let method = method.unwrap_or_else(|| if body.is_some() { "POST".into() } else { "GET".into() });
-    let got = match method.as_str() {
-        "GET" => crate::http::get(&host, path, timeout),
-        "POST" => crate::http::post_json(&host, path, body.as_deref().unwrap_or(""), timeout),
-        _ => return None,
-    };
-    Some(got.and_then(|r| {
-        if r.status >= 400 {
-            Err(AtlasError::Platform(format!("{url} answered {}: {}", r.status, r.body.trim())))
-        } else {
-            Ok(r.body)
-        }
-    }))
+    Some(CurlCall { method, https, host: host.to_string(), path: path.to_string(), url: url.clone(), headers, body, secs })
 }
 
 pub fn which(cmd: &str) -> Option<String> {

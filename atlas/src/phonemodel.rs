@@ -308,7 +308,7 @@ pub fn fetch_by_itself(unmetered: bool, have_one: bool, state: Option<&Download>
 pub fn download_said(d: Option<&Download>, attached: Option<&str>) -> String {
     match (d, attached) {
         (_, Some(name)) => format!("This phone has its own model, {name}, and I'm using it."),
-        (None, None) => "This phone hasn't got its own model yet. It fetches one by itself the next time it's on wifi, or say \"get your own model\" to start now.".into(),
+        (None, None) => "This phone hasn't got its own model yet. Say \"get your own model\" and I'll fetch one (0.6 to 1.8 GB, on Wi-Fi only), then answer without the internet.".into(),
         (Some(d), None) => match &d.finished {
             None => format!(
                 "{}: {} of {} MB so far ({}%).",

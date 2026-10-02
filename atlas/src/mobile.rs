@@ -157,12 +157,18 @@ static UNMETERED: AtomicBool = AtomicBool::new(false);
 /// config there on first run).
 pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: impl FnOnce(String)) -> Result<(), String> {
     std::env::set_var("ATLAS_HOME", home);
+    crate::phonemode::switch_on();
     let cfg_dir = crate::roots::config_dir();
-    let cfg = Config::load(&cfg_dir).map_err(|e| format!("couldn't read the config in {}: {e}", cfg_dir.display()))?;
+    let mut cfg = Config::load(&cfg_dir).map_err(|e| format!("couldn't read the config in {}: {e}", cfg_dir.display()))?;
+    if let Some(t) = cfg.tools.as_mut() {
+        crate::phonemode::as_a_phone(t);
+    }
     let cfg: &'static Config = Box::leak(Box::new(cfg));
     let tools = cfg.tools.clone().unwrap_or_default();
     let plat: &'static crate::platform::mobile::MobilePlatform = Box::leak(Box::new(crate::platform::mobile::MobilePlatform));
     let store = crate::roots::store();
+    // Your yes to the free online models, from before (`phonemode`).
+    crate::phonemode::set_online_ok(store.load::<bool>(crate::phonemode::ONLINE_ASKED));
     let mut d = Daemon::new(cfg, plat, phone_llm(&tools), store, Proactive::new(tools.proactive.clone()));
     let token = crate::server::token_for(&d.store).map_err(|e| e.to_string())?;
     let mut scfg = tools.server.clone();
@@ -196,6 +202,7 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
             d.keep_said_for_apps(said);
             last_tick = now;
             // The phone's own model, fetched by itself on wifi.
+            // Only once you've asked for it: it's 0.6-1.8 GB (`phonemode`).
             #[cfg(feature = "phone-llm")]
             if crate::phonemodel::fetch_by_itself(
                 UNMETERED.load(Ordering::Relaxed),
@@ -203,7 +210,8 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
                 crate::phonemodel::download_state().as_ref(),
                 now,
                 last_try,
-            ) {
+            ) && d.store.load::<bool>(crate::phonemode::MODEL_ASKED_FOR)
+            {
                 last_try = now;
                 let _ = crate::phonemodel::start_download(models_dir.clone(), |path| {
                     let _ = crate::phonemodel::attach(&path);

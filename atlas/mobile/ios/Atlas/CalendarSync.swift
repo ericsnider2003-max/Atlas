@@ -20,16 +20,20 @@ final class CalendarSync {
     }
 
     /// At most every ten minutes, and whenever the app comes forward.
-    func maybeSync(force: Bool = false) {
+    /// `ask`: you tapped "Bring in your calendar", so the system may ask
+    /// for access now. Otherwise this only syncs once you've already said
+    /// yes -- the app never asks at launch (the TestFlight review audit,
+    /// 2 Oct 2026).
+    func maybeSync(force: Bool = false, ask: Bool = false) {
         guard force || Date().timeIntervalSince(last) > 600 else { return }
         last = Date()
-        Task { await sync() }
+        Task { await sync(ask: ask) }
     }
 
-    private func allowed() async -> Bool {
+    private func allowed(ask: Bool) async -> Bool {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .fullAccess: return true
-        case .notDetermined: return (try? await store.requestFullAccessToEvents()) ?? false
+        case .notDetermined where ask: return (try? await store.requestFullAccessToEvents()) ?? false
         default: return false
         }
     }
@@ -44,8 +48,8 @@ final class CalendarSync {
         return c
     }
 
-    private func sync() async {
-        guard await allowed(), let url = AtlasCore.shared.url("/hub/calendar/phone"), let token = AtlasCore.shared.token else { return }
+    private func sync(ask: Bool = false) async {
+        guard await allowed(ask: ask), let url = AtlasCore.shared.url("/hub/calendar/phone"), let token = AtlasCore.shared.token else { return }
         let from = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
         let to = Calendar.current.date(byAdding: .day, value: 35, to: Date())!
         let mine = atlasCalendar()
