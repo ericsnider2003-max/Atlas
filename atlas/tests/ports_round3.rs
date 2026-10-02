@@ -882,3 +882,15 @@ fn zipread_find_the_note_inside_a_zip_and_refuse_a_bomb() {
     assert_eq!(got.iter().find(|(n, _)| n == "long.txt").unwrap().1, big);
     assert_eq!(got.len(), 3);
 }
+
+/// 1 Oct 2026 security pass: a "client" mail with no word from its server
+/// that it's genuine is drafted to, never answered automatically.
+#[test]
+fn only_mail_its_server_vouched_for_is_answered_unasked() {
+    use atlas::lookalike::vouched_for;
+    assert!(vouched_for("mx.google.com; dkim=pass header.i=@client.com; spf=pass; dmarc=pass"));
+    assert!(vouched_for("mx; dkim=pass header.i=@client.com"));
+    assert!(!vouched_for(""), "no header at all");
+    assert!(!vouched_for("mx; spf=pass"), "SPF alone says nothing about the From line");
+    assert!(!vouched_for("mx; dkim=pass; dmarc=fail"), "a DMARC fail outweighs a signature");
+}

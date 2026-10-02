@@ -38,6 +38,17 @@ pub(crate) struct TaskLoop {
     started: std::time::Instant,
 }
 
+impl TaskLoop {
+    /// In words, for a restart to name: what was asked and how far it got.
+    pub(crate) fn in_words(&self) -> String {
+        if self.plan.is_empty() {
+            format!("\"{}\"", self.said)
+        } else {
+            format!("\"{}\" ({} steps planned)", self.said, self.plan.len())
+        }
+    }
+}
+
 impl Drop for TaskLoop {
     /// Atlas closing, or the loop dropped: the worker stops at its next step.
     fn drop(&mut self) {

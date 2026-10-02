@@ -468,7 +468,7 @@ pub fn all() -> Vec<Capability> {
         // never yet on Eric's laptop, hence untested.
         Capability { id: "photo", what: "edit a photo or a folder of them on a new copy -- brighter, fixed colours, straightened (offered, never forced), cropped for Instagram or a YouTube thumbnail, background blurred or removed -- and take it back", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches; the cut-out models for backgrounds"), offline: true, added: 41, runs: &[Needs::Files], modules: &["photo", "straighten", "cutout"] },
         Capability { id: "imagemake", what: "make a new picture from a description, on this machine -- nothing uploaded, saved in your Pictures folder", area: Files, state: Blocked, needs: Some("the picture maker: a one-off 6.5 GB download (say \"get the picture maker\")"), offline: true, added: 43, runs: &[Needs::Files], modules: &["imagemake"] },
-        Capability { id: "selftest", what: "try every command on this machine, safely, and report what works, what's off, what needs installing and what's broken", area: Itself, state: Untested, needs: None, offline: true, added: 43, runs: &[Needs::Files, Needs::ReadScreen], modules: &["selftest"] },
+        Capability { id: "selftest", what: "try every command on this machine, safely, and report what works, what's off, what needs installing and what's broken", area: Itself, state: Untested, needs: None, offline: true, added: 43, runs: &[Needs::Files, Needs::ReadScreen], modules: &["selftest", "regressions", "mutation", "coverage"] },
         Capability { id: "operate", what: "do things in your apps -- click through them, fill in boxes, choose options, use their menus -- a step at a time, asking before anything that can't be taken back", area: Windows, state: Untested, needs: Some("the language model; apps that show Windows their controls work best"), offline: true, added: 43, runs: &[Needs::ActInApps, Needs::ReadScreen], modules: &["operate"] },
         Capability { id: "grade", what: "measure a clip's loudness, dialogue and colour, say what a viewer will notice first -- in your words, not the jargon -- and fix it", area: Files, state: Untested, needs: Some("ffmpeg, which setup fetches"), offline: true, added: 40, runs: &[Needs::Files], modules: &["grade", "measure", "plainly"] },
         Capability { id: "voiceover", what: "lay your script over your footage -- where each line lands, the gaps, the music ducked under your voice", area: Files, state: Blocked, needs: Some("piper"), offline: true, added: 40, runs: &[Needs::Files], modules: &["voiceover"] },
@@ -1542,7 +1542,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 449;
+pub const MODULES_IN_TREE: usize = 453;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1560,6 +1560,7 @@ pub const MODULES_IN_TREE: usize = 449;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("cpuuse", "measures Atlas's own CPU while idle and where the loop's time goes, for the log and for self-repair"),
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
     ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),
     ("talkbench", "times Atlas's own conversation against a model (`atlas talk-bench`), for choosing which model this machine runs"),

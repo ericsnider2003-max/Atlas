@@ -192,7 +192,7 @@ fn get_to_know_me_fills_the_stores_from_your_answers() {
     let first = d.turn("get to know me", NOW);
     assert!(first.contains("what should I call you"), "{first}");
     d.turn("Call me Eric", NOW + 10);
-    d.turn("my trading system, my YouTube channel and Atlas", NOW + 20);
+    d.turn("my bakery, my YouTube channel and Atlas", NOW + 20);
     d.turn("skip", NOW + 30);
     d.turn("posting twice a week", NOW + 40);
     d.turn("Desktop and Dropbox", NOW + 50);

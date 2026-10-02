@@ -715,11 +715,21 @@ impl<'a> Daemon<'a> {
     }
 
     /// The model's name, from the body it is actually sent in.
+    /// The talking model's name for the model-call log. On the default
+    /// setup there's no `llm:` block -- Atlas runs its own server -- and
+    /// every call was logged as "none" until 1 Oct 2026, so models couldn't
+    /// be compared over time (research report, Stage 1 item 4). The model
+    /// the server was started with is the one answering.
     fn model_in_use(&self) -> String {
-        self.tools_ref()
-            .and_then(|t| t.llm.as_ref())
-            .map(|l| crate::trace::model_name(&l.request))
-            .unwrap_or_else(|| "none".into())
+        if let Some(named) = self.tools_ref().and_then(|t| t.llm.as_ref()).map(|l| crate::trace::model_name(&l.request)) {
+            return named;
+        }
+        if let Some(id) = &self.model_running_id {
+            return id.clone();
+        }
+        let Some(tc) = self.tools_ref() else { return "none".into() };
+        let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
+        registry.choose_for(&tc.models, u64::MAX).map(|m| m.id.clone()).unwrap_or_else(|| "none".into())
     }
 
     /// Write down one model call: who asked, which model, how long, how big,

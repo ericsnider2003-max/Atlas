@@ -73,8 +73,13 @@ fn read_frame(r: &mut impl Read) -> std::io::Result<Vec<u8>> {
     if len > MAX_FRAME {
         return Err(other("the other side announced a bundle too large to accept"));
     }
-    let mut buf = vec![0u8; len as usize];
-    r.read_exact(&mut buf)?;
+    // Read what actually arrives rather than allocating what was announced:
+    // a stranger announcing 64 MB and sending nothing costs nothing.
+    let mut buf = Vec::new();
+    r.take(len as u64).read_to_end(&mut buf)?;
+    if buf.len() != len as usize {
+        return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "the bundle stopped part way"));
+    }
     Ok(buf)
 }
 
@@ -151,13 +156,27 @@ impl Server {
         timeout: Duration,
         handle: impl FnOnce(Vec<u8>) -> Vec<u8>,
     ) -> std::io::Result<bool> {
+        self.poll_from(timeout, |_, incoming| Some(handle(incoming)))
+    }
+
+    /// As `poll`, but `handle` is told who connected and may answer nothing
+    /// at all (`None`): the connection is closed with no bundle sent. That is
+    /// how a stranger on the same Wi-Fi is turned away (1 Oct 2026 security
+    /// pass: anyone who connected used to get your notes back).
+    pub fn poll_from(
+        &self,
+        timeout: Duration,
+        handle: impl FnOnce(std::net::IpAddr, Vec<u8>) -> Option<Vec<u8>>,
+    ) -> std::io::Result<bool> {
         match self.listener.accept() {
-            Ok((mut stream, _peer)) => {
+            Ok((mut stream, peer)) => {
+                stream.set_nonblocking(false)?;
                 stream.set_read_timeout(Some(timeout))?;
                 stream.set_write_timeout(Some(timeout))?;
                 let incoming = read_frame(&mut stream)?;
-                let reply = handle(incoming);
-                write_frame(&mut stream, &reply)?;
+                if let Some(reply) = handle(peer.ip(), incoming) {
+                    write_frame(&mut stream, &reply)?;
+                }
                 Ok(true)
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(false),

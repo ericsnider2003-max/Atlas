@@ -70,19 +70,19 @@ fn tool_list() -> Value {
     json!([
         {
             "name": "atlas_now",
-            "description": "What Eric's assistant Atlas is doing right now: its status, the job it's working on, what's ready, and how many things are waiting for Eric.",
+            "description": "What Atlas, this computer owner's assistant, is doing right now: its status, the job it's working on, what's ready, and how many things are waiting for its owner.",
             "inputSchema": { "type": "object", "properties": {} },
             "annotations": { "readOnlyHint": true, "openWorldHint": false }
         },
         {
             "name": "atlas_recent",
-            "description": "The last few exchanges between Eric and Atlas on Atlas's Talk page: what was said and what Atlas replied.",
+            "description": "The last few exchanges between Atlas's owner and Atlas on Atlas's Talk page: what was said and what Atlas replied.",
             "inputSchema": { "type": "object", "properties": {} },
             "annotations": { "readOnlyHint": true, "openWorldHint": false }
         },
         {
             "name": "atlas_ask",
-            "description": "Say something to Atlas, as if Eric typed it on the Talk page, and get Atlas's reply. Questions are answered; tasks are started under Atlas's own rules. Anything Atlas needs approval for waits for Eric -- this tool cannot approve.",
+            "description": "Say something to Atlas, as if its owner typed it on the Talk page, and get Atlas's reply. Questions are answered; tasks are started under Atlas's own rules. Anything Atlas needs approval for waits for its owner -- this tool cannot approve.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "text": { "type": "string", "description": "What to say to Atlas, in plain words." } },
@@ -157,7 +157,7 @@ pub fn answer_message(msg: &Value, hub: &dyn Hub, wait: Duration) -> Option<Valu
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": { "tools": { "listChanged": false } },
             "serverInfo": { "name": "atlas", "version": env!("CARGO_PKG_VERSION") },
-            "instructions": "Atlas is Eric's personal assistant running on his computer. Use atlas_now and atlas_recent to see what it's doing; atlas_ask to ask it something or hand it a task. It can't approve anything on Eric's behalf."
+            "instructions": "Atlas is the personal assistant of whoever owns this computer, running on it. Use atlas_now and atlas_recent to see what it's doing; atlas_ask to ask it something or hand it a task. It can't approve anything on its owner's behalf."
         }),
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tool_list() }),

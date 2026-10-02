@@ -475,3 +475,48 @@ fn gate_with(decision: Decision, intent: &Intent, approver: &dyn Approver) -> Re
         }
     }
 }
+
+/// What pressing a control in another app needs, by its name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Press {
+    Go,
+    /// It can't be undone (send, delete, submit...): your yes first.
+    AskFirst,
+    /// Paying for something. Atlas doesn't buy things (Eric, 30 Sep 2026:
+    /// "not buying things right now is good"), whatever it's asked.
+    Never,
+}
+
+/// The one rule for a press in another app, used by the app worker
+/// (`operate`) for a click, a choice from a list, and Enter beside such a
+/// button. It lives here, with the other limits, so self-repair can't
+/// loosen it (`selfgrant::ITS_OWN_LIMITS`); until 1 Oct 2026 `operate` had
+/// its own check, which missed "choose Send" and Enter on a window it could
+/// only read as a picture (research report, Stage 1 item 5).
+pub fn press(name: &str) -> Press {
+    let n = name.to_lowercase();
+    let words: Vec<&str> = n.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let has = |w: &str| words.iter().any(|x| *x == w);
+    let paying = ["buy", "purchase", "checkout", "pay", "subscribe", "donate", "bid"].iter().any(|w| has(w))
+        || n.contains("place order")
+        || n.contains("place your order")
+        || n.contains("complete order")
+        || n.contains("confirm order")
+        || n.contains("add to cart")
+        || n.contains("1-click")
+        || n.contains("one-click")
+        // 1 Oct 2026 security pass: the other ways a shop says it.
+        || ["check out", "order now", "submit order", "review order", "proceed to payment", "continue to payment",
+            "payment", "pay now", "book now", "reserve now", "start trial", "start free trial", "start my trial",
+            "upgrade", "add to bag", "add to basket", "rent", "pre-order", "preorder", "kaufen", "comprar", "acheter",
+            "bestellen", "commander"]
+            .iter()
+            .any(|p| if p.contains(' ') || p.contains('-') { n.contains(p) } else { has(p) });
+    if paying {
+        return Press::Never;
+    }
+    if crate::uia::cannot_be_undone(name) {
+        return Press::AskFirst;
+    }
+    Press::Go
+}

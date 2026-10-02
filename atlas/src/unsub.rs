@@ -303,14 +303,24 @@ pub fn spoken(c: &Cleanup) -> String {
 /// the mailto address. Not a browser visit — a browser visit is what loads
 /// their tracking.
 pub fn one_click(header: &str) -> Option<(String, &'static str)> {
-    let h = header.trim().trim_start_matches('<').trim_end_matches('>');
-    if h.starts_with("https://") {
-        Some((h.to_string(), "List-Unsubscribe=One-Click"))
-    } else if h.starts_with("mailto:") {
-        Some((h.to_string(), ""))
+    // The header is a list -- `<https://a>, <mailto:b>` -- and each entry is
+    // taken whole (1 Oct 2026 security pass: only the outer brackets were
+    // stripped, so a two-entry header became one URL `https://a>, <mailto:b`).
+    // The web link is preferred; an entry with a space, a quote or a bracket
+    // inside it is not a link at all.
+    let entries: Vec<&str> = if header.contains('<') {
+        header.split('<').skip(1).filter_map(|e| e.split_once('>').map(|(inside, _)| inside.trim())).collect()
     } else {
-        None
+        vec![header.trim()]
+    };
+    let entries: Vec<&str> = entries
+        .into_iter()
+        .filter(|e| !e.chars().any(|c| c.is_whitespace() || c.is_control() || "<>\"'".contains(c)))
+        .collect();
+    if let Some(web) = entries.iter().find(|e| e.starts_with("https://")) {
+        return Some((web.to_string(), "List-Unsubscribe=One-Click"));
     }
+    entries.iter().find(|e| e.starts_with("mailto:") && e.len() > 7).map(|m| (m.to_string(), ""))
 }
 
 #[cfg(test)]

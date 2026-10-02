@@ -574,6 +574,9 @@ pub enum ProofToday {
 /// take it.
 pub const PROOF_BUDGET_SECS: u64 = 120;
 
+/// How long the whole suite may take in a sandbox copy (`run_tests`).
+pub const SUITE_LIMIT_SECS: u64 = 45 * 60;
+
 /// Run the proving test against the project as it stands.
 ///
 /// Against the real tree rather than a sandbox on purpose: the question is
@@ -673,24 +676,9 @@ pub fn read_a_proof_run(text: &str) -> ProofToday {
             "the tree doesn't build, so the test couldn't tell me anything".into(),
         );
     }
-    // "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out"
-    //
-    // Read by name rather than by position: a number followed by the word
-    // that says what it counts. Position broke the moment the verdict word
-    // ("ok." / "FAILED.") sat between the colon and the first figure.
-    let mut passed = 0usize;
-    let mut failed = 0usize;
-    for line in text.lines() {
-        let Some(rest) = line.trim().strip_prefix("test result:") else { continue };
-        let words: Vec<&str> = rest.split_whitespace().collect();
-        for pair in words.windows(2) {
-            let Ok(n) = pair[0].trim_end_matches([';', '.']).parse::<usize>() else { continue };
-            match pair[1].trim_end_matches([';', '.']) {
-                "passed" => passed += n,
-                "failed" => failed += n,
-                _ => {}
-            }
-        }
+    let RunRead { passed, failed, crashed } = read_run(text);
+    if crashed {
+        return ProofToday::Fails;
     }
     let ran = passed + failed;
     if failed > 0 {
@@ -702,11 +690,106 @@ pub fn read_a_proof_run(text: &str) -> ProofToday {
     ProofToday::PassesAlready
 }
 
+/// What a test run says, whichever runner printed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RunRead {
+    pub passed: usize,
+    pub failed: usize,
+    /// A test program died without saying how it went -- killed, a stack
+    /// overflow, a crash. Its tests are in neither count, so this alone has
+    /// to mean "not passing".
+    pub crashed: bool,
+}
+
+/// Read a test run's totals (research report item 5, 1 Oct 2026: only
+/// cargo's own lines were read, so a JavaScript or Python project's proof
+/// read as "no test yet", and a cargo test program that crashed before its
+/// summary line could read as passing).
+///
+/// Cargo's `test result:` lines are added up across every target, by name
+/// rather than by position. When there are none, the other runners' summary
+/// lines are read: pytest (`== 3 passed, 1 failed in 0.2s ==`), Jest/Vitest
+/// (`Tests: 1 failed, 5 passed, 6 total`), node's own runner and TAP
+/// (`# pass 5` / `# fail 0`), and go (`--- FAIL:` / `ok  pkg`).
+pub fn read_run(text: &str) -> RunRead {
+    let mut r = RunRead::default();
+    let mut suites_started = 0usize;
+    let mut suites_ended = 0usize;
+    let count = |rest: &str, r: &mut RunRead| {
+        let words: Vec<&str> = rest.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).collect();
+        for pair in words.windows(2) {
+            let Ok(n) = pair[0].trim_end_matches([';', '.', ':']).parse::<usize>() else { continue };
+            match pair[1].trim_end_matches([';', '.', ',']).to_lowercase().as_str() {
+                "passed" | "passing" => r.passed += n,
+                "failed" | "failing" | "errors" | "error" => r.failed += n,
+                _ => {}
+            }
+        }
+    };
+    for line in text.lines() {
+        let l = line.trim();
+        if l.starts_with("Running ") && (l.contains("target/") || l.contains("target\\") || l.contains("deps")) {
+            suites_started += 1;
+        }
+        if let Some(rest) = l.strip_prefix("test result:") {
+            suites_ended += 1;
+            count(rest, &mut r);
+        }
+        // A test binary killed by a signal, or that exited without its
+        // summary: cargo says so in its own words.
+        if l.contains("process didn't exit successfully") && (l.contains("signal:") || l.contains("SIGSEGV") || l.contains("SIGABRT") || l.contains("SIGKILL")) {
+            r.crashed = true;
+        }
+        if l.contains("has overflowed its stack") {
+            r.crashed = true;
+        }
+    }
+    if suites_ended > 0 {
+        // More test programs started than reported: one never finished.
+        if suites_started > suites_ended && !text.contains("error: test failed") {
+            r.crashed = true;
+        }
+        return r;
+    }
+    // Not cargo. Each runner's summary line, read the same way.
+    let mut found = false;
+    for line in text.lines() {
+        let l = line.trim();
+        let lower = l.to_lowercase();
+        let pytest = l.starts_with('=') && l.ends_with('=') && (lower.contains(" passed") || lower.contains(" failed")) && lower.contains(" in ");
+        let jest = lower.starts_with("tests:") && lower.contains("total");
+        if pytest || jest {
+            found = true;
+            count(l.trim_matches('='), &mut r);
+        } else if let Some(n) = lower.strip_prefix("# pass ").or_else(|| lower.strip_prefix("ℹ pass ")).and_then(|n| n.trim().parse::<usize>().ok()) {
+            found = true;
+            r.passed += n;
+        } else if let Some(n) = lower.strip_prefix("# fail ").or_else(|| lower.strip_prefix("ℹ fail ")).and_then(|n| n.trim().parse::<usize>().ok()) {
+            found = true;
+            r.failed += n;
+        } else if l.starts_with("--- FAIL:") {
+            found = true;
+            r.failed += 1;
+        } else if l.starts_with("--- PASS:") {
+            found = true;
+            r.passed += 1;
+        }
+    }
+    if !found && text.lines().any(|l| l.starts_with("ok  \t") || l.starts_with("ok  	")) && !text.lines().any(|l| l.starts_with("FAIL")) {
+        // `go test` without -v: a package line per package, no counts.
+        r.passed = text.lines().filter(|l| l.starts_with("ok ")).count();
+    }
+    r
+}
+
 /// Run the test suite in the sandbox and read the result.
 pub fn run_tests(sandbox: &mut Sandbox, cfg: &SelfWorkConfig) -> Tried {
     let tool = crate::tools::ExternalTool {
         command: cfg.test_command.split_whitespace().next().unwrap_or("cargo").into(),
         args: cfg.test_command.split_whitespace().skip(1).map(String::from).collect(),
+        // A cold build of the whole tree plus the suite, on a laptop. Past
+        // this it is stuck, and is stopped rather than waited on for ever.
+        timeout_secs: SUITE_LIMIT_SECS,
         ..Default::default()
     };
     let attempt = sandbox.run(&tool, &Default::default(), 20_000);
@@ -729,6 +812,11 @@ fn from_attempt(a: &Attempt) -> Tried {
 /// The number matters: it's what catches a change that passes by removing the
 /// test that was failing.
 pub fn count_passing(output: &str) -> usize {
+    if !output.contains("test result:") {
+        // Another runner's summary (`read_run`): its passes, when none failed.
+        let r = read_run(output);
+        return if r.failed == 0 && !r.crashed { r.passed } else { 0 };
+    }
     output
         .lines()
         .filter_map(|l| {

@@ -415,6 +415,24 @@ pub fn which(cmd: &str) -> Option<String> {
 /// Tailscale, PowerShell -- would otherwise open a console window of its own.
 /// Programs you ask Atlas to open go through `platform` instead, and show.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    // On Windows, `npm`, `tsc`, `npx`, `yarn` and many other tools are
+    // `.cmd` scripts, and `Command::new("npm")` only looks for `npm.exe` --
+    // so the code builder could never start them (research report, Stage 1
+    // "smaller but real"). A bare name is resolved against PATH the way a
+    // shell would; Rust runs a `.cmd`/`.bat` it's given by path through
+    // cmd.exe with its own argument escaping.
+    #[cfg(windows)]
+    let program: std::ffi::OsString = {
+        let p = program.as_ref();
+        match p.to_str().and_then(|name| {
+            let path = std::env::var_os("PATH")?;
+            let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+            resolve_on_path(name, &std::env::split_paths(&path).collect::<Vec<_>>(), &exts)
+        }) {
+            Some(found) => found.into_os_string(),
+            None => p.to_os_string(),
+        }
+    };
     #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);
     #[cfg(windows)]
@@ -424,3 +442,46 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     }
     cmd
 }
+
+/// A bare program name (`npm`) found on `dirs` with the first extension in
+/// `pathext` (`.COM;.EXE;.BAT;.CMD`) that exists, as Windows' own shell
+/// would. `None` for a name with a path or an extension already, or one
+/// that isn't there -- left for `Command` to find or fail on as before.
+pub fn resolve_on_path(name: &str, dirs: &[std::path::PathBuf], pathext: &str) -> Option<std::path::PathBuf> {
+    if name.is_empty() || name.contains(['/', '\\', ':']) || std::path::Path::new(name).extension().is_some() {
+        return None;
+    }
+    let exts: Vec<String> = pathext.split(';').map(|e| e.trim().to_lowercase()).filter(|e| e.starts_with('.')).collect();
+    for d in dirs {
+        for e in &exts {
+            let candidate = d.join(format!("{name}{e}"));
+            if candidate.is_file() {
+                // An .exe found this way is what Command finds anyway; only a
+                // script needs the full path.
+                return (e == ".cmd" || e == ".bat").then_some(candidate);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod finding_programs {
+    use super::resolve_on_path;
+
+    #[test]
+    fn a_cmd_script_on_the_path_is_found_and_an_exe_is_left_alone() {
+        let d = std::env::temp_dir().join(format!("atlas-pathext-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("npm.cmd"), "@echo off").unwrap();
+        std::fs::write(d.join("git.exe"), "").unwrap();
+        let dirs = vec![d.clone()];
+        let ext = ".COM;.EXE;.BAT;.CMD";
+        assert_eq!(resolve_on_path("npm", &dirs, ext), Some(d.join("npm.cmd")));
+        assert_eq!(resolve_on_path("git", &dirs, ext), None, "an .exe needs no help");
+        assert_eq!(resolve_on_path("npm.cmd", &dirs, ext), None, "already named");
+        assert_eq!(resolve_on_path("missing", &dirs, ext), None);
+    }
+}
+

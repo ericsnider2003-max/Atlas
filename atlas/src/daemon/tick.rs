@@ -6,6 +6,11 @@
 
 use super::*;
 
+/// No folder and no device named to reach directly.
+const NOWHERE_TO_SYNC: &str = "I've nowhere to put it — there's no cloud folder on this machine, and no other device \
+     of yours named to reach directly. Set `sync.folder` to a folder both machines can see, or name your \
+     other device, and I'll carry it.";
+
 /// How often `sync.automatic` carries your things (seconds).
 pub const AUTO_SYNC_EVERY_SECS: u64 = 900;
 
@@ -651,11 +656,12 @@ impl<'a> Daemon<'a> {
         // `sync.automatic` was on by default and read by nothing: syncing
         // happened only when you said "sync" (30 Sep 2026 sweep). Only once
         // you've chosen a folder -- nothing is put in a cloud folder you
-        // didn't pick -- and every quarter of an hour, quietly; what it did
+        // didn't pick -- or named another device to reach directly (over
+        // your tailnet; 1 Oct 2026), and every quarter of an hour, quietly; what it did
         // is in the log, and saying "sync" still tells you.
         if sync_cfg.enabled
             && sync_cfg.automatic
-            && !sync_cfg.folder.trim().is_empty()
+            && (!sync_cfg.folder.trim().is_empty() || self.has_named_peers())
             && t.saturating_sub(self.last_auto_sync) >= AUTO_SYNC_EVERY_SECS
         {
             self.last_auto_sync = t;
@@ -1037,6 +1043,11 @@ impl<'a> Daemon<'a> {
         // "how often to look" described a looking nothing did, and "act
         // without asking" described an asking that was the only way in.
         //
+        // One file of Atlas's own code broken on purpose a day, to find
+        // what no test notices (`mutation`; research report, Stage 2 item
+        // 12). Only where Atlas runs from its source with self-repair on.
+        self.maybe_mutation_sweep(t);
+
         // Gated on `may_interrupt` before the look rather than after it. The
         // clock is only marked when it actually looked, so a week spent in
         // meetings delays the check rather than silently spending it.
@@ -1699,6 +1710,31 @@ impl<'a> Daemon<'a> {
     /// pass, so a device that is both on the same wifi *and* named by tailnet
     /// address doesn't get sent to twice. The bundle is re-made per peer so a
     /// single pass carries forward whatever the previous peer just handed us.
+    /// Devices of yours named by address (`elsewhere.known`), reachable
+    /// without a folder.
+    pub(super) fn has_named_peers(&self) -> bool {
+        self.tools_cfg().elsewhere.known.iter().any(|p| !p.name.trim().is_empty() && !p.host.trim().is_empty())
+    }
+
+    /// Sync with no folder: straight to each device you've named, over the
+    /// tailnet or this network (research report, Stage 1 item 10: a shared
+    /// folder was required even when the phone could be reached directly).
+    /// Silent about a device that's asleep -- the next pass tries again.
+    fn carry_direct_only(&mut self, cfg: &crate::sync::SyncConfig, now: u64) -> String {
+        let kept: crate::sync::KeptKey = self.store.load(crate::sync::KEY_FILE);
+        let key: Option<Vec<u8>> = if kept.is_set() {
+            kept.phrase().and_then(|p| crate::sync::key_from_phrase(&p)).ok()
+        } else {
+            None
+        };
+        let lines = self.dial_configured_peers(cfg, key.as_deref(), now, &[]);
+        if lines.is_empty() {
+            "No folder to sync through, and none of your other devices answered directly this time -- I'll try again.".into()
+        } else {
+            format!("Synced straight to your other devices, no folder needed. {}", lines.join(" "))
+        }
+    }
+
     fn dial_configured_peers(
         &mut self,
         cfg: &crate::sync::SyncConfig,
@@ -1833,6 +1869,41 @@ impl<'a> Daemon<'a> {
     /// path does — factored out so the per-tick serve can reuse it. Derivation
     /// is Argon2id (~0.5s), so this is called only once a peer has actually
     /// connected, never on an idle tick.
+    /// Whether whoever just connected to the sync port gets anything back
+    /// (1 Oct 2026 security pass: anyone on the same Wi-Fi who sent four
+    /// magic bytes used to get every note back, and could push in fakes).
+    ///
+    /// With a household key, only a bundle sealed with it is answered — a
+    /// plain one is refused even if it reads. With no key there is nothing to
+    /// prove, so only this machine and the devices you've named by address
+    /// are answered. Either way it must be another device of the same Atlas.
+    pub(super) fn may_answer_wire(
+        &self,
+        peer: std::net::IpAddr,
+        incoming: &[u8],
+        cfg: &crate::sync::SyncConfig,
+        key: Option<&[u8]>,
+    ) -> bool {
+        let named = if key.is_none() && !peer.is_loopback() && self.is_a_named_peer(peer) { vec![peer] } else { Vec::new() };
+        crate::sync::may_answer_wire(peer, incoming, key, &named, &self.synclog.device, &cfg.belongs_to)
+    }
+
+    /// Is this address one of the devices named in `elsewhere.known`? A
+    /// name is looked up; an address is compared as written.
+    fn is_a_named_peer(&self, peer: std::net::IpAddr) -> bool {
+        use std::net::ToSocketAddrs;
+        self.tools_cfg().elsewhere.known.iter().any(|p| {
+            let host = p.host.trim();
+            if host.is_empty() {
+                return false;
+            }
+            match host.parse::<std::net::IpAddr>() {
+                Ok(ip) => ip == peer,
+                Err(_) => (host, 0u16).to_socket_addrs().map(|mut a| a.any(|a| a.ip() == peer)).unwrap_or(false),
+            }
+        })
+    }
+
     fn sync_key(&self) -> Option<Vec<u8>> {
         let kept: crate::sync::KeptKey = self.store.load(crate::sync::KEY_FILE);
         if !kept.is_set() {
@@ -1870,9 +1941,12 @@ impl<'a> Daemon<'a> {
             return Vec::new();
         };
         let mut lines: Vec<String> = Vec::new();
-        let _ = server.poll(std::time::Duration::from_millis(50), |incoming| {
+        let _ = server.poll_from(std::time::Duration::from_millis(50), |peer, incoming| {
             // A peer actually connected — now the key derivation is worth it.
             let key = self.sync_key();
+            if !self.may_answer_wire(peer, &incoming, &cfg, key.as_deref()) {
+                return None;
+            }
             let (t, cl, sk) = self.take_in_wire(&incoming, &cfg, key.as_deref(), now);
             if t > 0 {
                 lines.push(format!(
@@ -1881,7 +1955,7 @@ impl<'a> Daemon<'a> {
             }
             lines.extend(cl);
             lines.extend(sk);
-            self.wire_bytes(&cfg, key.as_deref(), now).unwrap_or_default()
+            self.wire_bytes(&cfg, key.as_deref(), now)
         });
         self.sync_server = Some(server);
         lines
@@ -1911,12 +1985,9 @@ impl<'a> Daemon<'a> {
         if dir.is_empty() {
             match crate::sync::best_folder() {
                 Some((p, _)) => dir = p.display().to_string(),
-                None => {
-                    return "I've nowhere to put it — there's no cloud folder on this machine. Set \
-                            `sync.folder` to a folder both machines can see (a share, or a USB stick \
-                            you plug in) and I'll carry it through there."
-                        .into();
-                }
+                // No folder: straight to your named devices (`carry_direct_only`).
+                None if self.has_named_peers() => return self.carry_direct_only(&cfg, now),
+                None => return NOWHERE_TO_SYNC.into(),
             }
         }
         let (_carry, route) = crate::sync::route_of(std::path::Path::new(&dir));
@@ -1976,12 +2047,15 @@ impl<'a> Daemon<'a> {
         }
         if let Some(server) = self.sync_server.take() {
             let key_ref = key.as_deref();
-            let _ = server.poll(std::time::Duration::from_millis(200), |incoming| {
+            let _ = server.poll_from(std::time::Duration::from_millis(200), |peer, incoming| {
+                if !self.may_answer_wire(peer, &incoming, &cfg, key_ref) {
+                    return None;
+                }
                 let (t, mut cl, mut sk) = self.take_in_wire(&incoming, &cfg, key_ref, now);
                 taken += t;
                 clashes.append(&mut cl);
                 skews.append(&mut sk);
-                self.wire_bytes(&cfg, key_ref, now).unwrap_or_default()
+                self.wire_bytes(&cfg, key_ref, now)
             });
             self.sync_server = Some(server);
         }

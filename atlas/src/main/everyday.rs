@@ -1858,6 +1858,11 @@ pub(super) fn run_catalog(args: &[String]) {
 /// lands in the copy; the report comes back to `data/selftest/`.
 pub(super) fn run_selftest(args: &[String]) {
     let no_model = args.iter().any(|a| a == "--no-model");
+    // The self-test as the scenario for a coverage run (`coverage`): only from
+    // Atlas's own source folder, with cargo-llvm-cov installed.
+    if args.iter().any(|a| a == "--coverage") {
+        return selftest_under_coverage(no_model);
+    }
     let out = args.iter().position(|a| a == "--out").and_then(|i| args.get(i + 1)).map(std::path::PathBuf::from);
     if !args.iter().any(|a| a == "--inside") {
         let real = atlas::roots::install_root();
@@ -1886,6 +1891,20 @@ pub(super) fn run_selftest(args: &[String]) {
         }
         let status = cmd.status();
         let _ = std::fs::remove_dir_all(&tmp);
+        // The test's failures become this install's cases (`regressions`):
+        // read by self-repair as signals, and fixed ones taken off.
+        if matches!(status, Ok(s) if s.success()) {
+            if let Ok(json) = std::fs::read_to_string(reports.join(atlas::regressions::FROM_SELFTEST)) {
+                if let Ok(failing) = serde_json::from_str::<Vec<atlas::regressions::Case>>(&json) {
+                    let store = atlas::store::Store::new(atlas::roots::state_dir());
+                    let mut cases: Vec<atlas::regressions::Case> = store.load(atlas::regressions::FILE);
+                    atlas::regressions::settle_selftest(&mut cases, &failing);
+                    if let Err(e) = store.save(atlas::regressions::FILE, &cases) {
+                        eprintln!("note: couldn't keep what the test found broken for self-repair: {e}");
+                    }
+                }
+            }
+        }
         match status {
             Ok(s) if s.success() => {}
             Ok(s) => {
@@ -1944,7 +1963,55 @@ pub(super) fn run_selftest(args: &[String]) {
     let _ = std::fs::write(out.join(format!("{name}.md")), &md);
     let _ = std::fs::write(out.join("latest.md"), &md);
     let _ = std::fs::write(out.join(format!("{name}.json")), serde_json::to_string_pretty(&rows).unwrap_or_default());
+    // What failed, for the install's own regressions -- taken in by the
+    // process that started this one (this one's store is the test copy's).
+    let failing = atlas::selftest::failing_cases(&rows, started);
+    let _ = std::fs::write(out.join(atlas::regressions::FROM_SELFTEST), serde_json::to_string(&failing).unwrap_or_default());
     println!();
     println!("{}", atlas::selftest::summary(&rows));
     println!("The report: {}", out.join("latest.md").display());
 }
+
+/// `atlas selftest --coverage`: build Atlas instrumented, run the self-test
+/// with it, and keep which of its functions the run never reached
+/// (`coverage::NEVER_REACHED`, read by self-repair). Research report, Stage 2
+/// item 13: reachability from the compiler's count, not from reading text.
+fn selftest_under_coverage(no_model: bool) {
+    let here = std::env::current_dir().unwrap_or_default();
+    if !here.join("Cargo.toml").is_file() || !here.join("src").is_dir() {
+        eprintln!("Run this from Atlas's source folder (the one with Cargo.toml): it builds Atlas with coverage counting.");
+        leave(1);
+    }
+    let (ok, _) = atlas::sandbox::run_within("cargo", &["llvm-cov".into(), "--version".into()], &[], &here, 60, 400);
+    if !ok {
+        eprintln!("cargo-llvm-cov isn't installed. `cargo install cargo-llvm-cov` (and `rustup component add llvm-tools-preview`), then run this again.");
+        leave(1);
+    }
+    let reports = atlas::selftest::reports_dir(&atlas::roots::install_root());
+    let _ = std::fs::create_dir_all(&reports);
+    let json = reports.join("coverage.json");
+    let mut a: Vec<String> = ["llvm-cov", "run", "--bin", "atlas", "--json", "--output-path"].iter().map(|s| s.to_string()).collect();
+    a.push(json.display().to_string());
+    a.push("--".into());
+    a.push("selftest".into());
+    if no_model {
+        a.push("--no-model".into());
+    }
+    println!("Building Atlas with coverage counting and running the self-test with it. This takes a while.");
+    let (ran, said) = atlas::sandbox::run_within("cargo", &a, &[], &here, 3 * 3600, 4000);
+    if !ran {
+        eprintln!("The coverage run didn't finish:\n{said}");
+        leave(1);
+    }
+    let counts = atlas::coverage::fn_counts(&std::fs::read_to_string(&json).unwrap_or_default());
+    let never = atlas::coverage::never_reached(&counts);
+    let total = counts.keys().filter(|p| p.starts_with("atlas::")).count() as u32;
+    let _ = std::fs::write(reports.join(atlas::coverage::NEVER_REACHED), serde_json::to_string(&(never.clone(), total)).unwrap_or_default());
+    println!(
+        "The self-test reached {} of Atlas's {total} functions; {} it never reached are listed in {}.",
+        total as usize - never.len(),
+        never.len(),
+        reports.join(atlas::coverage::NEVER_REACHED).display()
+    );
+}
+

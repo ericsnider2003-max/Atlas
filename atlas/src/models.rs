@@ -1304,6 +1304,7 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
     // An optional stronger model for the hard drafts, and as a fallback if the
     // local one fails. Unset (the default) → this is just the local model, so
     // an offline install is unchanged.
+    let own_second = tc.llm_secondary.is_some();
     let secondary = tc
         .llm_secondary
         .as_ref()
@@ -1317,8 +1318,9 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
                 std::sync::Arc::new(crate::freeonline::FreeOnline::new()) as std::sync::Arc<dyn crate::brain::Llm>
             })
         });
-    Some(std::sync::Arc::new(crate::brain::FallbackLlm::new(primary, secondary))
-        as std::sync::Arc<dyn crate::brain::Llm>)
+    let both = crate::brain::FallbackLlm::new(primary, secondary);
+    let both = if own_second { both.secondary_is_your_own() } else { both };
+    Some(std::sync::Arc::new(both) as std::sync::Arc<dyn crate::brain::Llm>)
 }
 
 // ---------------------------------------------------------------------------

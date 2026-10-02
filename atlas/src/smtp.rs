@@ -218,6 +218,12 @@ impl<S: Read + Write> Session<S> {
     /// nothing here MIME-encodes non-ASCII text, which is a real
     /// limitation for names and subjects outside it.
     pub fn send_mail(&mut self, from: &str, to: &str, subject: &str, body: &str) -> Result<(), String> {
+        self.send_mail_in(from, to, subject, body, &crate::outbox::Thread::default())
+    }
+
+    /// As `send_mail`, as a reply in a conversation (`message_text_in`).
+    pub fn send_mail_in(&mut self, from: &str, to: &str, subject: &str, body: &str, thread: &crate::outbox::Thread) -> Result<(), String> {
+        let (from, to) = (plain_address(from)?, plain_address(to)?);
         let r = self.command(&format!("MAIL FROM:<{from}>")).map_err(|e| e.to_string())?;
         if !r.ok() {
             return Err(format!("MAIL FROM refused: {}", r.text()));
@@ -230,7 +236,11 @@ impl<S: Read + Write> Session<S> {
         if r.code != 354 {
             return Err(format!("server refused to start the message: {}", r.text()));
         }
-        let message = format!("{}\r\n.\r\n", escape_dot_stuffing(&message_text(from, to, subject, body, crate::store::now())));
+        let message = format!("{}\r\n.\r\n", escape_dot_stuffing(&if thread.in_reply_to.is_empty() {
+            message_text(from, to, subject, body, crate::store::now())
+        } else {
+            message_text_in(from, to, subject, body, crate::store::now(), thread)
+        }));
         self.stream.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())?;
         let r = self.read_reply().map_err(|e| e.to_string())?;
@@ -250,7 +260,39 @@ impl<S: Read + Write> Session<S> {
 /// (a curly apostrophe or an accent arrived as mojibake), and a subject
 /// that isn't plain ASCII encoded (RFC 2047). Lines end CRLF. 30 Sep 2026:
 /// only From, To and Subject were written.
+/// One bare address -- `name@example.com` -- or why it isn't one. Checked
+/// before it goes into `RCPT TO:<…>` or a `To:` line, where a line break, a
+/// bracket or a second address would be a second command or a second
+/// recipient (1 Oct 2026 security pass: only the subject was cleaned).
+pub fn plain_address(a: &str) -> Result<&str, String> {
+    let a = a.trim();
+    let bad = a.chars().any(|c| c.is_whitespace() || c.is_control() || "<>()[],;:\\\"".contains(c));
+    match a.split_once('@') {
+        Some((user, host)) if !bad && !user.is_empty() && host.contains('.') && !host.contains('@') && !host.starts_with('.') && !host.ends_with('.') => Ok(a),
+        _ => Err(format!("\"{}\" isn't an email address I'll send to", a.chars().filter(|c| !c.is_control()).take(80).collect::<String>())),
+    }
+}
+
 pub fn message_text(from: &str, to: &str, subject: &str, body: &str, now: u64) -> String {
+    message_text_in(from, to, subject, body, now, &crate::outbox::Thread::default())
+}
+
+/// As `message_text`, as a reply in a conversation: `In-Reply-To` and
+/// `References`, so mail programs put it under the message it answers.
+pub fn message_text_in(from: &str, to: &str, subject: &str, body: &str, now: u64, thread: &crate::outbox::Thread) -> String {
+    // Never a header break, whatever a caller let through.
+    let (from, to) = (from.replace(['\r', '\n'], ""), to.replace(['\r', '\n'], ""));
+    let (from, to) = (from.as_str(), to.as_str());
+    let threading = if thread.in_reply_to.trim().is_empty() {
+        String::new()
+    } else {
+        let refs: Vec<String> = thread.references.iter().map(|r| format!("<{r}>")).collect();
+        format!(
+            "In-Reply-To: <{}>\r\nReferences: {}\r\n",
+            thread.in_reply_to.replace(['\r', '\n'], ""),
+            refs.join(" ").replace(['\r', '\n'], "")
+        )
+    };
     let subject_line = if subject.is_ascii() {
         subject.replace(['\r', '\n'], " ")
     } else {
@@ -260,7 +302,7 @@ pub fn message_text(from: &str, to: &str, subject: &str, body: &str, now: u64) -
     let id = crate::digest::sha256_hex(format!("{from}{to}{subject}{now}{body}").as_bytes());
     let body = body.replace("\r\n", "\n").replace('\n', "\r\n");
     format!(
-        "Date: {}\r\nFrom: {from}\r\nTo: {to}\r\nSubject: {subject_line}\r\nMessage-ID: <{}@{domain}>\r\nMIME-Version: 1.0\r\n\
+        "Date: {}\r\nFrom: {from}\r\nTo: {to}\r\nSubject: {subject_line}\r\nMessage-ID: <{}@{domain}>\r\n{threading}MIME-Version: 1.0\r\n\
          Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}",
         rfc2822_date(now),
         &id[..24]
@@ -426,6 +468,21 @@ mod tests {
     }
 
     #[test]
+    fn an_address_with_a_second_command_or_recipient_in_it_is_never_sent_to() {
+        let s = Scripted::new("250 OK\r\n250 OK\r\n354 go\r\n250 OK\r\n");
+        let mut sess = Session::new(s);
+        let e = sess.send_mail("me@gmail.com", "a@b.com>\r\nRCPT TO:<evil@x.com", "x", "").unwrap_err();
+        assert!(e.contains("isn't an email address"), "{e}");
+        assert!(sess.stream.sent.is_empty(), "nothing reached the server");
+        for bad in ["Sam <sam@x.com>", "a@b.com,c@d.com", "no-at-sign", "a@localhost", "a@b@c.com", "a b@c.com"] {
+            assert!(plain_address(bad).is_err(), "{bad}");
+        }
+        assert_eq!(plain_address(" sam.o'neil+tag@mail.example.co.uk "), Ok("sam.o'neil+tag@mail.example.co.uk"));
+        let m = message_text("me@x.com", "a@b.com\r\nBcc: evil@x.com", "s", "b", 0);
+        assert_eq!(m.matches("\r\nBcc:").count(), 0, "{m}");
+    }
+
+    #[test]
     fn send_mail_walks_mail_from_rcpt_to_and_data_in_order() {
         let script = "250 OK\r\n250 OK\r\n354 Start mail input\r\n250 OK: queued\r\n";
         let s = Scripted::new(script);
@@ -493,5 +550,18 @@ mod tests {
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
         assert!(sent.starts_with("AUTH XOAUTH2 "));
         assert!(sent.contains(&crate::msoauth::xoauth2_string("me@outlook.com", "sometoken")));
+    }
+}
+
+#[cfg(test)]
+mod threading {
+    #[test]
+    fn a_reply_names_the_message_it_answers_and_its_ancestors() {
+        let t = crate::outbox::Thread::replying_to("<b@x>", &["a@x".to_string()]);
+        let m = super::message_text_in("me@y.com", "sam@x.com", "Re: plans", "Yes.", 1_790_000_000, &t);
+        assert!(m.contains("\r\nIn-Reply-To: <b@x>\r\n"), "{m}");
+        assert!(m.contains("\r\nReferences: <a@x> <b@x>\r\n"), "{m}");
+        let plain = super::message_text("me@y.com", "sam@x.com", "Hello", "Hi.", 1_790_000_000);
+        assert!(!plain.contains("In-Reply-To"));
     }
 }

@@ -60,6 +60,8 @@ atlas — local workspace assistant
   atlas doctor                    inspect this machine, print config to paste
   atlas selftest [--no-model]     try every command on this machine, safely,
                                   and write what works to data/selftest/
+  atlas selftest --coverage       (in Atlas's source folder) the same, built
+                                  with coverage: which functions it reached
   atlas \"boot workspace\"          run one command
   atlas                           interactive prompt
   atlas --voice                   voice loop, press Enter to talk

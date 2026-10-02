@@ -119,6 +119,8 @@ fn signup_url(domain: &str) -> String {
         .unwrap_or_else(|| format!("https://{d}/signup"))
 }
 
+use crate::confirmed::PAYING_JS;
+
 /// The shared page helpers every script below starts with.
 const HELPERS: &str = "
   const seen = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
@@ -143,6 +145,7 @@ const HELPERS: &str = "
   const buttonWords = ['sign in','log in','login','next','continue','submit','verify','sign up',
     'create account','create my account','register','join','done','confirm'];
   const press = () => {
+    if (typeof paying === 'function' && paying()) return 'nothing';
     const f = document.activeElement && document.activeElement.form;
     const btns = Array.from(document.querySelectorAll('button, input[type=submit], [role=button]')).filter(seen)
       .filter(b => buttonWords.includes(((b.innerText||b.value||b.getAttribute('aria-label')||'')
@@ -159,7 +162,7 @@ const HELPERS: &str = "
 /// frame is on it. JSON, read by `signals_from`.
 fn signals_js() -> String {
     format!(
-        "(() => {{ {HELPERS}
+        "(() => {{ {HELPERS} const paying = () => {PAYING_JS};
           const text = (document.body ? document.body.innerText : '').replace(/\\s+/g,' ').trim().slice(0, 20000);
           const fields = inputs().map(hay);
           const buttons = Array.from(document.querySelectorAll('button, input[type=submit], [role=button], a'))
@@ -207,7 +210,7 @@ fn login_js(user: &str, password: &str) -> String {
     let u = crate::cdp::js_str(user);
     let p = crate::cdp::js_str(password);
     format!(
-        "(() => {{ {HELPERS}
+        "(() => {{ {HELPERS} const paying = () => {PAYING_JS};
           const pw = passwords();
           const us = userBox();
           if (pw.length >= 1 && us.length >= 1) {{ set(us[0], '{u}'); set(pw[0], '{p}'); pw[0].focus(); press(); return 'both'; }}
@@ -228,7 +231,7 @@ fn signup_fill_js(email: &str, username: &str, password: &str) -> String {
     let u = crate::cdp::js_str(username);
     let p = crate::cdp::js_str(password);
     format!(
-        "(() => {{ {HELPERS}
+        "(() => {{ {HELPERS} const paying = () => {PAYING_JS};
           const did = [];
           for (const i of inputs()) {{
             const h = hay(i); const t = (i.type||'text').toLowerCase();
@@ -250,7 +253,7 @@ fn signup_fill_js(email: &str, username: &str, password: &str) -> String {
 
 /// Press the page's one continue/submit button, or submit the form.
 fn submit_js() -> String {
-    format!("(() => {{ {HELPERS} return press(); }})()")
+    format!("(() => {{ {HELPERS} const paying = () => {PAYING_JS}; return press(); }})()")
 }
 
 /// Did the site say the password was wrong?
@@ -268,7 +271,7 @@ fn says_wrong_password(page_text: &str) -> bool {
 
 /// Still on a sign-in page? (Password box still showing.)
 fn still_signing_in_js() -> String {
-    format!("(() => {{ {HELPERS} return passwords().length > 0; }})()")
+    format!("(() => {{ {HELPERS} const paying = () => {PAYING_JS}; return passwords().length > 0; }})()")
 }
 
 /// Sign in, in Atlas's browser, as far as it can go.

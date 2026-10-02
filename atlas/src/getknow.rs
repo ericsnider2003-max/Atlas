@@ -69,7 +69,7 @@ fn stopped(said: &str) -> bool {
     )
 }
 
-/// The pieces of a list said in one breath: "the trading system, my
+/// The pieces of a list said in one breath: "the bakery, my
 /// YouTube channel and Atlas" gives three.
 fn pieces(answer: &str) -> Vec<String> {
     answer
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn a_list_said_in_one_breath_is_several_projects() {
-        assert_eq!(pieces("the trading system, my YouTube channel and Atlas"), vec!["the trading system", "my YouTube channel", "Atlas"]);
+        assert_eq!(pieces("the bakery, my YouTube channel and Atlas"), vec!["the bakery", "my YouTube channel", "Atlas"]);
     }
 
     #[test]

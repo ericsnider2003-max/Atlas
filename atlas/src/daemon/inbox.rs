@@ -486,9 +486,14 @@ impl<'a> Daemon<'a> {
                                                     critique: notes,
                                                     created_at: created,
                                                     status: crate::outbox::Status::Waiting,
+                                                    thread: crate::outbox::Thread::replying_to(
+                                                        &m.message_id,
+                                                        &m.references.split_whitespace().map(String::from).collect::<Vec<_>>(),
+                                                    ),
                                                 };
-                                                if may_email_clients {
-                                                    match send_reply(
+                                                if may_email_clients && crate::lookalike::vouched_for(&m.authentication_results) {
+                                                    match send_reply_routed(
+                                                        crate::himalaya::route(&account.imap_host).as_ref(),
                                                         &pending,
                                                         &account.address,
                                                         password,
@@ -932,6 +937,7 @@ impl<'a> Daemon<'a> {
             critique: Vec::new(),
             created_at: now,
             status: crate::outbox::Status::Waiting,
+            thread: Default::default(),
         };
         let mut outbox = crate::outbox::Outbox::load(&self.store);
         outbox.add(draft);
@@ -995,6 +1001,7 @@ impl<'a> Daemon<'a> {
                     critique: Vec::new(),
                     created_at: now,
                     status: crate::outbox::Status::Waiting,
+                    thread: crate::outbox::Thread::replying_to(&letter.id, &letter.refs),
                 };
                 let mut outbox = crate::outbox::Outbox::load(&self.store);
                 outbox.add(draft);
@@ -1051,8 +1058,8 @@ impl<'a> Daemon<'a> {
         let to = pending.to_name.clone();
         let work: crew::Work = Box::new(move |_ctl| {
             let sent = match &himalaya {
-                Some((program, name)) => crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000)).and_then(|_| {
-                    let text = crate::smtp::message_text(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now());
+                Some((program, name)) => crate::smtp::plain_address(&pending.to_address).and_then(|_| crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000))).and_then(|_| {
+                    let text = crate::smtp::message_text_in(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
                     crate::himalaya::send(program, name, &text)
                 }),
                 None => send_reply(&pending, &account.address, &password, account.oauth.then_some(account.client_id.as_str())),
@@ -1127,13 +1134,19 @@ impl<'a> Daemon<'a> {
             return "I need a model to draft that, and I haven't got one configured.".into();
         };
         let now = crate::store::now();
-        let vault_name = match crate::mail::credential_source(&account) {
-            Ok(n) => n.to_string(),
-            Err(e) => return format!("Can't draft from {}: {e}", account.name),
-        };
-        let password = match self.vault.get(&vault_name, now) {
-            Ok(p) => p,
-            Err(e) => return format!("Can't draft from {}: {e}", account.name),
+        // Himalaya keeps its own password: nothing to take from the vault.
+        let himalaya = cfg.by_himalaya().then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
+        let password = if himalaya.is_some() {
+            String::new()
+        } else {
+            match crate::mail::credential_source(&account)
+                .map(|n| n.to_string())
+                .map_err(|e| e.to_string())
+                .and_then(|n| self.vault.get(&n, now).map_err(|e| e.to_string()))
+            {
+                Ok(p) => p,
+                Err(e) => return format!("Can't draft from {}: {e}", account.name),
+            }
         };
 
         let store = self.store.clone();
@@ -1168,6 +1181,7 @@ impl<'a> Daemon<'a> {
                 critique: notes,
                 created_at: created,
                 status: crate::outbox::Status::Waiting,
+                thread: Default::default(),
             };
 
             let mut outbox = crate::outbox::Outbox::load(&store);
@@ -1188,7 +1202,8 @@ impl<'a> Daemon<'a> {
                      ({daily_cap}) is already reached."
                 )
             } else {
-                match send_reply(
+                match send_reply_routed(
+                    himalaya.as_ref(),
                     &pending,
                     &account.address,
                     &password,
@@ -1238,7 +1253,14 @@ pub enum OneMessage {
 pub fn one_message_asked(said: &str) -> Option<OneMessage> {
     let s = said.trim().trim_end_matches(['.', '!', '?']);
     let low = s.to_lowercase();
-    for lead in ["reply to the email from ", "reply to the message from ", "write back to ", "reply to ", "answer the email from "] {
+    // "Send a reply to Jane saying ..." / "email back Jane saying ...":
+    // the same as "reply to Jane saying ..." (research report, Stage 1 item
+    // 8: it was taken as a new email, outside the conversation).
+    for lead in [
+        "reply to the email from ", "reply to the message from ", "write back to ", "reply to ", "answer the email from ",
+        "send a reply to ", "send back to ", "email back ", "respond to the email from ", "respond to ",
+        "can you reply to ", "please reply to ",
+    ] {
         if let Some(rest_low) = low.strip_prefix(lead) {
             let (at, mark) = [" saying ", " and say ", " telling them ", ": ", ", "]
                 .iter()

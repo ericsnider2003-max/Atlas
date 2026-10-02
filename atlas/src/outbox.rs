@@ -48,6 +48,33 @@ pub struct PendingReply {
     pub critique: Vec<crate::draft::Note>,
     pub created_at: u64,
     pub status: Status,
+    /// The message it answers, so it lands in the same conversation.
+    #[serde(default)]
+    pub thread: Thread,
+}
+
+/// Where a reply sits in a conversation: the `Message-ID` it answers and
+/// every one before it. Until 1 Oct 2026 replies carried neither, so they
+/// arrived as new conversations (research report, Stage 1 item 8).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Thread {
+    pub in_reply_to: String,
+    pub references: Vec<String>,
+}
+
+impl Thread {
+    /// Answering the message `id`, which itself followed `refs`. Angle
+    /// brackets are taken off; they're written back when it's sent.
+    pub fn replying_to(id: &str, refs: &[String]) -> Thread {
+        let clean = |s: &str| s.trim().trim_start_matches('<').trim_end_matches('>').trim().to_string();
+        let id = clean(id);
+        if id.is_empty() {
+            return Thread::default();
+        }
+        let mut references: Vec<String> = refs.iter().map(|r| clean(r)).filter(|r| !r.is_empty() && *r != id).collect();
+        references.push(id.clone());
+        Thread { in_reply_to: id, references }
+    }
 }
 
 impl PendingReply {
@@ -153,6 +180,7 @@ mod tests {
             critique: Vec::new(),
             created_at,
             status: Status::Waiting,
+            thread: Thread::default(),
         }
     }
 

@@ -782,6 +782,37 @@ pub fn peek(text: &str) -> Option<SealedBundle> {
 /// One function for both so that no call site has to remember to check, which
 /// is how a plaintext path survives a feature like this. A sealed bundle with
 /// no key is an error that names the command that fixes it.
+/// Whether a device that connected to the sync port gets our bundle back
+/// (1 Oct 2026 security pass: anyone on the same Wi-Fi who sent the four
+/// magic bytes used to get every note back, and could push fakes in).
+///
+/// With a household key, only a bundle sealed with that key is answered; a
+/// plain one is refused even though it would read. With no key there's
+/// nothing to prove, so only this machine and the addresses in `named` (the
+/// devices you've named) are answered. Either way it has to be another
+/// device of the same Atlas.
+pub fn may_answer_wire(
+    peer: std::net::IpAddr,
+    incoming: &[u8],
+    key: Option<&[u8]>,
+    named: &[std::net::IpAddr],
+    own_device: &str,
+    belongs_to: &str,
+) -> bool {
+    let Ok(text) = std::str::from_utf8(incoming) else {
+        return false;
+    };
+    let vouched = match key {
+        Some(_) => peek(text).is_some(),
+        None => peer.is_loopback() || named.contains(&peer),
+    };
+    vouched
+        && match read_bundle(text, key) {
+            Ok(b) => b.from_device != own_device && from_the_same_atlas(&b, belongs_to).is_ok(),
+            Err(_) => false,
+        }
+}
+
 pub fn read_bundle(text: &str, key: Option<&[u8]>) -> Result<Bundle, String> {
     read_bundle_for(text, key, Reader::Page)
 }

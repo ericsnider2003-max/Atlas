@@ -24,15 +24,32 @@ impl<'a> Daemon<'a> {
             return None;
         }
         let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
-        let newest = std::fs::read_dir(&dir)
-            .ok()?
-            .flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
-            .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
-        let Some(newest) = newest else {
-            return Some("There's no research write-up yet. Say \"research\" and a topic, and I'll write one.".into());
+        // The brief or the research means the research write-up; a report,
+        // letter or document means whichever of the two was written last.
+        let research_meant = ["brief", "research"].iter().any(|w| t.contains(w));
+        let marked = if research_meant {
+            crate::research::last(&dir, crate::research::LAST_RESEARCH)
+        } else {
+            let r = crate::research::last(&dir, crate::research::LAST_RESEARCH);
+            let w = crate::research::last(&dir, crate::research::LAST_WRITTEN);
+            let when = |p: &Option<std::path::PathBuf>| p.as_ref().and_then(|p| p.metadata().ok()).and_then(|m| m.modified().ok());
+            if when(&w) > when(&r) { w } else { r.or(w) }
         };
-        let path = newest.path();
+        // Notes from before the marks were kept: the newest file, as before.
+        let path = match marked {
+            Some(p) => p,
+            None => {
+                let newest = std::fs::read_dir(&dir)
+                    .ok()?
+                    .flatten()
+                    .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+                    .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
+                let Some(newest) = newest else {
+                    return Some("There's no research write-up yet. Say \"research\" and a topic, and I'll write one.".into());
+                };
+                newest.path()
+            }
+        };
         if let Some(kind) = export {
             let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             return Some(match crate::report::export(&path, kind) {
@@ -101,10 +118,11 @@ impl<'a> Daemon<'a> {
             let slug: String = title.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string();
             let path = std::path::Path::new(&dir).join(format!("{}-{slug}.md", crate::store::now()));
             std::fs::write(&path, format!("# {title}\n\n{text}\n")).map_err(|e| format!("it's written, but I couldn't save it ({e})"))?;
+            crate::research::mark_last(&dir, crate::research::LAST_WRITTEN, &path.display().to_string());
             let words = text.split_whitespace().count();
             let opening: String = text.split(['.', '\n']).find(|l| l.split_whitespace().count() > 3).unwrap_or("").trim().to_string();
             Ok(format!(
-                "Written: your {title}, about {words} words. It opens: \"{opening}.\" Say \"read me the full brief\" to hear it, or \"open the report\" to see it."
+                "Written: your {title}, about {words} words. It opens: \"{opening}.\" Say \"read me the report\" to hear it, or \"open the report\" to see it."
             ))
         });
         Some(if self.hand_off("writing", crate::store::now(), work, Some(what.clone()), SpeakPolicy::Always) {

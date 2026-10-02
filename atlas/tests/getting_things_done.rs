@@ -365,6 +365,10 @@ fn one_email_can_be_read_and_replied_to() {
         Some(OneMessage::Reply("Sam".into(), "I'll be there at six".into()))
     );
     assert_eq!(one_message_asked("reply to him saying ok then"), None);
+    assert_eq!(
+        one_message_asked("send a reply to Jane saying Thursday works for me"),
+        Some(OneMessage::Reply("Jane".into(), "Thursday works for me".into()))
+    );
     assert_eq!(one_message_asked("read me a story"), None);
 
     let (mut c, p) = (cfg(), plat());
@@ -465,6 +469,51 @@ fn with_himalaya_a_draft_is_sent_through_himalaya() {
     assert!(sent.contains("To: sam@example.com") && sent.contains("See you at six"), "{sent}");
 }
 
+/// With Himalaya, a mailto: unsubscribe goes through it too (1 Oct 2026:
+/// it was tried over SMTP with the empty password Himalaya mode carries).
+#[cfg(unix)]
+#[test]
+fn with_himalaya_an_unsubscribe_email_goes_through_himalaya() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmp("himalaya-unsub");
+    let got = dir.join("sent.eml");
+    let fake = dir.join("himalaya");
+    std::fs::write(&fake, format!("#!/bin/sh\ncat > '{}'\n", got.display())).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let (mut c, p) = (cfg(), plat());
+    let mail = &mut c.tools.as_mut().unwrap().mail;
+    mail.enabled = true;
+    mail.backend = "himalaya".into();
+    mail.himalaya = fake.display().to_string();
+    mail.accounts = vec![atlas::mail::Account {
+        name: "personal".into(),
+        address: "me@example.com".into(),
+        himalaya_account: "gmail".into(),
+        ..Default::default()
+    }];
+    let store = Store::new(tmp("himalaya-unsub-store"));
+    let cleanup = atlas::unsub::Cleanup {
+        unsubscribe: vec![("Deals Weekly".into(), "<mailto:leave@deals.example?subject=unsubscribe>".into())],
+        ..Default::default()
+    };
+    store.save(atlas::unsub::PENDING, &vec![("personal".to_string(), cleanup)]).unwrap();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    let said = d.turn("unsubscribe from those", NOW);
+    assert!(!said.contains("couldn't get at the mailbox"), "{said}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut t = NOW + 1;
+    while std::time::Instant::now() < deadline && !got.exists() {
+        d.tick(t);
+        t += 1;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let sent = std::fs::read_to_string(&got).expect("Himalaya was never asked to send");
+    assert!(sent.contains("To: leave@deals.example") && sent.contains("Subject: unsubscribe"), "{sent}");
+    assert_eq!(sent.matches("To: leave@deals.example\r\n").count(), 1, "the address, without the ?subject part: {sent}");
+}
+
 /// Texts (30 Sep 2026 ruling: messaging goes where the conversations are).
 /// Atlas writes it; the phone sends it. Never said to be sent.
 #[test]
@@ -520,6 +569,79 @@ fn bing_results_are_read_through_its_redirect() {
     );
     let bing = atlas::research::bing_search();
     assert!(bing.args.iter().any(|a| a.ends_with("q={query_pct}&form=QBLH")));
+}
+
+/// Research report, Stage 1 item 10: a failed push waited a flat five
+/// minutes and was forgotten on restart.
+#[test]
+fn a_failed_push_waits_longer_each_time_and_survives_a_restart() {
+    use atlas::daemon::phone_retry_wait;
+    assert_eq!(phone_retry_wait(0), 60);
+    assert_eq!(phone_retry_wait(1), 120);
+    assert_eq!(phone_retry_wait(3), 480);
+    assert_eq!(phone_retry_wait(30), 1800, "capped at half an hour");
+    let (mut c, p) = (cfg(), plat());
+    c.tools.as_mut().unwrap().phone = atlas::phone::PhoneConfig {
+        enabled: true,
+        host: "127.0.0.1:9".into(),
+        path: "/atlas".into(),
+        timeout_secs: 1,
+        ..Default::default()
+    };
+    let dir = tmp("phone-kept");
+    {
+        let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+        let note = atlas::notify::Note::new("Build finished", "all green", atlas::notify::Urgency::Routine, NOW);
+        *p.input_idle.borrow_mut() = Some(4 * 3600);
+        let now = atlas::store::now() + 10 * 3600;
+        d.phone_to_retry.push(note);
+        d.phone_retry_at = now;
+        d.retry_phone(now);
+        assert_eq!(d.phone_to_retry.len(), 1, "nothing listening, so it waits");
+        assert!(d.phone_retry_at >= now + 120, "the second wait is longer than the first");
+    }
+    let d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    assert_eq!(d.phone_to_retry.len(), 1, "still waiting after a restart");
+}
+
+/// Research report, Stage 1 item 10: with no shared folder, syncing gave up
+/// even when your other device could be reached directly by its address.
+#[test]
+fn with_no_folder_sync_goes_straight_to_your_named_devices() {
+    if atlas::sync::best_folder().is_some() {
+        return; // a cloud folder on this machine: the folder route is taken, not this one
+    }
+    // The "phone": something listening that takes the connection and hangs
+    // up without a bundle. That it was dialled at all is the point.
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    let dialled = std::thread::spawn(move || {
+        l.set_nonblocking(true).unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < until {
+            if let Ok((s, _)) = l.accept() {
+                drop(s);
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        false
+    });
+    let (mut c, p) = (cfg(), plat());
+    let tools = c.tools.as_mut().unwrap();
+    tools.sync.enabled = true;
+    tools.sync.folder = String::new();
+    tools.elsewhere.known = vec![atlas::elsewhere::Elsewhere {
+        name: "phone".into(),
+        host: "127.0.0.1".into(),
+        port: 1,
+        sync_port: Some(port),
+        ..Default::default()
+    }];
+    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("sync-direct")), Proactive::new(ProactiveConfig::default()));
+    let said = d.execute(&atlas::intent::Intent::Sync(String::new()));
+    assert!(dialled.join().unwrap(), "the named device was never dialled: {said}");
+    assert!(!said.contains("nowhere to put it"), "{said}");
 }
 
 /// A feed whose text has a multi-byte character just after an `&` must not

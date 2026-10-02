@@ -1277,14 +1277,16 @@ recall:
 meaning: {}
 
 # Atlas working on its own source.
-# Off by default. It works in the sandbox, runs the full test suite, and shows
-# you the diff — nothing reaches your files until you accept it.
+# On (Eric, 30 Sep 2026: bug fixes it may make itself; feature changes ask
+# first). It works in the sandbox, runs the full test suite, and shows you the
+# diff — nothing reaches your files until you accept it. This is the
+# "Self-repair" switch in Settings, and it is the one that's read.
 #
 # never_touch is the important half: those files decide what Atlas is allowed
 # to do and what it has to tell you. A system that can edit its own permissions
 # has none.
 self_work:
-  enabled: false
+  enabled: true
   test_command: "cargo test"
   min_tests: 1
   large_change_lines: 150
@@ -1595,7 +1597,7 @@ worklog:
 
 returning:
   enabled: true
-  address: ""             # "Eric", or "sir", or leave empty
+  address: ""             # your name, or "sir", or leave empty
   address_as: name        # name | title
   offer_first: true
   name_at_most: 2
@@ -1881,7 +1883,7 @@ companion:
 # wifi, your cloud folder, a cable, or AirDrop. No server anywhere.
 sync:
   enabled: true
-  name: ""                  # "Eric's laptop" -- names the bundle you leave
+  name: ""                  # "Sam's laptop" -- names the bundle you leave
   kind: full
   automatic: true
   apart_warning_days: 30
@@ -2408,7 +2410,7 @@ desktop:
 gaze:
   enabled: false
   min_confidence: 0.6          # below this a reading is absent, not negative
-  min_identity_confidence: 0.85 # a much higher bar for "that is Eric"
+  min_identity_confidence: 0.85 # a much higher bar for "that is you"
   every_secs: 20
   # May Atlas look while you're talking to it? Off even when the camera is on:
   # "sometimes I want Atlas to see me when talking" is not "watch every

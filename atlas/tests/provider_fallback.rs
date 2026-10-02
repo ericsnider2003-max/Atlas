@@ -43,9 +43,19 @@ fn ordinary_work_stays_local_even_with_a_secondary() {
 }
 
 #[test]
-fn a_hard_task_escalates_to_the_secondary() {
+fn a_hard_task_escalates_to_your_own_stronger_model() {
+    let f = FallbackLlm::new(Arc::new(Named("local")), Some(Arc::new(Named("server")))).secondary_is_your_own();
+    assert_eq!(f.complete_hard("", "").unwrap(), "server", "the hard draft goes to your own stronger model");
+}
+
+#[test]
+fn a_hard_task_stays_local_when_the_secondary_is_online() {
+    // Offline first (Eric, 30 Sep 2026): the free online models are a
+    // fallback for a hard task, never the first choice.
     let f = FallbackLlm::new(Arc::new(Named("local")), Some(Arc::new(Named("cloud"))));
-    assert_eq!(f.complete_hard("", "").unwrap(), "cloud", "the hard draft goes to the stronger model");
+    assert_eq!(f.complete_hard("", "").unwrap(), "local");
+    let f = FallbackLlm::new(Arc::new(Down), Some(Arc::new(Named("cloud"))));
+    assert_eq!(f.complete_hard("", "").unwrap(), "cloud", "online only when local can't answer");
 }
 
 #[test]
@@ -76,7 +86,8 @@ fn the_self_fix_draft_path_really_uses_the_stronger_model() {
     // Not just the wrapper in isolation — the code-generation path that self-fix
     // and build both run drafts through `complete_hard`, so with a secondary
     // configured the draft comes from the stronger model.
-    let f = FallbackLlm::new(Arc::new(Named("local model output")), Some(Arc::new(Named("stronger model output"))));
+    let f = FallbackLlm::new(Arc::new(Named("local model output")), Some(Arc::new(Named("stronger model output"))))
+        .secondary_is_your_own();
     let drafted = atlas::build_it::fix_draft("some broken code", "the tool complained", &f)
         .expect("it drafts a fix");
     assert_eq!(drafted, "stronger model output", "the fix draft routed to the secondary via complete_hard");

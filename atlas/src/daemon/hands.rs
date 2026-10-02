@@ -1123,7 +1123,29 @@ impl<'a> Daemon<'a> {
         // Says how many views it has, because one view is a system that
         // recognises you in one light and at one angle, and knowing that is
         // what makes someone show it again.
-        format!("Got it — {}. Show me again from another angle and I'll be surer.", views)
+        //
+        // In words, not the album's own line: "this is me" was answered "Got
+        // it — me — thing, 1 view." (self-test, 1 Oct 2026). Who it is comes
+        // first, then how many looks it has had.
+        let count: usize = views
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .find(|w| w[1].starts_with("view"))
+            .and_then(|w| w[0].trim_matches(|c: char| !c.is_ascii_digit()).parse().ok())
+            .unwrap_or(1);
+        let your_face = self.tools_cfg().vision.your_face.clone();
+        let is_you = ["me", "myself", "i"].contains(&name.trim().to_lowercase().as_str())
+            || (!your_face.trim().is_empty() && name.trim().eq_ignore_ascii_case(your_face.trim()));
+        let who = if is_you {
+            "you".to_string()
+        } else if face.is_some() {
+            name.trim().to_string()
+        } else {
+            format!("your {}", name.trim().trim_start_matches("the ").trim_start_matches("my "))
+        };
+        let looks = if count <= 1 { "That's one look so far".to_string() } else { format!("That's {count} looks now") };
+        format!("Got it — I'll know {who}. {looks}; show me again from another angle and I'll be surer.")
     }
 
     pub(super) fn build_eyes(&self, models: &std::path::Path) -> Option<Box<dyn crate::handloop::Eyes>> {
@@ -1440,8 +1462,13 @@ impl<'a> Daemon<'a> {
                         let near = if original.exists() { original } else { std::path::Path::new(&path) };
                         if let Some(manifest) = crate::hollowcode::manifest_near(near) {
                             found.extend(crate::hollowcode::made_up_dependencies(&code, tongue, &manifest));
-                            found.sort_by_key(|f| f.line);
                         }
+                        // Public functions nothing in the whole project calls,
+                        // when the file is in a project rather than pasted.
+                        if original.exists() {
+                            found.extend(crate::hollowcode::never_called_in_project(original, &code, tongue));
+                        }
+                        found.sort_by_key(|f| f.line);
                         let mut said = crate::hollowcode::spoken(&item.title(), tongue, &found);
                         // Only when it is worth saying. Telling him a Rust file
                         // is Rust and could be ported to Rust is noise.
@@ -1613,8 +1640,9 @@ impl<'a> Daemon<'a> {
                     if self.phone_to_retry.len() < PHONE_RETRY_MOST {
                         self.phone_to_retry.push(note.clone());
                         if self.phone_retry_at <= t {
-                            self.phone_retry_at = t + PHONE_RETRY_EVERY_SECS;
+                            self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
                         }
+                        let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
                     }
                     self.outbox.hold(note, &cfg);
                     Sent::Failed(e.to_string())
@@ -1805,8 +1833,20 @@ impl<'a> Daemon<'a> {
     }
 }
 
-/// How often a failed push to the phone is tried again, while you're away.
-pub const PHONE_RETRY_EVERY_SECS: u64 = 300;
+/// The first wait before a failed push to the phone is tried again. Each
+/// failure after doubles it, up to `PHONE_RETRY_LONGEST_SECS`; a push that
+/// lands starts it over. It was a flat five minutes, forgotten on restart
+/// (research report, Stage 1 item 10).
+pub const PHONE_RETRY_EVERY_SECS: u64 = 60;
+pub const PHONE_RETRY_LONGEST_SECS: u64 = 1800;
+
+/// Where notes waiting for another try at the phone are kept.
+pub(super) const PHONE_RETRY_FILE: &str = "phone_retry";
+
+/// How long to wait after `tries` failures in a row.
+pub fn phone_retry_wait(tries: u32) -> u64 {
+    PHONE_RETRY_EVERY_SECS.saturating_mul(1u64 << tries.min(10)).min(PHONE_RETRY_LONGEST_SECS)
+}
 /// The most notes kept for another try: past this they wait for the desk.
 pub const PHONE_RETRY_MOST: usize = 20;
 
@@ -1821,10 +1861,13 @@ impl Daemon<'_> {
         }
         if self.quiet_for(t) <= self.away_after {
             self.phone_to_retry.clear();
+            self.phone_retry_tries = 0;
+            let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
             return;
         }
         let phone_cfg = self.phone_cfg();
         let mut still = Vec::new();
+        let before = self.phone_to_retry.len();
         for note in std::mem::take(&mut self.phone_to_retry) {
             if still.is_empty() && crate::phone::send(&note, &phone_cfg).is_ok() {
                 self.outbox.held.retain(|h| *h != note);
@@ -1837,8 +1880,15 @@ impl Daemon<'_> {
         if let Err(e) = self.outbox.save(&self.store) {
             self.log.warn(&format!("couldn't save what's held for you: {e}"));
         }
+        // Nothing got through: wait longer before the next try.
+        if !still.is_empty() && still.len() == before {
+            self.phone_retry_tries = self.phone_retry_tries.saturating_add(1);
+        } else {
+            self.phone_retry_tries = 0;
+        }
         self.phone_to_retry = still;
-        self.phone_retry_at = t + PHONE_RETRY_EVERY_SECS;
+        let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
+        self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
     }
 }
 

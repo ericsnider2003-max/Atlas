@@ -298,7 +298,7 @@ fn ratelimit_a_dead_secondary_stops_being_called() {
         }
     }
     let calls = Arc::new(AtomicUsize::new(0));
-    let llm = FallbackLlm::new(Arc::new(Local), Some(Arc::new(Down(calls.clone()))));
+    let llm = FallbackLlm::new(Arc::new(Local), Some(Arc::new(Down(calls.clone())))).secondary_is_your_own();
     let mut answers = Vec::new();
     for _ in 0..10 {
         answers.push(llm.complete_hard("s", "u").unwrap());

@@ -285,9 +285,22 @@ pub struct FallbackLlm {
     /// Three failures in a row open it for 30 s; each failed retry doubles
     /// that, up to 10 minutes; one success closes it. Chosen, not measured.
     breaker: std::sync::Mutex<crate::ratelimit::Breaker>,
+    /// Hard tasks go to the secondary first. Only for a second model of your
+    /// own (`llm_secondary`, a server you run): the free online ones are a
+    /// fallback, never the first choice (Eric: offline first, online
+    /// second). Until 1 Oct 2026 every hard task -- documents, the code
+    /// builder, self-work -- went online first whenever online was allowed
+    /// (research report, Stage 1 item 3).
+    hard_first: bool,
 }
 
 impl FallbackLlm {
+    /// Hard tasks to the secondary first: it's your own stronger model.
+    pub fn secondary_is_your_own(mut self) -> Self {
+        self.hard_first = true;
+        self
+    }
+
     pub fn new(
         primary: std::sync::Arc<dyn Llm>,
         secondary: Option<std::sync::Arc<dyn Llm>>,
@@ -296,6 +309,7 @@ impl FallbackLlm {
             primary,
             secondary,
             breaker: std::sync::Mutex::new(crate::ratelimit::Breaker::new(3, 30_000, 600_000)),
+            hard_first: false,
         }
     }
 
@@ -369,9 +383,19 @@ impl Llm for FallbackLlm {
         // the local model does its best. If the secondary is configured but
         // fails (offline, say) — or has failed enough lately that the breaker
         // is open — the local model does it rather than the task failing.
-        match self.try_secondary(system, user) {
-            Some(Ok(reply)) => Ok(reply),
-            _ => self.primary.complete(system, user),
+        if self.hard_first {
+            return match self.try_secondary(system, user) {
+                Some(Ok(reply)) => Ok(reply),
+                _ => self.primary.complete(system, user),
+            };
+        }
+        // The local model first; online only when it can't answer.
+        match self.primary.complete(system, user) {
+            Ok(reply) => Ok(reply),
+            Err(local_err) => match self.try_secondary(system, user) {
+                Some(Ok(reply)) => Ok(reply),
+                _ => Err(local_err),
+            },
         }
     }
 }

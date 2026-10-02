@@ -1078,7 +1078,7 @@ impl<'a> Daemon<'a> {
             || [".pdf", ".docx", ".txt", ".md", ".epub", ".rtf", ".html"].iter().any(|e| low.ends_with(e));
         let p = std::path::Path::new(arg);
         if path_shaped && !p.is_file() {
-            return format!("I can't find a file called {arg}. Give me its full path.");
+            return format!("I couldn't read {arg} -- I can't find a file called that. Give me its full path; nothing was learned.");
         }
         if p.is_file() && (low.ends_with(".pdf") || low.ends_with(".docx")) {
             let text = if low.ends_with(".pdf") {

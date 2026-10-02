@@ -251,3 +251,50 @@ fn project_work_carries_on_from_its_last_finished_phase() {
     assert_eq!(*model.0.lock().unwrap(), 0, "finished phases were redone");
     assert!(ph.finished_phases().is_empty(), "the phases outlived the filed change");
 }
+
+#[test]
+fn a_question_left_unanswered_is_named_after_a_restart_and_never_acted_on() {
+    // Research report, Stage 1 item 6: approvals waiting on you were lost on
+    // restart, silently. Now they're named -- and asked again, because a yes
+    // from before a restart must not carry over.
+    let root = scratch("waiting");
+    let p = plat();
+    let t = 1_790_000_000;
+    {
+        let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let _ = d.tick(t);
+        d.session.await_approval(Intent::TidyDesktop, "Tidy your desktop into folders?");
+        d.persist();
+    }
+    let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let said = d.tick(t + 60).join(" ");
+    assert!(said.contains("waiting on your yes") && said.contains("Tidy your desktop into folders"), "{said}");
+    assert_eq!(d.session.approvals_waiting(), 0, "nothing is carried out or re-armed from before");
+    // Said once.
+    let again = d.tick(t + 120).join(" ");
+    assert!(!again.contains("waiting on your yes"), "{again}");
+}
+
+#[test]
+fn a_workflow_waiting_on_your_yes_is_asked_again_after_a_restart() {
+    // Research report, Stage 1 item 6: `current_flow` was never saved, so a
+    // workflow waiting on your yes disappeared when Atlas restarted.
+    let root = scratch("flow-waiting");
+    let p = plat();
+    let t = 1_790_000_000;
+    {
+        let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let _ = d.tick(t);
+        d.flows.record("close up", &["shutdown workspace".into()], Some("close up shop"));
+        let asked = d.turn("close up shop", t + 1);
+        assert!(asked.contains('?'), "the step should ask first: {asked}");
+        d.persist();
+    }
+    let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let said = d.tick(t + 60).join(" ");
+    assert!(said.contains("waiting for your yes") && said.contains("close up"), "{said}");
+    assert_eq!(said.matches("waiting for your yes").count(), 1, "asked once, not per tick: {said}");
+    assert_eq!(d.tick(t + 65).join(" ").matches("waiting for your yes").count(), 0, "not asked again before you answer");
+    let reply = d.turn("yes", t + 70);
+    assert!(!reply.to_lowercase().contains("nothing to") && !reply.is_empty(), "the yes didn't reach the workflow: {reply}");
+}

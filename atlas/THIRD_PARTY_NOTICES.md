@@ -80,3 +80,21 @@ espeak-ng's GPL obligations (its source offer), exactly as `piper1-gpl`
 would have. The same is already true of piper: the piper 2023.11.14-2
 Windows zip that Atlas's setup fetches contains `espeak-ng.dll` and
 `espeak-ng-data` (checked 28 Sep 2026).
+
+## Hearing and voice models (Parakeet, Silero VAD, CAM++) — added 1 Oct 2026
+
+Downloaded by `atlas get` (pinned by SHA-256) and run on this machine; none
+is shipped inside atlas.exe.
+
+| Piece | Licence | From |
+|---|---|---|
+| Parakeet TDT 0.6B v2 speech-to-text model, by NVIDIA, as sherpa-onnx's int8 ONNX export (`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`) | **CC-BY-4.0** | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2 (export: https://github.com/k2-fsa/sherpa-onnx) |
+| Silero VAD v6.2.3 voice-activity model (`silero_vad_16k_op15.onnx`) | MIT | https://github.com/snakers4/silero-vad |
+| 3D-Speaker CAM++ speaker model, English VoxCeleb (`3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx`, sherpa-onnx export) | Apache-2.0 | https://github.com/modelscope/3D-Speaker (export: https://github.com/k2-fsa/sherpa-onnx) |
+
+**Attribution required by CC-BY-4.0 (Parakeet).** "Parakeet TDT 0.6B v2" ©
+NVIDIA, licensed under the Creative Commons Attribution 4.0 International
+licence (https://creativecommons.org/licenses/by/4.0/). Changes: converted to
+ONNX and quantised to 8-bit integers by the sherpa-onnx project; Atlas uses
+it unmodified from that export. Atlas shows this notice, and `atlas doctor`
+names the hearing model in use, wherever the model is.

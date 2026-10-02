@@ -230,6 +230,75 @@ impl Platform for WindowsPlatform {
         Ok((!hwnd.0.is_null()).then(|| WindowId(hwnd.0 as u64)))
     }
 
+    // --- The pointer (1 Oct 2026). None of these were built on Windows: the
+    // trait's defaults said "not supported here", so the app worker
+    // (`operate`) failed every point-and-click step on the one platform Eric
+    // uses (research report, Stage 1 item 5). Coordinates are physical
+    // pixels on the virtual desktop, the same space `GetWindowRect` and the
+    // screen grabs use (`become_dpi_aware`).
+
+    fn move_cursor(&self, x: i32, y: i32) -> Result<()> {
+        become_dpi_aware();
+        unsafe { windows::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y) }
+            .map_err(|e| AtlasError::Platform(format!("couldn't move the pointer: {e}")))
+    }
+
+    fn cursor(&self) -> Result<(i32, i32)> {
+        become_dpi_aware();
+        let mut p = windows::Win32::Foundation::POINT::default();
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) }
+            .map_err(|e| AtlasError::Platform(format!("couldn't read the pointer: {e}")))?;
+        Ok((p.x, p.y))
+    }
+
+    fn click(&self, x: i32, y: i32, button: super::Button) -> Result<()> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::*;
+        self.move_cursor(x, y)?;
+        let (down, up) = match button {
+            super::Button::Left => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+            super::Button::Right => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            super::Button::Middle => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+        };
+        // Down and up as one group: a press left half-sent is a drag.
+        send_groups(&[vec![mouse_input(down, 0), mouse_input(up, 0)]])
+    }
+
+    fn scroll(&self, dx: i32, dy: i32) -> Result<()> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::*;
+        // One notch is 120 (WHEEL_DELTA); positive is up / right.
+        let mut g = Vec::new();
+        if dy != 0 {
+            g.push(mouse_input(MOUSEEVENTF_WHEEL, dy.saturating_mul(120)));
+        }
+        if dx != 0 {
+            g.push(mouse_input(MOUSEEVENTF_HWHEEL, dx.saturating_mul(120)));
+        }
+        if g.is_empty() {
+            return Ok(());
+        }
+        send_groups(&[g])
+    }
+
+    fn rect_of(&self, win: WindowId) -> Result<PixelRect> {
+        become_dpi_aware();
+        let mut r = RECT::default();
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(HWND(win.0 as *mut _), &mut r) }
+            .map_err(|e| AtlasError::Platform(format!("couldn't read where that window is: {e}")))?;
+        Ok(PixelRect { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top })
+    }
+
+    fn window_at(&self, x: i32, y: i32) -> Result<Option<WindowId>> {
+        use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+        become_dpi_aware();
+        let h = unsafe { WindowFromPoint(windows::Win32::Foundation::POINT { x, y }) };
+        if h.0.is_null() {
+            return Ok(None);
+        }
+        let top = unsafe { GetAncestor(h, GA_ROOT) };
+        let h = if top.0.is_null() { h } else { top };
+        Ok(Some(WindowId(h.0 as u64)))
+    }
+
     /// Type text into whatever has focus, as characters rather than keys,
     /// so any language and symbol arrives as written. A line break is
     /// Shift+Enter: plain Enter sends the message in most chat apps, and a
@@ -1184,6 +1253,19 @@ fn send_groups_now(groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::IN
         std::thread::sleep(std::time::Duration::from_millis(KEY_GAP_MS));
     }
     Ok(())
+}
+
+/// One mouse event: a press, a release, or a wheel turn (`data` is the wheel
+/// amount, otherwise 0).
+fn mouse_input(
+    flags: windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS,
+    data: i32,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+    use windows::Win32::UI::Input::KeyboardAndMouse::*;
+    INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 { mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: data as u32, dwFlags: flags, time: 0, dwExtraInfo: 0 } },
+    }
 }
 
 /// The pause between characters when typing into another app. See

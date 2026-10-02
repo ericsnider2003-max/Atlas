@@ -117,19 +117,17 @@ fn copy_tree(from: &Path, to: &Path, rel: &Path, out: &mut Vec<String>) -> std::
     Ok(())
 }
 
+/// How long one test run in the loop may take.
+pub const TEST_LIMIT_SECS: u64 = 20 * 60;
+
 fn run_test(dir: &Path, test: &[String]) -> (bool, String) {
     let Some((prog, args)) = test.split_first() else { return (false, "no test command given".into()) };
     // Python caches compiled files by modification time and size to the
     // second; a fix written in the same second as a same-length wrong one
     // would run the wrong one again. Found by this module's own test.
-    match crate::tools::command(prog).args(args).current_dir(dir).env("PYTHONDONTWRITEBYTECODE", "1").output() {
-        Ok(o) => {
-            let mut t = String::from_utf8_lossy(&o.stdout).to_string();
-            t.push_str(&String::from_utf8_lossy(&o.stderr));
-            (o.status.success(), crate::handoff::trim_middle(&t, 4000))
-        }
-        Err(e) => (false, format!("couldn't run {prog}: {e}")),
-    }
+    // Through the sandbox's runner, for its time limit: a test that hangs
+    // stops the attempt, not Atlas (research report, Stage 1 item 1).
+    crate::sandbox::run_within(prog, args, &[("PYTHONDONTWRITEBYTECODE", "1")], dir, TEST_LIMIT_SECS, 4000)
 }
 
 fn first_problem(output: &str) -> String {

@@ -1086,7 +1086,9 @@ pub fn with_app_head(page: String, token: &str) -> String {
 /// comes back on its own (30 Sep 2026: the thirty seconds were promised here
 /// and only the `online` event was listened for; and a laptop whose Atlas is
 /// down answers through Tailscale with a 502, which now counts as away too).
-/// A form post is never touched.
+/// A form post is never touched. A laptop that's asleep can leave the
+/// request hanging rather than refused, so a page that hasn't answered in
+/// twelve seconds counts as away too (research report, Stage 1 item 10).
 pub const SERVICE_WORKER: &str = r#"const OFFLINE="<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Atlas — can't reach Atlas</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#ffffff;color:#37352f;font:17px/1.5 system-ui,sans-serif}p{max-width:22em;padding:0 24px}button{font:inherit;padding:12px 20px;min-height:44px;border-radius:10px;border:0;background:#b26206;color:#fff}</style></head><body><main><p role=status>I can't reach Atlas from here right now. This page comes back by itself when it can.</p><p><button onclick='location.reload()'>Try again</button></p></main><script>addEventListener('online',function(){location.reload()});setTimeout(function(){location.reload()},30000)</script></body></html>";
 function underHub(u){return u.origin===location.origin&&(u.pathname==='/hub'||u.pathname.startsWith('/hub/'));}
 self.addEventListener('install',()=>self.skipWaiting());
@@ -1096,7 +1098,8 @@ self.addEventListener('fetch',e=>{
   if(r.method!=='GET'||r.mode!=='navigate')return;
   if(!underHub(new URL(r.url)))return;
   const off=()=>new Response(OFFLINE,{headers:{'Content-Type':'text/html; charset=utf-8'}});
-  e.respondWith(fetch(r).then(x=>(x.status>=502&&x.status<=504)?off():x).catch(off));
+  const c=new AbortController();const t=setTimeout(()=>c.abort(),12000);
+  e.respondWith(fetch(r,{signal:c.signal}).then(x=>{clearTimeout(t);return (x.status>=502&&x.status<=504)?off():x}).catch(()=>{clearTimeout(t);return off()}));
 });
 "#;
 
@@ -4126,7 +4129,7 @@ pub fn sync_page_with(
                  then invite the others from this page.</p>\
                  <form method=post action=/hub/sync><input type=hidden name=what value=init>\
                  <label for=hh-name>What to call it</label>\
-                 <input id=hh-name name=name autocomplete=off size=24 placeholder=\"Eric's devices\" required>\
+                 <input id=hh-name name=name autocomplete=off size=24 placeholder=\"My devices\" required>\
                  <label for=hh-device>What to call this device</label>\
                  <input id=hh-device name=device autocomplete=off size=24 value=\"{}\">\
                  <label><input type=checkbox name=key value=yes checked> Make a household key too, so what \

@@ -86,6 +86,7 @@ pub(super) fn run_doctor(cfg: &Config, plat: &dyn Platform) {
     // survived every clean doctor run there has ever been: a check that never
     // looks at a thing cannot fail on it.
     findings.extend(doctor::machine_findings());
+    findings.push(doctor::hearing_finding(cfg.tools.as_ref()));
     let mut bad = 0;
     for f in &findings {
         let mark = if f.ok { "  ok " } else { bad += 1; "FAIL " };

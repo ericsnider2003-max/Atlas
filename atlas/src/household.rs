@@ -163,7 +163,7 @@ pub fn init(store: &crate::store::Store, name: &str, device: &str, now: u64) -> 
     let name = name.trim();
     if name.is_empty() {
         return Err("Give the household a name first -- anything you'd recognise, like \
-                    \u{201c}Eric's devices\u{201d}."
+                    \u{201c}Sam's devices\u{201d}."
             .into());
     }
     let device = if device.trim().is_empty() { this_device_name() } else { device.trim().to_string() };

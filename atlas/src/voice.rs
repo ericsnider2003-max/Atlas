@@ -640,7 +640,7 @@ impl<'a> Voice<'a> {
         if let Some(w) = cfg.wake.as_mut() {
             w.enabled = true;
         }
-        VoiceWork { cfg, last_listen: self.last_listen.clone(), watch: None, said_with_wake: None }
+        VoiceWork { cfg, last_listen: self.last_listen.clone(), watch: None, said_with_wake: None, warm: None }
     }
 
     /// Speech-to-text for the clip at `{in_wav}`, only when someone is
@@ -1645,6 +1645,8 @@ pub struct VoiceWork {
     watch: Option<crate::speaking::Watch>,
     /// Words heard after the name in the wake word's clip (`wake_heard_until`).
     said_with_wake: Option<String>,
+    /// The recorder for the open floor, started while the reply played.
+    warm: Option<WarmMic>,
 }
 
 impl VoiceWork {
@@ -1739,13 +1741,107 @@ impl crate::micthread::MicWork for VoiceWork {
         self.voice().transcribe_samples(samples)
     }
     fn follow_up(&mut self, secs: u32, stop: &dyn Fn() -> bool) -> Result<Option<String>> {
+        // The recorder started while the reply played, when there is one:
+        // opening a fresh one here took long enough that words said straight
+        // after Atlas finished were lost (research report, Stage 1 item 9).
+        if let Some(mut warm) = self.warm.take().filter(|w| w.alive()) {
+            warm.claim();
+            let t0 = std::time::Instant::now();
+            let got = crate::utterance::next_utterance(&mut warm, &self.cfg.endpoint, u64::from(secs) * 1000, stop);
+            drop(warm);
+            let Some(kept) = got else { return Ok(None) };
+            let recorded = t0.elapsed().as_millis();
+            let t1 = std::time::Instant::now();
+            let voice = self.voice();
+            let text = voice.transcribe_samples(&kept)?;
+            voice.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
+            return Ok((!text.is_empty()).then_some(text));
+        }
         self.voice().listen_for_until(secs, stop)
+    }
+    fn warm_up(&mut self) {
+        if self.warm.as_ref().is_some_and(|w| w.alive()) || !self.cfg.endpoint.enabled {
+            return;
+        }
+        let device = microphone_now(&self.cfg).1;
+        if device.trim().is_empty() {
+            return;
+        }
+        self.warm = PcmStream::open(&self.cfg.record.command, &device, 600).ok().map(WarmMic::start);
     }
     fn playing_level(&mut self) -> Option<f32> {
         self.watch.get_or_insert_with(|| crate::speaking::Watch::new(crate::roots::data_dir())).level()
     }
     fn models_dir(&self) -> PathBuf {
         PathBuf::from(&self.cfg.models.dir)
+    }
+}
+
+/// A recorder started ahead of the open floor (`MicWork::warm_up`). Its
+/// sound is read and thrown away -- that's Atlas's own reply, mostly --
+/// until it's claimed, and from then on handed over as it comes. Unclaimed
+/// for a minute, it stops on its own: the microphone isn't held open for a
+/// follow-up that never came.
+struct WarmMic {
+    rx: std::sync::mpsc::Receiver<Vec<i16>>,
+    claimed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pending: std::collections::VecDeque<i16>,
+}
+
+const WARM_UNCLAIMED_SECS: u64 = 60;
+
+impl WarmMic {
+    fn start(mut stream: PcmStream) -> WarmMic {
+        use crate::micthread::MicStream;
+        use std::sync::atomic::Ordering;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let claimed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (c, st) = (claimed.clone(), stop.clone());
+        let _ = std::thread::Builder::new().name("atlas-warm-mic".into()).spawn(move || {
+            let started = std::time::Instant::now();
+            // 20 ms at a time.
+            while !st.load(Ordering::SeqCst) {
+                let Some(chunk) = stream.read((RECORD_RATE_HZ / 50) as usize) else { break };
+                if c.load(Ordering::SeqCst) {
+                    if tx.send(chunk).is_err() {
+                        break;
+                    }
+                } else if started.elapsed().as_secs() >= WARM_UNCLAIMED_SECS {
+                    break;
+                }
+            }
+            st.store(true, Ordering::SeqCst);
+        });
+        WarmMic { rx, claimed, stop, pending: std::collections::VecDeque::new() }
+    }
+    fn alive(&self) -> bool {
+        !self.stop.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn claim(&mut self) {
+        self.claimed.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl crate::micthread::MicStream for WarmMic {
+    fn read(&mut self, n: usize) -> Option<Vec<i16>> {
+        while self.pending.len() < n {
+            match self.rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(chunk) => self.pending.extend(chunk),
+                Err(_) => return None,
+            }
+        }
+        Some(self.pending.drain(..n).collect())
+    }
+    fn why_stopped(&mut self) -> Option<String> {
+        None
+    }
+}
+
+impl Drop for WarmMic {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

@@ -604,3 +604,49 @@ fn a_field_with_no_value_is_empty_rather_than_missing() {
     assert_eq!(query_field("token=", "token").as_deref(), Some(""));
     assert_eq!(query_field("token", "token"), None, "no `=` at all is not a field");
 }
+
+/// 1 Oct 2026 security pass: the hub's cookie goes to every port on this
+/// machine, so a page served by some other local program could post to the
+/// hub with it. Such a request is refused even with the right token, and the
+/// hub's own pages can't be put inside another page's frame.
+#[test]
+fn another_page_on_this_machine_cannot_press_hub_buttons() {
+    use atlas::server::from_another_page;
+    let ask = |extra: &str| -> (String, bool) {
+        let token = new_token().unwrap();
+        let s = Server::bind(&ServerConfig { port: 0, enabled: true, ..Default::default() }, &token).unwrap();
+        let port = s.port();
+        let body = r#"{"text":"boot workspace"}"#;
+        let req = format!(
+            "POST /say HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nCookie: atlas_token={token}\r\nX-Atlas-Token: {token}\r\n{extra}Content-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let client = std::thread::spawn(move || {
+            let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            c.write_all(req.as_bytes()).unwrap();
+            let mut out = String::new();
+            let _ = c.read_to_string(&mut out);
+            out
+        });
+        let mut ran = false;
+        let _ = s.serve_once(&mut |_| {
+            ran = true;
+            Reply::ok("{}")
+        });
+        (client.join().unwrap(), ran)
+    };
+    let (out, ran) = ask("Sec-Fetch-Site: same-site\r\nOrigin: http://localhost:3000\r\n");
+    assert!(out.starts_with("HTTP/1.1 401") && !ran, "{out}");
+    let (out, ran) = ask("Origin: http://localhost:3000\r\n");
+    assert!(out.starts_with("HTTP/1.1 401") && !ran, "an older browser, judged by Origin: {out}");
+    let (out, ran) = ask("Sec-Fetch-Site: same-origin\r\n");
+    assert!(out.starts_with("HTTP/1.1 200") && ran, "the hub's own page still works: {out}");
+    let (out, ran) = ask("");
+    assert!(out.starts_with("HTTP/1.1 200") && ran, "the phone app sends neither header: {out}");
+    assert_eq!(out.matches("frame-ancestors 'none'").count(), 1, "{out}");
+
+    // Through a front (Tailscale's HTTPS) the Host differs from the Origin,
+    // but it isn't this machine on another port.
+    assert!(!from_another_page("POST /say HTTP/1.1\r\nHost: 127.0.0.1:8787\r\nOrigin: https://laptop.tail1234.ts.net\r\n"));
+    assert!(from_another_page("POST /say HTTP/1.1\r\nHost: 127.0.0.1:8787\r\nOrigin: null\r\n"));
+}

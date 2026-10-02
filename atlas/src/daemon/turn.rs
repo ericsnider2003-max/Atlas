@@ -20,6 +20,7 @@ impl<'a> Daemon<'a> {
     /// "Atlas" and then "hello" got silence: addressing scored a one-word
     /// greeting as a fragment, called it overheard, and returned nothing.
     pub fn turn(&mut self, said: &str, t: u64) -> String {
+        self.cpu_meter.talked();
         // The parser needs your project names to tell "fix the parser in
         // Homelab" (project work) from "change the volume" (not).
         let names: Vec<String> = self.workshop.projects.iter().map(|p| p.name.clone()).collect();
@@ -1873,8 +1874,14 @@ impl<'a> Daemon<'a> {
             None => reply,
         };
 
-        // If you have been gone a while, lead with what happened.
-        let reply = match self.pending_brief.take() {
+        // If you have been gone a while, lead with what happened -- unless
+        // this reply asks you something. "That's wrong" was answered "While
+        // you were away: I've got an update on your machine when you're
+        // ready. What should I have done instead?" (self-test, 1 Oct 2026):
+        // the question you need to answer, buried under news. The brief
+        // waits for the next reply instead.
+        let asks_back = reply.trim_end().ends_with('?');
+        let reply = match if asks_back { None } else { self.pending_brief.take() } {
             Some(b) => {
                 // It is now in the reply, so it has been handed over and can
                 // be dropped. This is the only place the outbox is emptied.
@@ -1892,6 +1899,7 @@ impl<'a> Daemon<'a> {
             // gap has passed `gap_secs` and there is a topic to name. It fires
             // once -- the append that follows resets `last_active`, so the
             // next turn's gap is near zero and the line does not repeat.
+            None if asks_back => reply,
             None => match self.thread.resume_line(&self.thread_cfg(), _t) {
                 Some(r) => format!("{r} {reply}"),
                 None => reply,
@@ -2253,6 +2261,19 @@ impl<'a> Daemon<'a> {
             &never_used,
             total,
         );
+        // What the last mutation run found no test catching (`mutation`).
+        let survivors: Vec<crate::mutation::Survivor> = self.store.load(crate::mutation::KEPT);
+        self.signals.extend(crate::signals::from_survivors(&survivors));
+        // What the last self-test found broken (`regressions`).
+        let cases: Vec<crate::regressions::Case> = self.store.load(crate::regressions::FILE);
+        self.signals.extend(crate::signals::from_regressions(&cases));
+        // What a coverage run of the self-test never reached (`coverage`).
+        let reports = crate::selftest::reports_dir(&self.store.install_root());
+        if let Ok(json) = std::fs::read_to_string(reports.join(crate::coverage::NEVER_REACHED)) {
+            if let Ok((paths, total)) = serde_json::from_str::<(Vec<String>, u32)>(&json) {
+                self.signals.extend(crate::signals::from_never_reached(&paths, total));
+            }
+        }
     }
 
     /// Anything that was running when the machine stopped.

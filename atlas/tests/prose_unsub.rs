@@ -249,6 +249,14 @@ fn one_click_unsubscribe_posts_rather_than_opening_a_browser() {
     assert!(body.is_empty());
 
     assert!(one_click("click here to unsubscribe").is_none(), "not a header, not used");
+
+    // 1 Oct 2026: a list is read as a list, the web link first; a comma
+    // inside a link stays in it; a link with a space in it isn't one.
+    assert_eq!(one_click("<mailto:u@s.com>, <https://s.com/u?a=1,2>").unwrap().0, "https://s.com/u?a=1,2");
+    assert_eq!(one_click("<https://a.com/x y>, <mailto:u@s.com>").unwrap().0, "mailto:u@s.com");
+    assert!(one_click("<mailto:>").is_none());
+    // And the link is never one into this machine or your network.
+    assert!(atlas::research::public_address("https://192.168.1.1/cgi-bin/reboot").is_none());
 }
 
 #[test]

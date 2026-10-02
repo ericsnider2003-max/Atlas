@@ -99,6 +99,10 @@ pub enum Shape {
     MidPhrase,
 }
 
+/// Speech this short, with no words yet, is taken for a short reply ("yes",
+/// "the second one", "stop"): about two or three words at a normal pace.
+pub const SHORT_SPEECH_MS: u64 = 900;
+
 /// Words that mean more is coming, however long the pause.
 const HANGING: &[&str] = &[
     "and", "but", "or", "so", "then", "because", "which", "that", "the", "a", "an",
@@ -210,7 +214,17 @@ impl Endpointer {
 
         let began = *self.quiet_since.get_or_insert(now_ms);
         let quiet_for = now_ms.saturating_sub(began);
-        let needed = shape_of(text_so_far).silence_needed(cfg);
+        // Nothing transcribed yet -- the usual case, since the words come
+        // after the recording -- read as mid-phrase, so every short "yes"
+        // waited out the longest gap (1.1 s) before anything happened
+        // (research report, Stage 1 item 9). With no words to go on, how long
+        // you spoke is the shape: a breath of speech is a short reply.
+        let needed = if text_so_far.trim().is_empty() {
+            if self.speech_ms <= SHORT_SPEECH_MS { Shape::Short } else { Shape::Sentence }
+        } else {
+            shape_of(text_so_far)
+        }
+        .silence_needed(cfg);
 
         self.state = if quiet_for >= needed {
             Listening::Finished(Why::YouFinished)

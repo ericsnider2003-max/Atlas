@@ -49,8 +49,8 @@ pub fn abilities() -> Vec<Ability> {
     vec![
         // ---- hearing and speaking ----
         Ability { what: "hear what you say and transcribe it", can: Yes,
-            detail: "whisper runs on the phone, offline. Small model, so slightly less accurate \
-                     than the laptop on hard audio" },
+            detail: "Apple's own speech recogniser, kept on the phone (on-device only). A little \
+                     less accurate than the laptop's Parakeet on hard audio" },
         Ability { what: "talk back", can: Yes,
             detail: "iOS has good voices built in, and they cost nothing" },
         Ability { what: "wake on a word while the app is closed", can: Never,

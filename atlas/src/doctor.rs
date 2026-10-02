@@ -1051,3 +1051,22 @@ pub fn lookup_env(name: &str) -> Option<String> {
     let want = name.to_lowercase();
     std::env::vars().find(|(k, _)| k.to_lowercase() == want).map(|(_, v)| v)
 }
+
+/// Which ear is live: the speech-to-text that will hear you, by the setting
+/// and what's installed (research report, Stage 1 item 11: nothing said which
+/// one was in use). Parakeet's licence asks for its credit to travel with it.
+pub fn hearing_finding(tools: Option<&ToolsConfig>) -> Finding {
+    let engine = tools.map(|t| t.stt_engine.trim().to_lowercase()).unwrap_or_default();
+    let parakeet = crate::parakeet::installed(&crate::roots::install_root()).is_some();
+    let (ok, detail) = match (engine.as_str(), parakeet) {
+        ("whisper", _) => (true, "whisper (chosen in settings)".to_string()),
+        (_, true) => (
+            true,
+            "Parakeet TDT 0.6B v2 -- © NVIDIA, CC BY 4.0; see THIRD_PARTY_NOTICES.md".to_string(),
+        ),
+        ("parakeet", false) => (false, "Parakeet is chosen but isn't downloaded -- run `atlas get hearing`; whisper hears you until then".to_string()),
+        _ => (true, "whisper (Parakeet isn't downloaded; `atlas get hearing` fetches it)".to_string()),
+    };
+    Finding { label: "hearing".into(), ok, detail }
+}
+

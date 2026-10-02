@@ -492,6 +492,56 @@ impl<'a> Daemon<'a> {
     /// The first tick after a start: what the last run left unfinished.
     pub(super) fn pick_up_after_restart(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
+        // Questions you hadn't answered and a request being worked through
+        // when Atlas last stopped: named once, never acted on from an old
+        // yes. A day later they're stale and dropped quietly.
+        if !self.left_waiting_read {
+            self.left_waiting_read = true;
+            let left: Vec<super::running::LeftWaiting> = self.store.load(super::running::LEFT_WAITING);
+            let _ = self.store.save(super::running::LEFT_WAITING, &Vec::<super::running::LeftWaiting>::new());
+            let fresh: Vec<_> = left.into_iter().filter(|l| t.saturating_sub(l.at) < 86_400).collect();
+            let asked: Vec<String> = fresh.iter().filter(|l| l.asked).map(|l| l.what.trim_end_matches(['?', '.']).to_string()).collect();
+            let doing: Vec<String> = fresh.iter().filter(|l| !l.asked).map(|l| l.what.clone()).collect();
+            if !asked.is_empty() {
+                out.push(format!(
+                    "Before I restarted, {} waiting on your yes: {}. A yes from before doesn't carry over -- ask again if you still want {}.",
+                    if asked.len() == 1 { "this was" } else { "these were" },
+                    asked.join("; "),
+                    if asked.len() == 1 { "it" } else { "them" }
+                ));
+            }
+            if !doing.is_empty() {
+                out.push(format!("I was partway through {} when I stopped. Ask again and I'll start it fresh.", doing.join(" and ")));
+            }
+            // A workflow in hand. One waiting on your yes is put back and
+            // asked again -- the step is checked afresh when you answer
+            // (`approved_flow_step`); one that was running is named, not
+            // carried on, since its next step may be one to ask about.
+            let flow: Option<crate::flow::Run> = self.store.load(super::running::FLOW_LEFT);
+            let _ = self.store.save(super::running::FLOW_LEFT, &None::<crate::flow::Run>);
+            if let Some(run) = flow.filter(|r| t.saturating_sub(r.started) < 86_400 && !r.finished()) {
+                match run.state {
+                    crate::flow::RunState::AwaitingApproval if self.current_flow.is_none() => {
+                        let step = run.current().map(|s| s.command.clone()).unwrap_or_default();
+                        let q = format!(
+                            "Before I restarted, the \"{}\" workflow was waiting for your yes to: {step}. Go ahead?",
+                            run.workflow
+                        );
+                        self.current_flow = Some(run);
+                        self.session.ask(&q);
+                        out.push(q);
+                    }
+                    crate::flow::RunState::Running => out.push(format!(
+                        "I was on step {} of {} of the \"{}\" workflow when I stopped. Say \"run {}\" to start it again.",
+                        run.position + 1,
+                        run.steps.len(),
+                        run.workflow,
+                        run.workflow
+                    )),
+                    _ => {}
+                }
+            }
+        }
         // Windows first: a conversation you left Atlas carrying on is picked
         // back up if its window is still open. You set it going; a restart
         // isn't a reason to ask again.
@@ -596,6 +646,25 @@ impl<'a> Daemon<'a> {
             if let Some(after) = self.hub_after.remove(&news.id) {
                 self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
                 out.extend(self.after_hub_errand(after, &news.ending, t));
+                continue;
+            }
+            // The proving test's run, when it outlasted the turn that asked.
+            if link.label == "proof-check" {
+                if let Some(said) = self.finish_proof_check() {
+                    self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                    out.push(said);
+                }
+                continue;
+            }
+            // A self-fix drafted and proven on the crew: taken in and said.
+            if link.label == "self-fix" {
+                let said = match (self.finish_own_fix(), &news.ending) {
+                    (Some(said), _) => said,
+                    (None, crew::Ending::Done(Err(e))) => format!("I couldn't work on that fix: {e}"),
+                    (None, _) => "The fix I was working on stopped before it finished.".into(),
+                };
+                self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                out.push(said);
                 continue;
             }
             // The next step of a job in an app (`operate`).

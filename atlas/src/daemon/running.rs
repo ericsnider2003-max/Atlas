@@ -112,6 +112,27 @@ impl<'a> Daemon<'a> {
             note(&mut failed, "index", r);
         }
         note(&mut failed, "long_work", self.long_work.save(&self.store));
+        // What a restart would cut off while it waits on you: questions not
+        // yet answered and a request being worked through. Until 1 Oct 2026
+        // these lived only in memory and a restart dropped them silently
+        // (research report, Stage 1 item 6). Kept as words: they're named
+        // after a restart and asked again, never carried out on an old yes.
+        if self.left_waiting_read {
+            let mut waiting: Vec<LeftWaiting> = self
+                .session
+                .all_approvals()
+                .into_iter()
+                .map(|(_, d)| LeftWaiting { what: d, asked: true, at: crate::store::now() })
+                .collect();
+            if let Some(l) = &self.task_loop {
+                waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
+            }
+            note(&mut failed, "left_waiting", self.store.save(LEFT_WAITING, &waiting));
+            // A workflow, whole, so one waiting on your yes is asked again
+            // after a restart rather than lost (research report, Stage 1
+            // item 6: `current_flow` was never saved).
+            note(&mut failed, "current_flow", self.store.save(FLOW_LEFT, &self.current_flow));
+        }
         // What research taught it. Absent from this list when `learned`
         // gained its first caller, which would have made the knowledge
         // store a write-only diary that died with the process.
@@ -337,6 +358,20 @@ impl<'a> Daemon<'a> {
             // A tick is time the hub and the typing box wait: a slow one is
             // written down, so where the time goes can be seen.
             let tick_ms = tick_started.elapsed().as_millis() as u64;
+            // Every tick's parts, added up; every quarter hour, Atlas's own
+            // CPU over it and where the loop's time went (`cpuuse`).
+            self.cpu_meter.add(self.tick_laps.parts());
+            if let Some(r) = self.cpu_meter.read(t, crate::cpuuse::own_cpu_ms()) {
+                if r.idle && r.percent >= crate::cpuuse::WARN_PERCENT {
+                    self.log.warn(&format!("idle but busy: {}", r.plain()));
+                } else {
+                    self.log.info(&format!("cpu: {}", r.plain()));
+                }
+                let mut kept: Vec<crate::cpuuse::Reading> = self.store.load(crate::cpuuse::KEPT);
+                kept.push(r);
+                let from = kept.len().saturating_sub(96);
+                let _ = self.store.save(crate::cpuuse::KEPT, &kept[from..].to_vec());
+            }
             if tick_ms >= SLOW_TICK_MS {
                 // Which parts took it, so the next look at a log says where
                 // the time went (30 Sep 2026: the laptop's said only "1777ms").
@@ -1629,3 +1664,19 @@ impl Drop for Daemon<'_> {
         self.persist();
     }
 }
+
+/// Where `persist` keeps the workflow in hand.
+pub(super) const FLOW_LEFT: &str = "current_flow";
+
+/// Where `persist` keeps what a restart would cut off.
+pub(super) const LEFT_WAITING: &str = "left_waiting";
+
+/// One thing left waiting when Atlas stopped.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct LeftWaiting {
+    pub what: String,
+    /// A question to you (true), or work being done (false).
+    pub asked: bool,
+    pub at: u64,
+}
+

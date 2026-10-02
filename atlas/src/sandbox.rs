@@ -165,28 +165,32 @@ impl Sandbox {
         out
     }
 
-    /// Run something with the sandbox as its working directory.
+    /// Run something with the sandbox as its working directory, for no
+    /// longer than the tool's `timeout_secs` (`DEFAULT_LIMIT_SECS` when it
+    /// gives none).
+    ///
+    /// Until 1 Oct 2026 this waited on `output()` with no limit at all: the
+    /// code builder's per-gate timeouts were set and ignored, and one hung
+    /// test in Atlas's own self-fix proof hung Atlas (research report, Stage 1
+    /// item 1). A run past its limit is stopped -- the whole process tree, so
+    /// cargo's compilers go with it -- and reads as failed, saying why.
     pub fn run(&mut self, tool: &ExternalTool, vars: &Vars, max_output: usize) -> Attempt {
         let (cmd, args) = tool.resolved(vars);
-        let out = crate::tools::command(&cmd).args(&args).current_dir(&self.root).output();
-
-        let attempt = match out {
-            Ok(o) => {
-                let mut text = String::from_utf8_lossy(&o.stdout).to_string();
-                text.push_str(&String::from_utf8_lossy(&o.stderr));
-                Attempt {
-                    command: format!("{cmd} {}", args.join(" ")),
-                    passed: o.status.success(),
-                    output: trim_output(&text, max_output),
-                    at: now(),
-                }
-            }
-            Err(e) => Attempt {
-                command: cmd.clone(),
+        let limit = if tool.timeout_secs == 0 { DEFAULT_LIMIT_SECS } else { tool.timeout_secs };
+        let command = format!("{cmd} {}", args.join(" "));
+        let attempt = match run_limited(&cmd, &args, &self.root, std::time::Duration::from_secs(limit)) {
+            Ran::Finished { passed, text } => Attempt { command, passed, output: trim_output(&text, max_output), at: now() },
+            Ran::TooLong { text } => Attempt {
+                command,
                 passed: false,
-                output: format!("could not start {cmd}: {e}"),
+                output: format!(
+                    "error: stopped after {limit} seconds -- it was still running\n{}",
+                    trim_output(&text, max_output)
+                ),
                 at: now(),
             },
+            Ran::Stopped => Attempt { command, passed: false, output: "error: stopped because you asked me to stop".into(), at: now() },
+            Ran::NoStart(e) => Attempt { command: cmd.clone(), passed: false, output: format!("could not start {cmd}: {e}"), at: now() },
         };
         self.attempts.push(attempt.clone());
         attempt
@@ -304,13 +308,167 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// How long a sandbox run may take when its tool names no limit.
+pub const DEFAULT_LIMIT_SECS: u64 = 600;
+
+enum Ran {
+    Finished { passed: bool, text: String },
+    TooLong { text: String },
+    Stopped,
+    NoStart(String),
+}
+
+/// Run a program in `dir`, reading its output as it comes (a full pipe would
+/// stall it), and stop it -- with everything it started -- at `limit` or when
+/// Atlas is asked to stop.
+fn run_limited(cmd: &str, args: &[String], dir: &Path, limit: std::time::Duration) -> Ran {
+    run_limited_with(cmd, args, &[], dir, limit)
+}
+
+/// Run a program in `dir` with extra environment, for no longer than
+/// `limit`: whether it passed, and what it said (head and tail kept, with
+/// every result line). Stopped past the limit, it reads as failed and says so.
+pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit_secs: u64, max_output: usize) -> (bool, String) {
+    match run_limited_with(cmd, args, env, dir, std::time::Duration::from_secs(limit_secs)) {
+        Ran::Finished { passed, text } => (passed, trim_output(&text, max_output)),
+        Ran::TooLong { .. } => (false, format!("error: stopped after {limit_secs} seconds -- it was still running")),
+        Ran::Stopped => (false, "error: stopped because you asked me to stop".into()),
+        Ran::NoStart(e) => (false, format!("couldn't run {cmd}: {e}")),
+    }
+}
+
+fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration) -> Ran {
+    use std::io::Read;
+    let mut c = crate::tools::command(cmd);
+    c.args(args).current_dir(dir).stdin(std::process::Stdio::null());
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    c.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut child = match c.spawn() {
+        Ok(ch) => ch,
+        Err(e) => return Ran::NoStart(e.to_string()),
+    };
+    let take = |r: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut r) = r {
+                let _ = r.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let out = take(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+    let err = take(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+    let text = move |out: std::thread::JoinHandle<Vec<u8>>, err: std::thread::JoinHandle<Vec<u8>>| {
+        let mut t = String::from_utf8_lossy(&out.join().unwrap_or_default()).to_string();
+        t.push_str(&String::from_utf8_lossy(&err.join().unwrap_or_default()));
+        t
+    };
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ran::Finished { passed: status.success(), text: text(out, err) },
+            Ok(None) => {}
+            Err(e) => return Ran::NoStart(format!("lost track of it: {e}")),
+        }
+        let stopping = crate::goodbye::asked_to_stop();
+        if stopping || std::time::Instant::now() >= deadline {
+            stop_tree(&mut child);
+            // The readers are not joined: something the program started may
+            // still hold the pipes open, and waiting on them is the hang this
+            // limit exists to prevent. They end when the pipes close.
+            drop((out, err));
+            return if stopping { Ran::Stopped } else { Ran::TooLong { text: String::new() } };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// Stop a process and everything it started. `Child::kill` alone leaves
+/// cargo's compilers and test binaries running on Windows.
+fn stop_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let _ = crate::tools::command("taskkill")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 /// Compilers produce megabytes. Keep the head and the tail — the head has the
-/// first error and the tail has the summary.
+/// first error and the tail has the summary — and, from the middle, every
+/// `test result:` line, every failed test's name, and every error and panic.
+///
+/// The middle used to go whole: on a 7,500-test suite run as 36 binaries,
+/// most `test result:` lines were in it, so the count of tests that ran --
+/// the thing that catches a "fix" that deletes the failing test -- read a
+/// fraction of the truth (research report, Stage 1 item 1).
 pub fn trim_output(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_string();
     }
     let head: String = text.chars().take(max * 2 / 3).collect();
     let tail: String = text.chars().rev().take(max / 3).collect::<String>().chars().rev().collect();
-    format!("{head}\n...[{} characters omitted]...\n{tail}", text.len() - max)
+    let (h, t) = (head.len(), text.len().saturating_sub(tail.len()));
+    let middle = if h < t { text.get(h..t).unwrap_or("") } else { "" };
+    let kept: Vec<&str> = middle
+        .lines()
+        .map(str::trim)
+        .filter(|l| {
+            l.starts_with("test result:")
+                || (l.starts_with("test ") && l.ends_with("FAILED"))
+                // Errors are never the part cut (research report §10, from
+                // OmniRoute's output trimming): a compiler's second error or
+                // a panic's message is what says what went wrong.
+                || l.starts_with("error")
+                || l.contains("panicked at")
+        })
+        .take(2000)
+        .collect();
+    let kept = if kept.is_empty() { String::new() } else { format!("{}\n", kept.join("\n")) };
+    format!("{head}\n...[{} characters omitted; results kept]...\n{kept}{tail}", text.len() - max)
+}
+
+#[cfg(test)]
+mod limits {
+    use super::*;
+
+    #[test]
+    fn a_run_past_its_limit_is_stopped_and_says_so() {
+        let base = std::env::temp_dir().join("atlas-sandbox-limit");
+        let mut sb = Sandbox::create(&base, "limit").unwrap();
+        let tool = ExternalTool { command: "sleep".into(), args: vec!["30".into()], timeout_secs: 1, ..Default::default() };
+        let started = std::time::Instant::now();
+        let a = sb.run(&tool, &Default::default(), 1000);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "it waited the whole run");
+        assert!(!a.passed);
+        assert!(a.output.contains("stopped after 1 seconds"), "{}", a.output);
+    }
+
+    #[test]
+    fn every_test_result_line_survives_the_trim() {
+        let mut text = String::from("Compiling atlas\n");
+        for i in 0..400 {
+            text.push_str(&format!("running {i} tests\n{}\ntest result: ok. 10 passed; 0 failed\n", "x".repeat(200)));
+        }
+        text.push_str("test something::broke ... FAILED\n");
+        let trimmed = trim_output(&text, 2000);
+        assert!(trimmed.len() < text.len());
+        assert_eq!(crate::selfwork::count_passing(&trimmed), 4000);
+        assert!(trimmed.contains("something::broke ... FAILED"));
+    }
+
+    #[test]
+    fn an_error_in_the_middle_survives_the_trim() {
+        let mut text = "x\n".repeat(3000);
+        text.push_str("error[E0308]: mismatched types\n");
+        text.push_str(&"y\n".repeat(3000));
+        let trimmed = trim_output(&text, 1000);
+        assert!(trimmed.contains("error[E0308]: mismatched types"), "{trimmed}");
+    }
 }

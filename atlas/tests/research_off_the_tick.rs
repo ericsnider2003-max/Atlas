@@ -45,6 +45,9 @@ fn cfg_researching_locally() -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
     let tools = c.tools.as_mut().expect("the shipped config has a tools section");
     tools.research.enabled = true;
+    // `example.test` is never looked up for real (it can't be), and the stub
+    // fetch below goes nowhere; the public-address check has its own tests.
+    tools.research.pages_on_this_machine = true;
     tools.research.search = Some(atlas::tools::ExternalTool {
         command: "sh".into(),
         args: vec!["-c".into(), "echo 'http://example.test/tides'".into()],

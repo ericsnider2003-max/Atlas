@@ -89,6 +89,21 @@ const ITS_OWN_LIMITS: &[&str] = &[
     // And the struct those settings parse into. Adding a field with a
     // permissive default changes a limit without touching the YAML.
     "voice.rs",
+    // What judges its own fixes: `mend.rs` refuses a paper-over (a fix that
+    // hides the symptom), `selfwork.rs` holds `may_edit` and the shipped
+    // never-touch list, `sandbox.rs` is where the proof runs and its time
+    // limit, `selftest.rs` is what reports how it's doing. A self-fix that
+    // could edit any of these could weaken the check on itself (research
+    // report, 30 Sep 2026, Stage 1 item 2).
+    "mend.rs", "selfwork.rs", "sandbox.rs", "selftest.rs",
+    // The rest of the fences (1 Oct 2026 security pass): `uia.rs` decides
+    // what can't be undone, `research.rs` what may be fetched, `untrusted.rs`
+    // how outside text is kept from being obeyed, `operate.rs` the app
+    // worker's guard, `smtp.rs` the send limit, `unsub.rs` which links are
+    // followed, `transport.rs` and `server.rs` who is answered, `lookalike.rs`
+    // which mail is trusted, `vault.rs` the passwords.
+    "uia.rs", "research.rs", "untrusted.rs", "operate.rs", "smtp.rs", "unsub.rs",
+    "transport.rs", "server.rs", "lookalike.rs", "vault.rs",
 ];
 
 /// Tests Atlas may edit.

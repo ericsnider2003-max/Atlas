@@ -142,6 +142,7 @@ fn the_service_worker_is_served_without_a_token() {
     let js = String::from_utf8(body).expect("utf-8");
     assert!(!js.contains(TOKEN), "the public worker must hold nothing private");
     assert!(js.contains("navigate"), "it handles page loads");
+    assert!(js.contains("AbortController") && js.contains("12000"), "a laptop asleep doesn't hang the page");
     assert!(js.contains("method!=='GET'"), "and leaves everything but GET alone");
     // It stores nothing on the phone: `tests/server_safety.rs` holds that a
     // phone must not cache workspace state, and a worker's cache ignores

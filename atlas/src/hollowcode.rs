@@ -181,6 +181,9 @@ pub enum Shape {
     /// A private function nothing in the file calls — built, and never used.
     /// Only private ones: a public one may be called from another file.
     NeverCalled,
+    /// A public function nothing anywhere in the project calls
+    /// (`never_called_in_project`): the cross-file half of `NeverCalled`.
+    NeverCalledInProject,
     /// Imports a package the project never declares — named from memory,
     /// often by a model, and not something that's installed.
     MadeUpDependency,
@@ -200,6 +203,7 @@ impl Shape {
             Shape::AlwaysTheSame => "gives the same answer whatever it's asked",
             Shape::NeverRuns => "can never run",
             Shape::NeverCalled => "is never called by anything in this file",
+            Shape::NeverCalledInProject => "is never called by anything in the whole project",
             Shape::MadeUpDependency => "imports a package the project doesn't list",
         }
     }
@@ -215,6 +219,7 @@ impl Shape {
             Shape::AlwaysTheSame => "make it depend on its input, or replace it with the constant",
             Shape::NeverRuns => "delete it, or fix the condition that keeps it from running",
             Shape::NeverCalled => "call it where it was meant to be used, or delete it",
+            Shape::NeverCalledInProject => "wire it to whatever was meant to use it, or delete it",
             Shape::MadeUpDependency => "add it to the project's dependencies if it's real; if it isn't, replace the import",
         }
     }
@@ -227,7 +232,7 @@ impl Shape {
             Shape::SwallowsTheError => "worth fixing",
             Shape::DoesNothing | Shape::AlwaysTheSame => "worth looking at",
             Shape::NeverRuns | Shape::ThrowsAwayTheAnswer => "worth looking at",
-            Shape::NeverCalled => "worth looking at",
+            Shape::NeverCalled | Shape::NeverCalledInProject => "worth looking at",
             // Won't even build, or builds against something nobody chose.
             Shape::MadeUpDependency => "worth fixing",
             Shape::SaysSoItself => "already known",
@@ -425,6 +430,104 @@ fn mentions(line: &str, name: &str) -> bool {
         from = at + name.len();
     }
     false
+}
+
+/// Public functions this file defines that nothing in its project mentions
+/// -- not this file past the definition, not any other source file of the
+/// same language.
+///
+/// Research report, 30 Sep 2026, Stage 2 item 17: `never_called` only looked
+/// at private functions, because a public one "may be called from another
+/// file" -- and nothing looked at the other files, so a public function
+/// called from nowhere (the shape this codebase kept finding in itself) was
+/// never found in anyone's code. The project is the folder holding the
+/// nearest manifest, else the file's own folder; at most `PROJECT_FILES`
+/// files are read. Entry points and tests are left alone, as in-file.
+pub fn never_called_in_project(file: &std::path::Path, code: &str, tongue: Tongue) -> Vec<Finding> {
+    let lines: Vec<&str> = code.lines().collect();
+    let mut defs: Vec<(usize, String, String)> = Vec::new();
+    for (i, raw) in lines.iter().enumerate() {
+        let line = raw.trim();
+        let name_after = |prefix: &str| -> Option<String> {
+            let rest = line.strip_prefix(prefix)?;
+            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            (!name.is_empty()).then_some(name)
+        };
+        let found = match tongue {
+            Tongue::Rust => name_after("pub fn ").or_else(|| name_after("pub(crate) fn ")),
+            Tongue::Python => name_after("def ").filter(|n| !n.starts_with('_')),
+            Tongue::Go => name_after("func ").filter(|n| n.chars().next().is_some_and(|c| c.is_uppercase())),
+            Tongue::JavaScript | Tongue::TypeScript => name_after("export function ").or_else(|| name_after("export async function ")),
+            _ => None,
+        };
+        if let Some(name) = found {
+            if ["main", "init", "new", "default", "setup", "handler"].contains(&name.as_str()) || name.starts_with("test") {
+                continue;
+            }
+            defs.push((i + 1, name, line.to_string()));
+        }
+    }
+    if defs.is_empty() {
+        return Vec::new();
+    }
+    // Mentioned in this file past its own definition?
+    defs.retain(|(line, name, _)| !lines.iter().enumerate().any(|(i, l)| i + 1 != *line && mentions(l, name)));
+    if defs.is_empty() {
+        return Vec::new();
+    }
+    let root = project_root(file);
+    let mine = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let mut others = Vec::new();
+    collect_sources(&root, tongue, &mut others, 0);
+    let mut unseen: Vec<(usize, String, String)> = defs;
+    for p in others {
+        if unseen.is_empty() {
+            break;
+        }
+        if std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone()) == mine {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&p) else { continue };
+        unseen.retain(|(_, name, _)| !text.lines().any(|l| mentions(l, name)));
+    }
+    unseen.into_iter().map(|(line, _, code)| Finding { line, shape: Shape::NeverCalledInProject, code }).collect()
+}
+
+/// The most source files read for `never_called_in_project`.
+pub const PROJECT_FILES: usize = 400;
+
+fn project_root(file: &std::path::Path) -> std::path::PathBuf {
+    let mut dir = file.parent();
+    for _ in 0..4 {
+        let Some(d) = dir else { break };
+        if ["Cargo.toml", "package.json", "pyproject.toml", "requirements.txt", "go.mod"].iter().any(|m| d.join(m).is_file()) {
+            return d.to_path_buf();
+        }
+        dir = d.parent();
+    }
+    file.parent().map(|p| p.to_path_buf()).unwrap_or_default()
+}
+
+fn collect_sources(dir: &std::path::Path, tongue: Tongue, out: &mut Vec<std::path::PathBuf>, depth: usize) {
+    if depth > 8 || out.len() >= PROJECT_FILES {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || ["target", "node_modules", "__pycache__", "dist", "build", "vendor"].contains(&name.as_str()) {
+            continue;
+        }
+        if p.is_dir() {
+            collect_sources(&p, tongue, out, depth + 1);
+        } else if Tongue::of_name(&name) == tongue && e.metadata().map(|m| m.len() <= 512 * 1024).unwrap_or(false) {
+            out.push(p);
+            if out.len() >= PROJECT_FILES {
+                return;
+            }
+        }
+    }
 }
 
 /// A project's list of what it depends on, found near a file: the nearest
@@ -665,3 +768,24 @@ pub fn porting_notes(tongue: Tongue, code: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod across_files {
+    use super::*;
+
+    #[test]
+    fn a_public_function_nothing_in_the_project_calls_is_found_and_one_that_is_called_isnt() {
+        let d = std::env::temp_dir().join(format!("atlas-hollow-project-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("src")).unwrap();
+        std::fs::write(d.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        let lib = "pub fn used_elsewhere() -> u32 { 1 }\npub fn called_by_nobody() -> u32 { 2 }\n";
+        std::fs::write(d.join("src/lib.rs"), lib).unwrap();
+        std::fs::write(d.join("src/main.rs"), "fn main() { println!(\"{}\", x::used_elsewhere()); }\n").unwrap();
+        let found = never_called_in_project(&d.join("src/lib.rs"), lib, Tongue::Rust);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].line, 2);
+        assert_eq!(found[0].shape, Shape::NeverCalledInProject);
+    }
+}
+

@@ -272,17 +272,32 @@ pub fn guard(action: &Action, view: &View, allowed: Option<&str>) -> Guard {
                 return Guard::Refuse(format!("there's no [{n}] -- pick one of the numbers shown"));
             };
             let name = t.name();
-            if matches!(action, Action::Click(_)) && crate::uia::cannot_be_undone(name) && allowed.map(|a| !a.eq_ignore_ascii_case(name)).unwrap_or(true) {
-                return Guard::AskFirst(name.to_string());
+            // A click and a choice alike: "choose Send" from a list sends.
+            if matches!(action, Action::Click(_) | Action::Choose(_)) {
+                match crate::policy::press(name) {
+                    crate::policy::Press::Never => {
+                        return Guard::Refuse(format!("\"{name}\" pays for something -- I don't buy things"));
+                    }
+                    crate::policy::Press::AskFirst if allowed.map(|a| !a.eq_ignore_ascii_case(name)).unwrap_or(true) => {
+                        return Guard::AskFirst(name.to_string());
+                    }
+                    _ => {}
+                }
             }
             Guard::Go
         }
         Action::Key(k) => {
-            // Enter in a box beside a Send button sends: asked about the same.
-            let sends = view.targets.iter().any(|t| matches!(t, Target::Control { role: Role::Button, .. }) && crate::uia::cannot_be_undone(t.name()));
-            if (k == "enter" || k == "ctrl+enter") && sends && allowed.is_none() {
-                let what = view.targets.iter().find(|t| crate::uia::cannot_be_undone(t.name())).map(|t| t.name().to_string()).unwrap_or_default();
-                return Guard::AskFirst(what);
+            // Enter beside a Send button sends: asked about the same. Any
+            // target counts -- a window read as a picture has words, not
+            // buttons, and "Send" there is still a Send.
+            if k == "enter" || k == "ctrl+enter" {
+                if let Some(t) = view.targets.iter().find(|t| crate::policy::press(t.name()) == crate::policy::Press::Never) {
+                    return Guard::Refuse(format!("Enter here could press \"{}\", which pays for something -- I don't buy things", t.name()));
+                }
+                let what = view.targets.iter().find(|t| crate::policy::press(t.name()) == crate::policy::Press::AskFirst);
+                if let (Some(t), None) = (what, allowed) {
+                    return Guard::AskFirst(t.name().to_string());
+                }
             }
             if k.contains("alt+f4") || k.contains("ctrl+w") {
                 return Guard::Refuse("closing the window isn't a step here -- say done or give up".into());
@@ -463,5 +478,52 @@ mod tests {
         assert_eq!(app_and_goal("In Excel, make a new sheet called Budget", &apps), ("Excel".into(), "make a new sheet called Budget".into()));
         assert_eq!(app_and_goal("turn on dark mode in settings", &apps), ("Settings".into(), "turn on dark mode".into()));
         assert_eq!(app_and_goal("fill in this form", &apps), (String::new(), "fill in this form".into()));
+    }
+}
+
+#[cfg(test)]
+mod presses {
+    use super::*;
+
+    fn view(names: &[&str], picture: bool) -> View {
+        let targets = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                if picture {
+                    Target::Words { text: n.to_string(), rect: [0, (i as i32) * 20, 100, 18] }
+                } else {
+                    Target::Control { path: vec![i], role: Role::ListItem, name: n.to_string(), rect: None }
+                }
+            })
+            .collect();
+        View { title: "w".into(), seen: if picture { Seen::Picture } else { Seen::Controls }, lines: Vec::new(), targets }
+    }
+
+    #[test]
+    fn choosing_send_from_a_list_asks_first() {
+        let v = view(&["Draft", "Send"], false);
+        assert_eq!(guard(&Action::Choose(2), &v, None), Guard::AskFirst("Send".into()));
+        assert_eq!(guard(&Action::Choose(1), &v, None), Guard::Go);
+    }
+
+    #[test]
+    fn enter_beside_send_asks_first_even_on_a_picture() {
+        let v = view(&["Message", "Send"], true);
+        assert_eq!(guard(&Action::Key("enter".into()), &v, None), Guard::AskFirst("Send".into()));
+    }
+
+    #[test]
+    fn paying_is_never_pressed() {
+        let v = view(&["Place order"], false);
+        assert!(matches!(guard(&Action::Click(1), &v, Some("Place order")), Guard::Refuse(_)));
+        assert_eq!(crate::policy::press("Buy now"), crate::policy::Press::Never);
+        assert_eq!(crate::policy::press("Delete"), crate::policy::Press::AskFirst);
+        assert_eq!(crate::policy::press("Open"), crate::policy::Press::Go);
+        // 1 Oct 2026 security pass: the other ways a shop says it.
+        for label in ["Check out", "Order now", "Proceed to payment", "Start free trial", "Upgrade", "Add to bag", "Jetzt kaufen", "Pre-order"] {
+            assert_eq!(crate::policy::press(label), crate::policy::Press::Never, "{label}");
+        }
+        assert_eq!(crate::policy::press("Current folder"), crate::policy::Press::Go, "a word inside a word isn't one");
     }
 }

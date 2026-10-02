@@ -235,6 +235,9 @@ fn research_says_a_made_up_figure_is_unconfirmed_and_files_it() {
     {
         let tools = c.tools.as_mut().unwrap();
         tools.research.enabled = true;
+        // A stub fetch at a name that never resolves; the public-address
+        // check has its own tests.
+        tools.research.pages_on_this_machine = true;
         tools.research.notes_dir = dir.join("notes").display().to_string();
         tools.research.search = Some(atlas::tools::ExternalTool {
             command: "sh".into(),
@@ -268,7 +271,8 @@ fn research_says_a_made_up_figure_is_unconfirmed_and_files_it() {
     }
     let answer = said.iter().find(|l| l.contains("5.9 feet")).unwrap_or_else(|| panic!("no answer: {said:?}"));
     assert!(answer.contains("5.9 isn't in any of the pages I read"), "{answer}");
-    let notes: Vec<_> = std::fs::read_dir(dir.join("notes")).unwrap().flatten().collect();
+    // The write-ups; the `.last-research` mark beside them isn't a note.
+    let notes: Vec<_> = std::fs::read_dir(dir.join("notes")).unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "md")).collect();
     assert_eq!(notes.len(), 1, "one note per research");
     let note = &notes[0];
     let text = std::fs::read_to_string(note.path()).unwrap();

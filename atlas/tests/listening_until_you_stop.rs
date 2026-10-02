@@ -270,3 +270,26 @@ fn a_dead_microphone_gives_up_rather_than_recording_nothing_forever() {
     assert!(matches!(ep.state, atlas::endpoint::Listening::Finished(Why::Nothing)));
     assert!(t <= cfg.no_speech_after_ms + 500, "took {t}ms to give up");
 }
+
+#[test]
+fn a_short_yes_with_no_words_yet_is_not_held_for_the_longest_gap() {
+    // Research report, Stage 1 item 9: with nothing transcribed yet (the
+    // usual case) every reply waited the mid-phrase gap, 1.1 s.
+    let cfg = atlas::endpoint::EndpointConfig::default();
+    let mut ep = atlas::endpoint::Endpointer::start(0);
+    let mut t = 0;
+    while t < 500 {
+        ep.feed(-10.0, "", t, &cfg);
+        t += 20;
+    }
+    let mut finished_at = None;
+    while t < 3000 {
+        if ep.feed(-60.0, "", t, &cfg) == atlas::endpoint::Listening::Finished(atlas::endpoint::Why::YouFinished) {
+            finished_at = Some(t);
+            break;
+        }
+        t += 20;
+    }
+    let gap = finished_at.expect("it finished") - 500;
+    assert!(gap <= cfg.short_reply_ms + 40, "a short reply waited {gap} ms");
+}

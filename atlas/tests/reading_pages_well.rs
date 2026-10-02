@@ -178,6 +178,8 @@ fn research_searches_with_searxng_and_reads_the_pages_as_markdown() {
         // The old search tool is there, and not used when SearXNG answers.
         search: Some(curl(&format!("{base}/html?q={{query}}"))),
         fetch: Some(curl("{url}")),
+        // The pages are a stand-in server on this machine.
+        pages_on_this_machine: true,
         ..Default::default()
     };
     let r = Research { cfg, vars: Default::default(), browser: None };
@@ -204,6 +206,8 @@ fn a_searxng_that_isnt_there_falls_back_to_the_search_tool() {
         searxng_url: dead_url,
         search: Some(curl(&format!("{base}/html?q={{query}}"))),
         fetch: Some(curl("{url}")),
+        // The pages are a stand-in server on this machine.
+        pages_on_this_machine: true,
         ..Default::default()
     };
     let r = Research { cfg, vars: Default::default(), browser: None };
