@@ -601,6 +601,7 @@ fn every_background_call_site_asks_for_the_background_model() {
         ("src/daemon/inbox.rs", "fn draft_outreach("),
         ("src/daemon/helping.rs", "fn decision_help("),
         ("src/daemon/making.rs", "fn build_from_description("),
+        ("src/daemon/making.rs", "fn code_writers("),
         ("src/daemon/making.rs", "fn improve_project("),
         ("src/daemon/model.rs", "fn ask_the_room("),
         ("src/daemon/hands.rs", "fn carry_out("),
@@ -610,19 +611,14 @@ fn every_background_call_site_asks_for_the_background_model() {
         let body = &s[at..];
         let end = body[3..].find("\n    pub").or_else(|| body[3..].find("\n    fn ")).map(|e| e + 3).unwrap_or(body.len());
         let body = &body[..end];
-        // Code is drafted through `code_writers` (2 Oct 2026: stronger models
-        // first), whose local writer is the background model -- checked below.
+        // `code_writers` (2 Oct 2026) is the background model first, then the
+        // stronger ones -- checked in this list on its own.
         assert!(
             body.contains("self.background_llm()") || body.contains("self.code_writers("),
             "{fun} in {file} doesn't use the background model"
         );
         assert!(!body.contains("self.llm.clone()"), "{fun} in {file} still takes the talking model");
     }
-    let making = src("src/daemon/making.rs");
-    let writers = &making[making.find("fn code_writers(").expect("code_writers is gone")..];
-    let writers = &writers[..writers[3..].find("\n    pub").map(|e| e + 3).unwrap_or(writers.len())];
-    assert!(writers.contains("self.background_llm()"), "code_writers' own model isn't the background one");
-    assert!(!writers.contains("self.llm.clone()"), "code_writers takes the talking model");
     // And every talking call holds the guard the deep model gives way to.
     let conv = src("src/daemon/conversation.rs");
     assert_eq!(conv.matches("let talking = self.talking_guard();").count(), 2, "the turn's worker and the rewording");

@@ -150,7 +150,9 @@ impl<'a> Daemon<'a> {
             std::sync::Arc::new(crate::brain::Scrubbed(raw)) as std::sync::Arc<dyn crate::brain::Llm>
         });
         let local = self.background_llm();
+        let coder = self.coder.llm();
         let have = crate::build_it::Available {
+            coder: coder.is_some(),
             your_second: second.is_some(),
             worker: worker.is_some(),
             local: local.is_some(),
@@ -162,6 +164,7 @@ impl<'a> Daemon<'a> {
             .into_iter()
             .filter_map(|w| {
                 let llm = match w {
+                    Writer::Coder => coder.clone(),
                     Writer::YourSecond => second.clone(),
                     Writer::Worker => worker.clone(),
                     Writer::Local => local.clone(),
@@ -170,6 +173,16 @@ impl<'a> Daemon<'a> {
                 llm.map(|l| (w, l))
             })
             .collect()
+    }
+
+    /// The context of the model a code call will most likely go to: the
+    /// coding model's when there is one, else the talking model's
+    /// (`projectread::budget_for` sizes the project's share from it).
+    pub(super) fn code_context_tokens(&self) -> Option<u32> {
+        self.coder
+            .llm()
+            .and_then(|l| l.context_tokens())
+            .or_else(|| self.llm.as_ref().and_then(|l| l.context_tokens()))
     }
 
     /// A request's marker, honoured only when it is the yes to the question
@@ -269,6 +282,8 @@ impl<'a> Daemon<'a> {
             };
         };
         let first = writers[0].0;
+        // Who the coding model is, for saying who wrote it.
+        let coder_name = crate::coder::plain_name(&self.coder.brain.model_id);
         let max_rounds = cfg.max_fix_rounds;
         let builds = crate::roots::data_sub("builds");
 
@@ -281,6 +296,8 @@ impl<'a> Daemon<'a> {
             let rules = self.tools_cfg().taste.clone();
             let brief = desc.clone();
             let gen_llm = writers[0].1.clone();
+            let page_by = first.named_with(&coder_name);
+            let page_ack = page_by.clone();
             let work: crew::Work = Box::new(move |ctl| {
                 let outcome = crate::taste::build_web(&brief, gen_llm.as_ref(), max_rounds, |html| {
                     // Between rounds: a pause holds with the draft so far intact.
@@ -303,7 +320,7 @@ impl<'a> Daemon<'a> {
                         Err(e) => said.push_str(&format!("\n\nI couldn't save it to {} ({e}) — is the disk full?", path.display())),
                     }
                 }
-                said.push_str(&format!(" (Drafted by {}.)", first.named()));
+                said.push_str(&format!(" (Drafted by {page_by}.)"));
                 Ok(said)
             });
             let taken = self.hand_off("build", crate::store::now(), work, Some(what.to_string()), SpeakPolicy::Always);
@@ -311,7 +328,7 @@ impl<'a> Daemon<'a> {
                 format!(
                     "On it — {} will draft the page, and I'll review it against the house style here and iterate \
                      until it's consistent and accessible.",
-                    first.named()
+                    page_ack
                 )
             } else {
                 "I'm swamped with background work right now — ask me to build it again in a moment.".into()
@@ -319,9 +336,9 @@ impl<'a> Daemon<'a> {
         }
 
         let base = crate::roots::tmp_dir().join("builds");
-        let ack_by = first.named();
+        let ack_by = first.named_with(&coder_name);
         // Said only when what comes after the first is stronger than it.
-        let then = (first == crate::build_it::Writer::Local).then(|| writers.get(1).map(|(w, _)| w.named())).flatten();
+        let then = matches!(first, crate::build_it::Writer::Local | crate::build_it::Writer::Coder).then(|| writers.get(1).map(|(w, _)| w.named())).flatten();
         let work: crew::Work = Box::new(move |ctl| {
             let mut sandbox = match crate::sandbox::Sandbox::create(&base, "build") {
                 Ok(s) => s,
@@ -360,7 +377,7 @@ impl<'a> Daemon<'a> {
             // still leaves its best draft there, clearly named.
             let mut said = outcome.spoken(lang);
             if let Some(by) = by {
-                said.push_str(&format!(" (Written by {}.)", by.named()));
+                said.push_str(&format!(" (Written by {}.)", by.named_with(&coder_name)));
             }
             if let Some(code) = outcome.code() {
                 // A folder you named, or one of its own; named for what it
@@ -630,12 +647,18 @@ impl<'a> Daemon<'a> {
                 return q;
             }
         }
-        let context_for_writers = format!("{what}\n{}", read_project_context(&folder));
-        let writers = self.code_writers(&context_for_writers);
+        // What of the project the change is written against: its tree and
+        // the pieces this request points at, sized to the writing model's
+        // context (`projectread`). Read once, on the tick thread; the errand
+        // gets the text, not the folder.
+        let context = read_project_context(&folder, what, self.code_context_tokens());
+        let writers = self.code_writers(&format!("{what}\n{context}"));
         if writers.is_empty() {
             return "I can do that, but I need a model to build it and none is configured.".into();
         }
         let first = writers[0].0;
+        let coder_name = crate::coder::plain_name(&self.coder.brain.model_id);
+        let coder_ack = coder_name.clone();
         let max_rounds = cfg.max_fix_rounds;
         let desc = what.to_string();
         let title = workshop_title(what);
@@ -644,10 +667,6 @@ impl<'a> Daemon<'a> {
         // errand closure below.
         let title_ack = title.clone();
         let project_ack = project_name.clone();
-        // Any context Atlas can read from the project folder now, so the draft
-        // is written against what's actually there. Read on the tick thread;
-        // the errand runs elsewhere and gets the text, not the folder.
-        let context = read_project_context(&folder);
         // What the files this could write look like now, as the model is
         // about to read them — taken here, at the start, not when the change
         // lands, so an edit you make while it's being written still counts
@@ -692,9 +711,28 @@ impl<'a> Daemon<'a> {
                 Ok(s) => s,
                 Err(e) => return Err(format!("couldn't make a sandbox to work in: {e}")),
             };
+            // A file of yours this replaces, in a project with tests: each
+            // round is checked by the project's own tests with it in place,
+            // and their failures are what the next round fixes (2 Oct 2026).
+            let root = std::path::Path::new(&folder);
+            let in_place = named_existing_file(&desc, root).zip(
+                crate::craft::ladder(lang).into_iter().find(|g| g.tells == crate::craft::Tells::Behaviour).map(|g| g.command),
+            );
+            let proven = std::cell::Cell::new(false);
+            let project_says_nothing = std::cell::Cell::new(false);
             let mut check = |code: &str| -> crate::build_it::Check {
                 // Between rounds: a pause holds with the draft so far intact.
                 let _ = ctl.checkpoint();
+                if let Some((rel, cmd)) = in_place.as_ref().filter(|_| !project_says_nothing.get()) {
+                    match check_in_project(root, rel, cmd, code, &base) {
+                        Some(c) => {
+                            proven.set(matches!(c, crate::build_it::Check::Passed(_)));
+                            return c;
+                        }
+                        None => project_says_nothing.set(true),
+                    }
+                }
+                proven.set(false);
                 check_draft_in_sandbox(&mut sandbox, lang, code)
             };
             let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = writers.iter().map(|(w, l)| (*w, l.as_ref())).collect();
@@ -731,7 +769,7 @@ impl<'a> Daemon<'a> {
             let (verified, mut summary, files) = match phases.done::<(bool, String, Vec<crate::workshop::FileEdit>)>("2-checked") {
                 Some(v) => v,
                 None => {
-                    let v = verify_project_change(&project_name, &folder, &title, lang, &desc, &code, &outcome, &base);
+                    let v = verify_project_change(&project_name, &folder, &title, lang, &desc, &code, &outcome, &base, proven.get());
                     phases.finished("2-checked", &v);
                     v
                 }
@@ -754,7 +792,7 @@ impl<'a> Daemon<'a> {
                 summary.push_str(&format!("\n\nIn plain English: {plain}"));
             }
             if let Some(by) = by {
-                summary.push_str(&format!(" (Written by {}.)", by.named()));
+                summary.push_str(&format!(" (Written by {}.)", by.named_with(&coder_name)));
             }
 
             let bases: Vec<(String, String)> = start_bases
@@ -781,7 +819,7 @@ impl<'a> Daemon<'a> {
                 "On it — scoping \"{title_ack}\" for {project_ack} in {}; {} will write it, and I'll check it \
                  here before it lands in that project's queue for your go-ahead.{carrying_on}",
                 lang.plain(),
-                first.named()
+                first.named_with(&coder_ack)
             )
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()

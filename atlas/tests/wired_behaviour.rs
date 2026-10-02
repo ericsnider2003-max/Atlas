@@ -47,6 +47,19 @@ const NEEDS_A_WHOLE_SENTENCE: &[(&str, &str)] = &[
     ("remove", "remove Sam from the Friends group"),
     ("make", "make Maya a reader in the Friends group"),
     ("let", "let Maya post in the Friends group"),
+    // The short code leads (2 Oct 2026) count only when what follows names
+    // code -- "write a haiku" is a poem, not a build.
+    ("write a", "write a python script that renames my photos"),
+    ("write an", "write an app that tracks my runs"),
+    ("create a", "create a tool that merges csv files"),
+    ("create an", "create an api for my notes"),
+    ("create me a", "create me a scraper for job posts"),
+    ("make me a", "make me a script that backs up my notes"),
+    ("make me an", "make me an app that tracks my shopping"),
+    ("code a", "code a game of snake"),
+    ("program a", "program a calculator"),
+    ("build a", "build a website for my bakery"),
+    ("build an", "build an app that logs my workouts"),
 ];
 
 fn example(phrase: &str, takes_argument: bool, optional: bool) -> String {
@@ -76,11 +89,10 @@ fn every_phrase_in_the_command_file_parses_to_something_real() {
                 // only with a project named (round 10: "change the volume"
                 // was being asked which project it was for).
                 format!("{p} parser on the atlas project")
-            } else if c.intent == "build_it" {
-                // The short leads ("write a", "build an") reach code only
-                // when what follows names code (2 Oct 2026): "write a haiku"
-                // is not a program.
-                format!("{p} script that renames files by date")
+            } else if c.intent == "build_it" && matches!(p.as_str(), "write a" | "write an" | "create a" | "create an" | "create me a" | "make me a" | "make me an" | "code a" | "program a" | "build a" | "build an") {
+                // These reach a build only when what follows is code (2 Oct
+                // 2026, d2e62e9): "write a letter" must stay a letter.
+                format!("{p} python script that renames files")
             } else {
                 example(p, c.takes_argument, c.argument_optional)
             };

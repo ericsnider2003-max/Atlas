@@ -1239,7 +1239,7 @@ fn understood_all_of_it(
 /// | they said no to the offer | a call recording refused |
 /// | I'm not doing the dishes tonight | a task dropped |
 /// | write me a letter to my landlord | a program built |
-pub(crate) fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
+fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
     let r = rest.trim().to_lowercase();
     let first = r.split_whitespace().next().unwrap_or("");
     let words = r.split_whitespace().count();

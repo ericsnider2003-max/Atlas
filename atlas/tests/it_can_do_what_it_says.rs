@@ -268,6 +268,17 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
     (
+        "forget the phrase",
+        "heard before the parser by `phrasebook::asked_about_phrasebook` in `daemon/learning.rs`, with the \
+         learned words after it (\"forget the phrase play some tunes\"); tests/learning_how_you_talk.rs \
+         drives it through a turn.",
+    ),
+    (
+        "I applied for <role> at <company>",
+        "heard before the parser by `applied::heard`, from `hunting::applied_asked` in both \
+         local-answer chains of `daemon/turn.rs` (`tests/job_applications.rs` parses it).",
+    ),
+    (
         "that's all",
         "said to the phone's hands-free Talk page, which stops listening on it in the page's own \
          script (`hubpages::talk_page`, tests/hands_free.rs) -- it never reaches the parser.",

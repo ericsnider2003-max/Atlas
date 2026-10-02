@@ -99,6 +99,8 @@ fn an_installed_coding_agent_is_offered_first_and_a_no_still_gets_it_written() {
     d.find_coding_agents_with_for_test(claude_only);
     let asked = d.turn("write a python script that prints hello", 100);
     assert!(asked.contains("Claude Code") && asked.contains("Say yes"), "the agent is offered first: {asked}");
+    // Offered, not started: nothing runs before the yes.
+    assert!(!asked.starts_with("On it"), "work began before you answered: {asked}");
     let after_no = d.turn("no", 101);
     assert!(after_no.contains("On it") && after_no.contains("Python"), "a no to the agent is a yes to writing it: {after_no}");
 }
@@ -112,6 +114,7 @@ fn with_no_agent_atlas_writes_it_in_python_and_says_who_writes_it() {
     let reply = d.turn("make me a tool that totals my receipts", 100);
     assert!(reply.contains("Python"), "Python when no language is named: {reply}");
     assert!(reply.contains("the model on this computer"), "says which model writes it: {reply}");
+    assert_eq!(reply.matches("Claude Code").count(), 0, "with none installed, none is offered: {reply}");
 }
 
 #[test]
@@ -125,6 +128,8 @@ fn the_coding_agent_can_be_switched_off() {
     d.find_coding_agents_with_for_test(claude_only);
     let reply = d.turn("write a python script that prints hello", 100);
     assert!(!reply.contains("Claude Code"), "off means not offered: {reply}");
+    // Off means Atlas writes it itself, straight away -- not a question.
+    assert_eq!(reply.matches("Say yes").count(), 0, "off still asked: {reply}");
 }
 
 #[test]
@@ -174,7 +179,8 @@ fn run_it_asks_first_and_names_what_will_run() {
     let (c, p) = (cfg(), plat());
     let dir = tmp("run");
     let file = dir.join("hello.py");
-    std::fs::write(&file, "print('hello')\n").unwrap();
+    // It leaves a mark when it runs, so "nothing ran" is checked, not read.
+    std::fs::write(&file, "open('ran.txt', 'w').write('x')\nprint('hello')\n").unwrap();
     atlas::build_it::LastBuild { path: file.to_string_lossy().into_owned(), lang: atlas::craft::Lang::Python, built: true }.keep();
     let llm: Arc<dyn Llm> = Arc::new(MockLlm("ok".into()));
     let mut d = Daemon::new(&c, &p, Some(llm), Store::new(tmp("run-store")), Proactive::new(ProactiveConfig::default()));
@@ -182,6 +188,7 @@ fn run_it_asks_first_and_names_what_will_run() {
     if atlas::codetools::any_python(&atlas::roots::install_root()).is_some() {
         assert!(reply.contains("hello.py") && reply.contains("Say yes"), "asks first, naming the file: {reply}");
         assert!(!reply.contains("printed"), "nothing has run yet: {reply}");
+        assert_eq!(dir.join("ran.txt").exists() || std::path::Path::new("ran.txt").exists(), false, "it ran before the yes");
     } else {
         assert!(reply.contains("no Python"), "{reply}");
     }

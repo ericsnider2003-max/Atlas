@@ -316,6 +316,52 @@ pub fn better_talk_model() -> Piece {
     }
 }
 
+/// The bigger talking model (`deepbrain::BIGGER_TALK`) and its picture
+/// encoder: Qwen3-VL 8B Instruct, Qwen's own GGUF files (Apache-2.0), pinned
+/// to the repository's commit. Sizes and SHA-256 are Hugging Face's LFS
+/// record of each file, read on 2 Oct 2026 from the repository's file list
+/// at that commit and from the download's own `X-Linked-ETag` -- the same
+/// record that matches the shipped 4B's pinned hashes exactly. Not yet
+/// downloaded and hashed on a machine of ours; `fetch` checks the hash on
+/// arrival either way. Only offered where the machine has room
+/// (`models::room_for_bigger_talk`).
+pub fn bigger_talk_model() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the bigger model",
+            for_what: "understanding you better, on a machine with room",
+            url: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/f982a07559d4a2f6c8744d840bf6fccab30eea96/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            sha256: "67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2",
+            bytes: 5_027_784_800,
+            lands: Lands::File("models/Qwen3VL-8B-Instruct-Q4_K_M.gguf"),
+        },
+        Piece {
+            name: "the bigger model's picture reader",
+            for_what: "reading screens and pictures with the bigger model",
+            url: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/f982a07559d4a2f6c8744d840bf6fccab30eea96/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf",
+            sha256: "c6ba85508d82f42590e6eb77d5340369ab6fecf107a7561d809523d8aa5f3bfd",
+            bytes: 752_289_728,
+            lands: Lands::File("models/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf"),
+        },
+    ]
+}
+
+/// About how much memory the helpers installed here hold while Atlas runs,
+/// in MB: hearing (Parakeet), the wake-word spotter, telling voices apart,
+/// the speaking voice, the meaning model and the seeing models (hands
+/// included). Estimated from their files -- half again on top for what they
+/// take running -- not measured: enough to keep a bigger talking model from
+/// being chosen into memory they already use.
+pub fn helpers_resident_mb(root: &Path) -> u64 {
+    let bytes: u64 = [parakeet_pieces(), vec![crate::kws::spotter_piece()], voice_model(), crate::kokoro::pieces(), understanding(), seeing()]
+        .into_iter()
+        .flatten()
+        .filter(|p| have(p, root))
+        .map(|p| p.bytes)
+        .sum();
+    bytes * 3 / 2 / (1024 * 1024)
+}
+
 /// The shipped talking model, as `pictures` fetches it.
 pub fn faster_talk_model() -> Piece {
     pictures().into_iter().find(|p| p.name == "the language model").expect("the pictures set has the language model")
@@ -333,6 +379,39 @@ pub fn deep_model() -> Piece {
         sha256: "7d977cc96c2e08616016d967f232083e354691a8a16f345b26f7d782ee5c9601",
         bytes: 5_501_202_464,
         lands: Lands::File("models/Qwen_Qwen3.5-9B-IQ4_XS.gguf"),
+    }
+}
+
+/// The coding model (`coder`, 2 Oct 2026): Qwen2.5-Coder 7B Instruct at
+/// Q4_K_M, Qwen's own single-file GGUF, pinned to that repository's commit
+/// (13fb94bf). Licence Apache-2.0 (the repository's own card). Size and
+/// SHA-256 are Hugging Face's LFS record of the file, and the same as the
+/// file itself, downloaded and hashed on 2 Oct 2026. Fetched on a machine
+/// with room for it (`coder::size_for`), not on every one.
+pub fn coder_model() -> Piece {
+    Piece {
+        name: "the coding model",
+        for_what: "writing and fixing code",
+        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/13fb94bfda8c8cf22497dc57b78f391a9acb426a/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        sha256: "509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c",
+        bytes: 4_683_073_536,
+        lands: Lands::File("models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"),
+    }
+}
+
+/// The coding model for a small machine: Qwen2.5-Coder 1.5B Instruct at
+/// Q4_K_M, Qwen's own, pinned to commit f86cb2c1, Apache-2.0; checked the
+/// same way as `coder_model` (2 Oct 2026). The 3B between them is not
+/// offered: Qwen published it under its research licence, non-commercial
+/// only.
+pub fn small_coder_model() -> Piece {
+    Piece {
+        name: "the small coding model",
+        for_what: "writing and fixing code",
+        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/f86cb2c1fa58255f8052cc32aeede1b7482d4361/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        sha256: "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+        bytes: 1_117_320_768,
+        lands: Lands::File("models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"),
     }
 }
 
@@ -623,6 +702,9 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("voiceid" | "voice-id" | "voices") => Some(("the voice model, so Atlas can tell your voice from others (30 MB)", voice_model())),
         Some("wakeword" | "wake-word" | "wake" | "kws") => Some(("the wake-word spotter, so Atlas hears its name by the sound (18 MB)", vec![crate::kws::spotter_piece()])),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
+        // The coding model this machine has room for (2 Oct 2026, `coder`):
+        // the 7B, the 1.5B on a small machine, nothing on a very small one.
+        Some("coder" | "coding" | "code") => Some(("the coding model this computer has room for, so Atlas writes code with a model trained for it", crate::coder::pieces_for_here())),
         _ => None,
     }
 }
@@ -1184,6 +1266,8 @@ pub fn everything_else() -> Vec<Piece> {
         crate::npu::pieces(),
         // curl with HTTP/2, for Apple's push service (item 15).
         crate::apns::curl_piece().into_iter().collect(),
+        // The coding model this machine has room for, if any (2 Oct 2026).
+        crate::coder::pieces_for_here(),
     ]
         .into_iter()
         .flatten()

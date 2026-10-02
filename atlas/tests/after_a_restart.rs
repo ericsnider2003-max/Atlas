@@ -232,6 +232,9 @@ fn project_work_carries_on_from_its_last_finished_phase() {
     let p = plat();
     let model = Arc::new(Counting(Mutex::new(0)));
     let mut d = Daemon::new(cfg(), &p, Some(model.clone()), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    // No coding agent, whatever this machine has installed: with Claude Code
+    // on the PATH the work is offered to it instead (2 Oct 2026).
+    d.find_coding_agents_with_for_test(|_| None);
     d.workshop.register("diary", &folder.display().to_string(), 1);
     let said = d.execute_timed(&Intent::Improve(what.into()), what);
     assert!(said.starts_with("On it"), "{said}");

@@ -74,6 +74,13 @@ pub const DEEP_DEFAULT: &str = "Qwen_Qwen3.5-9B-IQ4_XS";
 pub const BETTER_TALK: &str = "Qwen_Qwen3.5-4B-Q4_K_M";
 /// The shipped talking model, which also reads pictures.
 pub const FASTER_TALK: &str = "Qwen3VL-4B-Instruct-Q4_K_M";
+/// The bigger talking model, for a machine with room for it (2 Oct 2026,
+/// "Atlas doesn't really understand me"): Qwen3-VL 8B Instruct at Q4_K_M,
+/// Qwen's own file -- the shipped 4B's bigger sibling, the same family and
+/// chat template, and it reads pictures with its own encoder. Talks only
+/// when it has been fetched and `models::room_for_bigger_talk` says this
+/// machine can hold it beside everything else Atlas runs.
+pub const BIGGER_TALK: &str = "Qwen3VL-8B-Instruct-Q4_K_M";
 
 /// Free memory kept beyond what the deep model needs before it may start.
 pub const HEADROOM_MB: u64 = 1024;
@@ -149,7 +156,7 @@ impl Gate {
         TalkGuard(self.clone())
     }
 
-    fn talking(&self) -> bool {
+    pub(crate) fn talking(&self) -> bool {
         self.talking.load(Ordering::SeqCst) > 0
     }
 
@@ -402,6 +409,10 @@ pub trait Engine: Send {
 /// A llama-server for the deep model.
 pub struct ServerEngine {
     pub model: crate::models::Model,
+    /// Its own log, in the logs folder (2 Oct 2026: the coding model is run
+    /// by the same engine, and its words mustn't land in the deep model's
+    /// log).
+    pub log: &'static str,
     /// The models settings with the deep port and context in place.
     pub cfg: crate::models::ModelsConfig,
     pub gpu_layers: u32,
@@ -411,13 +422,13 @@ pub struct ServerEngine {
 
 impl ServerEngine {
     pub fn new(model: crate::models::Model, cfg: crate::models::ModelsConfig, gpu_layers: u32, vars: crate::tools::Vars) -> ServerEngine {
-        ServerEngine { model, cfg, gpu_layers, vars, child: None }
+        ServerEngine { model, cfg, gpu_layers, vars, log: "deep-model-server.log", child: None }
     }
 }
 
 impl Engine for ServerEngine {
     fn start(&mut self) -> std::result::Result<(), String> {
-        let child = crate::models::launch_logging(&self.model, &self.cfg, self.gpu_layers, &self.vars, "deep-model-server.log")
+        let child = crate::models::launch_logging(&self.model, &self.cfg, self.gpu_layers, &self.vars, self.log)
             .map_err(|e| e.to_string())?;
         self.child = Some(child);
         Ok(())
@@ -471,6 +482,11 @@ pub struct DeepBrain {
     look_again: Option<Instant>,
     /// How long a load may take before it's given up on.
     pub load_limit: Duration,
+    /// What it is called in the log and in "which model" (2 Oct 2026: the
+    /// coding model is a second brain of this same kind): "deep model".
+    pub label: &'static str,
+    /// What it is started for: "background work".
+    pub for_what: &'static str,
 }
 
 impl DeepBrain {
@@ -490,6 +506,8 @@ impl DeepBrain {
             started: None,
             look_again: None,
             load_limit: LOAD_WAIT,
+            label: "deep model",
+            for_what: "background work",
         }
     }
 
@@ -516,6 +534,8 @@ impl DeepBrain {
             started: None,
             look_again: None,
             load_limit: LOAD_WAIT,
+            label: "deep model",
+            for_what: "background work",
         }
     }
 
@@ -556,10 +576,14 @@ impl DeepBrain {
                 }
                 let free = (self.free_mb)();
                 if free < self.need_mb + HEADROOM_MB {
-                    let why = format!(
-                        "the deep model ({}) needs about {} MB and {} MB is free; background work shares the talking model until there's room",
-                        self.model_id, self.need_mb + HEADROOM_MB, free
-                    );
+                    let why = if self.label == "deep model" {
+                        format!(
+                            "the deep model ({}) needs about {} MB and {} MB is free; background work shares the talking model until there's room",
+                            self.model_id, self.need_mb + HEADROOM_MB, free
+                        )
+                    } else {
+                        format!("the {} ({}) needs about {} MB and {} MB is free", self.label, self.model_id, self.need_mb + HEADROOM_MB, free)
+                    };
                     if self.gate.why_not() != why {
                         said.push(why.clone());
                     }
@@ -571,10 +595,10 @@ impl DeepBrain {
                     Ok(()) => {
                         self.started = Some(Instant::now());
                         self.gate.set(State::Starting, "");
-                        said.push(format!("starting the deep model ({}) for background work", self.model_id));
+                        said.push(format!("starting the {} ({}) for {}", self.label, self.model_id, self.for_what));
                     }
                     Err(e) => {
-                        let why = format!("the deep model couldn't start: {e}");
+                        let why = format!("the {} couldn't start: {e}", self.label);
                         said.push(why.clone());
                         self.gate.set(State::Unavailable, &why);
                         self.look_again = Some(Instant::now() + Duration::from_secs(RECHECK_SECS));
@@ -583,7 +607,7 @@ impl DeepBrain {
             }
             State::Starting => {
                 if !engine.running() {
-                    let why = "the deep model stopped while loading".to_string();
+                    let why = format!("the {} stopped while loading", self.label);
                     said.push(why.clone());
                     self.gate.set(State::Unavailable, &why);
                     self.look_again = Some(Instant::now() + Duration::from_secs(RECHECK_SECS));
@@ -591,10 +615,10 @@ impl DeepBrain {
                 } else if engine.healthy() {
                     self.gate.set(State::Up, "");
                     let took = self.started.map(|s| s.elapsed().as_millis()).unwrap_or(0);
-                    said.push(format!("the deep model is up ({}ms to load)", took));
+                    said.push(format!("the {} is up ({}ms to load)", self.label, took));
                 } else if self.started.is_some_and(|s| s.elapsed() > self.load_limit) {
                     engine.stop();
-                    let why = "the deep model took too long to load, so I stopped it".to_string();
+                    let why = format!("the {} took too long to load, so I stopped it", self.label);
                     said.push(why.clone());
                     self.gate.set(State::Unavailable, &why);
                     self.look_again = Some(Instant::now() + Duration::from_secs(RECHECK_SECS));
@@ -603,18 +627,46 @@ impl DeepBrain {
             }
             State::Up => {
                 if !engine.running() {
-                    said.push("the deep model stopped; it starts again when there's work".into());
+                    said.push(format!("the {} stopped; it starts again when there's work", self.label));
                     self.gate.set(State::Off, "");
                     self.started = None;
                 } else if !busy && self.last_busy.elapsed() >= self.idle {
                     engine.stop();
                     self.gate.set(State::Off, "");
                     self.started = None;
-                    said.push(format!("stopped the deep model after {}s with nothing to do", self.idle.as_secs()));
+                    said.push(format!("stopped the {} after {}s with nothing to do", self.label, self.idle.as_secs()));
                 }
             }
         }
         said
+    }
+
+    /// Is a call waiting on it, or running on it, now?
+    pub fn wanted(&self) -> bool {
+        self.gate.in_flight() > 0
+    }
+
+    /// How many megabytes short of starting it is, right now: `Some` only
+    /// when work is waiting for it, it isn't running or loading, and what's
+    /// free is less than it needs plus `HEADROOM_MB` (2 Oct 2026, for the
+    /// coding model: that is the moment the talking model may be asked to
+    /// make room). `free_mb` is measured here, so it's never asked twice.
+    pub fn short_of_room_mb(&self) -> Option<u64> {
+        if self.engine.is_none() || !self.wanted() || matches!(self.gate.state(), State::Up | State::Starting) {
+            return None;
+        }
+        let free = (self.free_mb)();
+        let need = self.need_mb + HEADROOM_MB;
+        (free < need).then(|| need - free)
+    }
+
+    /// Look again at the next pass, not a minute from now: room was just
+    /// made for it.
+    pub fn look_now(&mut self) {
+        self.look_again = None;
+        if self.engine.is_some() && self.gate.state() == State::Unavailable {
+            self.gate.set(State::Off, "");
+        }
     }
 
     /// Stop it now (Atlas closing, the setting switched off).
@@ -632,11 +684,15 @@ impl DeepBrain {
         if !self.is_set_up() {
             return "No deep model: background work shares the talking model.".into();
         }
+        let mut name = self.label.to_string();
+        if let Some(first) = name.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
         match self.gate.state() {
-            State::Off => format!("Deep model {}: not running; it starts when background work comes.", self.model_id),
-            State::Starting => format!("Deep model {}: loading.", self.model_id),
-            State::Up => format!("Deep model {}: running.", self.model_id),
-            State::Unavailable => format!("Deep model {}: not now -- {}.", self.model_id, self.gate.why_not()),
+            State::Off => format!("{name} {}: not running; it starts when {} comes.", self.model_id, self.for_what),
+            State::Starting => format!("{name} {}: loading.", self.model_id),
+            State::Up => format!("{name} {}: running.", self.model_id),
+            State::Unavailable => format!("{name} {}: not now -- {}.", self.model_id, self.gate.why_not()),
         }
     }
 }

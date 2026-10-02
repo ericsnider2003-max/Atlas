@@ -1846,13 +1846,18 @@ impl<'a> Daemon<'a> {
             let mut transcript = String::new();
             if let Some(timed) = &timed {
                 let wav = folder.join("sound.wav");
-                // The sound is a scratch copy of the cut, never kept whatever
-                // the recordings setting says (the video itself is): the
-                // guard drops it and the timed transcript's file on every
-                // way out, as for a recording.
-                let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
-                let mut sound = crate::retention::Recording::new(&wav, &scratch);
-                sound.and_also(&wav.with_extension("srt"));
+                // The sound pulled out for the transcriber, and the .srt it
+                // writes beside it, are scratch: gone however this ends, an
+                // early return or a panic included.
+                struct Scratch(Vec<std::path::PathBuf>);
+                impl Drop for Scratch {
+                    fn drop(&mut self) {
+                        for f in &self.0 {
+                            let _ = std::fs::remove_file(f);
+                        }
+                    }
+                }
+                let _scratch = Scratch(vec![wav.clone(), wav.with_extension("srt")]);
                 if run(&video.ffmpeg, crate::studio::audio_args(&s(&cut), &s(&wav))).is_ok() {
                     let mut v = vars.clone();
                     let stem_path = wav.with_extension("");
@@ -1869,7 +1874,6 @@ impl<'a> Daemon<'a> {
                         transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
                     }
                 }
-                drop(sound);
             }
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
@@ -2282,6 +2286,9 @@ impl<'a> Daemon<'a> {
     /// A turn heard through the current microphone, counted for or against
     /// it, so the ear that actually understands you wins (H13e).
     pub(super) fn heard_through_this_ear(&mut self, said: &str) {
+        // The turn knows it came by voice: a correction of it may be a
+        // mishearing (`learning`, 2 Oct 2026).
+        self.heard_by_voice(said);
         let understood = !matches!(self.parser.parse(said), Intent::Unknown(_)) || said.split_whitespace().count() >= 3;
         if let Some(line) = self.note_how_well_i_heard(understood) {
             self.heard_note = Some(line);

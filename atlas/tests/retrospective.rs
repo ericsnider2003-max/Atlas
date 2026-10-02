@@ -105,13 +105,14 @@ fn no_test_asserts_nothing() {
 /// thing it refused), so it is not prose-only here any more. The second
 /// assertion below is what would have caught that drift.
 const PROSE_ONLY_BASELINE: &[&str] = &[
-    // 2 Oct 2026 (merge): each drives a real Daemon turn -- an agent found or
-    // not on a stand-in PATH, the setting off, "run it" -- and checks what it
-    // said; the shape heuristic reads the reply checks as constants.
-    "atlas_writes_real_code::an_installed_coding_agent_is_offered_first_and_a_no_still_gets_it_written",
-    "atlas_writes_real_code::with_no_agent_atlas_writes_it_in_python_and_says_who_writes_it",
-    "atlas_writes_real_code::the_coding_agent_can_be_switched_off",
-    "atlas_writes_real_code::run_it_asks_first_and_names_what_will_run",
+    // 2 Oct 2026 (merge of chat-c-3): both drive a real Daemon turn and check
+    // the prompt the scripted model was actually sent; the heuristic reads
+    // the prompt checks as constants.
+    "learning_how_you_talk::the_people_and_project_a_sentence_names_reach_the_model",
+    "learning_how_you_talk::a_learned_wording_is_a_hint_when_it_is_only_close",
+    // 2 Oct 2026, merge of Chat A's PC organizing: drives a real Daemon
+    // turn with system changes off and checks the refusal it gives back; the
+    // shape heuristic reads `ProactiveConfig::default()` as a constant.
     "sorting_a_folder::with_system_changes_off_it_says_so_and_moves_nothing",
     // 28 Sep 2026, round 3 merge: both drive a real Daemon through
     // hublive::reply (a failed save; Pause) and check what comes back; the

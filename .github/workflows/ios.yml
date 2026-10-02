@@ -36,6 +36,10 @@ on:
         description: "Only check Apple's side of signing (about a minute), no build"
         type: boolean
         default: false
+      testflight:
+        description: "Also send this build to TestFlight (needs the app made once in App Store Connect)"
+        type: boolean
+        default: true
   push:
     tags: ["v*"]
 
@@ -179,6 +183,55 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
           ls -la "$RUNNER_TEMP/export"
+
+      # TestFlight (2 Oct 2026, Eric: "the only viable option to take burden
+      # off the users"). The ad hoc build above only installs on registered
+      # iPhones and needs Developer Mode on each; a TestFlight build installs
+      # from Apple's TestFlight app on any iPhone you invite, with neither.
+      # The same archive, exported for App Store Connect and uploaded with
+      # the same key. It needs the app to exist in App Store Connect once
+      # (Apps → + → New App, bundle ID com.ericsnider.atlas); until then this
+      # step says so and the ad hoc build still comes out.
+      - name: Send it to TestFlight
+        id: testflight
+        if: env.CHECK_ONLY != '1' && (github.event_name != 'workflow_dispatch' || inputs.testflight)
+        continue-on-error: true
+        working-directory: atlas/mobile/ios
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/TestFlight.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          set +e
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Atlas.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/TestFlight.plist" \
+            -exportPath "$RUNNER_TEMP/testflight" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee "$RUNNER_TEMP/testflight.log"
+          code=${PIPESTATUS[0]}
+          if [ "$code" != 0 ]; then
+            if grep -qiE "no suitable application records|Cannot determine the Apple ID|app record" "$RUNNER_TEMP/testflight.log"; then
+              echo "::warning::TestFlight: Atlas isn't in App Store Connect yet. Make it once: appstoreconnect.apple.com → Apps → + → New App, bundle ID com.ericsnider.atlas. The ad hoc build is still in this run's artifacts."
+            else
+              echo "::warning::TestFlight upload failed (see this step's log). The ad hoc build is still in this run's artifacts."
+            fi
+            exit 1
+          fi
+          echo "::notice::Build $GITHUB_RUN_NUMBER is on its way to TestFlight. Apple processes it for 5-30 minutes, then it shows in the TestFlight app."
 
       - name: If signing failed, what the profiles actually grant
         if: failure()

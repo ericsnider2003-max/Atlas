@@ -39,6 +39,11 @@ pub struct Session {
     pub current_project: Option<String>,
     pub started: u64,
     max_turns: usize,
+    /// How many turns have ever been recorded, and the intent of the last:
+    /// what `learning` reads to tell whether a turn did something and what
+    /// (2 Oct 2026). `turns` folds away, so its length can't say.
+    pub recorded: u64,
+    pub last_intent: Option<Intent>,
 }
 
 impl Default for Session {
@@ -51,6 +56,8 @@ impl Default for Session {
             current_project: None,
             started: now(),
             max_turns: 40,
+            recorded: 0,
+            last_intent: None,
         }
     }
 }
@@ -71,6 +78,9 @@ impl Session {
         if let Some(app) = app_of(intent) {
             self.last_app = Some(app);
         }
+        self.recorded += 1;
+        // Never the passphrase, even in memory.
+        self.last_intent = (!matches!(intent, Intent::Unlock(_))).then(|| intent.clone());
         self.turns.push(Turn {
             said: said.to_string(),
             action: kind_of(intent).to_string(),
