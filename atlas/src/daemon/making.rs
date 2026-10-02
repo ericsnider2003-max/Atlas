@@ -136,57 +136,145 @@ impl<'a> Daemon<'a> {
         Some((std::sync::Arc::new(crate::brain::ShellLlm { cfg: inference, vars: vars.clone() }), vars))
     }
 
+    /// The models to write code with right now, in the order to try them,
+    /// each named (`build_it::writers`, 2 Oct 2026): your own second model and
+    /// your Cloudflare worker first, then the one on this computer, then the
+    /// free online ones -- only for a request with nothing private in it.
+    pub(super) fn code_writers(&mut self, request: &str) -> Vec<(crate::build_it::Writer, std::sync::Arc<dyn crate::brain::Llm>)> {
+        use crate::build_it::Writer;
+        let tc = self.tools_cfg();
+        let online = self.connectivity.cached() == Reach::Online;
+        let worker = self.cloudflare_worker().map(|(w, _)| w);
+        let second = tc.llm_secondary.as_ref().map(|lc| {
+            let raw: std::sync::Arc<dyn crate::brain::Llm> = std::sync::Arc::new(crate::brain::ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() });
+            std::sync::Arc::new(crate::brain::Scrubbed(raw)) as std::sync::Arc<dyn crate::brain::Llm>
+        });
+        let local = self.background_llm();
+        let have = crate::build_it::Available {
+            your_second: second.is_some(),
+            worker: worker.is_some(),
+            local: local.is_some(),
+            free_online: tc.models.online_second,
+            online,
+            private: crate::brain::holds_something_private(request),
+        };
+        crate::build_it::writers(&have)
+            .into_iter()
+            .filter_map(|w| {
+                let llm = match w {
+                    Writer::YourSecond => second.clone(),
+                    Writer::Worker => worker.clone(),
+                    Writer::Local => local.clone(),
+                    Writer::FreeOnline => Some(std::sync::Arc::new(crate::freeonline::FreeOnline::new()) as std::sync::Arc<dyn crate::brain::Llm>),
+                };
+                llm.map(|l| (w, l))
+            })
+            .collect()
+    }
+
+    /// A request's marker, honoured only when it is the yes to the question
+    /// Atlas asked (`offered_for_yes`); otherwise the request as plain words.
+    fn marked_by_your_yes<'w>(&mut self, what: &'w str) -> (Option<&'static str>, &'w str) {
+        let (mark, rest) = crate::coding_agent::marked(what);
+        if mark == Some(crate::coding_agent::HAND_OVER) && self.offered_for_yes.take().as_deref() != Some(what) {
+            return (None, rest);
+        }
+        (mark, rest)
+    }
+
+    /// A coding agent installed on this computer, when the settings let one
+    /// be used (`coding_agent`).
+    pub(super) fn coding_agent_here(&self) -> Option<(crate::coding_agent::Agent, String)> {
+        if self.tools_cfg().build.coding_agent == crate::build_it::AgentUse::Off {
+            return None;
+        }
+        crate::coding_agent::installed_with(self.agent_lookup)
+    }
+
     /// Build code from a description, check it against the real toolchain, and
     /// hand over what passes.
     ///
-    /// The generating model is chosen the same way research chooses its
-    /// summariser: a Cloudflare worker when the machine is online and the
-    /// provider is set up, the local model otherwise — you never have to say
-    /// "do it online", Atlas delegates the drafting to free itself up when it
-    /// can and falls back to local when it can't. Either way the *check* is
-    /// local: the draft is written into a throwaway sandbox and run through
-    /// `craft`'s ladder (compile, lint, test) on this machine, because a
-    /// model's confidence is worth nothing and the compiler's verdict is worth
-    /// everything. The whole thing runs as a crew errand so the turn is not
-    /// blocked while cargo grinds.
+    /// Who writes it (2 Oct 2026): a coding agent installed here (Claude
+    /// Code, Codex), when there is one and you say yes; otherwise Atlas's own
+    /// models, strongest of yours first (`code_writers`), each given room for
+    /// a whole file, with fix rounds that edit the draft rather than rewrite
+    /// it, and a struggle on the laptop's model tried again on a stronger
+    /// one. Either way the *check* is local: the draft is written into a
+    /// throwaway sandbox and run through `craft`'s ladder (compile, lint,
+    /// test) on this machine, because a model's confidence is worth nothing
+    /// and the compiler's verdict is worth everything. The whole thing runs
+    /// as a crew errand so the turn is not blocked while the checks grind.
+    ///
+    /// Where it lands: a folder you named ("... save it to C:\code\tools"),
+    /// else a folder of its own under data/builds, never over an earlier one.
     pub(super) fn build_from_description(&mut self, what: &str) -> String {
         let cfg = self.tools_cfg().build.clone();
         if !cfg.enabled {
             return "Building code is switched off in your settings.".into();
         }
+        let (mark, what) = self.marked_by_your_yes(what.trim());
         let what = what.trim();
         if what.is_empty() {
             return "Tell me what to build — \"write me a script that renames files by date\", say."
                 .into();
         }
-        // Local model, or a worker when online and set up. This is the
-        // auto-delegation: no explicit "online" needed.
-        let worker = self.cloudflare_worker();
-        let gen_llm: std::sync::Arc<dyn crate::brain::Llm> = match &worker {
-            Some((w, _)) => w.clone(),
-            // Drafting code is background work (`deepbrain`).
-            None => match self.background_llm() {
-                Some(l) => l,
-                None => {
-                    return "I can write code, but I need a model to draft it and I haven't got \
-                            one configured."
-                        .into()
-                }
-            },
+        let (named_dir, desc) = match crate::build_it::folder_named(what) {
+            Some((dir, rest)) if !rest.trim().is_empty() => (Some(dir), rest),
+            _ => (None, what.to_string()),
         };
-        let delegated = worker.is_some();
+        // The folder's own language, when it's a project; else the words;
+        // else Python.
+        let lang = named_dir
+            .as_deref()
+            .and_then(crate::craft::lang_of_dir)
+            .unwrap_or_else(|| crate::build_it::lang_from_words(&desc, cfg.default_language));
+
+        // A coding agent on this machine, asked first unless you've said not
+        // to ask; a web page stays with the house-style review below.
+        if mark != Some(crate::coding_agent::OWN_MODELS) && !crate::taste::wants_web_page(&desc) {
+            if let Some((agent, program)) = self.coding_agent_here() {
+                if mark == Some(crate::coding_agent::HAND_OVER) || !cfg.agent_asks_first {
+                    return self.build_with_agent(agent, program, &desc, lang, named_dir);
+                }
+                let place = match &named_dir {
+                    Some(d) => format!(" in {}", d.display()),
+                    None => " in a new folder of its own".into(),
+                };
+                let q = format!(
+                    "{} is installed on this computer, and it writes code far better than my own models. Say yes and \
+                     I'll hand this to it{place}, then run my own checks on what it writes. Say no and I'll write it myself.",
+                    agent.named()
+                );
+                let marked = format!("{}{what}", crate::coding_agent::HAND_OVER);
+                self.offered_for_yes = Some(marked.clone());
+                self.session.await_approval(crate::intent::Intent::Build(marked), &q);
+                return q;
+            }
+        }
+
+        let writers = self.code_writers(&desc);
+        if writers.is_empty() {
+            return if crate::brain::holds_something_private(&desc) {
+                "I can write code, but there's no model on this computer to write it with, and what you asked has \
+                 something private in it, so I won't send it to a free online one."
+                    .into()
+            } else {
+                "I can write code, but I need a model to draft it and I haven't got one configured.".into()
+            };
+        };
+        let first = writers[0].0;
         let max_rounds = cfg.max_fix_rounds;
-        let out_dir = crate::roots::data_sub("builds");
+        let builds = crate::roots::data_sub("builds");
 
         // A web page goes through the taste gate instead of the compiler: draft
         // the HTML, review it against the house style, and iterate until it
         // clears the blocking floors or runs out of budget. The review is the
         // reliable half — it can't say the design is good, only that it's
         // consistent and accessible, and the reply says exactly that.
-        if crate::taste::wants_web_page(what) {
+        if crate::taste::wants_web_page(&desc) {
             let rules = self.tools_cfg().taste.clone();
-            let brief = what.to_string();
-            let out_dir = out_dir.clone();
+            let brief = desc.clone();
+            let gen_llm = writers[0].1.clone();
             let work: crew::Work = Box::new(move |ctl| {
                 let outcome = crate::taste::build_web(&brief, gen_llm.as_ref(), max_rounds, |html| {
                     // Between rounds: a pause holds with the draft so far intact.
@@ -195,10 +283,13 @@ impl<'a> Daemon<'a> {
                 });
                 let mut said = outcome.spoken();
                 if let Some(html) = outcome.html() {
+                    // A folder of its own (2 Oct 2026: every page was
+                    // page.draft.html in the one folder, over the last).
+                    let out_dir = named_dir.unwrap_or_else(|| crate::build_it::build_folder(&builds, &brief));
                     let _ = std::fs::create_dir_all(&out_dir);
                     let built = matches!(outcome, crate::taste::Outcome::Built { .. });
-                    let name = if built { "page.reviewed.html" } else { "page.draft.html" };
-                    let path = out_dir.join(name);
+                    let name = if built { "page.html" } else { "page.draft.html" };
+                    let path = crate::build_it::file_name_for(&out_dir, name.trim_end_matches(".html"), "html");
                     // Said only if it's true. A full disk used to fail here
                     // silently and still announce where the page was.
                     match std::fs::write(&path, html) {
@@ -206,40 +297,40 @@ impl<'a> Daemon<'a> {
                         Err(e) => said.push_str(&format!("\n\nI couldn't save it to {} ({e}) — is the disk full?", path.display())),
                     }
                 }
+                said.push_str(&format!(" (Drafted by {}.)", first.named()));
                 Ok(said)
             });
             let taken = self.hand_off("build", crate::store::now(), work, Some(what.to_string()), SpeakPolicy::Always);
             return if taken {
-                if delegated {
-                    "On it — a worker online will draft the page and I'll review it against the house \
-                     style here before I show you.".into()
-                } else {
-                    "On it — I'll draft the page, review it against the house style, and iterate until \
-                     it's consistent and accessible.".into()
-                }
+                format!(
+                    "On it — {} will draft the page, and I'll review it against the house style here and iterate \
+                     until it's consistent and accessible.",
+                    first.named()
+                )
             } else {
                 "I'm swamped with background work right now — ask me to build it again in a moment.".into()
             };
         }
 
-        let lang = crate::build_it::lang_from_words(what, cfg.default_language);
-        let desc = what.to_string();
         let base = crate::roots::tmp_dir().join("builds");
-
+        let ack_by = first.named();
+        // Said only when what comes after the first is stronger than it.
+        let then = (first == crate::build_it::Writer::Local).then(|| writers.get(1).map(|(w, _)| w.named())).flatten();
         let work: crew::Work = Box::new(move |ctl| {
             let mut sandbox = match crate::sandbox::Sandbox::create(&base, "build") {
                 Ok(s) => s,
                 Err(e) => return Err(format!("couldn't make a sandbox to build in: {e}")),
             };
             // The checker: scaffold the draft into the sandbox and run the
-            // ladder. Injected into `build_loop` so the loop logic is testable
+            // ladder. Injected into `build_with` so the loop logic is testable
             // without a toolchain; here it is the real compiler.
             let mut check = |code: &str| -> crate::build_it::Check {
                 // Between rounds: a pause holds with the draft so far intact.
                 let _ = ctl.checkpoint();
                 check_draft_in_sandbox(&mut sandbox, lang, code)
             };
-            let outcome = crate::build_it::build_loop(&desc, lang, gen_llm.as_ref(), max_rounds, &mut check);
+            let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = writers.iter().map(|(w, l)| (*w, l.as_ref())).collect();
+            let (outcome, by) = crate::build_it::build_with(&desc, lang, &refs, max_rounds, &mut check);
             // The sandbox has done its job; left behind, one piled up per build.
             drop(check);
             let _ = sandbox.discard();
@@ -262,20 +353,31 @@ impl<'a> Daemon<'a> {
             // Verified code is written where you can pick it up; a struggle
             // still leaves its best draft there, clearly named.
             let mut said = outcome.spoken(lang);
+            if let Some(by) = by {
+                said.push_str(&format!(" (Written by {}.)", by.named()));
+            }
             if let Some(code) = outcome.code() {
+                // A folder you named, or one of its own; named for what it
+                // does, never over the top of the last one, and said where
+                // (1 Oct 2026: every build overwrote "build.verified.py").
+                let out_dir = named_dir.clone().unwrap_or_else(|| crate::build_it::build_folder(&builds, &desc));
                 let _ = std::fs::create_dir_all(&out_dir);
-                // Named for what it does, never over the top of the last
-                // one, and said where (1 Oct 2026: every build overwrote
-                // "build.verified.py", and the reply never said where it was).
                 let ext = if outcome.is_built() { ext_for(lang).to_string() } else { format!("draft.{}", ext_for(lang)) };
                 let path = crate::build_it::file_name_for(&out_dir, &desc, &ext);
                 match std::fs::write(&path, code) {
-                    Ok(()) => said.push_str(&format!("\n\nSaved as {}, in {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), out_dir.display())),
+                    Ok(()) => {
+                        said.push_str(&format!("\n\nSaved as {}, in {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), out_dir.display()));
+                        crate::build_it::LastBuild { path: path.to_string_lossy().into_owned(), lang, built: outcome.is_built() }.keep();
+                        if crate::build_it::run_command(lang, &path, &[], None, Some("python")).is_some() {
+                            said.push_str(" Say \"run it\" and I'll run it and tell you what it prints.");
+                        }
+                    }
                     Err(e) => said.push_str(&format!("\n\n(I couldn't save it to {} — {e}. Is the disk full?)", path.display())),
                 }
                 // Auto-explain: generated code never arrives without a plain-
                 // English summary of what it does, iterated to read plainly.
-                if let Some(plain) = crate::explain::in_plain_english(code, gen_llm.as_ref(), max_rounds) {
+                let explainer = writers.iter().find(|(w, _)| Some(*w) == by).or(writers.first()).map(|(_, l)| l.clone());
+                if let Some(plain) = explainer.and_then(|l| crate::explain::in_plain_english(code, l.as_ref(), max_rounds)) {
                     said.push_str(&format!("\n\nIn plain English: {plain}"));
                 }
             }
@@ -287,16 +389,168 @@ impl<'a> Daemon<'a> {
 
         let taken = self.hand_off("build", crate::store::now(), work, Some(what.to_string()), SpeakPolicy::Always);
         if taken {
-            if delegated {
-                "On it — I've handed the drafting to a worker online and I'll check what comes back \
-                 against the compiler here before I show you."
-                    .into()
-            } else {
-                "On it — I'll write it, check it against the compiler and tests, and tell you how it went."
-                    .into()
-            }
+            let more = then.map(|w| format!(" If it gets stuck, {w} has a go.")).unwrap_or_default();
+            format!("On it — {ack_by} will write it in {}, and I'll check it against the real tools here and tell you how it went.{more}", lang.plain())
         } else {
             "I'm swamped with background work right now — ask me to build it again in a moment.".into()
+        }
+    }
+
+    /// Hand a build to a coding agent, in a folder of its own (or the one
+    /// you named), then run Atlas's own checks on what it wrote -- its word
+    /// that it works counts for nothing until they agree.
+    fn build_with_agent(&mut self, agent: crate::coding_agent::Agent, program: String, desc: &str, lang: crate::craft::Lang, named_dir: Option<std::path::PathBuf>) -> String {
+        let fresh = named_dir.as_ref().map_or(true, |d| std::fs::read_dir(d).map_or(true, |mut r| r.next().is_none()));
+        let folder = named_dir.unwrap_or_else(|| crate::build_it::build_folder(&crate::roots::data_sub("builds"), desc));
+        if let Err(e) = std::fs::create_dir_all(&folder) {
+            return format!("I couldn't make {} to build in: {e}.", folder.display());
+        }
+        let task = crate::coding_agent::task(desc, lang, &folder, fresh);
+        let base = crate::roots::tmp_dir().join("builds");
+        let work: crew::Work = Box::new(move |_ctl| {
+            let ran = crate::coding_agent::run(agent, &program, &folder, &task, 30 * 60);
+            if !ran.finished {
+                return Ok(format!("{} didn't finish the build: {}", agent.named(), opening_of(&ran.said)));
+            }
+            let files = crate::coding_agent::files_in(&folder, lang);
+            let Some(main) = files.first() else {
+                return Ok(format!(
+                    "{} says it's done, but I can't find any {} file it wrote in {}. It said: {}",
+                    agent.named(), lang.plain(), folder.display(), opening_of(&ran.said)
+                ));
+            };
+            // One file: checked in a sandbox like Atlas's own drafts. More:
+            // the folder's own checks, read-only.
+            let check = if files.len() == 1 {
+                let code = std::fs::read_to_string(main).unwrap_or_default();
+                match crate::sandbox::Sandbox::create(&base, "agent-build") {
+                    Ok(mut sb) => {
+                        let c = check_draft_in_sandbox(&mut sb, lang, &code);
+                        let _ = sb.discard();
+                        c
+                    }
+                    Err(e) => crate::build_it::Check::Failed(format!("couldn't make a sandbox to check it in: {e}")),
+                }
+            } else {
+                run_ladder_in(&folder, lang, false)
+            };
+            let verdict = match &check {
+                crate::build_it::Check::Passed(_) => "It passes my checks here.".to_string(),
+                crate::build_it::Check::Failed(out) => format!("It doesn't pass my checks yet: {}", opening_of(out)),
+                crate::build_it::Check::CannotCheck(missing) => format!("I couldn't check it: {missing} isn't installed on this computer."),
+            };
+            crate::build_it::LastBuild { path: main.to_string_lossy().into_owned(), lang, built: matches!(check, crate::build_it::Check::Passed(_)) }.keep();
+            Ok(format!(
+                "{} wrote it, in {}. {verdict} It says: {}\n\nSay \"run it\" and I'll run {} and tell you what it prints.",
+                agent.named(),
+                folder.display(),
+                crate::sandbox::trim_output(&ran.said, 600),
+                main.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            ))
+        });
+        if self.hand_off("build", crate::store::now(), work, Some(desc.to_string()), SpeakPolicy::Always) {
+            format!("Handing it to {} — I'll check what it writes and tell you how it went.", agent.named())
+        } else {
+            "I'm swamped with background work right now — ask me to build it again in a moment.".into()
+        }
+    }
+
+    /// Let a coding agent change one of your projects in place, after your
+    /// yes: a copy of the folder first (no copy, no change), the agent run in
+    /// the folder, then the project's own checks run on the result, read-only.
+    /// Said plainly either way, with where the copy is.
+    fn change_with_agent(&mut self, agent: crate::coding_agent::Agent, program: String, project: &str, folder: &str, what: &str, lang: crate::craft::Lang) -> String {
+        let root = std::path::PathBuf::from(folder);
+        let slug = crate::build_it::slug_for(project);
+        let copy_to = crate::roots::data_sub("builds").join("before-agent").join(format!("{slug}-{}", crate::store::now()));
+        let task = crate::coding_agent::task(what, lang, &root, false);
+        let project_name = project.to_string();
+        let copy_said = copy_to.display().to_string();
+        let work: crew::Work = Box::new(move |_ctl| {
+            // 500 MB of source is far past any project this is for.
+            if let Err(why) = crate::coding_agent::keep_a_copy(&root, &copy_to, 500 * 1024 * 1024) {
+                return Ok(format!("I didn't let {} touch {project_name}: I couldn't keep a copy of it first ({why}).", agent.named()));
+            }
+            let ran = crate::coding_agent::run(agent, &program, &root, &task, 30 * 60);
+            let check = run_ladder_in(&root, lang, false);
+            let verdict = match &check {
+                crate::build_it::Check::Passed(notes) if notes.iter().any(|n| n.contains("no tests")) => {
+                    format!("{project_name} still builds, though it has no tests for me to run.")
+                }
+                crate::build_it::Check::Passed(_) => format!("{project_name}'s own checks pass."),
+                crate::build_it::Check::Failed(out) => format!("{project_name}'s own checks fail now: {}", opening_of(out)),
+                crate::build_it::Check::CannotCheck(m) => format!("I couldn't run {project_name}'s checks: {m} isn't installed here."),
+            };
+            let lead = if ran.finished { format!("{} changed {project_name}.", agent.named()) } else { format!("{} didn't finish: {}", agent.named(), opening_of(&ran.said)) };
+            Ok(format!(
+                "{lead} {verdict} It says: {}\n\nThe folder as it was before is kept in {copy_said} -- copy it back to undo.",
+                crate::sandbox::trim_output(&ran.said, 600)
+            ))
+        });
+        self.history.note(
+            &format!("handed \"{what}\" on {project} to {}", agent.named()),
+            "code",
+            crate::undo::Undo::You(format!("the folder as it was is copied to {}", copy_to_display(project))),
+            true,
+            crate::store::now(),
+        );
+        if self.hand_off("improve", crate::store::now(), work, Some(project.to_string()), SpeakPolicy::Always) {
+            format!("Handing it to {} — I'm keeping a copy of {project} first, and I'll run its checks after.", agent.named())
+        } else {
+            "I'm swamped with background work right now — ask me again in a moment.".into()
+        }
+    }
+
+    /// "Run it": the last thing built, run on this computer once you've said
+    /// yes to exactly what will run, for no more than two minutes, and what
+    /// it printed said back (2 Oct 2026). Output only lands in data/builds
+    /// unless you asked for a folder, so this is the "now what" after a build.
+    pub(super) fn run_build(&mut self, what: &str) -> String {
+        let Some(last) = crate::build_it::LastBuild::last() else {
+            return "I haven't built anything to run yet — ask me to write something first.".into();
+        };
+        let path = std::path::PathBuf::from(&last.path);
+        let Ok(code) = std::fs::read_to_string(&path) else {
+            return format!("What I last built was {}, and it isn't there any more.", path.display());
+        };
+        let deps = if last.lang == crate::craft::Lang::Python { crate::build_it::python_deps(&code) } else { Vec::new() };
+        let root = crate::roots::install_root();
+        let uv = crate::codetools::uv_program(&root);
+        let python = crate::codetools::any_python(&root);
+        let Some((program, args)) = crate::build_it::run_command(last.lang, &path, &deps, uv.as_deref(), python.as_deref()) else {
+            return match last.lang {
+                crate::craft::Lang::Python => "There's no Python on this computer to run it with.".into(),
+                l => format!("What I last built is {} that isn't a program on its own, so there's nothing to run.", l.plain()),
+            };
+        };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let said_yes = what.trim() == crate::build_it::RUN_CONFIRMED && self.offered_for_yes.take().as_deref() == Some(crate::build_it::RUN_CONFIRMED);
+        if !said_yes {
+            let draft = if last.built { "" } else { " It's the draft that didn't pass my checks, so it may fail." };
+            let q = format!(
+                "Run {name} on this computer? Say yes and it runs as you, for up to {} minutes, as: {} {}.{draft}",
+                crate::build_it::RUN_FOR_SECS / 60,
+                std::path::Path::new(&program).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(program.clone()),
+                args.iter().map(|a| if a == &last.path { name.clone() } else { a.clone() }).collect::<Vec<_>>().join(" ")
+            );
+            self.offered_for_yes = Some(crate::build_it::RUN_CONFIRMED.into());
+            self.session.await_approval(crate::intent::Intent::RunBuild(crate::build_it::RUN_CONFIRMED.into()), &q);
+            return q;
+        }
+        let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| crate::roots::data_sub("builds"));
+        let said_name = name.clone();
+        let work: crew::Work = Box::new(move |_ctl| {
+            let name = said_name;
+            let (ok, out) = crate::sandbox::run_within(&program, &args, &[], &dir, crate::build_it::RUN_FOR_SECS, 3000);
+            let out = out.trim();
+            let lead = if ok { format!("{name} ran and finished.") } else { format!("{name} ran and failed.") };
+            Ok(if out.is_empty() { format!("{lead} It printed nothing.") } else { format!("{lead} It printed:\n{out}") })
+        });
+        self.history.note(&format!("ran {}", last.path), "code", crate::undo::Undo::Cannot("a program that has run can't be un-run".into()), false, crate::store::now());
+        if self.hand_off("run-build", crate::store::now(), work, Some(name.clone()), SpeakPolicy::Always) {
+            format!("Running {name} — I'll tell you what it prints.")
+        } else {
+            "I'm swamped with background work right now — ask me again in a moment.".into()
         }
     }
 
@@ -309,33 +563,73 @@ impl<'a> Daemon<'a> {
         if !cfg.enabled {
             return "Building is switched off in your settings.".into();
         }
-        let what = what.trim();
-        if what.is_empty() {
+        let (mark, what) = self.marked_by_your_yes(what.trim());
+        let asked = what.trim();
+        if asked.is_empty() {
             return "Tell me the project and what to change — \"on the Atlas project, add a date parser\"."
                 .into();
         }
+        // A folder named in the sentence is the project (2 Oct 2026: "in
+        // C:\code\app, add a dark mode" was ignored and the project was
+        // called "my"). Registered under its own name, or the folder's.
+        let mut what = asked.to_string();
+        if let Some((dir, rest)) = crate::build_it::folder_named(asked) {
+            if dir.is_dir() && !rest.trim().is_empty() {
+                let name = self
+                    .detect_project(&rest)
+                    .or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()))
+                    .unwrap_or_else(|| "project".into());
+                self.workshop.register(&name, &dir.to_string_lossy(), crate::store::now());
+                let _ = self.workshop.save(&self.store);
+                what = if rest.to_lowercase().contains(&name.to_lowercase()) { rest } else { format!("{rest} (in the {name} project)") };
+            }
+        }
+        let what = what.as_str();
         // Which project is this for? A registered name mentioned anywhere in
         // the request wins; otherwise a "project X"/"on X"/"in X" phrase names
         // a new one.
         let project = match self.detect_project(what) {
             Some(p) => p,
             None => {
-                return "Which project is this for? Name it — \"on the Atlas project, …\" — and I'll \
-                        queue the change there."
+                return "Which project is this for? Name it — \"on the Atlas project, …\" — or the folder it's in \
+                        — \"in C:\\code\\app, …\" — and I'll queue the change there."
                     .into()
             }
         };
-        let worker = self.cloudflare_worker();
-        let gen_llm: std::sync::Arc<dyn crate::brain::Llm> = match &worker {
-            Some((w, _)) => w.clone(),
-            // Drafting code is background work (`deepbrain`).
-            None => match self.background_llm() {
-                Some(l) => l,
-                None => return "I can do that, but I need a model to build it and none is configured.".into(),
-            },
-        };
-        let delegated = worker.is_some();
-        let lang = crate::build_it::lang_from_words(what, cfg.default_language);
+        let folder = self.workshop.resolve(&project).map(|p| p.folder.clone()).unwrap_or_default();
+        // The project's own language first (`craft::lang_of_dir`), then the
+        // words, then the default.
+        let lang = (!folder.is_empty())
+            .then(|| crate::craft::lang_of_dir(std::path::Path::new(&folder)))
+            .flatten()
+            .unwrap_or_else(|| crate::build_it::lang_from_words(what, cfg.default_language));
+
+        // A coding agent here may change the project in place -- always
+        // asked first, whatever the setting says, because these are your
+        // files; a copy of the folder is kept before it starts.
+        if mark != Some(crate::coding_agent::OWN_MODELS) && std::path::Path::new(&folder).is_dir() {
+            if let Some((agent, program)) = self.coding_agent_here() {
+                if mark == Some(crate::coding_agent::HAND_OVER) {
+                    return self.change_with_agent(agent, program, &project, &folder, what, lang);
+                }
+                let q = format!(
+                    "{} is installed on this computer, and it's much better at this than my own models. Say yes and I'll \
+                     let it change {project} in {folder} directly — I'll keep a copy of the folder first and run the \
+                     project's checks after. Say no and I'll draft the change myself and queue it for you to read.",
+                    agent.named()
+                );
+                let marked = format!("{}{asked}", crate::coding_agent::HAND_OVER);
+                self.offered_for_yes = Some(marked.clone());
+                self.session.await_approval(crate::intent::Intent::Improve(marked), &q);
+                return q;
+            }
+        }
+        let context_for_writers = format!("{what}\n{}", read_project_context(&folder));
+        let writers = self.code_writers(&context_for_writers);
+        if writers.is_empty() {
+            return "I can do that, but I need a model to build it and none is configured.".into();
+        }
+        let first = writers[0].0;
         let max_rounds = cfg.max_fix_rounds;
         let desc = what.to_string();
         let title = workshop_title(what);
@@ -347,7 +641,6 @@ impl<'a> Daemon<'a> {
         // Any context Atlas can read from the project folder now, so the draft
         // is written against what's actually there. Read on the tick thread;
         // the errand runs elsewhere and gets the text, not the folder.
-        let folder = self.workshop.resolve(&project).map(|p| p.folder.clone()).unwrap_or_default();
         let context = read_project_context(&folder);
         // What the files this could write look like now, as the model is
         // about to read them — taken here, at the start, not when the change
@@ -398,10 +691,13 @@ impl<'a> Daemon<'a> {
                 let _ = ctl.checkpoint();
                 check_draft_in_sandbox(&mut sandbox, lang, code)
             };
+            let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = writers.iter().map(|(w, l)| (*w, l.as_ref())).collect();
+            let mut by = None;
             let outcome = match phases.done::<crate::build_it::Outcome>("1-draft") {
                 Some(o) => o,
                 None => {
-                    let o = crate::build_it::build_loop(&prompt, lang, gen_llm.as_ref(), max_rounds, &mut check);
+                    let (o, w) = crate::build_it::build_with(&prompt, lang, &refs, max_rounds, &mut check);
+                    by = w;
                     if o.code().is_some() {
                         phases.finished("1-draft", &o);
                     }
@@ -414,10 +710,12 @@ impl<'a> Daemon<'a> {
             if ctl.checkpoint() {
                 return Err("you asked me to stop".into());
             }
+            // Nothing to queue: no draft, or one the model ran out of room
+            // for -- a cut-off file is never offered as a change.
             let Some(code) = outcome.code().map(str::to_string) else {
                 return Err(match &outcome {
                     crate::build_it::Outcome::NoDraft(w) => w.clone(),
-                    _ => "couldn't build that".into(),
+                    o => o.spoken(lang),
                 });
             };
             // Verify as strongly as the project allows: isolated is where
@@ -440,13 +738,17 @@ impl<'a> Daemon<'a> {
             let plain = match phases.done::<Option<String>>("3-explained") {
                 Some(p) => p,
                 None => {
-                    let p = crate::explain::in_plain_english(&code, gen_llm.as_ref(), max_rounds);
+                    let explainer = writers.iter().find(|(w, _)| Some(*w) == by).or(writers.first()).map(|(_, l)| l.clone());
+                    let p = explainer.and_then(|l| crate::explain::in_plain_english(&code, l.as_ref(), max_rounds));
                     phases.finished("3-explained", &p);
                     p
                 }
             };
             if let Some(plain) = plain {
                 summary.push_str(&format!("\n\nIn plain English: {plain}"));
+            }
+            if let Some(by) = by {
+                summary.push_str(&format!(" (Written by {}.)", by.named()));
             }
 
             let bases: Vec<(String, String)> = start_bases
@@ -469,17 +771,12 @@ impl<'a> Daemon<'a> {
 
         let taken = self.hand_off("improve", crate::store::now(), work, Some(project), SpeakPolicy::Always);
         if taken {
-            if delegated {
-                format!(
-                    "On it — scoping \"{title_ack}\" for {project_ack}, handing the drafting to a worker \
-                     online, and checking it here before it hits your queue.{carrying_on}"
-                )
-            } else {
-                format!(
-                    "On it — scoping \"{title_ack}\" for {project_ack}, building and checking it, then \
-                     it'll land in that project's queue for your go-ahead.{carrying_on}"
-                )
-            }
+            format!(
+                "On it — scoping \"{title_ack}\" for {project_ack} in {}; {} will write it, and I'll check it \
+                 here before it lands in that project's queue for your go-ahead.{carrying_on}",
+                lang.plain(),
+                first.named()
+            )
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()
         }
@@ -532,6 +829,16 @@ impl<'a> Daemon<'a> {
         let mut failures = Vec::new();
         for f in &plan.files {
             let target = root.join(&f.path);
+            // Never a cut-off file over a whole one (2 Oct 2026): a change
+            // queued before the builder could tell is caught here.
+            if target.is_file() {
+                if let Some(lang) = crate::craft::Lang::of_path(&f.path) {
+                    if crate::build_it::looks_cut_off("", &f.content, lang) {
+                        failures.push(format!("{}: left as it was — the new version looks cut off part-way, so I won't write it over yours", f.path));
+                        continue;
+                    }
+                }
+            }
             if let Some(parent) = target.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -1564,15 +1871,34 @@ impl<'a> Daemon<'a> {
 
     /// The most recent thing Atlas built, as code to explain.
     fn latest_build_code(&self) -> std::result::Result<(String, String), String> {
+        // The one remembered as last, wherever you had it saved (2 Oct 2026).
+        if let Some(last) = crate::build_it::LastBuild::last() {
+            let p = std::path::PathBuf::from(&last.path);
+            if let Ok(code) = std::fs::read_to_string(&p) {
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                return Ok((code, format!("what I built ({name})")));
+            }
+        }
         let dir = crate::roots::data_sub("builds");
-        let mut files: Vec<(std::path::PathBuf, std::time::SystemTime)> = std::fs::read_dir(&dir)
+        // Each build has a folder of its own now: one level down as well.
+        let entries: Vec<std::fs::DirEntry> = std::fs::read_dir(&dir)
             .into_iter()
             .flatten()
             .flatten()
+            .flat_map(|e| {
+                if e.path().is_dir() {
+                    std::fs::read_dir(e.path()).into_iter().flatten().flatten().collect::<Vec<_>>()
+                } else {
+                    vec![e]
+                }
+            })
+            .collect();
+        let mut files: Vec<(std::path::PathBuf, std::time::SystemTime)> = entries
+            .into_iter()
             .filter_map(|e| {
                 let p = e.path();
                 let m = e.metadata().ok()?.modified().ok()?;
-                p.is_file().then_some((p, m))
+                (p.is_file() && p.extension().is_some_and(|x| x != "json")).then_some((p, m))
             })
             .collect();
         files.sort_by_key(|(_, m)| *m);
@@ -1628,22 +1954,14 @@ impl<'a> Daemon<'a> {
                 return Some(p.name.clone());
             }
         }
-        // "the X project" / "on X" / "in X" — take the word after the lead.
-        for lead in ["the ", "on ", "in ", "for ", "project "] {
-            if let Some(i) = low.find(lead) {
-                let rest = &what[i + lead.len()..];
-                let word: String =
-                    rest.split_whitespace().next().unwrap_or("").chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
-                // "the date parser" shouldn't name a project "date"; only take
-                // it when the phrase is "<name> project" or the lead was
-                // "project".
-                let followed_by_project = rest.to_lowercase().contains("project");
-                if !word.is_empty() && (lead == "project " || followed_by_project) {
-                    return Some(word);
-                }
+        // A project registered for a folder the request names.
+        if let Some((dir, _)) = crate::build_it::folder_named(what) {
+            let d = dir.to_string_lossy().to_lowercase();
+            if let Some(p) = self.workshop.projects.iter().find(|p| !p.folder.is_empty() && p.folder.to_lowercase().trim_end_matches(['/', '\\']) == d.trim_end_matches(['/', '\\'])) {
+                return Some(p.name.clone());
             }
         }
-        None
+        name_after_a_lead(what)
     }
 
     /// Write a fresh master document for a project — what it is, where it
@@ -1678,6 +1996,60 @@ impl<'a> Daemon<'a> {
     }
 }
 
+/// "the X project" / "on X" / "in X" — the word after the lead, when the
+/// sentence says "project" after it or the lead was "project". The words
+/// "my", "the", "our" and the like are stepped over rather than taken as the
+/// name (2 Oct 2026: "add a feature to my app in my project" named a project
+/// "my"), and "project" itself is never a name.
+fn name_after_a_lead(what: &str) -> Option<String> {
+    const NOT_A_NAME: &[&str] = &["my", "the", "our", "your", "this", "that", "a", "an", "his", "her", "their", "its", "project", "app", "code", "repo"];
+    let low = what.to_ascii_lowercase();
+    for lead in ["the ", "on ", "in ", "for ", "project "] {
+        let mut from = 0;
+        while let Some(i) = low[from..].find(lead).map(|i| i + from) {
+            from = i + lead.len();
+            // A whole word only: "within" is not "in".
+            if i > 0 && low.as_bytes()[i - 1].is_ascii_alphanumeric() {
+                continue;
+            }
+            let rest = &what[i + lead.len()..];
+            let followed_by_project = rest.to_lowercase().contains("project");
+            if lead != "project " && !followed_by_project {
+                continue;
+            }
+            let word = rest
+                .split_whitespace()
+                .map(|w| w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>())
+                .find(|w| !w.is_empty() && !NOT_A_NAME.contains(&w.to_lowercase().as_str()));
+            if let Some(w) = word {
+                // "the date parser in the Homelab project": the word right
+                // before "project" is the name, not the first after the lead.
+                if lead != "project " {
+                    let words: Vec<String> = rest.split_whitespace().map(|w| w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect()).collect();
+                    if let Some(k) = words.iter().position(|x| x.eq_ignore_ascii_case("project")) {
+                        if k > 0 && !NOT_A_NAME.contains(&words[k - 1].to_lowercase().as_str()) {
+                            return Some(words[k - 1].clone());
+                        }
+                        continue;
+                    }
+                }
+                return Some(w);
+            }
+        }
+    }
+    None
+}
+
+/// Where a project's before-the-agent copies are kept, for the history.
+fn copy_to_display(project: &str) -> String {
+    crate::roots::data_sub("builds").join("before-agent").join(format!("{}-…", crate::build_it::slug_for(project))).display().to_string()
+}
+
+/// The first line of what a tool or agent said, for a reply.
+fn opening_of(text: &str) -> String {
+    text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("it said nothing").to_string()
+}
+
 /// Does pasted text look like code rather than words? Brackets, semicolons,
 /// operators or keywords, and more than a few of them.
 fn looks_like_code(text: &str) -> bool {
@@ -1685,4 +2057,19 @@ fn looks_like_code(text: &str) -> bool {
     let words = [" fn ", "def ", "function", "return", "import ", "class ", "let ", "const ", "var ", "#include", "=>", "->", "public ", "SELECT "];
     let keyword = words.iter().any(|w| text.contains(w));
     marks >= 3 || (keyword && marks >= 1) || text.contains('\n') && marks >= 1
+}
+
+#[cfg(test)]
+mod naming_a_project {
+    use super::name_after_a_lead;
+
+    #[test]
+    fn the_name_is_the_word_before_project_and_never_my() {
+        assert_eq!(name_after_a_lead("on the Atlas project, add a date parser").as_deref(), Some("Atlas"));
+        assert_eq!(name_after_a_lead("improve the date parsing in Homelab project").as_deref(), Some("Homelab"));
+        assert_eq!(name_after_a_lead("project Ledger: add a total").as_deref(), Some("Ledger"));
+        // 2 Oct 2026: this named a project "my".
+        assert_eq!(name_after_a_lead("add a feature to my app in my project"), None);
+        assert_eq!(name_after_a_lead("fix the bug within the project"), None);
+    }
 }

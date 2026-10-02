@@ -126,6 +126,30 @@ pub fn by_node(program: &str, root: &Path) -> Option<(PathBuf, PathBuf)> {
     (node.is_file() && script.is_file()).then_some((node, script))
 }
 
+/// uv, for installing a build's own Python packages and running it with
+/// them (2 Oct 2026): the one Atlas fetched, else one on this machine's PATH.
+pub fn uv_program(root: &Path) -> Option<PathBuf> {
+    let own = root.join("tools/uv").join(if cfg!(windows) { "uv.exe" } else { "uv" });
+    if own.is_file() {
+        return Some(own);
+    }
+    crate::tools::which("uv").map(PathBuf::from)
+}
+
+/// The Python Atlas set up for its checks, when it did.
+pub fn own_python(root: &Path) -> Option<PathBuf> {
+    let p = if cfg!(windows) { root.join("tools/pyenv/Scripts/python.exe") } else { root.join("tools/pyenv/bin/python") };
+    p.is_file().then_some(p)
+}
+
+/// A Python to run a build with: Atlas's own, else the machine's.
+pub fn any_python(root: &Path) -> Option<String> {
+    if let Some(p) = own_python(root) {
+        return Some(p.to_string_lossy().into_owned());
+    }
+    ["python3", "python", "py"].iter().find_map(|p| crate::tools::which(p))
+}
+
 /// Is the second step (`finish`) still to do for an archive that's here?
 pub fn unfinished(root: &Path) -> bool {
     (root.join("tools/uv/uv.exe").is_file() && !root.join("tools/pyenv/Scripts/pytest.exe").is_file())

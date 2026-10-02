@@ -149,6 +149,8 @@ mod budget;
 mod bug_sweep;
 #[path = "build_from_a_description.rs"]
 mod build_from_a_description;
+#[path = "atlas_writes_real_code.rs"]
+mod atlas_writes_real_code;
 #[path = "capability_honesty.rs"]
 mod capability_honesty;
 #[path = "capability_routine.rs"]

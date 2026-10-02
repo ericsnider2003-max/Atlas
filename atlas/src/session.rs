@@ -426,6 +426,7 @@ pub fn kind_of(i: &Intent) -> &'static str {
         Intent::TypeCode(_) => "type_code",
         Intent::TwoFactor(_) => "two_factor",
         Intent::KeepAtIt => "keep_at_it",
+        Intent::RunBuild(_) => "run_build",
         Intent::Goals(_) => "goals",
         Intent::Later(_) => "later",
         Intent::SortMail(_) => "sort_mail",

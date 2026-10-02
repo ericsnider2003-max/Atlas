@@ -285,4 +285,8 @@ impl Llm for AppleFirst {
         // Hard work never goes to the small model.
         self.own.complete_hard(system, user)
     }
+
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+        self.own.complete_long(system, user, max_tokens)
+    }
 }

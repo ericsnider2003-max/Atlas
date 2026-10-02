@@ -78,6 +78,10 @@ pub enum Intent {
     TwoFactor(String),
     /// Keep going on the last build that ran out of tries, as a long job.
     KeepAtIt,
+    /// Run the last thing Atlas built, once you've said yes, and say what it
+    /// printed (2 Oct 2026). The argument is empty when asked; the yes comes
+    /// back as `RUN_CONFIRMED`.
+    RunBuild(String),
     /// A goal of yours: set, worked on, dropped, or listed. The whole
     /// utterance, since which of those it is is in the phrase.
     Goals(String),
@@ -550,6 +554,7 @@ impl Intent {
             Intent::TypeCode(_) => "typing in your code".to_string(),
             Intent::TwoFactor(s) => format!("changing two-factor: {s}"),
             Intent::KeepAtIt => "keeping at the last build".to_string(),
+            Intent::RunBuild(_) => "running what I built".to_string(),
             Intent::Goals(_) => "your goals".to_string(),
             Intent::Later(_) => "your later list".to_string(),
             Intent::SortMail(_) => "sorting your mailbox".to_string(),
@@ -802,6 +807,28 @@ impl Parser {
         list.iter().any(|k| k == a)
     }
 
+    /// A sentence that opens with a folder ("in D:\\work\\site, ...") and
+    /// then asks for code work: that work, with the folder left in the words
+    /// for the handler to read.
+    fn work_in_a_folder(&self, input: &str) -> Option<(Intent, Option<String>)> {
+        let lower = input.trim_start().to_lowercase();
+        if !(lower.starts_with("in ") || lower.starts_with("inside ") || lower.starts_with("into ")) {
+            return None;
+        }
+        let (_, rest) = crate::build_it::folder_named(input)?;
+        let whole = input.trim().to_string();
+        match self.parse_named(&rest) {
+            (Intent::Improve(_), n) => Some((Intent::Improve(whole), n)),
+            (Intent::Build(_), n) => Some((Intent::Build(whole), n)),
+            (Intent::Unknown(_), _) => {
+                let first = normalize(&rest).split_whitespace().next().unwrap_or("").to_string();
+                matches!(first.as_str(), "add" | "fix" | "change" | "make" | "refactor" | "update" | "remove" | "rename" | "rewrite" | "implement" | "write" | "create" | "build")
+                    .then(|| (Intent::Improve(whole), Some("improve".to_string())))
+            }
+            _ => None,
+        }
+    }
+
     /// `improve` is reached by a clear coding verb, or by a general phrase
     /// with a project named ("the Atlas project", a registered name).
     fn improve_is_meant(&self, phrase: &str, rest: &str) -> bool {
@@ -822,6 +849,8 @@ impl Parser {
         let everyday = matches!(phrase, "work on the" | "update the" | "change the" | "add to" | "increase");
         words.iter().any(|w| CODE.contains(w))
             || self.projects.iter().any(|p| words.iter().any(|w| w == p))
+            // A folder named as where the work goes (2 Oct 2026).
+            || crate::build_it::folder_named(rest).is_some()
             || (!everyday && words.contains(&"project"))
     }
 
@@ -845,6 +874,12 @@ impl Parser {
             if !matches!(i, Intent::Unknown(_)) {
                 return (i, n);
             }
+        }
+        // "In C:\code\app, add a dark mode": a folder first, then the work
+        // (2 Oct 2026). Read as the work, with the folder kept in it; a plain
+        // "add/fix/change ..." after a folder is a change to what's in it.
+        if let Some(i) = self.work_in_a_folder(input) {
+            return i;
         }
         // A friend link pasted on its own, or inside a message: nothing a
         // phrase could start with, and it must reach `friends` exactly as
@@ -952,6 +987,13 @@ impl Parser {
             // command names no command -- so nothing downstream (an add-on's
             // permission check, say) mistakes it for one.
             if matches!(built, Intent::Unknown(_)) {
+                // A bare "add"/"make" that isn't a group change ("make me a
+                // script that ...", "add a feature to my app") leaves the
+                // rest of the table to look (2 Oct 2026: it ended the scan,
+                // and the sentence reached nothing).
+                if intent == "change_group" {
+                    continue;
+                }
                 return (built, None);
             }
             return (built, Some(intent.clone()));
@@ -1239,9 +1281,28 @@ fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
         "improve" if phrase.trim() == "improve" => {
             !matches!(first, "my" | "your" | "our" | "his" | "her" | "their") || has(&["code", "app", "program", "script", "project", "page", "site", "website", "function", "tool"])
         }
-        "build_it" => !has(&["letter", "report", "email", "essay", "note", "poem", "story", "speech", "summary", "cover", "bio", "message", "post", "article", "document", "doc", "memo", "paragraph", "response", "reply"]),
+        // Words, not code -- and a "script" for a video is words too.
+        "build_it" if has(&["letter", "report", "email", "essay", "note", "poem", "story", "speech", "summary", "cover", "bio", "message", "post", "article", "document", "doc", "memo", "paragraph", "response", "reply", "video", "youtube", "film", "movie", "episode", "podcast", "reel", "tiktok", "commercial", "play", "scene", "list", "plan", "recipe", "song", "lyrics", "caption", "tweet", "thread", "calendar", "event", "reminder", "account", "budget"]) => false,
+        // The short leads (2 Oct 2026) need what follows to be code: "write a
+        // python script", "create a tool that", "make me a scraper".
+        "build_it" if matches!(phrase.trim(), "write a" | "write an" | "create a" | "create an" | "create me a" | "make me a" | "make me an" | "code a" | "program a" | "build a" | "build an") => names_code(&r),
+        "build_it" => true,
         _ => true,
     }
+}
+
+/// Does this name something that is code -- a script, a program, an app, a
+/// tool -- or a language? What the short "write a"/"create a"/"make me a"
+/// leads need after them to be a build (2 Oct 2026).
+fn names_code(r: &str) -> bool {
+    const CODE: &[&str] = &[
+        "script", "scripts", "program", "programs", "app", "apps", "application", "tool", "tools", "function", "functions",
+        "bot", "cli", "scraper", "website", "webpage", "site", "game", "class", "module", "parser", "api", "server",
+        "utility", "code", "library", "extension", "plugin", "macro", "command-line", "commandline", "gui",
+        "python", "rust", "javascript", "typescript", "golang", "c++", "cpp", "powershell", "bash", "regex",
+        "calculator", "converter", "generator", "crawler", "dashboard", "endpoint", "daemon", "service",
+    ];
+    r.split(|c: char| c.is_whitespace() || c == ',' || c == '.').any(|w| CODE.contains(&w))
 }
 
 /// Intents whose argument must reach `build` exactly as spoken, whatever it
@@ -1342,6 +1403,7 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "type_code" => Intent::TypeCode(raw.trim().to_string()),
         "two_factor" => Intent::TwoFactor(raw.trim().to_string()),
         "keep_at_it" => Intent::KeepAtIt,
+        "run_build" => Intent::RunBuild(arg),
         "goals" => Intent::Goals(raw.trim().to_string()),
         "later" => Intent::Later(raw.trim().to_string()),
         "sort_mail" => Intent::SortMail(raw.trim().to_string()),

@@ -371,6 +371,7 @@ pub fn need_of(intent: &Intent) -> Need {
         | Intent::TwoFactor(_)
         // The compiler and the local model, on this machine.
         | Intent::KeepAtIt
+        | Intent::RunBuild(_)
         // Your goals are kept on this machine.
         | Intent::Goals(_)
         | Intent::Later(_)

@@ -54,6 +54,8 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
     "two_factor",
     // A long job on the owner's model and disk, like `build_it`.
     "keep_at_it",
+    // Running a program on the owner's machine.
+    "run_build",
     // The owner's goals and their list for later: reading them is reading
     // the owner, and changing them is theirs alone.
     "goals",

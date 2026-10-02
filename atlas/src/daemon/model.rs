@@ -98,6 +98,12 @@ impl<'a> Daemon<'a> {
         self.deep = deep;
     }
 
+    /// How a coding agent's program is looked for, for the tests: a stand-in
+    /// for this machine's PATH (`coding_agent`).
+    pub fn find_coding_agents_with_for_test(&mut self, lookup: fn(&str) -> Option<String>) {
+        self.agent_lookup = lookup;
+    }
+
     /// Where the deep model is and what it has done, for the tests.
     pub fn deep_gate_for_test(&self) -> std::sync::Arc<crate::deepbrain::Gate> {
         self.deep.gate.clone()

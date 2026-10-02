@@ -920,6 +920,16 @@ commands:
     takes_argument: true
     argument_optional: true
 
+  # Run what Atlas last built, after you say yes, and say what it printed
+  # (2 Oct 2026). The whole sentence, so "run it by me" stays conversation.
+  - intent: run_build
+    describe: "Run the program Atlas last built and say what it printed."
+    phrases: ["run it", "run the script", "run that script", "run what you built", "run what you made",
+              "run the program", "run that program", "run the last build", "run the code", "run that code",
+              "try running it", "run the thing you built", "run my script", "run the script you wrote",
+              "test it by running it", "run it and show me"]
+    anchored: true
+
   - intent: keep_at_it
     describe: "Keep working on the last build that ran out of tries, as a long job."
     # A build that ran out of tries, carried on as a long job (Eric, E3).
@@ -1014,9 +1024,16 @@ commands:
   # description verbatim, since code details (names, symbols) matter.
   - intent: build_it
     describe: "Write a program or script from a description. arg: what to build."
+    # 2 Oct 2026: "write a python script ...", "create a script ...", "make me
+    # a ... tool" and "write code to ..." all reached nothing. The short
+    # leads ("write a", "create a", "make me a") only count when what
+    # follows names something that is code (`intent::fits_the_command`).
     phrases: ["build me", "write me a", "write a function", "write a script",
               "code me", "make me a program", "build a tool that",
-              "write code", "code up"]
+              "write code", "code up", "write a", "write an", "create a", "create an",
+              "create me a", "make me a", "make me an", "make a script", "make a program",
+              "write code to", "write me some code", "write some code", "code a", "program a",
+              "build a", "build an"]
     takes_argument: true
     argument_optional: true
     raw_argument: true
@@ -1026,8 +1043,10 @@ commands:
   # builds and checks it, and files a proposed change in that project's queue.
   - intent: improve
     describe: "Change or refactor one of the user's code projects. arg: the change and the project."
+    # "add a feature to my app" (2 Oct 2026) reached nothing.
     phrases: ["improve", "on the", "increase", "add to", "change the",
-              "update the", "work on the", "refactor", "fix the"]
+              "update the", "work on the", "refactor", "fix the",
+              "add a feature", "add a feature to", "add feature", "add a new feature"]
     takes_argument: true
     argument_optional: true
     raw_argument: true

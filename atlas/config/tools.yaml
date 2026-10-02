@@ -482,6 +482,15 @@ uia:
   min_nodes: 4
   min_named_ratio: 0.4
 
+# Writing code (2 Oct 2026). `coding_agent`: when Claude Code (`claude`) or
+# Codex (`codex`) is installed on this computer, offer it the code you ask
+# for -- `auto` -- or never -- `off`. `agent_asks_first`: ask before each new
+# build goes to it; a change to one of your own projects is always asked
+# about. Atlas runs its own checks on whatever the agent writes.
+build:
+  coding_agent: auto
+  agent_asks_first: true
+
 # Atlas's own model layer — no Ollama in the path.
 # Atlas reads GGUF files itself, works out what fits in memory, formats the
 # prompt for each model's trained chat format, and drives llama.cpp's own

@@ -245,6 +245,7 @@ pub mod facts;
 pub mod faithful;
 pub mod council;
 pub mod build_it;
+pub mod coding_agent;
 pub mod brief;
 pub mod filing;
 // Sorting a folder by kind, copies and old installers to "To review", on

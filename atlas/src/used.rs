@@ -110,6 +110,7 @@ pub const FOR_KIND: &[(&str, &str)] = &[
     ("two_factor", "twofactor"),
     ("type_code", "twofactor"),
     ("keep_at_it", "taskloop"),
+    ("run_build", "build_it"),
     ("later", "later"),
     ("sort_mail", "triage"),
     ("schedule_post", "publish"),
