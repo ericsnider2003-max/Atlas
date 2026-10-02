@@ -134,6 +134,7 @@ pub mod kws;
 pub mod report;
 pub mod mcpserve;
 pub mod codetools;
+pub mod getknow;
 pub mod keeping;
 pub mod weather;
 pub mod register;

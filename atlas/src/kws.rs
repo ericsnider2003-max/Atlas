@@ -115,6 +115,23 @@ pub fn soundalike_at_start(words: &str) -> Option<String> {
     Some(rest.trim_start_matches(|c: char| !c.is_alphanumeric()).trim().to_string())
 }
 
+/// A sentence that opens by calling Atlas by a misheard name -- "List, did
+/// you hear me?", "Eatless, what's on today?" (the laptop, 30 Sep 2026: the
+/// first was taken as a later-list command and saved Atlas's own reply as
+/// your to-do) -- without that name. Only a name said *to* Atlas: the word
+/// on its own or followed by a comma, never "list my notes".
+pub fn misheard_name_opening(said: &str) -> Option<String> {
+    let t = said.trim_start();
+    let (first, rest) = match t.find([',', '!']) {
+        Some(i) => (&t[..i], &t[i + 1..]),
+        None => (t.trim_end_matches(['.', '?']), ""),
+    };
+    let w = first.trim().to_lowercase();
+    let w = w.strip_prefix("hey ").or_else(|| w.strip_prefix("ok ")).unwrap_or(&w).trim().to_string();
+    let named = SOUNDALIKES.contains(&w.as_str()) || matches!(w.as_str(), "list" | "eatless" | "english" | "atlas's" | "outless");
+    named.then(|| rest.trim().to_string())
+}
+
 // ---------------------------------------------------------------- where it is
 
 /// The sherpa-onnx library folders Atlas may already have: Parakeet's

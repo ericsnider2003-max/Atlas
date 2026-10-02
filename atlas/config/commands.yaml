@@ -272,7 +272,7 @@ commands:
     anchored: true
 
   - intent: capabilities
-    describe: "Say what Atlas can do, what is new, or whether it can do a particular thing. arg: the thing, optional."
+    describe: "Only when the user asks about Atlas itself: what it can do, what is new, or whether it can do a particular thing. Never for a request to do something or a question about the world. arg: the thing, optional."
     # "can you" and "what can you" were here, so every "can you …" became a
     # question about Atlas. "can you X" is read as a polite "X" (`polite_rest`).
     phrases: ["what can you do", "what's new", "whats new",
@@ -1132,7 +1132,7 @@ commands:
     takes_argument: true
 
   - intent: recommend
-    describe: "Suggest what would make Atlas faster or more useful here."
+    describe: "Only when the user asks how Atlas itself could be faster or more useful."
     phrases: ["what could make you faster", "what am i missing",
               "how could you be better", "what would help you"]
 

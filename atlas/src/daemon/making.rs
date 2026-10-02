@@ -6,6 +6,10 @@
 
 use super::*;
 
+/// Text over this many bytes is a document, kept whole on the reading
+/// shelf, not cut into facts.
+const READING_SHELF_OVER: usize = 200_000;
+
 impl<'a> Daemon<'a> {
     /// "Draw me a lighthouse at dusk": a picture made on this machine
     /// (`imagemake`), on the crew -- it takes a few minutes on a laptop, and
@@ -1066,26 +1070,37 @@ impl<'a> Daemon<'a> {
         if std::fs::metadata(arg).map(|m| m.is_dir()).unwrap_or(false) {
             return self.learn_folder(arg, now);
         }
-        // A readable file, or the text itself. A PDF or Word file is read for
-        // its words; a name that looks like a file but can't be read is said
-        // so -- until 1 Oct 2026 "learn from book.pdf" failed to read as text
-        // and the path itself was learned as a fact (research report §10).
-        let lower = arg.to_lowercase();
-        let looks_like_a_file = std::path::Path::new(arg).is_file()
-            || ((arg.contains('/') || arg.contains('\\') || std::path::Path::new(arg).extension().is_some()) && !arg.contains(' '));
-        let read: Option<std::result::Result<String, String>> = if lower.ends_with(".pdf") {
-            Some(std::fs::read(arg).map_err(|e| e.to_string()).and_then(|b| crate::pdftext::read(&b).map(|p| p.text)))
-        } else if lower.ends_with(".docx") {
-            Some(crate::unpack::docx_text(std::path::Path::new(arg)))
-        } else if looks_like_a_file {
-            Some(std::fs::read_to_string(arg).map_err(|e| e.to_string()))
-        } else {
-            None
-        };
-        let (text, whence) = match read {
-            Some(Ok(t)) => (t, format!("\"{arg}\"")),
-            Some(Err(why)) => return format!("I couldn't read {arg}: {why}. Nothing was learned."),
-            None => (arg.to_string(), "what you gave me".to_string()),
+        // A file named: read for what it is -- a PDF or Word file isn't text
+        // (1 Oct 2026: "learn from book.pdf" failed to read as text and the
+        // path itself was learned as a fact). A name that isn't there is said.
+        let low = arg.to_lowercase();
+        let path_shaped = arg.contains('/') || arg.contains('\\')
+            || [".pdf", ".docx", ".txt", ".md", ".epub", ".rtf", ".html"].iter().any(|e| low.ends_with(e));
+        let p = std::path::Path::new(arg);
+        if path_shaped && !p.is_file() {
+            return format!("I couldn't read {arg} -- I can't find a file called that. Give me its full path; nothing was learned.");
+        }
+        if p.is_file() && (low.ends_with(".pdf") || low.ends_with(".docx")) {
+            let text = if low.ends_with(".pdf") {
+                match std::fs::read(p).map_err(|e| e.to_string()).and_then(|b| crate::pdftext::read(&b).map(|pdf| pdf.text)) {
+                    Ok(t) => t,
+                    Err(e) => return format!("I couldn't read {arg}: {e}."),
+                }
+            } else {
+                match crate::unpack::docx_text(p) {
+                    Ok(t) => t,
+                    Err(e) => return format!("I couldn't read {arg}: {e}."),
+                }
+            };
+            return self.keep_on_the_reading_shelf(p, &text);
+        }
+        // A readable file path, or the text itself.
+        let (text, whence) = match std::fs::read_to_string(arg) {
+            // A long text file is a document to look things up in, not a few
+            // facts about you: it goes on the reading shelf, whole.
+            Ok(t) if t.len() > READING_SHELF_OVER => return self.keep_on_the_reading_shelf(p, &t),
+            Ok(t) => (t, format!("\"{arg}\"")),
+            Err(_) => (arg.to_string(), "what you gave me".to_string()),
         };
         let chunks = crate::facts::into_facts(&text);
         if chunks.is_empty() {
@@ -1102,6 +1117,25 @@ impl<'a> Daemon<'a> {
             "Learned {learned} thing{} from {whence}. Ask \"what do you know about …\" and I'll have it.",
             if learned == 1 { "" } else { "s" }
         )
+    }
+
+    /// A document kept whole in the reading folder, where search finds it a
+    /// chunk at a time and says where (`recall::add_readings`), rather than
+    /// cut into "facts" about you.
+    fn keep_on_the_reading_shelf(&mut self, from: &std::path::Path, text: &str) -> String {
+        if text.trim().is_empty() {
+            return "I opened it and there's no text in it I can read -- if it's a scan, say \"read\" and the file, and I'll read the pages.".into();
+        }
+        let dir = crate::roots::data_sub("reading");
+        let _ = std::fs::create_dir_all(&dir);
+        let name = from.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
+        let kept = dir.join(format!("{name}.txt"));
+        if let Err(e) = std::fs::write(&kept, text) {
+            return format!("I read it but couldn't keep it ({e}).");
+        }
+        self.reload_library();
+        let words = text.split_whitespace().count();
+        format!("Kept {name} ({words} words) on my reading shelf. Ask me about it and I'll answer from it and say where it says so.")
     }
 
     /// Import every readable text file under a folder in one pass.

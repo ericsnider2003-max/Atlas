@@ -212,7 +212,7 @@ pub fn all() -> Vec<Capability> {
 
         Capability { id: "index", what: "know where your files are", area: Files, state: Working, needs: None, offline: true, added: 4, runs: &[Needs::Files], modules: &["index", "chunker", "bm25"] },
         Capability { id: "recall", what: "find something you wrote — by a word that was in it, and by what it was about once an embedding model is installed", area: Files, state: Working, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["recall", "meaning", "stemmer", "bm25", "asking"] },
-        Capability { id: "remember", what: "remember what you tell it and what it researches, learn a whole document at once, and answer 'what do you know about X' — from one indexed fact book that recalls associatively, strengthens with repetition, corrects on restatement, and stays fast and bounded as it grows", area: Files, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["facts", "freshness", "consolidate", "contents"] },
+        Capability { id: "remember", what: "remember what you tell it and what it researches, learn a whole document at once, and answer 'what do you know about X' — from one indexed fact book that recalls associatively, strengthens with repetition, corrects on restatement, and stays fast and bounded as it grows; and 'get to know me' fills it in six questions", area: Files, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["facts", "freshness", "consolidate", "contents", "getknow"] },
         Capability { id: "system", what: "move files, set a wallpaper, tidy the desktop", area: Files, state: Off, needs: None, offline: true, added: 10, runs: &[Needs::Files], modules: &["system"] },
         Capability { id: "tune", what: "find what's slowing the machine down", area: Files, state: Off, needs: None, offline: true, added: 10, runs: &[Needs::Files, Needs::Background], modules: &["tune", "checks"] },
         Capability { id: "backup", what: "back itself up", area: Files, state: Working, needs: None, offline: true, added: 5, runs: &[Needs::Files], modules: &["store", "safety"] },
@@ -1542,7 +1542,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 452;
+pub const MODULES_IN_TREE: usize = 453;
 
 /// Every module no capability claims, and why it is not one.
 ///

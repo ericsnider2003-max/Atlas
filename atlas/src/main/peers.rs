@@ -156,6 +156,10 @@ pub(super) fn run_gate(dir: &std::path::Path, gate: &atlas::craft::Gate) -> atla
             output: "empty command".into(),
         };
     };
+    // The program the C++ ladder just built, by its full path.
+    let built = atlas::craft::program_in(dir, program);
+    let built = atlas::codetools::llvm_program(&built, &atlas::roots::install_root()).map(|p| p.to_string_lossy().into_owned()).unwrap_or(built);
+    let program = built.as_str();
     // npm, prettier and tsc run by the node Atlas fetched (`codetools`).
     let output = match atlas::codetools::by_node(program, &atlas::roots::install_root()) {
         Some((node, script)) => atlas::tools::command(&node).arg(script).args(parts).current_dir(dir).output(),

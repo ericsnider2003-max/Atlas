@@ -301,3 +301,32 @@ fn a_typescript_draft_carries_a_test_node_can_run() {
     assert!(ts.iter().any(|(p, c)| p == "main.test.ts" && c.contains("import('./main.ts')")));
     assert!(!ladder(Lang::TypeScript).iter().any(|g| g.command.starts_with("eslint")), "eslint can't run on a fresh draft");
 }
+
+/// On the laptop (1 Oct 2026): the C++ run gate said "isn't installed" for
+/// the program the build gate had just made, and clang-tidy refused to run
+/// with no checks named.
+#[test]
+fn the_cpp_ladder_runs_what_it_built_and_names_its_checks() {
+    let dir = std::env::temp_dir().join(format!("atlas-cpp-run-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let run = ladder(Lang::Cpp).into_iter().find(|g| g.tells == Tells::Behaviour).unwrap().command;
+    assert_eq!(program_in(&dir, &run), run, "nothing built yet: left as it is");
+    let built = dir.join(run.trim_start_matches("./"));
+    std::fs::write(&built, b"").unwrap();
+    assert_eq!(std::path::PathBuf::from(program_in(&dir, &run)), built);
+    assert!(ladder(Lang::Cpp).iter().any(|g| g.command.starts_with("clang-tidy --checks=")));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_cpp_tools_are_found_by_path_not_left_on_the_search_path() {
+    let root = std::env::temp_dir().join(format!("atlas-llvm-{}", std::process::id()));
+    let bin = root.join("tools/llvm/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let exe = bin.join(if cfg!(windows) { "clang-tidy.exe" } else { "clang-tidy" });
+    std::fs::write(&exe, b"").unwrap();
+    assert_eq!(atlas::codetools::llvm_program("clang-tidy", &root), Some(exe));
+    assert_eq!(atlas::codetools::llvm_program("cargo", &root), None);
+    assert!(!atlas::codetools::bin_dirs(&root).iter().any(|d| d.ends_with("llvm/bin")));
+    let _ = std::fs::remove_dir_all(&root);
+}

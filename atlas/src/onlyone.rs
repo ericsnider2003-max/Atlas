@@ -152,7 +152,15 @@ impl OnlyOne {
                 return Found::Free;
             }
         }
-        let Some(age) = moment_in(&text).map(|written| now.saturating_sub(written))
+        // Unreadable contents -- all zero bytes, which is what Windows leaves of
+        // a file being written when the machine crashes or loses power (1 Oct
+        // 2026: the laptop's lock was 16 zero bytes, and every start for eight
+        // hours said "already running, checked in 0 seconds ago", and that it
+        // would clear itself in 150 s, which it never did) -- are judged by
+        // when the file was last written: a live holder rewrites it every
+        // BEAT_EVERY_SECS, so a file nobody has touched for GONE_AFTER_SECS
+        // has no live holder.
+        let Some(age) = moment_in(&text).map(|written| now.saturating_sub(written)).or_else(|| self.written_secs_ago(now))
         else {
             // A lock whose contents cannot be read tells you nothing, and
             // "tells you nothing" must not read as "nobody is there". Treated
@@ -165,6 +173,12 @@ impl OnlyOne {
         } else {
             Found::Abandoned { silent_for_secs: age }
         }
+    }
+
+    /// How long ago the lock file was last written, by the file system.
+    fn written_secs_ago(&self, now: u64) -> Option<u64> {
+        let at = std::fs::metadata(&self.path).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        Some(now.saturating_sub(at))
     }
 
     /// Take it, or say why not.

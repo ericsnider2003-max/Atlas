@@ -639,6 +639,54 @@ impl SearchCheck {
 
 /// The notes folder as a library, words only (no meaning vectors yet): each
 /// `.md` file one piece, titled by its first heading or else its file name.
+/// Most pieces taken from the reading shelf, so a shelf of books can't make
+/// every search slow.
+pub const READING_PIECES_MOST: usize = 6000;
+
+/// Add what Atlas has read -- documents and books, kept whole in the
+/// reading folder (`read_document_off`, `learn_knowledge`) -- to `lib`, a
+/// piece per chunk, each citing its file and lines (1 Oct 2026, from Open
+/// Notebook in the research report: until now a PDF Atlas had read could
+/// never be found again).
+pub fn add_readings(lib: &mut Library, dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| matches!(p.extension().and_then(|x| x.to_str()), Some("txt") | Some("md")))
+        .collect();
+    paths.sort();
+    let mut id = lib.pieces.iter().map(|p| p.id).max().unwrap_or(0);
+    let mut added = 0usize;
+    for path in paths {
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let name = path.file_stem().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let at = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let Ok(chunks) = crate::chunker::chunk(&text, crate::chunker::ChunkConfig { max: 1200, overlap: 150 }) else { continue };
+        let shown = path.to_string_lossy().into_owned();
+        for c in chunks {
+            if added >= READING_PIECES_MOST {
+                return;
+            }
+            id += 1;
+            added += 1;
+            lib.add(Piece {
+                id,
+                source: c.cite(&shown),
+                title: format!("{name}, lines {}-{}", c.start_line, c.end_line),
+                text: c.text,
+                at,
+                embedding: None,
+            });
+        }
+    }
+}
+
 pub fn library_from_dir(dir: &std::path::Path) -> Library {
     let mut lib = Library::default();
     let Ok(entries) = std::fs::read_dir(dir) else { return lib };

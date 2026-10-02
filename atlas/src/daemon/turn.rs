@@ -33,7 +33,22 @@ impl<'a> Daemon<'a> {
 
     /// Handle something you said, knowing how it arrived.
     pub fn turn_from(&mut self, said: &str, t: u64, how: Arrival) -> String {
+        // "List, did you hear me?": the misheard name said to Atlas comes off,
+        // so it isn't read as a command of its own (`kws::misheard_name_opening`).
+        let unnamed;
+        let said = match crate::kws::misheard_name_opening(said) {
+            Some(rest) if !rest.is_empty() => {
+                unnamed = rest;
+                unnamed.as_str()
+            }
+            _ => said,
+        };
         self.last_said = said.to_string();
+        // "Get to know me" (`getknow`): an answer goes to the interview. A
+        // question or a command of its own ends it, keeping what was said.
+        if let Some(reply) = self.interview_turn(said, t) {
+            return reply;
+        }
         // A question Atlas asked long ago is not what this answers.
         self.expire_stale_question(t);
         // The names "go to", "close" and "how's" may take.
@@ -590,6 +605,15 @@ impl<'a> Daemon<'a> {
             Resolution::Unchanged(t) => {
                 said_owned = t;
                 said_owned.as_str()
+            }
+            // Only when it makes a command of it ("close it" -> "close
+            // chrome"). Free conversation keeps your exact words (1 Oct 2026:
+            // "Why is it ..." reached the model, and the thread, as "Why is
+            // chrome ...", "say it again" as "save chrome again" -- every
+            // sentence after Atlas had once opened an app).
+            Resolution::Resolved { text, .. } if matches!(self.parser.parse(&text), Intent::Unknown(_)) => {
+                let _ = text;
+                said
             }
             Resolution::Resolved { text, .. } => {
                 said_owned = text;
@@ -1169,6 +1193,7 @@ impl<'a> Daemon<'a> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
             .or_else(|| self.research_note_help(raw))
+            .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
             .or_else(|| self.one_message_help(raw))
             .or_else(|| self.text_help(raw))
@@ -1206,6 +1231,7 @@ impl<'a> Daemon<'a> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
             .or_else(|| self.research_note_help(raw))
+            .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
             .or_else(|| self.one_message_help(raw))
             .or_else(|| self.text_help(raw))
