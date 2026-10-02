@@ -66,6 +66,9 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
     "press_button",
     // Moving the owner's files between drives.
     "move_big_files",
+    // Closing the owner's programs and changing what starts with Windows
+    // (2 Oct 2026).
+    "pc_tune",
     "edit_media",
     // Editing a photo writes a new file beside the owner's original, and
     // "undo the last photo edit" removes one -- the owner's files, the same

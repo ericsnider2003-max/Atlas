@@ -4246,6 +4246,34 @@ pub struct SpaceView {
 }
 
 /// "Free up space", on the Status page.
+/// "Make it run well", on the Status page beside "Free up space" (2 Oct
+/// 2026). Each button says its sentence to Atlas on the Talk page, where the
+/// answer and its offer come back and "yes" carries it out -- the same path
+/// as saying it, so the page can't do anything saying couldn't.
+pub fn speed_section() -> String {
+    let mut out = String::from(
+        "<section id=speed aria-labelledby=speed-h><h2 id=speed-h>Make it run well</h2>\
+         <p class=what>I measure what each program is doing for a couple of seconds, then offer what I'd \
+         close or switch off. Nothing changes until you say yes, Windows and I are never on the list, and \
+         \"undo\" switches startup programs back on and moves files back.</p>",
+    );
+    for (said, label) in [
+        ("what's slowing my computer down", "What's slowing it down"),
+        ("close what I don't need", "Close what I don't need"),
+        ("what starts with Windows", "What starts with Windows"),
+        ("what's taking up my space", "Where the space went"),
+    ] {
+        out.push_str(&format!(
+            "<form class=inline method=post action=/hub/talk><input type=hidden name=text value=\"{}\">\
+             <button>{}</button></form> ",
+            esc(said),
+            esc(label)
+        ));
+    }
+    out.push_str("</section>");
+    out
+}
+
 pub fn space_section(v: &SpaceView) -> String {
     let mut out = String::from("<section id=space aria-labelledby=space-h><h2 id=space-h>Free up space</h2>");
     if let Some(said) = v.said.as_deref().filter(|s| !s.is_empty()) {

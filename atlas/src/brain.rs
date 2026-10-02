@@ -2178,6 +2178,7 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         "schedule_post" => Intent::SchedulePost(arg),
         "press_button" => Intent::PressButton(arg),
         "move_big_files" => Intent::MoveBigFiles(arg),
+        "pc_tune" => Intent::PcTune(arg),
         "tidy_desktop" => Intent::TidyDesktop,
         "use_mic" => Intent::UseMic(arg),
         "edit_media" => Intent::EditMedia(arg),
@@ -2258,6 +2259,7 @@ pub fn model_must_ask(i: &Intent) -> bool {
             | Intent::SchedulePost(_)
             | Intent::PressButton(_)
             | Intent::MoveBigFiles(_)
+            | Intent::PcTune(_)
             | Intent::TidyDesktop
             | Intent::UseMic(_)
             | Intent::Undo
@@ -2466,6 +2468,7 @@ pub fn default_say(i: &Intent) -> String {
         Intent::SchedulePost(_) => String::new(),
         Intent::PressButton(_) => String::new(),
         Intent::MoveBigFiles(_) => String::new(),
+        Intent::PcTune(_) => String::new(),
         Intent::TidyDesktop => String::new(),
         Intent::UseMic(_) => String::new(),
         Intent::EditMedia(_) => String::new(),

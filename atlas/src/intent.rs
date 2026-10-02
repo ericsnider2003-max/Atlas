@@ -92,6 +92,11 @@ pub enum Intent {
     PressButton(String),
     /// Move Atlas's big folders to another drive, or say where they went (G5).
     MoveBigFiles(String),
+    /// Looking after the machine, from the whole sentence (2 Oct 2026):
+    /// "close what I don't need", "what's slowing my computer down", "what
+    /// starts with Windows", "clear my temp files", "move my big downloads
+    /// to D:\Archive". Says what it found and offers; acts only on a yes.
+    PcTune(String),
     /// File the loose files on your desktop into folders, after showing the
     /// plan and hearing yes (Eric, 29 Sep 2026: "organize my desktop").
     TidyDesktop,
@@ -551,6 +556,7 @@ impl Intent {
             Intent::SchedulePost(_) => "scheduling your post".to_string(),
             Intent::PressButton(s) => format!("pressing a button: {s}"),
             Intent::MoveBigFiles(_) => "moving big files to another drive".to_string(),
+            Intent::PcTune(_) => "looking after your computer".to_string(),
             Intent::TidyDesktop => "tidying your desktop".to_string(),
             Intent::UseMic(m) => format!("listening with the {m} microphone"),
             Intent::EditMedia(_) => "editing your video on a copy".to_string(),
@@ -1342,6 +1348,7 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "schedule_post" => Intent::SchedulePost(raw.trim().to_string()),
         "press_button" => Intent::PressButton(raw.trim().to_string()),
         "move_big_files" => Intent::MoveBigFiles(raw.trim().to_string()),
+        "pc_tune" => Intent::PcTune(raw.trim().to_string()),
         "tidy_desktop" => Intent::TidyDesktop,
         "use_mic" => Intent::UseMic(arg),
         "edit_media" => Intent::EditMedia(raw.trim().to_string()),

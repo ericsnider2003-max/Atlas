@@ -432,6 +432,7 @@ pub fn kind_of(i: &Intent) -> &'static str {
         Intent::SchedulePost(_) => "schedule_post",
         Intent::PressButton(_) => "press_button",
         Intent::MoveBigFiles(_) => "move_big_files",
+        Intent::PcTune(_) => "pc_tune",
         Intent::TidyDesktop => "tidy_desktop",
         Intent::UseMic(_) => "use_mic",
         Intent::EditMedia(_) => "edit_media",

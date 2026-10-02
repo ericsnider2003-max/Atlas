@@ -293,6 +293,8 @@ pub fn classify(intent: &Intent) -> Decision {
         | Intent::PressButton(_)
         // Shows the plan and waits for a yes itself (G5).
         | Intent::MoveBigFiles(_)
+        // Looks, says what it found, and waits for a yes itself (2 Oct 2026).
+        | Intent::PcTune(_)
         // Shows the plan and waits for a yes itself; nothing is deleted.
         | Intent::TidyDesktop
         // Which microphone to record from: undone by naming another.
