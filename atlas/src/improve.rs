@@ -230,6 +230,33 @@ impl Vocabulary {
         }
     }
 
+    /// Words the speech model got wrong and you put right (`misses`, 2 Oct
+    /// 2026): given straight to the hint list, lower case or not -- "spotify"
+    /// said as "spot if I" is exactly the word a hint is for, and `learn`
+    /// skips it for having no capital. Counted at the hint list's own bar, so
+    /// it is handed over from the next sentence.
+    pub fn heard_wrong_as(&mut self, meant: &str) -> bool {
+        let mut changed = false;
+        for w in meant.split_whitespace() {
+            let w = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
+            if w.len() < 3 {
+                continue;
+            }
+            match self.words.iter_mut().find(|(s, _)| s.eq_ignore_ascii_case(w)) {
+                Some((_, n)) if *n >= 4 => {}
+                Some((_, n)) => {
+                    *n = 4;
+                    changed = true;
+                }
+                None => {
+                    self.words.push((w.to_string(), 4));
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
     /// The hint list to hand the speech model.
     ///
     /// Kept short: a long list makes transcription worse, not better, because

@@ -166,6 +166,19 @@ pub struct ModelsConfig {
     /// is what "the picture reader needs about 3.5 GB and only 2.7 GB is
     /// free" was. `false`: the server is started without it, as before.
     pub see_with_talking_model: bool,
+    /// The model code is written with (2 Oct 2026, `coder`): empty -- the
+    /// largest Qwen2.5-Coder (7B, else 1.5B) whose file is here and that this
+    /// device has room for; `off` -- none, code goes to the usual writers;
+    /// or a model's file name in `dir`. Run as its own server while a build
+    /// needs it, the talking model let go when both don't fit.
+    pub coder: String,
+    /// The coding model's server port. 0: the talking model's port plus two.
+    pub coder_port: u16,
+    /// How long the coding model stays loaded after the last code call, in
+    /// seconds, before the talking model gets its room back.
+    pub coder_idle_secs: u64,
+    /// The coding model's context, in tokens. 0: `coder::CONTEXT_DEFAULT`.
+    pub coder_context: u64,
 }
 
 /// How the model picks its next word, sent with every request (29 Sep 2026).
@@ -296,6 +309,11 @@ impl Default for ModelsConfig {
             deep_context: 8192,
             online_second: true,
             see_with_talking_model: true,
+            coder: String::new(),
+            coder_port: 0,
+            // Short: the talking model waits for its room back.
+            coder_idle_secs: 90,
+            coder_context: 0,
         }
     }
 }
@@ -1054,6 +1072,69 @@ pub fn budget_bytes(cfg: &ModelsConfig, m: &Machine) -> u64 {
 /// and that alone left Eric's Atlas with no model at all (27 Sep 2026: every
 /// question got "I can't answer that here"); Windows pages out what's idle.
 pub fn pick<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<&'a Model> {
+    let chosen = pick_by_budget(registry, cfg, m);
+    // The bigger talking model, when it's here and this machine has room for
+    // it beside the helpers installed (2 Oct 2026).
+    let helpers = crate::getpieces::helpers_resident_mb(&crate::roots::install_root());
+    match registry.get(crate::deepbrain::BIGGER_TALK) {
+        Some(big) if bigger_talk_wanted(cfg) && chosen.is_none_or(|c| c.parameters < big.parameters) => {
+            let projector = big.projector().and_then(|p| std::fs::metadata(p).ok()).map(|x| x.len()).unwrap_or(0);
+            if room_for_bigger_talk(m, cfg, helpers, bigger_talk_needs(cfg, big.weight_bytes + projector)) {
+                Some(big)
+            } else {
+                chosen
+            }
+        }
+        _ => chosen,
+    }
+}
+
+/// Whether the settings leave the choice of talking model to Atlas: nothing
+/// named in `prefer`, and `talk` the shipped `faster` or empty. "better" or
+/// a file name is yours, and kept to.
+fn bigger_talk_wanted(cfg: &ModelsConfig) -> bool {
+    cfg.prefer.trim().is_empty() && matches!(talk_id(cfg).as_deref(), None | Some(crate::deepbrain::FASTER_TALK))
+}
+
+/// The bigger talking model's cache per token of context, in bytes: Qwen3-VL
+/// 8B's text model has 36 layers of 8 key/value heads of 128 (Qwen's own
+/// `config.json`, read 2 Oct 2026), cached at 16 bits, keys and values.
+pub const BIGGER_TALK_CACHE_PER_TOKEN: u64 = 2 * 36 * 8 * 128 * 2;
+
+/// What the bigger talking model takes at the configured context, in bytes:
+/// its files (`files_bytes`, the model and its picture encoder), its cache,
+/// and a tenth on top -- the same tenth `deepbrain` allows.
+pub fn bigger_talk_needs(cfg: &ModelsConfig, files_bytes: u64) -> u64 {
+    let cache = BIGGER_TALK_CACHE_PER_TOKEN * cfg.context.max(2048);
+    (files_bytes + cache) * 11 / 10
+}
+
+/// Can this machine talk through the bigger model (2 Oct 2026)?
+///
+/// The room is sized the way `pick` sizes the talking model -- to the
+/// machine rather than this minute (Windows pages out what's idle), or to the
+/// limit you set, never more than was measured -- but at two fifths of the
+/// memory rather than half: an 8B on memory shared with the graphics leaves
+/// Windows and your programs too little on a 16 GB machine, where the 4B
+/// doesn't. Plus a graphics card's own
+/// memory when it has enough to count (`Machine::usable_vram_mb`: integrated
+/// graphics share the same memory and add nothing). From it come the helpers
+/// already installed (`getpieces::helpers_resident_mb`: hearing, the voice,
+/// the hands, the meaning model) and `deepbrain::HEADROOM_MB` for everything
+/// else. On a 16 GB laptop with integrated graphics that leaves the 4B
+/// talking; 32 GB, or a card with 8 GB of its own, has room for the 8B.
+pub fn room_for_bigger_talk(m: &Machine, cfg: &ModelsConfig, helpers_mb: u64, needs_bytes: u64) -> bool {
+    let room_mb = match budget_set_mb(cfg.memory_budget_mb) {
+        0 => (m.total_ram_mb * 2 / 5).max(m.budget_mb()) + m.usable_vram_mb(),
+        set => set.min(m.budget_mb()) + m.usable_vram_mb(),
+    };
+    let need_mb = needs_bytes / (1024 * 1024) + helpers_mb + crate::deepbrain::HEADROOM_MB;
+    room_mb >= need_mb
+}
+
+/// `pick` before the bigger model is considered: the best that fits the
+/// budget, sized to the machine.
+fn pick_by_budget<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<&'a Model> {
     let now = registry.choose_for(cfg, budget_bytes(cfg, m));
     if cfg.memory_budget_mb != 0 {
         return now;
@@ -1127,7 +1208,9 @@ impl Registry {
         // took over the conversation. When the talking model is here it is
         // used even over budget: it runs on the graphics chip, and a 0.6B
         // answering is worse than a slower start.
-        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj");
+        // Nor a coding model (2 Oct 2026, `coder`): it writes code, it
+        // doesn't talk, and the 1.5B would otherwise win on a small budget.
+        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj") && !crate::coder::is_coder_id(&m.id);
         let chosen = if cfg.talk_ceiling_b == 0 {
             self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget).max_by_key(|m| m.parameters)
         } else {

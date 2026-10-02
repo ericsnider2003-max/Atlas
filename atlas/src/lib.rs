@@ -230,6 +230,10 @@ pub mod taste;
 pub mod motion;
 pub mod explain;
 pub mod mend;
+// How you talk, learned from being corrected, and what Atlas got wrong
+// (2 Oct 2026).
+pub mod phrasebook;
+pub mod misses;
 pub mod contents;
 pub mod integrations;
 pub mod opportunity;
@@ -248,6 +252,10 @@ pub mod faithful;
 pub mod council;
 pub mod build_it;
 pub mod coding_agent;
+// The model code is written with, swapped in for a build (2 Oct 2026).
+pub mod coder;
+// Reading a project for a code change: the files and pieces that matter.
+pub mod projectread;
 pub mod brief;
 pub mod filing;
 // Sorting a folder by kind, copies and old installers to "To review", on

@@ -504,11 +504,13 @@ fn without_test_blocks(body: &str) -> String {
     let mut in_test = false;
     let mut opened = false;
     let mut depth: i32 = 0;
+    let mut opened = false;
     for line in body.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             in_test = true;
             opened = false;
             depth = 0;
+            opened = false;
             continue;
         }
         if in_test {

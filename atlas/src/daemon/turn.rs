@@ -31,8 +31,26 @@ impl<'a> Daemon<'a> {
         self.turn_from(said, t, Arrival::Directed)
     }
 
-    /// Handle something you said, knowing how it arrived.
+    /// Handle something you said, knowing how it arrived -- watched for how
+    /// it ends (2 Oct 2026, `learning`): a miss is written down, and a turn
+    /// that puts right the one before teaches Atlas your words. A turn inside
+    /// a turn (a correction running the words it meant, an answer that is
+    /// really a new request) is part of the outer one and isn't watched
+    /// again.
     pub fn turn_from(&mut self, said: &str, t: u64, how: Arrival) -> String {
+        if self.watching_turn {
+            return self.turn_unwatched(said, t, how);
+        }
+        self.watching_turn = true;
+        let (watch, mended) = self.watch_the_turn(said);
+        let heard = mended.as_deref().unwrap_or(said);
+        let reply = self.turn_unwatched(heard, t, how);
+        self.watching_turn = false;
+        self.turn_watched(watch, heard, reply, t)
+    }
+
+    /// The turn itself.
+    fn turn_unwatched(&mut self, said: &str, t: u64, how: Arrival) -> String {
         // "List, did you hear me?": the misheard name said to Atlas comes off,
         // so it isn't read as a command of its own (`kws::misheard_name_opening`).
         let unnamed;
@@ -445,6 +463,15 @@ impl<'a> Daemon<'a> {
                 .collect();
             let reply = crate::person::hard_day(&can_take_on);
             self.thread.append(said, &reply, Some("hard day".to_string()), t);
+            self.persist();
+            return reply;
+        }
+
+        // How you talk (2 Oct 2026, `learning`): "what have you learned
+        // about how I talk", "forget that phrase", "what did you
+        // misunderstand this week" -- and "no, I meant ...", which runs the
+        // words you meant and learns the ones that missed.
+        if let Some(reply) = self.how_you_talk_turn(said, t, how) {
             self.persist();
             return reply;
         }
@@ -1460,7 +1487,16 @@ impl<'a> Daemon<'a> {
         // notes and the rest were asked only when there was NO model -- with
         // one, every unrecognised sentence went straight to the model, so
         // "remind me in 20 minutes" got a "sure" and nothing was set.
+        // A wording of yours Atlas has learned (2 Oct 2026, `phrasebook`):
+        // "play some tunes", after you once said "no, I meant open
+        // Spotify", is done without asking the model to guess again.
+        let learned = if !resumed && matches!(self.parser.parse(said), Intent::Unknown(_)) {
+            self.learned_route(said, _t)
+        } else {
+            None
+        };
         let mut local = if !resumed
+            && learned.is_none()
             && self.llm.is_some()
             && matches!(self.parser.parse(said), Intent::Unknown(_))
             && !self.handover().stance.handed_over()
@@ -1545,6 +1581,11 @@ impl<'a> Daemon<'a> {
         let decision = match self.decided_already.take() {
             Some(d) => d,
             None => match self.llm.clone() {
+                _ if learned.is_some() => {
+                    let i = learned.clone().unwrap_or(Intent::Unknown(said.to_string()));
+                    let say = brain::default_say(&i);
+                    brain::Decision { intent: i, say, model: brain::Reached::NotNeeded }
+                }
                 _ if local.is_some() => brain::Decision {
                     intent: Intent::Unknown(said.to_string()),
                     say: String::new(),
@@ -1736,6 +1777,19 @@ impl<'a> Daemon<'a> {
                     },
                 },
             };
+            // Done because of a wording you taught it: said as that, so "why
+            // did you do that?" names the lesson (and "forget that phrase"
+            // is the way out).
+            let d = match self.routed_wording() {
+                Some(w) if learned.is_some() => crate::why::Decision {
+                    at: _t,
+                    what: format!("took it as {}", intent.plain()),
+                    because: format!("you taught me that \"{w}\" means that -- \"forget that phrase\" undoes it"),
+                    instead_of: Some("asking the model to guess".into()),
+                    set_by: None,
+                },
+                _ => d,
+            };
             self.decisions.note_full(d);
         }
 
@@ -1892,6 +1946,13 @@ impl<'a> Daemon<'a> {
         // your words matching a phrase -- is always asked about first: handing
         // Atlas over, messaging someone, changing code, pressing a button.
         let call = if decision.model == brain::Reached::Yes && brain::model_must_ask(&intent) {
+            crate::policy::Decision::max(call, Decision::RequireApproval)
+        } else {
+            call
+        };
+        // A wording learned only from a rephrase isn't sure yet: anything
+        // consequential it leads to is asked about first (`phrasebook`).
+        let call = if learned.is_some() && self.routed_unsure() && !matches!(crate::policy::classify(&intent), Decision::AutoProceed) {
             crate::policy::Decision::max(call, Decision::RequireApproval)
         } else {
             call

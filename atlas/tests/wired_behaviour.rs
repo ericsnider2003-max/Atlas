@@ -89,6 +89,10 @@ fn every_phrase_in_the_command_file_parses_to_something_real() {
                 // only with a project named (round 10: "change the volume"
                 // was being asked which project it was for).
                 format!("{p} parser on the atlas project")
+            } else if c.intent == "build_it" && matches!(p.as_str(), "write a" | "write an" | "create a" | "create an" | "create me a" | "make me a" | "make me an" | "code a" | "program a" | "build a" | "build an") {
+                // These reach a build only when what follows is code (2 Oct
+                // 2026, d2e62e9): "write a letter" must stay a letter.
+                format!("{p} python script that renames files")
             } else {
                 example(p, c.takes_argument, c.argument_optional)
             };
