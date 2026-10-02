@@ -290,7 +290,11 @@ fn the_shipped_request_still_parses_with_the_keep_alive_in_it() {
 #[test]
 fn the_measured_plan_is_what_sets_it() {
     let d = source("src/daemon.rs");
-    assert!(d.contains("crate::brain::set_keep_warm(crate::fit::plan_for(&here).keep_model_warm)"));
+    assert!(d.contains("let keep_resident = crate::fit::plan_for(&here).keep_model_warm;"));
+    assert!(d.contains("crate::brain::set_keep_warm(keep_resident)"));
+    // And the same plan keeps the model server from being let go when idle
+    // (Phase 0.2): `lifecycle::model_stays_when_it_fits`.
+    assert!(d.contains("model_stays_when_it_fits("));
     let b = source("src/brain.rs");
     assert!(b.matches("with_keep_alive(&expand(").count() >= 2, "a model request is going out without the keep-alive");
 }

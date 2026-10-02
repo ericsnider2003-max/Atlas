@@ -47,6 +47,8 @@ final class AtlasCore {
             return nil
         }.value
         guard let s = url else { return false }
+        // Apple's model as the first brain where this iPhone has it (decision 2).
+        AppleBrain.register()
         hubURL = URL(string: s)
         token = URLComponents(string: s)?.queryItems?.first(where: { $0.name == "t" })?.value
         if !watching {
@@ -77,6 +79,9 @@ final class AtlasCore {
     /// of Atlas and start it again. Returns whether the address changed.
     func wake() async -> Bool {
         if hubURL == nil { return await start() }
+        // Apple Intelligence may have been switched on or off, or finished
+        // downloading, while the app was away.
+        AppleBrain.register()
         if await answering() { return false }
         let before = hubURL
         hubURL = nil

@@ -120,7 +120,7 @@ const EVERYDAY: &[(&str, &str)] = &[
     ("delegate", "reply respond draft answer message email"),
     ("message", "text message send friend"),
     ("machine_health", "computer laptop slow memory ram disk cpu fan hot space storage left free drive room battery"),
-    ("recommend", "improve improving better faster quality upgrade"),
+    ("recommend", "improve improving faster slow slower quality"),
     ("work_on_yourself", "fix yourself improve yourself own code"),
     ("clock", "time date"),
     ("queued", "working on doing jobs errands running background progress"),

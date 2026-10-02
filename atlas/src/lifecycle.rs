@@ -35,6 +35,24 @@ impl Default for LifecycleConfig {
     }
 }
 
+/// How long the model server stays when the machine can hold it loaded
+/// (`fit::Plan::keep_model_warm`): a week, which in practice is "until
+/// Atlas stops". Phase 0.2 (1 Oct 2026): the half-hour idle stop on a
+/// machine with room for the model only threw away the warm prompt.
+pub const MODEL_RESIDENT_SECS: u64 = 7 * 24 * 60 * 60;
+
+/// The lifecycle settings with the model server kept loaded when the
+/// measured plan says this machine has room for it. A setting already
+/// longer than that is left alone; where there isn't room, the half-hour
+/// idle time stands and memory comes back.
+pub fn model_stays_when_it_fits(mut cfg: LifecycleConfig, fits: bool) -> LifecycleConfig {
+    if fits {
+        let now = cfg.keep_warm_secs.get("model-server").copied().unwrap_or(0);
+        cfg.keep_warm_secs.insert("model-server".to_string(), now.max(MODEL_RESIDENT_SECS));
+    }
+    cfg
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Helper {
     pub name: String,

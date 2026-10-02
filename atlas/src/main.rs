@@ -67,6 +67,7 @@ atlas — local workspace assistant
   atlas --voice                   voice loop, press Enter to talk
   atlas get kokoro                download the Kokoro voice (about 141 MB)
   atlas kokoro-check [words]      speak once in Kokoro into a file, and time it
+  atlas npu-check                 is the NPU used, and how fast search and voice ID are on it
   atlas --wake                    hands-free, waits for the wake phrase
   atlas --daemon                  always-on: wake word, conversation,
                                   scheduled work, proactive offers
@@ -983,6 +984,13 @@ fn main() {
 
     if words.first().map(|s| s.as_str()) == Some("talk-bench") {
         std::process::exit(run_talk_bench(&cfg, &words[1..]));
+    }
+
+    if words.first().map(|s| s.as_str()) == Some("npu-check") {
+        // Measured on this computer (item 20): which chip each model runs
+        // on, how long it takes, and whether the answers match.
+        println!("{}", atlas::npu::check(&atlas::roots::install_root()));
+        return;
     }
 
     if words.first().map(|s| s.as_str()) == Some("kokoro-check") {

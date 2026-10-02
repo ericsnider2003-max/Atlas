@@ -489,7 +489,10 @@ impl EngineConfig {
         let exe = self.exe.to_lowercase();
         match self.engine {
             Engine::Piper => exe.contains("piper"),
-            Engine::Kokoro => exe.contains("kokoro"),
+            // Spoken inside Atlas since 28 Sep 2026 (`kokoro`): the program
+            // named is the fallback that speaks while Kokoro is missing or
+            // fails, which is piper's (Phase 0.8).
+            Engine::Kokoro => exe.contains("kokoro") || exe.contains("piper"),
             Engine::Chatterbox => exe.contains("chatterbox") || exe.contains("voicebox"),
         }
     }

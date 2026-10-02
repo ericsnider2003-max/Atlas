@@ -302,11 +302,17 @@ fn a_voice_you_downloaded_yourself_still_resolves() {
 #[test]
 fn a_mismatched_engine_and_executable_is_caught() {
     let bad = EngineConfig {
-        engine: Engine::Kokoro,
-        exe: "tools/piper/piper.exe".into(),
+        engine: Engine::Piper,
+        exe: "tools/chatterbox/speak.cmd".into(),
         voices_dir: "models".into(),
     };
-    assert!(!bad.is_consistent(), "a kokoro engine driving piper was accepted");
+    assert!(!bad.is_consistent(), "a piper engine driving chatterbox was accepted");
+    let bad = EngineConfig { engine: Engine::Kokoro, exe: "tools/chatterbox/speak.cmd".into(), voices_dir: "models".into() };
+    assert!(!bad.is_consistent(), "a kokoro engine falling back to chatterbox was accepted");
+    // Kokoro is spoken inside Atlas; the program it names is the fallback
+    // that speaks while Kokoro is missing, which is piper (Phase 0.8).
+    let kokoro_first = EngineConfig { engine: Engine::Kokoro, exe: "tools/piper/piper.exe".into(), voices_dir: "models".into() };
+    assert!(kokoro_first.is_consistent());
     // And voicebox counts as chatterbox, which is what it is.
     let vb = EngineConfig {
         engine: Engine::Chatterbox,

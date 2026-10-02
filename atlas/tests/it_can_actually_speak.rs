@@ -111,6 +111,17 @@ fn the_shipped_voice_is_a_file_the_installer_fetches() {
     // `voice_file_for` applies the engine's own extension — .onnx for piper,
     // .pt for kokoro, .wav for chatterbox. Getting that pairing wrong is the
     // other way this goes silent.
+    // Kokoro first (Phase 0.8): its voices come inside its own download,
+    // which setup fetches, and piper's default voice -- what speaks until
+    // Kokoro is here -- must be fetched too.
+    if tools.tts_engine.engine == atlas::tts::Engine::Kokoro {
+        assert!(atlas::kokoro::speaker_id(id).is_some(), "{id:?} isn't one of Kokoro's voices");
+        let pieces: Vec<String> = atlas::getpieces::setup_pieces().iter().map(|p| p.key_path().to_string()).collect();
+        assert!(pieces.iter().any(|k| k.contains("kokoro")), "setup doesn't fetch Kokoro: {pieces:?}");
+        let fallback = atlas::tts::VoiceSettings::default().voice;
+        assert!(what_setup_downloads().contains(fallback.as_str()), "piper's voice {fallback:?} isn't fetched");
+        return;
+    }
     let file = tools.tts_engine.voice_file_for(id);
     let name = file.rsplit(['/', '\\']).next().unwrap_or(&file).to_string();
     assert!(

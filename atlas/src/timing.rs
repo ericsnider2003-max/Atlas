@@ -348,3 +348,13 @@ mod laps_tests {
         assert_eq!(l.plain(5), "b 50ms, d 20ms, a 5ms");
     }
 }
+
+
+/// The silence from the end of your speech to Atlas's first sound (Phase
+/// 0.2): speech-to-text's time plus the time from the words arriving to the
+/// first playback. `None` when either wasn't measured (a typed turn has no
+/// end of speech; a reply that never played has no first sound) -- a missing
+/// figure, never a guessed one.
+pub fn silence_before_first_sound(heard_ms: Option<u64>, first_sound_ms: Option<u64>) -> Option<u64> {
+    Some(heard_ms? + first_sound_ms?)
+}

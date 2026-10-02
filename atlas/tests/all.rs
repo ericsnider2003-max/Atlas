@@ -931,6 +931,12 @@ mod reports_as_files;
 mod mcp_server;
 #[path = "what_the_model_ranking_found.rs"]
 mod what_the_model_ranking_found;
+#[path = "answers_not_timings.rs"]
+mod answers_not_timings;
+#[path = "the_silence_after_you_speak.rs"]
+mod the_silence_after_you_speak;
+#[path = "there_when_you_sit_down.rs"]
+mod there_when_you_sit_down;
 #[path = "greet_once.rs"]
 mod greet_once;
 #[path = "writing_checked.rs"]
@@ -939,3 +945,7 @@ mod writing_checked;
 mod job_fit;
 #[path = "ask_my_documents.rs"]
 mod ask_my_documents;
+#[path = "the_npu_engine.rs"]
+mod the_npu_engine;
+#[path = "apple_first_then_atlas.rs"]
+mod apple_first_then_atlas;

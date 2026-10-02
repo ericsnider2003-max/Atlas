@@ -305,6 +305,15 @@ impl<'a> Daemon<'a> {
             }
             return;
         }
+        // Let go for being idle: started again by the next thing you say, not
+        // by the loop's next pass (Phase 0.2: stopped "idle" and restarted
+        // within seconds, thirteen times on 30 Sep, with nobody talking).
+        if self.model_rested {
+            if !a_turn {
+                return;
+            }
+            self.model_rested = false;
+        }
         // Not ours. Whether one is up anyway (started by another Atlas, or by
         // hand) is asked at most once a minute, off this thread, and a turn
         // waits for the answer no more than a moment (28 Sep 2026: every

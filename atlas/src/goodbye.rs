@@ -40,7 +40,66 @@
 //! explaining why it earns its place — and one atomic flag plus two
 //! declarations is less to own than a dependency and its tree.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+
+/// Why Atlas was asked to stop, kept for the record of runs (`whystopped`, item
+/// 33). The first reason given wins: what started the way out is the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Why {
+    /// Closed on purpose: Atlas's own window, its icon, or Ctrl-C.
+    YouClosedIt,
+    /// Windows signing out, restarting or shutting down.
+    WindowsEnding,
+    /// Replaced by an update.
+    Updating,
+    /// Asked, with no more said.
+    Asked,
+}
+
+impl Why {
+    pub fn plain(&self) -> &'static str {
+        match self {
+            Why::YouClosedIt => "you closed it",
+            Why::WindowsEnding => "Windows was signing out, restarting or shutting down",
+            Why::Updating => "it was updating itself",
+            Why::Asked => "it was asked to stop",
+        }
+    }
+
+    fn code(self) -> u8 {
+        match self {
+            Why::YouClosedIt => 1,
+            Why::WindowsEnding => 2,
+            Why::Updating => 3,
+            Why::Asked => 4,
+        }
+    }
+
+    fn from_code(c: u8) -> Option<Why> {
+        match c {
+            1 => Some(Why::YouClosedIt),
+            2 => Some(Why::WindowsEnding),
+            3 => Some(Why::Updating),
+            4 => Some(Why::Asked),
+            _ => None,
+        }
+    }
+}
+
+/// The first reason given, 0 for none yet.
+static WHY: AtomicU8 = AtomicU8::new(0);
+
+/// Ask Atlas to stop, saying why.
+pub fn please_stop_because(why: Why) {
+    let _ = WHY.compare_exchange(0, why.code(), Ordering::SeqCst, Ordering::SeqCst);
+    please_stop();
+}
+
+/// Why Atlas is stopping: the first reason given, or `Asked`.
+pub fn why() -> Why {
+    Why::from_code(WHY.load(Ordering::SeqCst)).unwrap_or(Why::Asked)
+}
 
 /// Set by a signal handler, read by the run loop. Never cleared: once Atlas
 /// has been asked to stop, asking again cannot un-ask it.
@@ -87,13 +146,17 @@ pub fn stop_file(state_dir: &std::path::Path) -> std::path::PathBuf {
     state_dir.join("please_stop")
 }
 
+/// What a stop request says when a new version is moving in.
+pub const UPDATING: &str = "updating";
+
 /// Has Atlas's window asked it to stop? Consumes the request, so the next
 /// start isn't stopped by an old one. Checked once a pass of the run loop.
 pub fn asked_by_file(state_dir: &std::path::Path) -> bool {
     let f = stop_file(state_dir);
     if f.is_file() {
+        let said = std::fs::read_to_string(&f).unwrap_or_default();
         let _ = std::fs::remove_file(&f);
-        please_stop();
+        please_stop_because(if said.trim() == UPDATING { Why::Updating } else { Why::YouClosedIt });
         return true;
     }
     false
@@ -130,8 +193,10 @@ pub fn listen() {
         unsafe extern "C" {
             fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
         }
-        extern "C" fn handler(_sig: i32) {
-            please_stop();
+        extern "C" fn handler(sig: i32) {
+            // Atomics only, as above: SIGINT is a person at a terminal;
+            // SIGTERM is the system (a service manager, a shutdown).
+            please_stop_because(if sig == 2 { Why::YouClosedIt } else { Why::WindowsEnding });
         }
         signal(SIGINT, handler);
         signal(SIGTERM, handler);
@@ -153,8 +218,10 @@ pub fn listen() {
         unsafe extern "system" {
             fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> BOOL>, add: BOOL) -> BOOL;
         }
-        unsafe extern "system" fn handler(_kind: u32) -> BOOL {
-            please_stop();
+        unsafe extern "system" fn handler(kind: u32) -> BOOL {
+            // CTRL_C 0, CTRL_BREAK 1, CTRL_CLOSE 2: a person. CTRL_LOGOFF 5,
+            // CTRL_SHUTDOWN 6: Windows ending. Atomics only.
+            please_stop_because(if kind >= 5 { Why::WindowsEnding } else { Why::YouClosedIt });
             TRUE
         }
         SetConsoleCtrlHandler(Some(handler), TRUE);
@@ -212,7 +279,7 @@ pub fn nap(total_ms: u64) {
 /// lock left behind for the next sign-in to wait out. Now the icon's window
 /// asks, and holds Windows for a few seconds while the way out runs.
 pub fn stop_and_wait(lock: &std::path::Path, wait: std::time::Duration) -> bool {
-    please_stop();
+    please_stop_because(Why::WindowsEnding);
     let until = std::time::Instant::now() + wait;
     while lock.exists() {
         if std::time::Instant::now() >= until {
@@ -227,4 +294,5 @@ pub fn stop_and_wait(lock: &std::path::Path, wait: std::time::Duration) -> bool 
 pub fn reset_for_test() {
     ASKED.store(false, Ordering::SeqCst);
     TIMES.store(false, Ordering::SeqCst);
+    WHY.store(0, Ordering::SeqCst);
 }

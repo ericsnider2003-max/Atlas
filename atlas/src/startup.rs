@@ -234,6 +234,15 @@ pub fn task_xml(exe: &Path, mode: Mode, user: Option<&str>) -> String {
       <Enabled>true</Enabled>\n\
 {trigger_user}\
     </LogonTrigger>\n\
+    <SessionStateChangeTrigger>\n\
+      <Enabled>true</Enabled>\n\
+{trigger_user}\
+      <StateChange>SessionUnlock</StateChange>\n\
+    </SessionStateChangeTrigger>\n\
+    <EventTrigger>\n\
+      <Enabled>true</Enabled>\n\
+      <Subscription>{woke}</Subscription>\n\
+    </EventTrigger>\n\
   </Triggers>\n\
   <Principals>\n\
     <Principal id=\"Author\">\n\
@@ -275,8 +284,21 @@ pub fn task_xml(exe: &Path, mode: Mode, user: Option<&str>) -> String {
         exe = xml_escape(&exe.display().to_string()),
         flag = mode.flag(),
         dir = xml_escape(&dir),
+        woke = xml_escape(WOKE_QUERY),
     )
 }
+
+/// The events that mean the computer has just woken (item 33): sleep ending
+/// (Power-Troubleshooter 1) and Modern Standby ending (Kernel-Power 507,
+/// which is how a lid-closed laptop like Eric's sleeps). With the unlock
+/// trigger beside it, Atlas is started whenever you come back to the
+/// computer -- with the lid shut behind two monitors, Windows locks and
+/// unlocks rather than signing in again, so the sign-in trigger alone left
+/// Atlas absent for 14 hours of 30 Sep. Starting it when it's already
+/// running does nothing (`onlyone`; the task's own `IgnoreNew`).
+pub const WOKE_QUERY: &str = "<QueryList><Query Id=\"0\" Path=\"System\"><Select Path=\"System\">\
+*[System[(Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1) or \
+(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=507)]]</Select></Query></QueryList>";
 
 /// The XML as the bytes `schtasks /XML` reads without complaint: UTF-16
 /// little-endian with its byte-order mark, which is what the declaration says
@@ -365,6 +387,32 @@ pub fn turn_on(exe: &Path, mode: Mode) -> Result<String, String> {
             }
         }
     }
+}
+
+/// A task registered by an earlier Atlas, from before it was also started
+/// on unlock and on waking (item 33): its definition as written then, and
+/// the mode it starts in. `None` when there's nothing to bring up to date --
+/// no task file, or one that already has the new triggers.
+pub fn needs_new_triggers(old_xml: &str) -> Option<Mode> {
+    if old_xml.is_empty() || old_xml.contains("SessionStateChangeTrigger") {
+        return None;
+    }
+    let args = old_xml.split("<Arguments>").nth(1).and_then(|r| r.split("</Arguments>").next()).unwrap_or("");
+    Some(if args.contains(Mode::Listening.flag()) { Mode::Listening } else { Mode::Background })
+}
+
+/// Bring the start-with-Windows task up to date, when you chose to have one
+/// and it predates the unlock and wake triggers (item 33). Run by Atlas at
+/// start, off the loop. `None` when nothing needed doing.
+pub fn bring_up_to_date(exe: &Path, state_dir: &Path) -> Option<Result<String, String>> {
+    if !cfg!(windows) || decided(state_dir) != Some(true) {
+        return None;
+    }
+    let old = std::fs::read(task_file_path(exe)).ok()?;
+    // UTF-16 with its mark, as `task_file_bytes` writes it.
+    let units: Vec<u16> = old.get(2..).unwrap_or(&[]).chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let mode = needs_new_triggers(&String::from_utf16_lossy(&units))?;
+    Some(turn_on(exe, mode))
 }
 
 /// Stop Atlas starting with Windows, whichever way it was set up.

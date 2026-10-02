@@ -1180,6 +1180,8 @@ pub fn everything_else() -> Vec<Piece> {
         // (1 Oct 2026, `models.rs` `speculate`), so nothing needs it.
         vec![deep_model()],
         picture_making(),
+        // The NPU engine, on a computer with an Intel NPU (item 20).
+        crate::npu::pieces(),
     ]
         .into_iter()
         .flatten()

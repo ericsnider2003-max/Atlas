@@ -887,6 +887,9 @@ impl<'a> Daemon<'a> {
                     }
                     Ok(TurnNews::Also(v)) => self.also_asked = v,
                     Ok(TurnNews::Done(d)) => {
+                        // The model's part is over here; what follows is
+                        // playback (Phase 0.2: "doing" stops now).
+                        self.model_done_at.set(Some(std::time::Instant::now()));
                         // What's queued is said before the answer is acted
                         // on (a tool's own words come after the model's), the
                         // hub answered meanwhile.

@@ -524,7 +524,7 @@ mod win {
             TrayAction::Pause | TrayAction::Resume => tray_ask(a),
             // The icon goes when the way out has finished (`WM_TIMER`).
             TrayAction::Quit => {
-                crate::goodbye::please_stop();
+                crate::goodbye::please_stop_because(crate::goodbye::Why::YouClosedIt);
                 update_tip(hwnd);
             }
         }

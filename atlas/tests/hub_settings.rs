@@ -85,6 +85,17 @@ fn the_permissions_page_gathers_everything_consequential() {
 /// was always there, finally shows up.
 const DELIBERATELY_DIFFERENT: &[(&str, &str)] = &[
     (
+        "tts_engine.engine",
+        "Kokoro ships in tools.yaml from 1 Oct 2026 (why-stale report 0.8: the warmer voice Eric chose), \
+         with piper as the fallback `is_consistent` accepts. The struct default stays piper: Kokoro needs \
+         its model pieces, and an install with no tools.yaml has fetched none.",
+    ),
+    (
+        "voice_settings.voice",
+        "af_heart is Kokoro's voice name, shipped with Kokoro above; the struct default names piper's \
+         voice, for the engine the struct defaults to.",
+    ),
+    (
         "self_work.enabled",
         "on in the shipped file by Eric's ruling of 30 Sep 2026: bug fixes Atlas may make itself, landing \
          still waits for his yes. It's the Self-repair switch, and from 1 Oct 2026 the one that's read. \

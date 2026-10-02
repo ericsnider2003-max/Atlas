@@ -124,7 +124,11 @@ impl Player {
                     struct Off;
                     impl Drop for Off {
                         fn drop(&mut self) {
-                            QUEUED.fetch_sub(1, Ordering::SeqCst);
+                            // The last sentence through: the model server
+                            // goes back to normal (`voicefirst`).
+                            if QUEUED.fetch_sub(1, Ordering::SeqCst) == 1 {
+                                crate::voicefirst::speaking(false);
+                            }
                         }
                     }
                     let _off = Off;
@@ -164,9 +168,13 @@ impl Player {
 
     fn play(&self, i: usize, text: String) {
         if let Some(tx) = &self.tx {
-            QUEUED.fetch_add(1, Ordering::SeqCst);
-            if tx.send((i, text)).is_err() {
-                QUEUED.fetch_sub(1, Ordering::SeqCst);
+            // The first sentence queued: the voice comes first until the
+            // reply ends (`voicefirst`, Phase 0.8).
+            if QUEUED.fetch_add(1, Ordering::SeqCst) == 0 {
+                crate::voicefirst::speaking(true);
+            }
+            if tx.send((i, text)).is_err() && QUEUED.fetch_sub(1, Ordering::SeqCst) == 1 {
+                crate::voicefirst::speaking(false);
             }
         }
     }

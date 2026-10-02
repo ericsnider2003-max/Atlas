@@ -106,6 +106,8 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "answering::describe",
     "anticipate::matches",
     "anticipate::suggested",
+    "applebrain::read_answer", // Chat C, 1 Oct: no Rust caller yet (Swift shell / NPU-only / stock lines)
+    "applebrain::skip", // Chat C, 1 Oct: no Rust caller yet (Swift shell / NPU-only / stock lines)
     "asia::overnight",
     "audio::announce",
     "audio::changed",
@@ -202,6 +204,7 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // `atlas install` now has a real caller -- so the ambiguity would have
     // been a false green on the other one rather than a note here.
     "knowhow::shipped",
+    "kokoro::warm_up", // Chat C, 1 Oct: no Rust caller yet (Swift shell / NPU-only / stock lines)
     "language::args",
     "language::plan",
     "learned::spoken",
@@ -244,6 +247,9 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // 26 Sep 2026: its only caller was trading-system code that left personal Atlas on 26 Sep 2026 (Eric: personal Atlas keeps general trading knowledge and nothing specific to his own trading system). General market knowledge, kept for the next trading caller.
     "multiframe::agreement",
     "multiframe::read_frame",
+    "npu::agreement", // Chat C, 1 Oct: no Rust caller yet (Swift shell / NPU-only / stock lines)
+    "npu::piece", // Chat C, 1 Oct: no Rust caller yet (Swift shell / NPU-only / stock lines)
+    "npu::why_not", // Chat C, 1 Oct: no Rust caller yet (Swift shell / NPU-only / stock lines)
     "ocr::args",
     "ocr::tidy",
     "otherside::spoken",

@@ -602,3 +602,21 @@ fn the_icon_by_the_clock_answers_the_end_of_the_session() {
     let arm = &src[at..(at + 600).min(src.len())];
     assert!(arm.contains("stop_and_wait("), "it answers the end of the session without letting Atlas stop");
 }
+
+#[test]
+fn an_update_moving_in_is_recorded_as_an_update() {
+    // Item 33: why Atlas stopped is recorded (`whystopped`).
+    let _g = alone();
+    use atlas::goodbye::Why;
+    let dir = std::env::temp_dir().join(format!("atlas-stopfile-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    atlas::goodbye::reset_for_test();
+    std::fs::write(atlas::goodbye::stop_file(&dir), atlas::goodbye::UPDATING).unwrap();
+    assert!(atlas::goodbye::asked_by_file(&dir));
+    assert_eq!(atlas::goodbye::why(), Why::Updating);
+    // The first reason given stands.
+    atlas::goodbye::please_stop_because(Why::YouClosedIt);
+    assert_eq!(atlas::goodbye::why(), Why::Updating);
+    atlas::goodbye::reset_for_test();
+    let _ = std::fs::remove_dir_all(&dir);
+}

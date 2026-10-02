@@ -777,3 +777,61 @@ pub fn accent(voice: &str) -> &'static str {
         _ => "",
     }
 }
+
+// ---------------------------------------------------------------- stock lines
+
+/// Lines Atlas says often and always the same way, made once when Kokoro is
+/// loaded so they play at once (Phase 0.8, 1 Oct 2026: Kokoro took about
+/// 1.3x as long to make a sentence as to play it, so even "Yes?" waited on
+/// synthesis). Each is split as `speak` splits, and kept per sentence.
+pub const STOCK_LINES: &[&str] = &[
+    "Yes?",
+    "Looking now.",
+    "Anytime.",
+    "Sorry about that.",
+    "One moment.",
+    "Done.",
+    "Got it.",
+    crate::daemon::STILL_LOADING_WORDS,
+];
+
+/// The made lines, and what they were made with (voice, speed, volume): a
+/// change of voice makes them stale, and a stale one is never played.
+static STOCK: Mutex<Option<(String, std::collections::HashMap<String, Vec<u8>>)>> = Mutex::new(None);
+
+fn stock_key(sentence: &str) -> String {
+    sentence.trim().to_lowercase()
+}
+
+/// Make `STOCK_LINES` with `synth`, on a thread of its own. `made_for`
+/// names the settings, so a later change is seen.
+pub fn prepare_stock(synth: Synth, made_for: String) {
+    std::thread::Builder::new()
+        .name("atlas-stock-lines".into())
+        .spawn(move || {
+            let mut made = std::collections::HashMap::new();
+            for line in STOCK_LINES {
+                for s in crate::speech::split(line) {
+                    if let Ok(wav) = synth(&s) {
+                        made.insert(stock_key(&s), wav);
+                    }
+                }
+            }
+            if let Ok(mut g) = STOCK.lock() {
+                *g = Some((made_for, made));
+            }
+        })
+        .ok();
+}
+
+/// A stock sentence already made with these settings, if it is one.
+pub fn stock(sentence: &str, made_for: &str) -> Option<Vec<u8>> {
+    let g = STOCK.lock().ok()?;
+    let (with, made) = g.as_ref()?;
+    (with == made_for).then(|| made.get(&stock_key(sentence)).cloned()).flatten()
+}
+
+/// What the stock lines are made with: voice, speed and volume.
+pub fn made_for(voice: &str, speed: f32, volume: u8) -> String {
+    format!("{voice}|{speed:.3}|{volume}")
+}
