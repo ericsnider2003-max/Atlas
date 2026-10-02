@@ -29,7 +29,7 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn readings(&self) -> Readings {
-        crate::health::read_machine()
+        self.plat.readings()
     }
 
     pub(super) fn current_work(&self) -> Option<String> {
@@ -2526,7 +2526,7 @@ impl<'a> Daemon<'a> {
         // morning's charge is worse than not starting it. So the decision
         // gates whether tonight's work begins, and its reason is recorded
         // once rather than discarded.
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         let power = crate::awake::Power {
             on_battery: r.on_battery,
             battery_pct: r.battery_percent.map(|p| p as u32).unwrap_or(100),

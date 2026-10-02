@@ -949,7 +949,7 @@ impl Daemon<'_> {
 
     /// Health, as rings: memory, disk, and the battery when there is one.
     fn card_machine(&self) -> String {
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         if r.ram_total_gb <= 0.0 && r.disk_total_gb <= 0.0 {
             return hub::nothing("I can't read this machine's memory or disk.");
         }
@@ -1892,7 +1892,7 @@ impl Daemon<'_> {
     }
 
     fn status_lines(&self) -> Vec<(String, String)> {
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         let mut out = vec![
             (
                 "Listening".to_string(),

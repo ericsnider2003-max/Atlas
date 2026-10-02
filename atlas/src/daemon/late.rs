@@ -1222,7 +1222,7 @@ impl<'a> Daemon<'a> {
             let each: Vec<String> = moved.iter().map(|m| format!("{} → {} ({} MB)", m.from, m.to, m.mb)).collect();
             return format!("Moved: {}.", each.join("; "));
         }
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         let survey = crate::tune::Survey {
             disk_free_gb: r.disk_free_gb,
             disk_total_gb: r.disk_total_gb,
@@ -1342,7 +1342,7 @@ impl<'a> Daemon<'a> {
         if !not.is_empty() {
             said.push_str(&format!(" Not done: {}.", not.join("; ")));
         }
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         if r.ram_total_gb > 0.0 {
             said.push_str(&format!(" Memory is at {:.0}% now.", r.ram_used_gb / r.ram_total_gb * 100.0));
         }

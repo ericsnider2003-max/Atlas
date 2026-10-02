@@ -306,6 +306,14 @@ pub trait Platform {
         crate::sync::best_folder().map(|(p, _)| p)
     }
 
+    /// Disk, memory and battery, for the health notices, the self-check and
+    /// the night's work. Behind the platform for the same reason: a test's
+    /// mock machine is calm, where the real laptop under a three-chat build
+    /// prefixed "Memory is nearly full" to replies and failed 2 Oct's tests.
+    fn readings(&self) -> crate::health::Readings {
+        crate::health::read_machine()
+    }
+
     /// The focused window, or None if nothing is focused.
     fn active_window(&self) -> Result<Option<ActiveWindow>> {
         Ok(None)
