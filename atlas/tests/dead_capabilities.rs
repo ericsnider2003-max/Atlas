@@ -917,7 +917,10 @@ const ORPHANS: &[(&str, &str)] = &[
 // tests that measure the old shape still call it.
 // 101 -> 100 (30 Sep 2026, merging the other chat's 30 Sep work):
 // `capture::found` is called -- notes can be asked for.
-const TEST_ONLY_MAX: usize = 100;
+// 100 -> 102 (1 Oct 2026, merging Chat C's e6662d1): `applebrain::
+// last_answered_by` and `voicefirst::model_lowered` are read by their tests
+// only -- the iPhone shell and the hub don't show either yet.
+const TEST_ONLY_MAX: usize = 102;
 // 287 -> 286 (22 Sep): `consolidate::size_note` gained a real caller. The new
 // `KnowledgeSize` intent ("how much do you know", "how big is your memory")
 // routes through `Daemon::knowledge_store_size`, which reads the store count

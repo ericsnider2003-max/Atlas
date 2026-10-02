@@ -59,3 +59,26 @@ fn the_part_of_day_greeted_survives_a_restart() {
     let again = n.consider(t, 19, 0, 0);
     assert!(again.map_or(true, |x| x.trigger != atlas::nudge::Trigger::Daypart));
 }
+
+/// Eric's own answers to "get to know me", 1 Oct 2026, read back as they
+/// were: "You're working on I have two projects", "I'll push you on I need
+/// you to push me on my habits".
+#[test]
+fn erics_own_answers_are_read_back_turned_round_and_short() {
+    use atlas::getknow::{facts_from, Slot};
+    let push = "I need you to push me on my habits, and my projects. I need you to take work off my plate where you can so looking at my projects and trying to further them";
+    let f = facts_from(Slot::Push, push, 0);
+    assert!(f[0].1.starts_with("I'll push you on your habits, and your projects."), "{}", f[0].1);
+    assert_eq!(f[0].1.split_whitespace().count() <= 30, true, "{}", f[0].1);
+    // The brief takes one piece a day from what was stored then -- the
+    // raw sentence on the laptop as well as the cleaned one.
+    for stored in [format!("Push them on: {push}"), f[0].0.summary.clone()] {
+        let today = brief::push_for_day(&stored, 0).unwrap();
+        assert_eq!(today, "You asked me to push you on your habits -- what's today's step?");
+        assert_eq!(brief::push_for_day(&stored, 1).unwrap(), "You asked me to push you on your projects -- what's today's step?");
+    }
+    let day = facts_from(Slot::Day, "I have a day job, my schedule shifts a lot, I work 7AM-5PM most days", 0);
+    assert_eq!(day[0].1, "Your day: you have a day job, your schedule shifts a lot, you work 7AM-5PM most days.");
+    let work = facts_from(Slot::Work, "the bakery, my YouTube channel and Atlas", 0);
+    assert_eq!(work.iter().map(|w| w.1.as_str()).collect::<Vec<_>>(), vec!["You're working on the bakery.", "You're working on your YouTube channel.", "You're working on Atlas."]);
+}

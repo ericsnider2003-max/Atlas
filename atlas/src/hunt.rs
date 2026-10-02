@@ -1508,3 +1508,115 @@ pub fn understand(said: &str, listed: usize) -> Option<Said> {
     }
     None
 }
+
+// ---------- fit for one posting ----------
+//
+// The nine-repos report (career-ops, 1 Oct 2026): "how well do I fit this
+// job?" over a whole posting. Only skills you've stated count (`Interests`
+// from your facts) -- nothing is inferred, so the score can't flatter you.
+// The posting is read as data, never as instructions: no model sees it here.
+
+/// How a posting matches what you've told Atlas you can do.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fit {
+    /// Your skills the posting names.
+    pub matched: Vec<String>,
+    /// What the posting asks for that you haven't said you have.
+    pub missing: Vec<String>,
+    /// Of ten: the share of what it asks for that you've stated.
+    pub out_of_ten: u8,
+}
+
+/// Words a posting uses to say what it requires.
+const ASKS_FOR: &[&str] = &[
+    "require", "must", "experience with", "experience in", "proficien", "you have", "you'll have", "you will have",
+    "qualification", "skills", "familiar", "knowledge of", "background in", "strong", "expert", "years of",
+    "looking for", "nice to have", "bonus", "plus",
+];
+
+/// Capitalised words that aren't skills.
+const NOT_SKILLS: &[&str] = &[
+    "we", "you", "our", "the", "a", "an", "and", "or", "in", "with", "of", "for", "to", "experience", "strong",
+    "bachelor", "bachelors", "master", "masters", "degree", "years", "year", "team", "teams", "requirements",
+    "required", "qualifications", "skills", "must", "nice", "have", "bonus", "plus", "ability", "excellent",
+    "remote", "us", "usa", "canada", "senior", "junior", "engineer", "developer", "role", "about", "what",
+    "who", "why", "how", "responsibilities", "benefits", "salary", "equity", "knowledge", "familiarity",
+    "proficiency", "proficient", "working", "work", "communication", "written", "verbal", "english", "i",
+    "is", "are", "be", "at", "on", "as", "if", "it", "this", "that", "they", "their", "will", "can",
+];
+
+/// The named things a posting asks for: capitalised or symbol-bearing
+/// words (React, AWS, C++, Node.js, Google Ads) on the lines that say
+/// what's required, in the order first seen.
+pub fn asked_for(posting: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in posting.lines().flat_map(|l| l.split(". ")) {
+        let low = line.to_lowercase();
+        if !ASKS_FOR.iter().any(|c| low.contains(c)) {
+            continue;
+        }
+        let words: Vec<&str> = line.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '/' | ':')).filter(|w| !w.is_empty()).collect();
+        let mut run: Vec<String> = Vec::new();
+        let flush = |run: &mut Vec<String>, out: &mut Vec<String>| {
+            if !run.is_empty() {
+                let term = run.join(" ");
+                if !out.iter().any(|o| o.eq_ignore_ascii_case(&term)) {
+                    out.push(term);
+                }
+                run.clear();
+            }
+        };
+        for (i, w) in words.iter().enumerate() {
+            let w = w.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '"' | '\'' | '-' | '*' | '•'));
+            let first = w.chars().next().unwrap_or(' ');
+            let named = first.is_uppercase() || w.contains('+') || w.contains('#') || (w.contains('.') && w.len() > 2);
+            let lead = i == 0 && w.chars().skip(1).all(|c| c.is_lowercase());
+            if named && !lead && w.len() > 1 && !NOT_SKILLS.contains(&w.to_lowercase().as_str()) {
+                run.push(w.to_string());
+            } else {
+                flush(&mut run, &mut out);
+            }
+        }
+        flush(&mut run, &mut out);
+    }
+    out
+}
+
+/// How a posting fits what you've stated. `None` when you haven't stated any
+/// skills or the posting names nothing it requires.
+pub fn fit_to_posting(posting: &str, you: &Interests) -> Option<Fit> {
+    if you.skills.is_empty() {
+        return None;
+    }
+    let asked = asked_for(posting);
+    let words = format!(" {} ", title_key(posting));
+    let matched: Vec<String> = you.skills.iter().filter(|s| has_term(&words, s)).cloned().collect();
+    let covered = |a: &String| you.skills.iter().any(|s| title_key(s) == title_key(a) || title_key(a).contains(&title_key(s)));
+    let missing: Vec<String> = asked.iter().filter(|a| !covered(a)).cloned().collect();
+    let total = matched.len() + missing.len();
+    if total == 0 {
+        return None;
+    }
+    let out_of_ten = ((matched.len() * 10 + total / 2) / total) as u8;
+    Some(Fit { matched, missing, out_of_ten })
+}
+
+/// The fit, said: what matched, what's missing, and that only what you've
+/// said counts.
+pub fn fit_said(fit: &Fit) -> String {
+    let mut out = format!("About {}/10 by what you've told me.", fit.out_of_ten);
+    if !fit.matched.is_empty() {
+        out.push_str(&format!(" It wants {}, which you have.", fit.matched.join(", ")));
+    }
+    if !fit.missing.is_empty() {
+        let shown: Vec<&str> = fit.missing.iter().take(6).map(|s| s.as_str()).collect();
+        let more = fit.missing.len().saturating_sub(shown.len());
+        out.push_str(&format!(
+            " Not in what you've told me: {}{}.",
+            shown.join(", "),
+            if more > 0 { format!(", and {more} more") } else { String::new() }
+        ));
+    }
+    out.push_str(" If you have any of those, say \"my skills are\" and add them -- I only count what you've said.");
+    out
+}

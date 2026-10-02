@@ -943,6 +943,12 @@ mod answers_not_timings;
 mod the_silence_after_you_speak;
 #[path = "there_when_you_sit_down.rs"]
 mod there_when_you_sit_down;
+#[path = "writing_checked.rs"]
+mod writing_checked;
+#[path = "job_fit.rs"]
+mod job_fit;
+#[path = "ask_my_documents.rs"]
+mod ask_my_documents;
 #[path = "the_npu_engine.rs"]
 mod the_npu_engine;
 #[path = "apple_first_then_atlas.rs"]

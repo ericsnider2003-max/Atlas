@@ -750,6 +750,8 @@ pub struct Daemon<'a> {
     /// When Atlas last said hello of any kind (`returning::hello_now`),
     /// kept across a restart.
     last_greeted_at: u64,
+    /// Rough turns in a row (`persona::spiral_line`).
+    rough_in_a_row: u32,
     /// The last turn that was yours. Atlas's own work does not count.
     ///
     /// What tells working through the night from starting a day: the gap
@@ -1691,6 +1693,7 @@ impl<'a> Daemon<'a> {
             // failure `morning_brief` already documents.
             last_brief_at: store_for_load.load::<u64>("last_brief_at"),
             last_greeted_at: store_for_load.load::<u64>("last_greeted_at"),
+            rough_in_a_row: 0,
             // Loaded too, and for the opposite reason. Zeroed, a restart
             // looks like an infinite gap, so every restart would read as you
             // arriving -- and restarts happen in the middle of the night you

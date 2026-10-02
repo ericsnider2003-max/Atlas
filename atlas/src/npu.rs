@@ -51,7 +51,7 @@ pub const PLUGIN: &str = "tools/npu/onnxruntime_providers_openvino_plugin.dll";
 pub const PROVIDER: &str = "OpenVINOExecutionProvider";
 
 /// Compiled models, kept between starts.
-pub fn cache_dir() -> PathBuf {
+fn cache_dir() -> PathBuf {
     crate::roots::data_dir().join("cache").join("npu")
 }
 
@@ -163,7 +163,7 @@ struct Engine {
 static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
 
 /// The runtime library: the one the Kokoro voice brought.
-pub fn runtime_path(root: &Path) -> Option<PathBuf> {
+fn runtime_path(root: &Path) -> Option<PathBuf> {
     let (ort, _) = crate::kokoro::runtime_files()?;
     let p = root.join(crate::kokoro::RUNTIME_DIR).join(ort);
     p.is_file().then_some(p)

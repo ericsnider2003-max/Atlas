@@ -253,6 +253,7 @@ fn every_placeholder_in_a_command_resolves_to_something() {
 /// better than a heuristic that cannot fail, and adding to it forces the one
 /// useful question: *how does this setting actually take effect?*
 const APPLIED_IN_CODE: &[(&str, &str)] = &[
+    ("self_work.source_dir", "selfwork's source lookup reads it first (selfwork.rs, `cfg.source_dir`), before looking anywhere else"),
     ("push_to_talk.key", "hotkeys::Keys::from_settings hands it to the keyboard hook at start-up"),
     ("quick_input.hotkey", "hotkeys::Keys::from_settings registers it with Windows at start-up"),
     ("persona.tone", "persona::spoken shapes the reply"),

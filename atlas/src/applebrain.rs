@@ -30,7 +30,7 @@
 //! older iPhones never register one, so they always use Atlas's own model.
 
 use crate::brain::{ChatReply, ChatRequest, Llm, Role};
-use crate::error::{AtlasError, Result};
+use crate::error::Result;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Mutex;
 
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn atlas_mobile_apple_model(f: Option<AppleFn>) {
 }
 
 /// Is Apple's model there to ask?
-pub fn registered() -> bool {
+fn registered() -> bool {
     APPLE.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 
@@ -103,7 +103,7 @@ pub enum Apple {
 
 /// About four characters a token: Apple's tokenizer isn't available here,
 /// and over-estimating only sends a long request to Atlas's own model.
-pub fn tokens_in(req: &ChatRequest) -> usize {
+fn tokens_in(req: &ChatRequest) -> usize {
     let chars: usize = req.messages.iter().map(|m| m.content.len()).sum::<usize>()
         + req.tools.iter().map(|t| t.to_string().len()).sum::<usize>();
     chars / 4 + 8 * req.messages.len()
@@ -135,7 +135,7 @@ pub fn skip(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
 /// A question about the world, or anything current, that a small on-device
 /// model isn't built for (Apple: "not designed to be a chatbot for general
 /// world knowledge").
-pub fn needs_world_knowledge(said: &str) -> bool {
+fn needs_world_knowledge(said: &str) -> bool {
     use crate::freshness::Shelf;
     let s = said.to_lowercase();
     if matches!(crate::freshness::shelf_for(&s), Shelf::Volatile | Shelf::Quick) {
@@ -150,7 +150,7 @@ pub fn needs_world_knowledge(said: &str) -> bool {
 }
 
 /// A refusal written as an answer.
-pub fn soft_refusal(text: &str) -> bool {
+fn soft_refusal(text: &str) -> bool {
     let t = text.trim().to_lowercase().replace('\u{2019}', "'");
     const SAYS_NO: &[&str] = &[
         "i can't help with", "i cannot help with", "i can't assist with", "i cannot assist with", "i'm not able to help",
@@ -285,9 +285,4 @@ impl Llm for AppleFirst {
         // Hard work never goes to the small model.
         self.own.complete_hard(system, user)
     }
-}
-
-/// For tests and the shell's own checks: the error when nothing answers.
-pub fn nothing_answered() -> AtlasError {
-    AtlasError::Platform("neither Apple's model nor Atlas's own answered".into())
 }

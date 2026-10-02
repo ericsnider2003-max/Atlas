@@ -80,6 +80,83 @@ fn pieces(answer: &str) -> Vec<String> {
         .collect()
 }
 
+/// Your words turned round to be said back to you: "I need you to push me
+/// on my habits" becomes "you need me to push you on your habits". On
+/// 1 Oct 2026 the read-back said "I'll push you on I need you to push me on
+/// my habits" -- your sentence, pasted in unturned.
+pub fn said_back(text: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut after_you = false;
+    for w in text.split_whitespace() {
+        let core: String = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'').to_string();
+        let low = core.to_lowercase();
+        let swap = match low.as_str() {
+            "i" => Some("you"),
+            "i'm" => Some("you're"),
+            "i've" => Some("you've"),
+            "i'll" => Some("you'll"),
+            "i'd" => Some("you'd"),
+            "me" => Some("you"),
+            "my" => Some("your"),
+            "mine" => Some("yours"),
+            "myself" => Some("yourself"),
+            "you" => Some("me"),
+            "your" => Some("my"),
+            "yours" => Some("mine"),
+            "yourself" => Some("myself"),
+            "you're" => Some("I'm"),
+            "you'll" => Some("I'll"),
+            "am" if after_you => Some("are"),
+            "was" if after_you => Some("were"),
+            _ => None,
+        };
+        after_you = matches!(low.as_str(), "i");
+        match swap {
+            Some(r) if !core.is_empty() => {
+                let r = if core.chars().next().is_some_and(|c| c.is_uppercase()) && low != "i" && out.is_empty() {
+                    let mut c = r.chars();
+                    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+                } else {
+                    r.to_string()
+                };
+                out.push(w.replacen(core.as_str(), &r, 1));
+            }
+            _ => out.push(w.to_string()),
+        }
+    }
+    out.join(" ")
+}
+
+/// At most `n` words, with an ellipsis when cut -- a read-back is a check,
+/// not a recital.
+fn clipped(text: &str, n: usize) -> String {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.len() <= n {
+        return text.trim().trim_end_matches(['.', '!']).to_string();
+    }
+    format!("{}...", words[..n].join(" ").trim_end_matches([',', '.', ';']))
+}
+
+/// Is this a short list of names ("the bakery, my channel and Atlas"),
+/// rather than sentences about them?
+fn a_short_list(answer: &str) -> bool {
+    let sentences = answer.matches(['.', '!', '?']).count();
+    let ps = pieces(answer);
+    sentences <= 1 && !ps.is_empty() && ps.iter().all(|p| p.split_whitespace().count() <= 5)
+}
+
+/// What you'd say before the thing to push you on: "I need you to push me
+/// on my habits" is about "my habits".
+pub fn without_push_lead(answer: &str) -> String {
+    let a = answer.trim();
+    let low = a.to_ascii_lowercase();
+    const LEADS: &[&str] = &[
+        "i need you to push me on ", "i want you to push me on ", "i'd like you to push me on ", "push me on ",
+        "keep me honest about ", "keep me honest on ", "you can push me on ", "i need pushing on ",
+    ];
+    LEADS.iter().find_map(|l| low.strip_prefix(l).map(|_| a[l.len()..].to_string())).unwrap_or_else(|| a.to_string())
+}
+
 /// What an answer becomes: the facts to keep, and the lines to read back.
 pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
     let a = answer.trim().trim_end_matches(['.', '!']).trim();
@@ -88,7 +165,7 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
     }
     match slot {
         Slot::Name => {
-            let low = a.to_lowercase();
+            let low = a.to_ascii_lowercase();
             let name = ["call me ", "it's ", "its ", "i'm ", "im ", "my name is ", "just "]
                 .iter()
                 .find_map(|p| low.strip_prefix(p).map(|r| a[a.len() - r.len()..].to_string()))
@@ -96,24 +173,32 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
             let name = name.trim().to_string();
             vec![(Fact::new("what to call them", &format!("Call them {name}"), &format!("They asked to be called {name}."), Kind::Instruction, now), format!("I'll call you {name}."))]
         }
-        Slot::Work => pieces(a)
+        // A short list is several projects; sentences about your work are
+        // kept whole, in your words, as one (1 Oct 2026: a paragraph was cut
+        // at every comma and "and", each piece read back as a project).
+        Slot::Work if a_short_list(a) => pieces(a)
             .into_iter()
             .map(|p| {
                 let line = format!("Working on: {p}");
-                (Fact::new(&format!("project {p}"), &line, &line, Kind::Project, now), format!("You're working on {p}."))
+                (Fact::new(&format!("project {p}"), &line, &line, Kind::Project, now), format!("You're working on {}.", said_back(&p)))
             })
             .collect(),
+        Slot::Work => {
+            let line = format!("What they're working on: {a}");
+            vec![(Fact::new("what they're working on", &line, &line, Kind::Project, now), format!("Your work: {}.", clipped(&said_back(a), 30)))]
+        }
         Slot::Day => {
             let line = format!("Their day: {a}");
-            vec![(Fact::new("their day", &line, &line, Kind::You, now), format!("Your day: {a}."))]
+            vec![(Fact::new("their day", &line, &line, Kind::You, now), format!("Your day: {}.", clipped(&said_back(a), 25)))]
         }
         Slot::Push => {
-            let line = format!("Push them on: {a}");
-            vec![(Fact::new("push them on", &line, &line, Kind::Instruction, now), format!("I'll push you on {a}."))]
+            let what = without_push_lead(a);
+            let line = format!("Push them on: {what}");
+            vec![(Fact::new("push them on", &line, &line, Kind::Instruction, now), format!("I'll push you on {}.", clipped(&said_back(&what), 25)))]
         }
         Slot::Folders => {
             let line = format!("Their work is in: {a}");
-            vec![(Fact::new("where their work is", &line, &line, Kind::Reference, now), format!("Your work is in {a}."))]
+            vec![(Fact::new("where their work is", &line, &line, Kind::Reference, now), format!("Where your work is: {}.", clipped(&said_back(a), 25)))]
         }
         Slot::Connect => Vec::new(),
     }
@@ -194,6 +279,15 @@ mod tests {
     #[test]
     fn a_list_said_in_one_breath_is_several_projects() {
         assert_eq!(pieces("the bakery, my YouTube channel and Atlas"), vec!["the bakery", "my YouTube channel", "Atlas"]);
+    }
+
+    #[test]
+    fn a_paragraph_about_your_work_is_one_thing_not_twelve() {
+        let a = "I have two projects. The bakery which is opening in November. Atlas (you). I want to make the bakery profitable";
+        let f = facts_from(Slot::Work, a, 0);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].1.starts_with("Your work: you have two projects."), "{}", f[0].1);
+        assert!(f[0].1.contains("Atlas (me)"), "{}", f[0].1);
     }
 
     #[test]

@@ -777,11 +777,17 @@ pub fn from_here(s: &Sources, cfg: &BriefConfig, now: u64, since: u64) -> Brief 
 pub fn push_for_day(asked: &str, day: u64) -> Option<String> {
     let asked = asked.trim();
     let asked = asked.strip_prefix("Push them on:").unwrap_or(asked).trim();
+    // Said at length ("I need you to push me on my habits, and my projects.
+    // I need you to take work off my plate..."): the first sentence, its
+    // lead taken off, turned round to be said to you (1 Oct 2026).
+    let first = asked.split(['.', '!', '?']).find(|p| !p.trim().is_empty()).unwrap_or("");
+    let turned = crate::getknow::said_back(&crate::getknow::without_push_lead(first));
+    let asked = turned.as_str();
     let pieces: Vec<&str> = asked
         .split([',', ';'])
         .flat_map(|p| p.split(" and "))
         .map(|p| p.trim().trim_start_matches("and ").trim_end_matches(['.', '!']).trim())
-        .filter(|p| p.len() > 1)
+        .filter(|p| p.len() > 1 && p.split_whitespace().count() <= 8)
         .collect();
     if pieces.is_empty() {
         return None;
