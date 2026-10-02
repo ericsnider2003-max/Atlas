@@ -935,3 +935,5 @@ mod what_the_model_ranking_found;
 mod what_eric_said_on_1_oct;
 #[path = "greet_once.rs"]
 mod greet_once;
+#[path = "selftest_examples.rs"]
+mod selftest_examples;

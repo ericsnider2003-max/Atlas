@@ -125,7 +125,7 @@ pub fn examine(s: &Survey, cfg: &TuneConfig) -> Vec<Finding> {
 
     // Memory held by things you aren't using.
     for (app, mb, used_today) in &s.memory_by_app {
-        if *mb < cfg.min_mb || *used_today || protected(app) {
+        if *mb < cfg.min_mb || *used_today || protected(app) || !may_close(app, &cfg.keep) {
             continue;
         }
         out.push(Finding {

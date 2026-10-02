@@ -1335,7 +1335,7 @@ impl<'a> Daemon<'a> {
             })
             .collect();
         let temp = std::env::temp_dir();
-        let temp_mb = crate::tune::folder_mb(&temp, std::time::Duration::from_secs(3));
+        let temp_mb = crate::tune::folder_mb(&temp, std::time::Duration::from_millis(500));
         let survey = crate::tune::Survey {
             memory_by_app,
             disposable: vec![(temp.display().to_string(), temp_mb)],

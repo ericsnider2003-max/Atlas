@@ -457,7 +457,7 @@ impl<'a> Daemon<'a> {
         }
 
         let scfg = self.tools_cfg().self_work.clone();
-        let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
 
         // Collecting the diagnosis.
         {
@@ -486,11 +486,10 @@ impl<'a> Daemon<'a> {
         // cargo in whatever folder it was started from -- often Windows'
         // own. The diagnosis is kept; the building needs a source checkout.
         if needs_the_proof && !crate::selfwork::is_a_source_checkout(&root) {
-            return format!(
-                "I've got the diagnosis down, but I'm an installed copy -- there's no source code here for me to change. \
-                 It's kept on the Improvements page, and a fix comes to you as an update. (I looked in {}.)",
-                root.display()
-            );
+            return "I've got the diagnosis down, but there's no copy of my source code on this computer for me to change, \
+                    so it's kept on the Improvements page and a fix comes to you as an update. If you do have my source, \
+                    say where in Settings (Self-improvement -> where my source is)."
+                .to_string();
         }
         if needs_the_proof {
             let named = self
@@ -616,7 +615,7 @@ impl<'a> Daemon<'a> {
         let Some(thought) = self.selfwork.as_ref().and_then(|s| s.work.thought.clone()) else {
             return "I need the diagnosis before I can write anything.".into();
         };
-        let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
 
         // Which file holds the cause?
         let current = crate::selfwork::files_named(&thought.where_, &root);
@@ -711,7 +710,7 @@ impl<'a> Daemon<'a> {
         if self.rehearsal || !self.tools_cfg().self_work.enabled {
             return;
         }
-        let root = std::env::current_dir().unwrap_or_default();
+        let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
         if !root.join("Cargo.toml").is_file() || !root.join("src").is_dir() {
             return;
         }
@@ -930,7 +929,7 @@ impl<'a> Daemon<'a> {
 
         // The project root, which is where Atlas runs from. `may_edit` reads
         // project-relative paths and `sandbox::plan` produces absolute ones.
-        let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
         let held = crate::selfwork::what_holds_it_back(
             &changes,
             session.work.review.as_ref(),
