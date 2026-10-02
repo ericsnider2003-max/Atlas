@@ -413,6 +413,9 @@ pub fn build_loop(
     }
     let mut code = first.code;
     let mut rounds = 0u32;
+    // However many your settings ask for: past this a model is going round
+    // in circles, not closing in (2 Oct 2026).
+    let max_rounds = max_rounds.min(MOST_ROUNDS);
     loop {
         match check(&code) {
             Check::Passed(notes) => return Outcome::Built { code, rounds, notes },
@@ -422,7 +425,11 @@ pub fn build_loop(
                     return Outcome::Struggled { code, rounds, last_failure: output };
                 }
                 rounds += 1;
-                match fix_round(&code, &output, lang, llm) {
+                // The lines that say what's wrong, not the whole log: a
+                // compiler's progress lines and fifty repeats of one warning
+                // pushed the error itself out of a small model's view.
+                let said = trim_failure(&output, FAILURE_MOST);
+                match fix_round(&code, &said, lang, llm) {
                     // Edits apply to a whole draft, so only a full rewrite
                     // can come back cut off: the draft before it is still
                     // whole, and still failing, so that is the struggle.
@@ -439,6 +446,117 @@ pub fn build_loop(
             }
         }
     }
+}
+
+/// The most fix rounds a build gets, whatever the settings say.
+pub const MOST_ROUNDS: u32 = 8;
+
+/// The most of a check's output a fix round is shown, in characters.
+pub const FAILURE_MOST: usize = 2400;
+
+/// Is this a line that says what went wrong (or where)?
+fn says_what_failed(line: &str) -> bool {
+    let t = line.trim_start();
+    const MARKS: &[&str] = &[
+        "error", "Error", "ERROR", "panicked", "FAILED", "FAIL", "failed", "Traceback", "Exception", "assert",
+        "--> ", "File \"", "E   ", "expected", "undefined", "not found", "cannot find", "No module named",
+        "SyntaxError", "TypeError", "NameError", "fatal", "test result:", "Segmentation", "Uncaught",
+    ];
+    MARKS.iter().any(|m| t.contains(m)) && !t.starts_with("warning: unused")
+}
+
+/// A check's output cut down to what a fix needs (2 Oct 2026): the lines
+/// that name a failure, a line before and a few after each (the compiler's
+/// pointer to the line, the source it quotes), the last line, repeats
+/// dropped, within `most` characters -- the earliest failures first, since
+/// the first error explains the rest, and the end, where Python and the test
+/// runners say what finally happened. Output already short is left whole;
+/// output with no such line keeps its end.
+pub fn trim_failure(output: &str, most: usize) -> String {
+    if output.len() <= most {
+        return output.to_string();
+    }
+    let lines: Vec<&str> = output.lines().collect();
+    let mut keep = vec![false; lines.len()];
+    let mut any = false;
+    for (i, l) in lines.iter().enumerate() {
+        if says_what_failed(l) {
+            any = true;
+            let from = i.saturating_sub(1);
+            let to = (i + 5).min(lines.len().saturating_sub(1));
+            for k in keep.iter_mut().take(to + 1).skip(from) {
+                *k = true;
+            }
+        }
+    }
+    if let Some(last) = lines.iter().rposition(|l| !l.trim().is_empty()) {
+        keep[last] = true;
+    }
+    if !any {
+        // Nothing names the failure: the end of it, on a line boundary.
+        let mut cut = output.len() - most;
+        while !output.is_char_boundary(cut) {
+            cut += 1;
+        }
+        let tail = &output[cut..];
+        let tail = tail.split_once('\n').map(|(_, rest)| rest).unwrap_or(tail);
+        return format!("...\n{tail}");
+    }
+    // The kept lines, in order, a gap marked, a line seen before dropped.
+    let mut seen = std::collections::HashSet::new();
+    let mut kept: Vec<String> = Vec::new();
+    let mut gap = false;
+    for (i, l) in lines.iter().enumerate() {
+        if !keep[i] {
+            gap = true;
+            continue;
+        }
+        if !l.trim().is_empty() && !seen.insert(l.trim()) {
+            continue;
+        }
+        if gap && !kept.is_empty() {
+            kept.push("...".into());
+        }
+        gap = false;
+        kept.push(l.to_string());
+    }
+    let whole = kept.join("\n");
+    if whole.len() <= most {
+        return whole;
+    }
+    // Still too long: the first two thirds of the room from the start, the
+    // rest from the end.
+    let head_room = most * 2 / 3;
+    let (mut head, mut tail) = (Vec::new(), Vec::new());
+    let mut used = 0;
+    for l in &kept {
+        if used + l.len() + 1 > head_room {
+            break;
+        }
+        used += l.len() + 1;
+        head.push(l.as_str());
+    }
+    let mut tail_used = 0;
+    for l in kept.iter().rev() {
+        if used + tail_used + l.len() + 1 > most.saturating_sub(4) || head.len() + tail.len() >= kept.len() {
+            break;
+        }
+        tail_used += l.len() + 1;
+        tail.push(l.as_str());
+    }
+    tail.reverse();
+    let mut out = head.join("\n");
+    out.push_str("\n...\n");
+    out.push_str(&tail.join("\n"));
+    // One line longer than the whole room: cut, on a character boundary.
+    if out.len() > most {
+        let mut cut = most;
+        while !out.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        out.truncate(cut);
+    }
+    out
 }
 
 /// What to tell the model about packages, by language. Python may declare
@@ -619,6 +737,9 @@ pub fn apply_edits(code: &str, edits: &[(String, String)]) -> Result<String, Str
 /// laptop wrote everything, whatever else was set up).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Writer {
+    /// The coding model on this computer (`coder`, 2 Oct 2026): a model
+    /// trained for code, swapped in for the build.
+    Coder,
     /// Your own second model (`llm_secondary`): a server you run, or a hosted
     /// model with your key.
     YourSecond,
@@ -634,10 +755,21 @@ impl Writer {
     /// How it's named when saying who wrote the code.
     pub fn named(&self) -> &'static str {
         match self {
+            Writer::Coder => "the coding model on this computer",
             Writer::YourSecond => "your second model",
             Writer::Worker => "your Cloudflare worker",
             Writer::Local => "the model on this computer",
             Writer::FreeOnline => "a free online model",
+        }
+    }
+
+    /// The same, with the coding model's own name when it's the one
+    /// (`coder::plain_name`): "the coding model on this computer
+    /// (Qwen2.5-Coder 7B)".
+    pub fn named_with(&self, coder: &str) -> String {
+        match self {
+            Writer::Coder if !coder.is_empty() => format!("{} ({coder})", self.named()),
+            w => w.named().to_string(),
         }
     }
 }
@@ -645,6 +777,8 @@ impl Writer {
 /// What there is to write code with, right now.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Available {
+    /// A coding model is set up on this computer (`coder`).
+    pub coder: bool,
     pub your_second: bool,
     pub worker: bool,
     pub local: bool,
@@ -661,8 +795,15 @@ pub struct Available {
 /// better; then the one on this computer; then the free online ones, and
 /// only for a request with nothing private in it -- tried after the local
 /// one fails or runs out of room, never first (offline first, online second).
+///
+/// The coding model, when this computer has one, goes first of all (2 Oct
+/// 2026): it is local, it is trained for exactly this, and when it can't be
+/// had the call fails at once and the rest of the chain takes it.
 pub fn writers(a: &Available) -> Vec<Writer> {
     let mut out = Vec::new();
+    if a.coder {
+        out.push(Writer::Coder);
+    }
     if a.your_second {
         out.push(Writer::YourSecond);
     }
@@ -1056,7 +1197,7 @@ mod tests {
 
     #[test]
     fn your_own_stronger_models_write_first_and_free_online_only_after_the_local_one() {
-        let all = Available { your_second: true, worker: true, local: true, free_online: true, online: true, private: false };
+        let all = Available { coder: false, your_second: true, worker: true, local: true, free_online: true, online: true, private: false };
         assert_eq!(writers(&all), vec![Writer::YourSecond, Writer::Worker, Writer::Local, Writer::FreeOnline]);
         // Offline: no worker, no free online.
         let offline = Available { online: false, ..all };

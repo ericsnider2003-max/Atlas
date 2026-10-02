@@ -166,6 +166,19 @@ pub struct ModelsConfig {
     /// is what "the picture reader needs about 3.5 GB and only 2.7 GB is
     /// free" was. `false`: the server is started without it, as before.
     pub see_with_talking_model: bool,
+    /// The model code is written with (2 Oct 2026, `coder`): empty -- the
+    /// largest Qwen2.5-Coder (7B, else 1.5B) whose file is here and that this
+    /// device has room for; `off` -- none, code goes to the usual writers;
+    /// or a model's file name in `dir`. Run as its own server while a build
+    /// needs it, the talking model let go when both don't fit.
+    pub coder: String,
+    /// The coding model's server port. 0: the talking model's port plus two.
+    pub coder_port: u16,
+    /// How long the coding model stays loaded after the last code call, in
+    /// seconds, before the talking model gets its room back.
+    pub coder_idle_secs: u64,
+    /// The coding model's context, in tokens. 0: `coder::CONTEXT_DEFAULT`.
+    pub coder_context: u64,
 }
 
 /// How the model picks its next word, sent with every request (29 Sep 2026).
@@ -296,6 +309,11 @@ impl Default for ModelsConfig {
             deep_context: 8192,
             online_second: true,
             see_with_talking_model: true,
+            coder: String::new(),
+            coder_port: 0,
+            // Short: the talking model waits for its room back.
+            coder_idle_secs: 90,
+            coder_context: 0,
         }
     }
 }
@@ -1127,7 +1145,9 @@ impl Registry {
         // took over the conversation. When the talking model is here it is
         // used even over budget: it runs on the graphics chip, and a 0.6B
         // answering is worse than a slower start.
-        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj");
+        // Nor a coding model (2 Oct 2026, `coder`): it writes code, it
+        // doesn't talk, and the 1.5B would otherwise win on a small budget.
+        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj") && !crate::coder::is_coder_id(&m.id);
         let chosen = if cfg.talk_ceiling_b == 0 {
             self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget).max_by_key(|m| m.parameters)
         } else {
