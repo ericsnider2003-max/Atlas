@@ -316,6 +316,52 @@ pub fn better_talk_model() -> Piece {
     }
 }
 
+/// The bigger talking model (`deepbrain::BIGGER_TALK`) and its picture
+/// encoder: Qwen3-VL 8B Instruct, Qwen's own GGUF files (Apache-2.0), pinned
+/// to the repository's commit. Sizes and SHA-256 are Hugging Face's LFS
+/// record of each file, read on 2 Oct 2026 from the repository's file list
+/// at that commit and from the download's own `X-Linked-ETag` -- the same
+/// record that matches the shipped 4B's pinned hashes exactly. Not yet
+/// downloaded and hashed on a machine of ours; `fetch` checks the hash on
+/// arrival either way. Only offered where the machine has room
+/// (`models::room_for_bigger_talk`).
+pub fn bigger_talk_model() -> Vec<Piece> {
+    vec![
+        Piece {
+            name: "the bigger model",
+            for_what: "understanding you better, on a machine with room",
+            url: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/f982a07559d4a2f6c8744d840bf6fccab30eea96/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            sha256: "67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2",
+            bytes: 5_027_784_800,
+            lands: Lands::File("models/Qwen3VL-8B-Instruct-Q4_K_M.gguf"),
+        },
+        Piece {
+            name: "the bigger model's picture reader",
+            for_what: "reading screens and pictures with the bigger model",
+            url: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/f982a07559d4a2f6c8744d840bf6fccab30eea96/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf",
+            sha256: "c6ba85508d82f42590e6eb77d5340369ab6fecf107a7561d809523d8aa5f3bfd",
+            bytes: 752_289_728,
+            lands: Lands::File("models/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf"),
+        },
+    ]
+}
+
+/// About how much memory the helpers installed here hold while Atlas runs,
+/// in MB: hearing (Parakeet), the wake-word spotter, telling voices apart,
+/// the speaking voice, the meaning model and the seeing models (hands
+/// included). Estimated from their files -- half again on top for what they
+/// take running -- not measured: enough to keep a bigger talking model from
+/// being chosen into memory they already use.
+pub fn helpers_resident_mb(root: &Path) -> u64 {
+    let bytes: u64 = [parakeet_pieces(), vec![crate::kws::spotter_piece()], voice_model(), crate::kokoro::pieces(), understanding(), seeing()]
+        .into_iter()
+        .flatten()
+        .filter(|p| have(p, root))
+        .map(|p| p.bytes)
+        .sum();
+    bytes * 3 / 2 / (1024 * 1024)
+}
+
 /// The shipped talking model, as `pictures` fetches it.
 pub fn faster_talk_model() -> Piece {
     pictures().into_iter().find(|p| p.name == "the language model").expect("the pictures set has the language model")

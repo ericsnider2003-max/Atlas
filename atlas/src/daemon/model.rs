@@ -1654,6 +1654,32 @@ impl<'a> Daemon<'a> {
                 crate::getpieces::gib_label(deep.bytes)
             ));
         }
+        // The bigger model (2 Oct 2026): offered only where this machine has
+        // room for it beside the helpers; talks on its own once it's here.
+        let bigger = crate::getpieces::bigger_talk_model();
+        let bigger_here = bigger.iter().all(|p| crate::getpieces::have(p, &root));
+        let bigger_bytes: u64 = bigger.iter().map(|p| p.bytes).sum();
+        let room = crate::models::room_for_bigger_talk(
+            &crate::fit::measure(),
+            &cfg,
+            crate::getpieces::helpers_resident_mb(&root),
+            crate::models::bigger_talk_needs(&cfg, bigger_bytes),
+        );
+        let bigger_line = match (bigger_here, room) {
+            (true, true) if self.model_running_id.as_deref() == Some(crate::deepbrain::BIGGER_TALK) => {
+                "The bigger model (Qwen3-VL 8B) is talking with you: this machine has room for it.".to_string()
+            }
+            (true, true) => "The bigger model (Qwen3-VL 8B) is here; it takes over talking the next time the model starts.".to_string(),
+            (true, false) => "The bigger model (Qwen3-VL 8B) is here, but this machine hasn't the room for it beside everything else right now, so the 4B talks.".to_string(),
+            (false, true) => {
+                buttons.push_str(&format!(
+                    "<button name=what value=get-bigger>Get the bigger model \u{b7} {}</button>",
+                    crate::getpieces::gib_label(bigger_bytes)
+                ));
+                "This machine has room for a bigger talking model (Qwen3-VL 8B): it follows what you mean better, and answers a little slower.".to_string()
+            }
+            (false, false) => String::new(),
+        };
         let deep_line = if deep_here {
             self.deep.describe()
         } else {
@@ -1662,8 +1688,9 @@ impl<'a> Daemon<'a> {
              you're talking."
                 .to_string()
         };
+        let bigger_line = if bigger_line.is_empty() { String::new() } else { format!("<p>{}</p>", crate::hub::esc(&bigger_line)) };
         format!(
-            "<section aria-labelledby=brains-h><h2 id=brains-h>Two brains</h2><p>{}</p><p>{}</p>\
+            "<section aria-labelledby=brains-h><h2 id=brains-h>Two brains</h2><p>{}</p>{bigger_line}<p>{}</p>\
              <form method=post action=/hub/brains>{buttons}</form></section>",
             crate::hub::esc(talking),
             crate::hub::esc(&deep_line)
@@ -1677,6 +1704,7 @@ impl<'a> Daemon<'a> {
             "faster" => self.choose_talk_model(false),
             "get-better" => self.get_model_piece(crate::getpieces::better_talk_model(), "the better model"),
             "get-deep" => self.get_model_piece(crate::getpieces::deep_model(), "the deep brain"),
+            "get-bigger" => self.get_bigger_talk(),
             "get-understanding" => self.get_understanding(),
             _ => "That button isn't wired to anything, so nothing changed.".into(),
         }
@@ -1741,6 +1769,43 @@ impl<'a> Daemon<'a> {
         if self.hand_off("model-piece", crate::store::now(), work, Some("the meaning model".into()), SpeakPolicy::Always) {
             self.meaning_route_retry = true;
             format!("Getting the meaning model ({mb} MB) -- I'll say when it's ready.")
+        } else {
+            "I've too much going on to start that download now. Try again in a minute.".into()
+        }
+    }
+
+    /// Fetch the bigger talking model and its picture reader on the crew
+    /// (2 Oct 2026). Only where the machine has room: on a smaller one it
+    /// would sit unused, and 5.4 GB of disk is not nothing.
+    fn get_bigger_talk(&mut self) -> String {
+        if self.handover().stance.handed_over() {
+            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+        }
+        let root = self.store.install_root();
+        let pieces = crate::getpieces::bigger_talk_model();
+        if pieces.iter().all(|p| crate::getpieces::have(p, &root)) {
+            return "The bigger model is already here.".into();
+        }
+        let cfg = self.tools_cfg().models.clone();
+        let bytes: u64 = pieces.iter().map(|p| p.bytes).sum();
+        if !crate::models::room_for_bigger_talk(&crate::fit::measure(), &cfg, crate::getpieces::helpers_resident_mb(&root), crate::models::bigger_talk_needs(&cfg, bytes)) {
+            return "This machine hasn't the room to talk through the bigger model beside everything else I run, so I've left it -- the 4B stays.".into();
+        }
+        let label = crate::getpieces::gib_label(bytes);
+        let work: crew::Work = Box::new(move |_ctl| {
+            let places = crate::getpieces::places_it_may_be(&root);
+            for p in &pieces {
+                if crate::getpieces::have(p, &root) {
+                    continue;
+                }
+                if crate::getpieces::take_in(p, &root, &places)?.is_none() {
+                    crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                }
+            }
+            Ok("The bigger model is here and checked. It takes over talking the next time the model starts.".into())
+        });
+        if self.hand_off("model-piece", crate::store::now(), work, Some("the bigger model".into()), SpeakPolicy::Always) {
+            format!("Getting the bigger model ({label}) -- I'll say when it's ready.")
         } else {
             "I've too much going on to start that download now. Try again in a minute.".into()
         }

@@ -74,6 +74,13 @@ pub const DEEP_DEFAULT: &str = "Qwen_Qwen3.5-9B-IQ4_XS";
 pub const BETTER_TALK: &str = "Qwen_Qwen3.5-4B-Q4_K_M";
 /// The shipped talking model, which also reads pictures.
 pub const FASTER_TALK: &str = "Qwen3VL-4B-Instruct-Q4_K_M";
+/// The bigger talking model, for a machine with room for it (2 Oct 2026,
+/// "Atlas doesn't really understand me"): Qwen3-VL 8B Instruct at Q4_K_M,
+/// Qwen's own file -- the shipped 4B's bigger sibling, the same family and
+/// chat template, and it reads pictures with its own encoder. Talks only
+/// when it has been fetched and `models::room_for_bigger_talk` says this
+/// machine can hold it beside everything else Atlas runs.
+pub const BIGGER_TALK: &str = "Qwen3VL-8B-Instruct-Q4_K_M";
 
 /// Free memory kept beyond what the deep model needs before it may start.
 pub const HEADROOM_MB: u64 = 1024;
