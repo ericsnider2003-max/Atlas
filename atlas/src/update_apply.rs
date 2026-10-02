@@ -656,6 +656,12 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
 /// Start this program again with the same arguments, detached, so the caller
 /// can exit and the new copy's start swaps the staged build in.
 pub fn relaunch_self(running: &Path, args: &[String]) -> Result<(), String> {
+    // The self-test's copy never puts anything on the screen or starts
+    // another Atlas (1 Oct 2026: a briefing panel opened on Eric's screen from
+    // inside the test).
+    if crate::selftest::in_a_test() {
+        return Err(crate::selftest::NOT_IN_A_TEST.into());
+    }
     crate::tools::command(running)
         .args(args)
         .stdin(std::process::Stdio::null())
