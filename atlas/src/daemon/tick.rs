@@ -123,6 +123,12 @@ impl<'a> Daemon<'a> {
         // Counted rather than reported on the first failure, because one
         // missed write is a blip and the staleness window is five beats wide.
         // Three in a row is a pattern with two beats of margin left.
+        // Still alive, for the record of runs (item 33): about once a minute.
+        if let Some(runs) = self.runs.as_mut() {
+            if runs.alive(t) {
+                let _ = runs.save(&self.store.data_dir().join("state"));
+            }
+        }
         if crate::onlyone::OnlyOne::at(&self.store.data_dir()).beat(t) {
             self.missed_beats = 0;
         } else {
@@ -202,8 +208,13 @@ impl<'a> Daemon<'a> {
                 self.model_server_died();
             }
         }
+        let model_was_up = self.helpers.is_running("model-server");
         for said in self.helpers.reap(t) {
             self.log.info(&said);
+        }
+        // Let go for being idle: it waits for you now (`model_rested`).
+        if model_was_up && !self.helpers.is_running("model-server") {
+            self.model_rested = true;
         }
 
         // Answer a peer dialing us for a direct same-network sync, every beat —

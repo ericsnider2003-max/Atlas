@@ -97,6 +97,9 @@ fn the_self_check_tells_you_your_part_in_setup() {
     // and not opening a Bluetooth headset's microphone for nothing) was built
     // and unlisted until the catalogue accounted for the whole tree, and only
     // your ears can say the headset still sounds right.
-    assert!(eyes_n <= 8, "your part is genuinely small: {eyes_n}");
+    // Ten on 1 Oct 2026 (ca70f0f): watching for a while (`camwatch`) needs a
+    // real camera in front of you, and muting your side of a call
+    // (`callmute`) a real call -- only you can confirm either.
+    assert!(eyes_n <= 10, "your part is genuinely small: {eyes_n}");
     assert!(reply.contains(&eyes_n.to_string()), "the reported your-eyes count is the real one: {reply}");
 }

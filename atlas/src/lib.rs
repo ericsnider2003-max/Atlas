@@ -128,6 +128,8 @@ pub mod recovery;
 pub mod reference;
 pub mod references;
 pub mod talkbench;
+pub mod voicefirst;
+pub mod whystopped;
 pub mod freeonline;
 pub mod parakeet;
 pub mod kws;

@@ -224,6 +224,32 @@ impl<'a> Daemon<'a> {
         // three seconds and run speech-to-text on it every pass of this loop
         // -- a core busy and the loop deaf to the hub for those seconds, for
         // a word it was told not to listen for.
+        // Why the last run ended, written down, and this one begun (item
+        // 33): 19 of 23 runs on 30 Sep ended with nothing recorded.
+        {
+            let state = self.store.data_dir().join("state");
+            let now = clock();
+            let mut runs = crate::whystopped::Runs::load(&state);
+            if let Some(line) = runs.start(now, crate::whystopped::computer_started(now)) {
+                self.log.warn(&line);
+            }
+            let _ = runs.save(&state);
+            self.runs = Some(runs);
+            // Windows starts Atlas again after an update restarts the
+            // computer -- the same way it was started this time.
+            // A start-with-Windows task from before the unlock and wake
+            // triggers is brought up to date, off the loop.
+            if let Ok(exe) = std::env::current_exe() {
+                let state_dir = state.clone();
+                std::thread::spawn(move || {
+                    let _ = crate::startup::bring_up_to_date(&exe, &state_dir);
+                });
+            }
+            let args: Vec<String> = std::env::args().skip(1).collect();
+            if crate::whystopped::come_back_after_updates(&args.join(" ")) {
+                self.log.info("Windows will start me again after an update restart");
+            }
+        }
         self.tiers.set_wake(self.wake_on());
         // The microphone on its own thread (28 Sep 2026): each wake-word
         // clip used to hold this loop -- the hub, the typing box, the icon's
@@ -674,6 +700,10 @@ impl<'a> Daemon<'a> {
         // model was asked (30 Sep 2026): the target is under 3 s.
         if let Some(ms) = self.first_words_ms.take() {
             line.push_str(&format!(" first_words={ms}ms"));
+        }
+        // The silence Eric sits through (Phase 0.2, target under 3 s).
+        if let Some(ms) = self.silence_ms.take() {
+            line.push_str(&format!(" end_of_speech_to_first_audio={ms}ms"));
         }
         // What the model server itself counted for the last call: a whole
         // prompt read again (a cache miss) reads very differently from a
@@ -1173,6 +1203,14 @@ impl<'a> Daemon<'a> {
             ));
         }
 
+        // How this run ended, before the lock goes (item 33).
+        if let Some(mut runs) = self.runs.take() {
+            let why = crate::goodbye::why();
+            runs.stop(crate::store::now(), why);
+            let _ = runs.save(&self.store.data_dir().join("state"));
+            self.log.info(&format!("stopping because {}", why.plain()));
+        }
+
         // Last. See the order above.
         crate::onlyone::OnlyOne::at(&self.store.data_dir()).release();
 
@@ -1289,6 +1327,13 @@ impl<'a> Daemon<'a> {
             }
 
             let started = std::time::Instant::now();
+            // What Eric feels (Phase 0.2): the silence from the end of his
+            // speech to the first sound back. The words came back from
+            // speech-to-text `hearing` ms after he stopped; the first sound
+            // is caught where playback starts (`speaking::heard_now`).
+            crate::speaking::listen_for_first_sound();
+            let heard_ms = timed.get(crate::timing::Stage::Hearing).map(|ms| ms as u64);
+            self.model_done_at.set(None);
             let calls_before = self.trace.recorded();
             // The model's reply is spoken a sentence at a time as it is
             // written (`speak_while_thinking`), rather than after the whole
@@ -1318,10 +1363,11 @@ impl<'a> Daemon<'a> {
             // a stranger's voice would still be "the last voice" when you
             // next typed, and a typed turn would be judged by it.
             self.last_verdict = crate::voiceid::Verdict::NotEnrolled;
-            timed.note(
-                crate::timing::Stage::Doing,
-                started.elapsed().as_millis().min(u32::MAX as u128) as u32,
-            );
+            // "Doing" ends when the answer came back, not after it was
+            // played: before Phase 0.2 the queued sentences were waited out
+            // first, so the 30 Sep "17.5 s of thinking" was mostly speech.
+            let doing = self.model_done_at.take().map(|at| at.saturating_duration_since(started)).unwrap_or_else(|| started.elapsed());
+            timed.note(crate::timing::Stage::Doing, doing.as_millis().min(u32::MAX as u128) as u32);
             how = Arrival::OpenMic;
             if let Some(words) = cut_while_thinking {
                 // Set aside for what you said instead.
@@ -1379,6 +1425,8 @@ impl<'a> Daemon<'a> {
                 timed.note(crate::timing::Stage::Speaking, synth);
                 timed.note(crate::timing::Stage::Playing, playback);
             }
+            let first_sound = crate::speaking::take_first_sound().map(|at| at.saturating_duration_since(started).as_millis() as u64);
+            self.silence_ms.set(crate::timing::silence_before_first_sound(heard_ms, first_sound));
             self.log_turn_timing(&timed, calls_before, speaking_ms);
             self.timing.add(timed);
             self.last_spoke_at = clock();
@@ -1687,4 +1735,5 @@ pub(super) struct LeftWaiting {
     pub asked: bool,
     pub at: u64,
 }
+
 

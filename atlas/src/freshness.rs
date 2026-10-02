@@ -220,6 +220,7 @@ pub fn ago(secs: u64) -> String {
     match secs {
         s if s < 2 * MIN => "just now".into(),
         s if s < HOUR => format!("{} minutes ago", s / MIN),
+        s if s < 2 * HOUR => "an hour ago".into(),
         s if s < 2 * DAY => format!("{} hours ago", s / HOUR),
         s if s < 14 * DAY => format!("{} days ago", s / DAY),
         s if s < 60 * DAY => format!("{} weeks ago", s / (7 * DAY)),

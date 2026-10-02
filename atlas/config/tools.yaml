@@ -74,7 +74,8 @@ stt_timed:
 # {speed}        already converted for this engine (see tts_engine below)
 # {variation}    how much the delivery wanders
 # {sentence_gap} pause between sentences, seconds
-# Ships as piper, because piper is what ATLAS.bat downloads.
+# The command below is piper: what Atlas falls back to while Kokoro (the
+# engine chosen further down) is missing or fails.
 #
 # This file named kokoro and the installer fetched piper, so on a fresh
 # install Atlas could hear you and had no program to answer with -- and
@@ -1172,8 +1173,13 @@ sound:
   quiet_to: "07:00"
   popups: urgent                   # ask | urgent | anything
 
+# Kokoro first, for everyone (Eric, Phase 0.8, 1 Oct 2026): setup fetches it
+# (`getpieces::setup_pieces`), and until it's there -- or if it ever fails
+# mid-reply -- piper, below, says the words instead, saying so once. The voice
+# id below is piper's; Kokoro speaks its own default voice for an id it
+# doesn't know, so one setting serves both.
 tts_engine:
-  engine: piper                    # piper | kokoro | chatterbox
+  engine: kokoro                   # piper | kokoro | chatterbox
   exe: "tools/piper/piper.exe"
   voices_dir: "models"
 
@@ -1190,7 +1196,9 @@ voice_settings:
   #
   # If you switch back to piper this becomes a piper voice id again, e.g.
   # "en_US-ryan-medium", and the extension changes to .onnx automatically.
-  voice: "en_US-amy-medium"
+  # Kokoro's warm American voice (Phase 0.8: Kokoro first). While Kokoro is
+  # still downloading, piper speaks in its own default voice (amy).
+  voice: "af_heart"
   speed: 1.0            # below 1 is faster
   variation: 0.667      # low is flat and robotic, high wanders
   sentence_gap: 0.2

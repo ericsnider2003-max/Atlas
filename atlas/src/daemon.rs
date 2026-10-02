@@ -1060,6 +1060,19 @@ pub struct Daemon<'a> {
     /// Model servers that ended soon after being started, in a row: each
     /// doubles the pause before the next try (29 Sep 2026).
     model_deaths: u32,
+    /// The model server was let go after its idle time (Phase 0.2, 1 Oct
+    /// 2026): it is started again by the next thing you say, not by the
+    /// loop's next pass. On 30 Sep it was stopped "idle" and started again
+    /// within seconds, thirteen times, with nobody talking -- each start
+    /// losing the warm prompt the last one had read.
+    pub(crate) model_rested: bool,
+    /// The record of runs (`whystopped`, item 33), kept only by the Atlas that
+    /// runs the loop: a test or a typed prompt never writes it.
+    pub(crate) runs: Option<crate::whystopped::Runs>,
+    /// When the model's answer came back this turn (`TurnNews::Done`), so
+    /// the turn's "doing" stops there rather than after the reply has been
+    /// played (Phase 0.2).
+    pub(crate) model_done_at: std::cell::Cell<Option<std::time::Instant>>,
     /// A model call failed while our model server was running: it is asked
     /// whether it is still answering, and restarted if not.
     model_suspect: bool,
@@ -1102,6 +1115,9 @@ pub struct Daemon<'a> {
     /// reply went to be spoken (30 Sep 2026): the wait you actually hear,
     /// for the turn's timing line. Taken by `log_turn_timing`.
     first_words_ms: std::cell::Cell<Option<u64>>,
+    /// End of speech to first sound for the turn just said (Phase 0.2),
+    /// for the timing line.
+    silence_ms: std::cell::Cell<Option<u64>>,
     /// Other programs' tools (`mcp`): the servers in `tools.yaml`, started
     /// on their own threads the first time a conversation needs tools.
     mcp: crate::mcp::McpHub,
@@ -1546,7 +1562,8 @@ impl<'a> Daemon<'a> {
         // carries a keep-alive from it (`brain::with_keep_alive`). It was
         // computed here and printed by `doctor` as "stays loaded" while the
         // model server unloaded the weights after five idle minutes anyway.
-        crate::brain::set_keep_warm(crate::fit::plan_for(&here).keep_model_warm);
+        let keep_resident = crate::fit::plan_for(&here).keep_model_warm;
+        crate::brain::set_keep_warm(keep_resident);
         // The crew's rules as numbers: thinking hands from the machine, a
         // core left free, and your memory margin and battery floor.
         let crew_cfg = cfg.tools.as_ref().map(|t| t.crew.clone()).unwrap_or_default();
@@ -1818,6 +1835,9 @@ impl<'a> Daemon<'a> {
             model_start_tried: None,
             model_started: None,
             model_deaths: 0,
+            model_rested: false,
+            runs: None,
+            model_done_at: std::cell::Cell::new(None),
             model_suspect: false,
             defer_turns: false,
             may_defer: false,
@@ -1835,11 +1855,13 @@ impl<'a> Daemon<'a> {
             meaning_route_retry: false,
             streams: Vec::new(),
             first_words_ms: std::cell::Cell::new(None),
+            silence_ms: std::cell::Cell::new(None),
             by_chat: false,
             model_server_trouble: None,
-            helpers: crate::lifecycle::Helpers::new(
+            helpers: crate::lifecycle::Helpers::new(crate::lifecycle::model_stays_when_it_fits(
                 cfg.tools.as_ref().map(|t| t.lifecycle.clone()).unwrap_or_default(),
-            ),
+                keep_resident,
+            )),
             crew: Crew::with_limits(crew_limits).with_room(Box::new(crew_room)),
             last_persist: 0,
             tools_resolved,
