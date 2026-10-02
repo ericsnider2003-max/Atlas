@@ -135,6 +135,11 @@ pub fn starts_the_research(said: &str) -> bool {
     about_research && get_going
 }
 
+/// How many words, as the pronoun rules count them.
+pub fn words_in(text: &str) -> usize {
+    words(text).len()
+}
+
 /// Does this text lean on something said earlier?
 pub fn has_pronoun(text: &str) -> bool {
     words(text).iter().any(|w| PRONOUNS.contains(&w.as_str()))

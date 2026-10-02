@@ -615,6 +615,12 @@ impl<'a> Daemon<'a> {
                 let _ = text;
                 said
             }
+            // A long sentence's "it" is its own (1 Oct 2026: "research how an
+            // AI system can add its own features when it gets approval"
+            // reached Atlas as "... when <the last topic> gets approval").
+            // Only a short command leans on what came before: "close it",
+            // "move it to the other screen".
+            Resolution::Resolved { .. } if crate::references::words_in(said) > 6 => said,
             Resolution::Resolved { text, .. } => {
                 said_owned = text;
                 said_owned.as_str()
@@ -2165,12 +2171,13 @@ impl<'a> Daemon<'a> {
             Intent::UseClipboard(_) => return None,
             _ => return None,
         };
-        // Only sentences that actually contain a pronoun need resolving.
-        let lower = arg.to_lowercase();
-        if !["this", "that", "it", "these", "those"]
-            .iter()
-            .any(|w| lower.split_whitespace().any(|t| t.trim_matches(',') == *w))
-        {
+        // Only an argument that *is* a reference -- "research this", "note
+        // that", "find it" -- needs resolving. One that merely contains a
+        // pronoun is ordinary English (1 Oct 2026: "do some research on
+        // things that would allow you to advance your own capabilities" got
+        // "I can't tell what you mean -- nothing copied, nothing selected",
+        // and so did "... when it gets approval").
+        if !crate::references::argument_leans_on_earlier(arg) {
             return None;
         }
         // Only what the daemon genuinely knows. Filling these in with guesses
