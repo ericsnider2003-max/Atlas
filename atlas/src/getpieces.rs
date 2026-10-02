@@ -382,6 +382,39 @@ pub fn deep_model() -> Piece {
     }
 }
 
+/// The coding model (`coder`, 2 Oct 2026): Qwen2.5-Coder 7B Instruct at
+/// Q4_K_M, Qwen's own single-file GGUF, pinned to that repository's commit
+/// (13fb94bf). Licence Apache-2.0 (the repository's own card). Size and
+/// SHA-256 are Hugging Face's LFS record of the file, and the same as the
+/// file itself, downloaded and hashed on 2 Oct 2026. Fetched on a machine
+/// with room for it (`coder::size_for`), not on every one.
+pub fn coder_model() -> Piece {
+    Piece {
+        name: "the coding model",
+        for_what: "writing and fixing code",
+        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/13fb94bfda8c8cf22497dc57b78f391a9acb426a/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        sha256: "509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c",
+        bytes: 4_683_073_536,
+        lands: Lands::File("models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"),
+    }
+}
+
+/// The coding model for a small machine: Qwen2.5-Coder 1.5B Instruct at
+/// Q4_K_M, Qwen's own, pinned to commit f86cb2c1, Apache-2.0; checked the
+/// same way as `coder_model` (2 Oct 2026). The 3B between them is not
+/// offered: Qwen published it under its research licence, non-commercial
+/// only.
+pub fn small_coder_model() -> Piece {
+    Piece {
+        name: "the small coding model",
+        for_what: "writing and fixing code",
+        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/f86cb2c1fa58255f8052cc32aeede1b7482d4361/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        sha256: "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+        bytes: 1_117_320_768,
+        lands: Lands::File("models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"),
+    }
+}
+
 /// A size as a button says it: "5.1 GB" (binary gigabytes, as Windows shows
 /// a file's size), or megabytes under one.
 pub fn gib_label(bytes: u64) -> String {
@@ -669,6 +702,9 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("voiceid" | "voice-id" | "voices") => Some(("the voice model, so Atlas can tell your voice from others (30 MB)", voice_model())),
         Some("wakeword" | "wake-word" | "wake" | "kws") => Some(("the wake-word spotter, so Atlas hears its name by the sound (18 MB)", vec![crate::kws::spotter_piece()])),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
+        // The coding model this machine has room for (2 Oct 2026, `coder`):
+        // the 7B, the 1.5B on a small machine, nothing on a very small one.
+        Some("coder" | "coding" | "code") => Some(("the coding model this computer has room for, so Atlas writes code with a model trained for it", crate::coder::pieces_for_here())),
         _ => None,
     }
 }
@@ -1228,6 +1264,8 @@ pub fn everything_else() -> Vec<Piece> {
         picture_making(),
         // The NPU engine, on a computer with an Intel NPU (item 20).
         crate::npu::pieces(),
+        // The coding model this machine has room for, if any (2 Oct 2026).
+        crate::coder::pieces_for_here(),
     ]
         .into_iter()
         .flatten()

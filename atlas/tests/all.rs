@@ -979,3 +979,5 @@ mod market_desk;
 mod video_studio;
 #[path = "hands_free.rs"]
 mod hands_free;
+#[path = "a_model_for_code.rs"]
+mod a_model_for_code;

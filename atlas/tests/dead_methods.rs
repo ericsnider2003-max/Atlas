@@ -503,16 +503,24 @@ fn without_test_blocks(body: &str) -> String {
     let mut out = Vec::new();
     let mut in_test = false;
     let mut depth: i32 = 0;
+    let mut opened = false;
     for line in body.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             in_test = true;
             depth = 0;
+            opened = false;
             continue;
         }
         if in_test {
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
-            if line.contains('{') && depth <= 0 {
+            opened |= line.contains('{');
+            // Ends where its braces close (2 Oct 2026: it waited for a line
+            // holding a `{` as well, so a test block at the end of one child
+            // file -- `daemon/making.rs` -- swallowed the next one,
+            // `daemon/model.rs`, whose calls then counted for nothing). A
+            // one-line item (`#[cfg(test)] use ...;`) ends on its own line.
+            if (opened && depth <= 0) || (!opened && line.trim_end().ends_with(';')) {
                 in_test = false;
             }
             continue;

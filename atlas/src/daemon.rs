@@ -1046,6 +1046,10 @@ pub struct Daemon<'a> {
     /// (`deepbrain`, 30 Sep 2026): started when such work comes, stopped
     /// when idle, giving way to every turn.
     pub(crate) deep: crate::deepbrain::DeepBrain,
+    /// The model code is written with, swapped in for a build (`coder`).
+    pub(crate) coder: crate::coder::Coder,
+    /// When to look again for the coding model's file.
+    coder_look_at: u64,
     /// When to look for the deep model's file again.
     deep_look_at: u64,
     /// A request of several steps being worked through on a worker
@@ -1874,6 +1878,8 @@ impl<'a> Daemon<'a> {
             pending_turn: None,
             deep: crate::deepbrain::DeepBrain::none(),
             deep_look_at: 0,
+            coder: crate::coder::Coder::none(),
+            coder_look_at: 0,
             task_loop: None,
             left_waiting_read: false,
             cpu_meter: Default::default(),
@@ -2393,6 +2399,7 @@ fn verify_project_change(
     code: &str,
     isolated: &crate::build_it::Outcome,
     base: &std::path::Path,
+    proven_in_place: bool,
 ) -> (bool, String, Vec<crate::workshop::FileEdit>) {
     let fallback_path = format!("proposed_change.{}", ext_for(lang));
     let root = std::path::Path::new(folder);
@@ -2428,6 +2435,16 @@ fn verify_project_change(
         None => String::new(),
     };
 
+    // Already proven in place: the fix rounds ran the project's own tests
+    // with this file in it (2 Oct 2026), and the last run passed -- not run
+    // a second time.
+    if proven_in_place && isolated.is_built() && target.is_some() {
+        let summary = format!(
+            "Queued \"{title}\" on {project}. With it in place, {project} builds and its own tests pass. Say \
+             \"implement {title}\" and I'll write it with a .before backup; nothing running is touched."
+        );
+        return (true, summary, files);
+    }
     // Integrated verification is possible only for a built draft that replaces
     // a real file in a buildable project on disk.
     match (isolated.is_built(), target.as_ref(), test_cmd, root.is_dir()) {
@@ -2458,12 +2475,15 @@ fn verify_project_change(
                 // The project's suite couldn't be run — fall back to the honest
                 // isolated wording rather than claiming a project check that
                 // didn't happen.
+                // Nor is it written over your file: unproven in place, it
+                // goes beside it (2 Oct 2026).
                 Err(why) => {
                     let mut s = isolated.in_project(project, title, lang);
                     s.push_str(&format!(
                         " (I couldn't run {project}'s own tests to check it in place: {why}.)"
                     ));
-                    (false, s, files)
+                    s.push_str(&beside_note(&target));
+                    (false, s, beside())
                 }
             }
         }
@@ -2519,51 +2539,34 @@ fn references_a_queued_change(low: &str) -> bool {
     .any(|p| low.contains(p))
 }
 
-fn read_project_context(folder: &str) -> String {
+/// What of the project a code change is written against (2 Oct 2026: it
+/// was the first 40 lines of the first six files `read_dir` listed): the
+/// file tree and the pieces the request points at, within a budget from the
+/// writing model's context (`projectread`).
+fn read_project_context(folder: &str, request: &str, context_tokens: Option<u32>) -> String {
     if folder.trim().is_empty() {
         return String::new();
     }
     let root = std::path::Path::new(folder);
-    if !root.is_dir() {
-        return String::new();
+    crate::projectread::relevant(root, request, crate::projectread::budget_for(context_tokens)).text
+}
+
+/// The project's own tests, run with the draft in place of `rel` in a copy
+/// of the project, as a fix round's check (2 Oct 2026: the fix rounds only
+/// ever saw the draft compiled on its own, and the project's tests ran once,
+/// after the last round, with nothing to fix from them). `None` when they
+/// can't tell anything -- they couldn't run, or there are none -- and the
+/// draft is checked on its own instead.
+fn check_in_project(root: &std::path::Path, rel: &str, test_cmd: &str, code: &str, base: &std::path::Path) -> Option<crate::build_it::Check> {
+    let edits = vec![crate::selfwork::Edit { path: rel.to_string(), content: code.to_string(), reason: String::new() }];
+    let proof = crate::selfwork::prove_in_project(root, test_cmd, &edits, base).ok()?;
+    if proof.built_and_passed {
+        return Some(crate::build_it::Check::Passed(Vec::new()));
     }
-    let mut out = String::new();
-    let mut count = 0;
-    // A shallow look at src/, then the root, for source files.
-    for sub in ["src", "."] {
-        let dir = root.join(sub);
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            if count >= 6 {
-                break;
-            }
-            let path = entry.path();
-            let is_source = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| matches!(e, "rs" | "py" | "js" | "ts" | "go"))
-                .unwrap_or(false);
-            if !is_source {
-                continue;
-            }
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                let head: String = text.lines().take(40).collect::<Vec<_>>().join("\n");
-                out.push_str(&format!("--- {} ---\n{head}\n\n", path.display()));
-                count += 1;
-            }
-        }
+    if proof.output.contains("no tests ran") || proof.output.contains("could not start") {
+        return None;
     }
-    // Bound the whole thing so a big file can't blow the prompt.
-    if out.len() > 6000 {
-        // On a character boundary: source files hold "—" and the like, and
-        // truncating inside one panics.
-        let mut cut = 6000;
-        while !out.is_char_boundary(cut) {
-            cut -= 1;
-        }
-        out.truncate(cut);
-    }
-    out
+    Some(crate::build_it::Check::Failed(proof.output))
 }
 
 /// The file extension for a generated draft, so it lands under a name you can

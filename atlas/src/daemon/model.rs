@@ -111,14 +111,65 @@ impl<'a> Daemon<'a> {
 
     /// A turn is being answered while this is held: the deep model gives
     /// way (`deepbrain`).
-    pub(crate) fn talking_guard(&self) -> crate::deepbrain::TalkGuard {
-        self.deep.gate.talk()
+    pub(crate) fn talking_guard(&self) -> (crate::deepbrain::TalkGuard, crate::deepbrain::TalkGuard) {
+        // The coding model gives way too (2 Oct 2026, `coder`): it shares
+        // the graphics the same way.
+        (self.deep.gate.talk(), self.coder.brain.gate.talk())
     }
+
+    /// Give this Atlas a coding model (the tests' scripted one; the running
+    /// Atlas sets up its own from the settings, `keep_model_server`).
+    pub fn use_coder_for_test(&mut self, coder: crate::coder::Coder) {
+        self.coder = coder;
+    }
+
 
     /// The deep model, looked after once a pass: started for waiting work
     /// when there's room, stopped once idle. What it did goes in the log.
     pub(super) fn keep_deep_brain(&mut self) {
         for line in self.deep.keep() {
+            self.log.info(&line);
+        }
+        self.keep_coder();
+    }
+
+    /// The coding model, looked after once a pass beside the deep one: room
+    /// made for it by letting the talking model go when a build waits and
+    /// both don't fit, started, stopped once idle, and the talking model
+    /// given back (`coder::Coder::keep`).
+    pub(super) fn keep_coder(&mut self) {
+        if !self.coder.is_set_up() {
+            return;
+        }
+        for line in self.with_chat_room(|coder, room| coder.keep(room)) {
+            self.log.info(&line);
+        }
+    }
+
+    /// The coding model and the talking model's room, together
+    /// (`DaemonRoom`): borrowed apart, so the coding model can let the
+    /// talking model go or bring it back.
+    fn with_chat_room<R>(&mut self, f: impl FnOnce(&mut crate::coder::Coder, &mut DaemonRoom) -> R) -> R {
+        let talking = self.deep.gate.talking();
+        let mut room = DaemonRoom {
+            helpers: &mut self.helpers,
+            rested: &mut self.model_rested,
+            running_id: &mut self.model_running_id,
+            started: &mut self.model_started,
+            start_tried: &mut self.model_start_tried,
+            seen: &self.model_server_seen,
+            talking,
+        };
+        f(&mut self.coder, &mut room)
+    }
+
+    /// A turn is starting while the talking model is let go for the coding
+    /// model: the coding model steps aside (`coder::Coder::give_way_to_a_turn`).
+    fn coder_gives_way(&mut self) {
+        if !self.coder.holds_chat_room {
+            return;
+        }
+        if let Some(line) = self.with_chat_room(|coder, room| coder.give_way_to_a_turn(room)) {
             self.log.info(&line);
         }
     }
@@ -258,6 +309,25 @@ impl<'a> Daemon<'a> {
                     self.log.info(&self.deep.describe());
                 }
             }
+        }
+        // The coding model likewise (2 Oct 2026, `coder`): set up once its
+        // file is here, looked for once a minute.
+        if !self.coder.is_set_up() && t >= self.coder_look_at {
+            self.coder_look_at = t + 60;
+            if let Some(tc) = self.tools_ref().cloned() {
+                self.coder = crate::coder::for_settings(&tc);
+                if self.coder.is_set_up() {
+                    self.log.info(&self.coder.brain.describe());
+                }
+            }
+        }
+        // The talking model let go for a build: a pass leaves it be, a turn
+        // takes it back and the coding model steps aside.
+        if self.coder.holds_chat_room {
+            if !a_turn {
+                return;
+            }
+            self.coder_gives_way();
         }
         // "Better answers" switched: the server follows the setting.
         self.follow_the_talk_setting();
@@ -1689,11 +1759,30 @@ impl<'a> Daemon<'a> {
                 .to_string()
         };
         let bigger_line = if bigger_line.is_empty() { String::new() } else { format!("<p>{}</p>", crate::hub::esc(&bigger_line)) };
+        // The coding model (2 Oct 2026, `coder`): whichever this machine
+        // has room for, or a line saying there's none that fits.
+        let coder_piece = crate::coder::pieces_for_here().into_iter().next();
+        let coder_here = self.coder.is_set_up() || coder_piece.as_ref().is_some_and(|p| crate::getpieces::have(p, &root));
+        let coder_line = match (&coder_piece, coder_here) {
+            (_, true) if self.coder.is_set_up() => self.coder.brain.describe(),
+            (_, true) => "The coding model is here; it's set up within a minute.".to_string(),
+            (Some(p), false) => {
+                buttons.push_str(&format!(
+                    "<button name=what value=get-coder>Get the coding model \u{b7} {}</button>",
+                    crate::getpieces::gib_label(p.bytes)
+                ));
+                "No coding model yet: code is written by the models above. A model trained for code writes it \
+                 better, and runs only while a build needs it -- the talking model steps aside if both don't fit."
+                    .to_string()
+            }
+            (None, false) => "No coding model: this computer hasn't the memory for one to help, so code is written by the models above.".to_string(),
+        };
         format!(
-            "<section aria-labelledby=brains-h><h2 id=brains-h>Two brains</h2><p>{}</p>{bigger_line}<p>{}</p>\
+            "<section aria-labelledby=brains-h><h2 id=brains-h>Two brains</h2><p>{}</p>{bigger_line}<p>{}</p><p>{}</p>\
              <form method=post action=/hub/brains>{buttons}</form></section>",
             crate::hub::esc(talking),
-            crate::hub::esc(&deep_line)
+            crate::hub::esc(&deep_line),
+            crate::hub::esc(&coder_line)
         )
     }
 
@@ -1706,6 +1795,10 @@ impl<'a> Daemon<'a> {
             "get-deep" => self.get_model_piece(crate::getpieces::deep_model(), "the deep brain"),
             "get-bigger" => self.get_bigger_talk(),
             "get-understanding" => self.get_understanding(),
+            "get-coder" => match crate::coder::pieces_for_here().into_iter().next() {
+                Some(p) => self.get_model_piece(p, "the coding model"),
+                None => "This computer hasn't the memory for a coding model to help, so I haven't fetched one.".into(),
+            },
             _ => "That button isn't wired to anything, so nothing changed.".into(),
         }
     }
@@ -1852,5 +1945,48 @@ fn capital(s: &str) -> String {
     match c.next() {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         None => String::new(),
+    }
+}
+
+/// The talking model's server as the coding model sees it (`coder::ChatRoom`):
+/// the daemon's helpers and the state that says whether it's running.
+struct DaemonRoom<'a> {
+    helpers: &'a mut crate::lifecycle::Helpers,
+    rested: &'a mut bool,
+    running_id: &'a mut Option<String>,
+    started: &'a mut Option<std::time::Instant>,
+    start_tried: &'a mut Option<std::time::Instant>,
+    seen: &'a std::sync::Arc<std::sync::Mutex<Option<(std::time::Instant, bool)>>>,
+    talking: bool,
+}
+
+impl crate::coder::ChatRoom for DaemonRoom<'_> {
+    fn chat_running(&self) -> bool {
+        self.helpers.is_running("model-server")
+    }
+
+    fn chat_in_use(&self) -> bool {
+        self.talking
+    }
+
+    /// Stopped and forgotten, as `room_for_heavy` does: the next start is a
+    /// fresh one, not a question to a port nobody is behind.
+    fn let_chat_go(&mut self) {
+        self.helpers.finished("model-server");
+        *self.running_id = None;
+        *self.started = None;
+        *self.start_tried = None;
+        if let Ok(mut s) = self.seen.lock() {
+            *s = None;
+        }
+    }
+
+    fn bring_chat_back(&mut self, now: bool) {
+        // Lazily: it waits for you, as after an idle let-go (`model_rested`).
+        *self.rested = !now;
+        *self.start_tried = None;
+        if let Ok(mut s) = self.seen.lock() {
+            *s = None;
+        }
     }
 }
