@@ -280,7 +280,14 @@ impl Default for ModelsConfig {
             gpu_layers: "auto".into(),
             talk_ceiling_b: 5,
             draft: String::new(),
-            speculate: "off".into(),
+            // Measured on Eric's laptop, 1 Oct 2026 (Qwen3-VL 4B, five
+            // everyday prompts each): no speculation 22.2 words-pieces a
+            // second, `ngram-mod` 23.9 (faster on every prompt, no extra
+            // memory), the Qwen3-0.6B draft model 5.7 -- four times
+            // *slower*: it guessed right 8-45% of the time and every miss
+            // costs a check. So guessing from what's already been said is
+            // on by default, and the draft model is not.
+            speculate: "ngram-mod".into(),
             sampling: Sampling::default(),
             talk: String::new(),
             deep: String::new(),
@@ -295,6 +302,9 @@ impl Default for ModelsConfig {
 
 /// The talking model's file name for `models.talk`: `better` and `faster`
 /// named, anything else taken as a file name; `None` for empty (30 Sep 2026).
+/// The helper model's id: drafts for speculative decoding, never talking.
+pub const DRAFT_ONLY: &str = "Qwen3-0.6B-Q8_0";
+
 pub fn talk_id(cfg: &ModelsConfig) -> Option<String> {
     match cfg.talk.trim() {
         "" => None,
@@ -479,7 +489,7 @@ pub fn estimate_memory(m: &Model, context: u64) -> u64 {
 
 /// The picture encoder's share when the talking model is started with it:
 /// the file, plus room for one picture being read.
-pub fn projector_memory(m: &Model) -> u64 {
+fn projector_memory(m: &Model) -> u64 {
     m.projector()
         .and_then(|p| std::fs::metadata(p).ok())
         .map(|md| md.len() + 150 * 1024 * 1024)
@@ -1086,15 +1096,22 @@ impl Registry {
                 return Some(m);
             }
         }
-        if cfg.talk_ceiling_b == 0 {
-            return self.best_fit(budget, cfg.context);
-        }
-        let ceiling = cfg.talk_ceiling_b.saturating_mul(1_000_000_000);
-        let fits = || self.models.iter().filter(|m| estimate_memory(m, cfg.context) <= budget);
-        fits()
-            .filter(|m| m.parameters <= ceiling)
-            .max_by_key(|m| m.parameters)
-            .or_else(|| fits().min_by_key(|m| m.parameters))
+        // The helper model (speculative drafts, `getpieces::draft_model`) is
+        // never the one that talks: on the laptop 1 Oct 2026, with 2.3 GB
+        // free at start, the 4B didn't fit the budget and the smallest model
+        // that did -- the 0.6B helper Atlas had just fetched for itself --
+        // took over the conversation. When the talking model is here it is
+        // used even over budget: it runs on the graphics chip, and a 0.6B
+        // answering is worse than a slower start.
+        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj");
+        let chosen = if cfg.talk_ceiling_b == 0 {
+            self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget).max_by_key(|m| m.parameters)
+        } else {
+            let ceiling = cfg.talk_ceiling_b.saturating_mul(1_000_000_000);
+            let fits = || self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget);
+            fits().filter(|m| m.parameters <= ceiling).max_by_key(|m| m.parameters).or_else(|| fits().min_by_key(|m| m.parameters))
+        };
+        chosen.or_else(|| if cfg.prefer.is_empty() { self.get(crate::deepbrain::FASTER_TALK) } else { None })
     }
 
     /// Why this model, in one line, sized against the real machine.

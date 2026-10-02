@@ -126,7 +126,7 @@ pub fn without_unbacked_claims(text: &str, started: bool) -> String {
 pub const NOT_LOOKED: &str = "I haven't actually looked -- say \"look at me\" and I will.";
 
 /// Does this sentence describe something seen through the camera?
-pub fn claims_sight(sentence: &str) -> bool {
+fn claims_sight(sentence: &str) -> bool {
     let t = format!(" {} ", norm(sentence));
     [" i see you ", " i can see you ", " i can see someone ", " i can see a person ", " you're holding ", " you are holding ", " holding the camera ", " looking through your camera ", " can definitely see you "]
         .iter()

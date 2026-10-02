@@ -268,6 +268,12 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
     (
+        "get to know me",
+        "heard before the parser, by `getknow::asked_to_start` in `daemon/late.rs` \
+         `interview_turn`, because the six questions after it are answers, not commands \
+         (`tests/greet_once.rs` offers it; `tests/what_the_model_ranking_found.rs` runs it).",
+    ),
+    (
         "always",
         "an answer to an add-on step's own \"go ahead?\" -- a yes that also means \
          don't ask about this step again (`session::is_always`, handled where the \

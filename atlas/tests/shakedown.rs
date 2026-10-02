@@ -84,8 +84,8 @@ fn the_shakedown_says_only_a_couple_need_your_eyes() {
     // speakers, and not opening a Bluetooth headset's microphone for nothing
     // -- was built and unlisted until the catalogue covered the whole tree.
     // Only your ears can confirm the headset still sounds right.
-    // Ten on 1 Oct 2026 (ca70f0f): `camwatch` (a real camera) and `callmute`
-    // (a real call) joined them.
+    // Ten on 1 Oct 2026: `camwatch` and `callmute` came in (the camera kept
+    // to its word, Atlas on a call) -- both only your eyes and ears can check.
     assert_eq!(eyes_n, 10, "the classification really is those ten");
     assert!(reply.contains(&eyes_n.to_string()), "the reported count is the real one");
 }

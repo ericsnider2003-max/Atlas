@@ -60,7 +60,7 @@ pub fn set_on(on: bool) {
     ON.store(on, Ordering::SeqCst);
 }
 
-pub fn is_on() -> bool {
+fn is_on() -> bool {
     ON.load(Ordering::SeqCst)
 }
 

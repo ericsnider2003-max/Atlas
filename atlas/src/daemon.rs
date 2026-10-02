@@ -747,6 +747,9 @@ pub struct Daemon<'a> {
     /// applies. Keeping the moment and asking `daily` about it means the
     /// answer follows your hours instead of the calendar's.
     last_brief_at: u64,
+    /// When Atlas last said hello of any kind (`returning::hello_now`),
+    /// kept across a restart.
+    last_greeted_at: u64,
     /// The last turn that was yours. Atlas's own work does not count.
     ///
     /// What tells working through the night from starting a day: the gap
@@ -1685,6 +1688,7 @@ impl<'a> Daemon<'a> {
             // the day's run a second time, and a brief said twice is the
             // failure `morning_brief` already documents.
             last_brief_at: store_for_load.load::<u64>("last_brief_at"),
+            last_greeted_at: store_for_load.load::<u64>("last_greeted_at"),
             // Loaded too, and for the opposite reason. Zeroed, a restart
             // looks like an infinite gap, so every restart would read as you
             // arriving -- and restarts happen in the middle of the night you
@@ -1711,6 +1715,7 @@ impl<'a> Daemon<'a> {
                 // empty every time.
                 let mut n = crate::nudge::Nudger::new(crate::nudge::NudgeConfig::default());
                 n.goals = store_for_load.load(crate::nudge::GOALS);
+                n.set_last_daypart(store_for_load.load("greeted_part"));
                 n
             },
             store,
