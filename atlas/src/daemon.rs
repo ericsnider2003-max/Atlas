@@ -752,6 +752,8 @@ pub struct Daemon<'a> {
     last_greeted_at: u64,
     /// Rough turns in a row (`persona::spiral_line`).
     rough_in_a_row: u32,
+    /// A "let's work" session under way (`worksession`), kept across a restart.
+    work_session: Option<crate::worksession::Session>,
     /// The last turn that was yours. Atlas's own work does not count.
     ///
     /// What tells working through the night from starting a day: the gap
@@ -1694,6 +1696,7 @@ impl<'a> Daemon<'a> {
             last_brief_at: store_for_load.load::<u64>("last_brief_at"),
             last_greeted_at: store_for_load.load::<u64>("last_greeted_at"),
             rough_in_a_row: 0,
+            work_session: store_for_load.load("work_session"),
             // Loaded too, and for the opposite reason. Zeroed, a restart
             // looks like an infinite gap, so every restart would read as you
             // arriving -- and restarts happen in the middle of the night you

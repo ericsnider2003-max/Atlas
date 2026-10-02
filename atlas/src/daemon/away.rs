@@ -328,6 +328,59 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// "Two hours on the edit", "end the session", "how long is left".
+    pub(super) fn worksession_help(&mut self, said: &str, t: u64) -> Option<String> {
+        match crate::worksession::heard(said)? {
+            crate::worksession::Said::Start { what, secs } => {
+                if let Some(s) = self.work_session.as_ref().filter(|s| !s.over(t)) {
+                    return Some(format!(
+                        "You're already in a session on {} -- {} left. Say \"end the session\" first if you want a new one.",
+                        s.what,
+                        crate::worklog::duration_words(s.left(t))
+                    ));
+                }
+                let s = crate::worksession::Session::new(&what, secs, t);
+                let said = crate::worksession::started(&s);
+                self.proactive.quiet_until = s.until;
+                self.work_session = Some(s);
+                let _ = self.store.save("work_session", &self.work_session);
+                Some(said)
+            }
+            crate::worksession::Said::End => Some(match self.work_session.is_some() {
+                true => self.end_work_session(t),
+                false => "There's no work session going.".into(),
+            }),
+            crate::worksession::Said::HowLong => Some(match self.work_session.as_ref() {
+                Some(s) if !s.over(t) => format!("{} left on {}.", crate::worklog::duration_words(s.left(t)), s.what),
+                _ => "There's no work session going.".into(),
+            }),
+        }
+    }
+
+    /// End the session: how it went, said and kept in your notes.
+    pub(super) fn end_work_session(&mut self, t: u64) -> String {
+        let Some(s) = self.work_session.take() else { return String::new() };
+        let _ = self.store.save("work_session", &self.work_session);
+        self.proactive.quiet_until = 0;
+        let ended = t.min(s.until);
+        let log = crate::worklog::summarise(&self.worklog.between(s.started, ended));
+        let held = self.outbox.ready(t, &self.notify_cfg()).len();
+        let said = crate::worksession::how_it_went(&s, ended, &log, held);
+        let off = crate::localclock::offset_secs();
+        let clock = |u: u64| {
+            let l = (u as i64 + off).rem_euclid(86_400) as u64;
+            format!("{}:{:02}", l / 3600, (l % 3600) / 60)
+        };
+        let dir = self.notes_dir();
+        if std::fs::create_dir_all(&dir).is_ok() {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("work-sessions.md")) {
+                let _ = writeln!(f, "{}", crate::worksession::note_line(&s, ended, &said, &clock));
+            }
+        }
+        said
+    }
+
     /// The last eight days of the work log, reduced for `daily::one_thing_noticed`.
     pub(super) fn noticed_days(&self, t: u64) -> Vec<crate::daily::DayLog> {
         let off = crate::localclock::offset_secs();

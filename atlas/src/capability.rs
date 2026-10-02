@@ -430,7 +430,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "clipboard", what: "explain or answer about whatever you copied -- and when nothing is copied, work out what \"this\" is from what you were looking at", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::ReadScreen], modules: &["clipboard", "subject"] },
         Capability { id: "uia", what: "read an open window's controls and text without a screenshot -- even one that isn't in front -- and press a button you name", area: Seeing, state: Untested, needs: Some("Windows"), offline: true, added: 40, runs: &[Needs::ReadScreen, Needs::ActInApps], modules: &["uia"] },
         Capability { id: "probe", what: "go and look at another window to answer you, then put your focus back where it was", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Windows_, Needs::ReadScreen], modules: &["probe"] },
-        Capability { id: "workspace", what: "open your workspace or a named mode -- trading, writing, a call -- each app on its screen, and close it all again", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Windows_, Needs::LaunchApps], modules: &["workspace", "modes"] },
+        Capability { id: "workspace", what: "open your workspace or a named mode -- trading, writing, a call -- each app on its screen, and close it all again; 'two hours on the edit' starts a work session that holds interruptions, checks in once, and says how it went", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Windows_, Needs::LaunchApps], modules: &["workspace", "modes", "worksession"] },
         Capability { id: "rehearse", what: "show you what it would do -- every window, file and message -- without doing any of it", area: Windows, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["rehearse"] },
         Capability { id: "undo", what: "tell you what it did, across files, settings, mail and posts, and take it back where it can", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["undo"] },
         Capability { id: "mind", what: "tell you what it's working on right now, show how it got to an answer, and say why it did what it did", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["mind", "why"] },
@@ -1550,7 +1550,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 460;
+pub const MODULES_IN_TREE: usize = 461;
 
 /// Every module no capability claims, and why it is not one.
 ///
