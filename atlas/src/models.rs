@@ -260,6 +260,9 @@ impl Default for ModelsConfig {
 
 /// The talking model's file name for `models.talk`: `better` and `faster`
 /// named, anything else taken as a file name; `None` for empty (30 Sep 2026).
+/// The helper model's id: drafts for speculative decoding, never talking.
+pub const DRAFT_ONLY: &str = "Qwen3-0.6B-Q8_0";
+
 pub fn talk_id(cfg: &ModelsConfig) -> Option<String> {
     match cfg.talk.trim() {
         "" => None,
@@ -973,15 +976,22 @@ impl Registry {
                 return Some(m);
             }
         }
-        if cfg.talk_ceiling_b == 0 {
-            return self.best_fit(budget, cfg.context);
-        }
-        let ceiling = cfg.talk_ceiling_b.saturating_mul(1_000_000_000);
-        let fits = || self.models.iter().filter(|m| estimate_memory(m, cfg.context) <= budget);
-        fits()
-            .filter(|m| m.parameters <= ceiling)
-            .max_by_key(|m| m.parameters)
-            .or_else(|| fits().min_by_key(|m| m.parameters))
+        // The helper model (speculative drafts, `getpieces::draft_model`) is
+        // never the one that talks: on the laptop 1 Oct 2026, with 2.3 GB
+        // free at start, the 4B didn't fit the budget and the smallest model
+        // that did -- the 0.6B helper Atlas had just fetched for itself --
+        // took over the conversation. When the talking model is here it is
+        // used even over budget: it runs on the graphics chip, and a 0.6B
+        // answering is worse than a slower start.
+        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj");
+        let chosen = if cfg.talk_ceiling_b == 0 {
+            self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget).max_by_key(|m| m.parameters)
+        } else {
+            let ceiling = cfg.talk_ceiling_b.saturating_mul(1_000_000_000);
+            let fits = || self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget);
+            fits().filter(|m| m.parameters <= ceiling).max_by_key(|m| m.parameters).or_else(|| fits().min_by_key(|m| m.parameters))
+        };
+        chosen.or_else(|| if cfg.prefer.is_empty() { self.get(crate::deepbrain::FASTER_TALK) } else { None })
     }
 
     /// Why this model, in one line, sized against the real machine.

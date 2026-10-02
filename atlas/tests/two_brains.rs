@@ -840,3 +840,15 @@ fn a_model_already_on_this_computer_is_taken_in_after_its_hash_is_checked() {
     assert_eq!(std::fs::read(root.join("models/x.gguf")).unwrap(), data);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The laptop, 1 Oct 2026: 2.3 GB free at start, the 4B over the budget,
+/// and the 0.6B helper model Atlas had just fetched for drafts took over
+/// talking. The helper never talks; the talking model is used over budget.
+#[test]
+fn the_helper_model_never_talks_even_when_memory_is_short() {
+    let mut reg = eric_s_folder();
+    reg.models.push(model(atlas::models::DRAFT_ONLY, 0.6, 639_446_688));
+    let mc = atlas::models::ModelsConfig::default();
+    assert_eq!(reg.choose_for(&mc, 1u64 << 30).unwrap().id, "Qwen3VL-4B-Instruct-Q4_K_M");
+    assert_eq!(reg.choose_for(&mc, 8u64 << 30).unwrap().id, "Qwen3VL-4B-Instruct-Q4_K_M");
+}
