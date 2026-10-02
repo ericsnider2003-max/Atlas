@@ -184,6 +184,12 @@ fn a_configured_budget_may_only_lower_what_was_measured() {
     let greedy =
         budget_bytes(&ModelsConfig { memory_budget_mb: 999_999, ..Default::default() }, &m);
     assert_eq!(greedy, measured, "a config raised the budget past the machine");
+
+    // 1 Oct 2026: `memory_budget_mb: '2'` in the settings left Atlas with no
+    // model ("there is 2MB spare", 5 GB free). Up to 64 can only mean GB.
+    let gb = budget_bytes(&ModelsConfig { memory_budget_mb: 2, ..Default::default() }, &m);
+    assert_eq!(gb, 2 * 1024 * 1024 * 1024);
+    assert_eq!(atlas::models::budget_set_mb(256), 256, "a real MB figure stays one");
 }
 
 #[test]

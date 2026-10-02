@@ -447,6 +447,7 @@ pub fn run_all(
             crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
         );
         d.rehearsal = true;
+        d.here_at(t0 + i as u64 * 60);
         let parsed = crate::session::kind_of(&parser.parse(&said)).to_string();
         let _ = plat.take();
         let started = std::time::Instant::now();
@@ -503,6 +504,7 @@ pub fn run_all(
             crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
         );
         d.rehearsal = true;
+        d.here_at(t0 + (base + i as u64) * 60);
         let _ = plat.take();
         let started = std::time::Instant::now();
         let reply = match crate::crash::caught("a corrected sentence", || d.turn(&case.said, t0 + (base + i as u64) * 60)) {
@@ -707,6 +709,10 @@ pub const NO_SECOND_ATLAS: &str = "this is the self-test's copy of Atlas, which 
 /// the real one ran beside it, and the settings he changed went into the
 /// copy. Starting another Atlas (`firstlaunch::spawn_quietly`,
 /// `open_atlas_window`) is refused while this is set.
+/// What anything that would start a window or another Atlas says inside the
+/// self-test, instead of doing it.
+pub const NOT_IN_A_TEST: &str = "the self-test never opens a window or starts another Atlas";
+
 pub fn in_a_test() -> bool {
     std::env::var_os(IN_A_TEST).is_some_and(|v| !v.is_empty())
 }

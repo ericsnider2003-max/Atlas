@@ -418,7 +418,7 @@ impl Registry {
                 return Some(m);
             }
         }
-        self.best_fit(cfg.memory_budget_mb * 1024 * 1024, cfg.context)
+        self.best_fit(budget_set_mb(cfg.memory_budget_mb) * 1024 * 1024, cfg.context)
     }
 
     /// Why a model was or wasn't picked — so "it used the small one" is never
@@ -441,7 +441,7 @@ impl Registry {
                 match smallest {
                     Some(m) => format!(
                         "nothing fits {}MB — the smallest, {}, needs ~{}MB",
-                        cfg.memory_budget_mb,
+                        budget_set_mb(cfg.memory_budget_mb),
                         m.id,
                         estimate_memory(m, cfg.context) / (1024 * 1024)
                     ),
@@ -1002,12 +1002,22 @@ use crate::fit::Machine;
 /// Never the other way round: a config that raises the budget past what was
 /// measured produces a model that will not load, which is the failure `fit.rs`
 /// exists to prevent, arrived at from the other side.
+/// The memory limit you set, in MB. A number up to 64 can only have meant
+/// gigabytes -- no model runs in 2 MB (1 Oct 2026: Eric's settings held
+/// `memory_budget_mb: '2'`, and Atlas ran with no language model at all,
+/// saying "there is 2MB spare" with 5 GB free).
+pub fn budget_set_mb(set: u64) -> u64 {
+    match set {
+        1..=64 => set * 1024,
+        n => n,
+    }
+}
+
 pub fn budget_bytes(cfg: &ModelsConfig, m: &Machine) -> u64 {
     let measured = m.budget_mb();
-    let mb = if cfg.memory_budget_mb == 0 {
-        measured
-    } else {
-        cfg.memory_budget_mb.min(measured)
+    let mb = match budget_set_mb(cfg.memory_budget_mb) {
+        0 => measured,
+        set => set.min(measured),
     };
     mb * 1024 * 1024
 }
