@@ -1506,6 +1506,10 @@ pub struct Daemon<'a> {
     /// `Mind` never issues zero.
     flow_mind: u64,
     last_backup: u64,
+    /// When the backup schedule and the self-repair sweep are next looked
+    /// at (2 Oct 2026: both were looked at every tick, from disk).
+    next_backup_look: u64,
+    next_sweep_look: u64,
     /// When the current unbroken stretch of work started.
     ///
     /// `person.hours_before_saying` is a threshold on this, and nothing was
@@ -2058,6 +2062,8 @@ impl<'a> Daemon<'a> {
             peer_tries: std::collections::BTreeMap::new(),
             flow_mind: 0,
             last_backup: 0,
+            next_backup_look: 0,
+            next_sweep_look: 0,
             working_since: None,
         };
         // Built here rather than at the two call sites in main.rs, so every

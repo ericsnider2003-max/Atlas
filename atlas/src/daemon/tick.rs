@@ -837,6 +837,7 @@ impl<'a> Daemon<'a> {
             self.reminded.insert(key);
             self.journal.record_at(Act::Offered, &format!("reminder: {}", occ.title), true, t);
         }
+        self.tick_laps.mark("calendar reminders");
 
         // Anything hand tracking has said since the last tick. It runs on its
         // own thread precisely so the pointer does not wait for this — only
@@ -857,6 +858,7 @@ impl<'a> Daemon<'a> {
         if let Some(said) = self.look_at_the_room(t) {
             out.push(said);
         }
+        self.tick_laps.mark("hands and the room");
 
         // Anything you handed over from another device. Read one per tick;
         // said only when Atlas may speak at all, so a tray filling up while
@@ -866,6 +868,7 @@ impl<'a> Daemon<'a> {
                 out.push(said);
             }
         }
+        self.tick_laps.mark("handed things");
 
         // --- Backup, on its own schedule ---
         //
@@ -874,8 +877,16 @@ impl<'a> Daemon<'a> {
         // waiting on it the way they are for a spoken command, which makes
         // it the worst possible thing to block the tick. Handed to the
         // crew; `take_crew_news` reports it when it actually finishes.
-        let bcfg = self.backup_cfg();
-        if due_for_backup(&bcfg, t) && t.saturating_sub(self.last_backup) > 3600 {
+        // Whether one is due is looked at once every ten minutes, not every
+        // tick (2 Oct 2026): `due_for_backup` counts every file in every
+        // backup on disk, and on Eric's laptop that ran every 1.3 s.
+        let look = t >= self.next_backup_look
+            && t.saturating_sub(self.last_backup) > 3600;
+        let bcfg = if look { self.backup_cfg() } else { BackupConfig::default() };
+        if look {
+            self.next_backup_look = t + 600;
+        }
+        if look && due_for_backup(&bcfg, t) {
             let root = self.store.root().to_path_buf();
             let cfg_for_errand = bcfg.clone();
             let work: crew::Work = Box::new(move |_stop| match back_up(&root, &cfg_for_errand, crate::store::now()) {
@@ -916,6 +927,7 @@ impl<'a> Daemon<'a> {
         // here: `OvernightConfig::apply_while_asleep` is `#[serde(skip)]` and
         // hard-wired false, and `the_night_never_applies_anything` holds it.
         self.run_the_night(t);
+        self.tick_laps.mark("the night");
 
         // --- How you're working, when it's worth a word ---
         //
@@ -961,6 +973,7 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
+        self.tick_laps.mark("how you're working");
 
         // --- Going somewhere your texts won't reach you ---
         //
@@ -1059,7 +1072,7 @@ impl<'a> Daemon<'a> {
         // One file of Atlas's own code broken on purpose a day, to find
         // what no test notices (`mutation`; research report, Stage 2 item
         // 12). Only where Atlas runs from its source with self-repair on.
-        self.tick_laps.mark("reminders, room, night");
+        self.tick_laps.mark("going away, the envelope");
         self.maybe_mutation_sweep(t);
         self.tick_laps.mark("self-repair sweep");
 
