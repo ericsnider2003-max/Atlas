@@ -742,6 +742,51 @@ impl<'a> Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
+    /// "Add call the bank to my later list": the list with your words in
+    /// it, whatever the sentence starts with (the phrases only catch
+    /// sentences that start with them).
+    /// One turn of "get to know me" (`getknow`), when it's starting or
+    /// under way. `None`: not part of it.
+    pub(super) fn interview_turn(&mut self, said: &str, t: u64) -> Option<String> {
+        if self.interview.is_none() {
+            if !crate::getknow::asked_to_start(said) {
+                return None;
+            }
+            let (iv, say) = crate::getknow::Interview::begin();
+            self.interview = Some(iv);
+            return Some(say);
+        }
+        // "Call me Eric" is the answer to the first question, not a command.
+        let (parsed, name) = self.parser.parse_named(said);
+        let commanded = !matches!(parsed, Intent::Unknown(_)) && name.as_deref() != Some("address_as");
+        if said.trim_end().ends_with('?') || commanded {
+            self.interview = None;
+            return None;
+        }
+        let mut iv = self.interview.take()?;
+        let (keep, say, more) = match iv.answer(said, t) {
+            crate::getknow::Next::Ask { keep, say } => (keep, say, true),
+            crate::getknow::Next::Done { keep, say } => (keep, say, false),
+        };
+        for f in keep {
+            self.facts.learn(f, t);
+        }
+        let _ = self.facts.save(&self.store);
+        if more {
+            self.interview = Some(iv);
+        }
+        Some(say)
+    }
+
+    pub(super) fn later_words_help(&mut self, raw: &str, t: u64) -> Option<String> {
+        let low = raw.to_lowercase();
+        if !low.contains("later list") && !low.ends_with(" for later") {
+            return None;
+        }
+        later_own_words(raw)?;
+        Some(self.later_list(raw, t))
+    }
+
     pub(super) fn later_list(&mut self, said: &str, t: u64) -> String {
         let lower = said.to_lowercase();
         let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
@@ -756,6 +801,17 @@ impl<'a> Daemon<'a> {
                 Some(i) => format!("Took \"{}\" off your later list.", i.what),
                 None => "I couldn't tell which one you meant.".into(),
             }
+        } else if let Some(own) = later_own_words(said) {
+            // Your own words, when you gave some: "add call the bank to my
+            // later list" (1 Oct 2026: every add took Atlas's last reply, and
+            // "List, did you hear me?" put Atlas's own sentence on your list).
+            if later.add(&own, t) {
+                format!("On your later list: \"{own}\".")
+            } else {
+                "That's already on your later list.".into()
+            }
+        } else if !["that", "this", "it"].iter().any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)) {
+            "Say what to put on it -- \"add call the bank to my later list\" -- or \"save that for later\" right after I've said something.".into()
         } else {
             // "That" is what Atlas last said.
             let last = self.session.turns.last().map(|t| t.reply.clone()).unwrap_or_default();
@@ -2141,4 +2197,24 @@ impl<'a> Daemon<'a> {
             }
         }
     }
+}
+
+/// What you said to put on the later list, in your own words: "add call the
+/// bank to my later list" gives "call the bank". `None` when the words are
+/// only "that"/"this"/"it" (Atlas's last reply is meant) or there are none.
+fn later_own_words(said: &str) -> Option<String> {
+    let low = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
+    let mut t = low.as_str();
+    for lead in ["please ", "can you ", "could you ", "add ", "put ", "save "] {
+        t = t.strip_prefix(lead).unwrap_or(t);
+    }
+    let cut = [" to the later list", " to my later list", " on the later list", " on my later list", " for later", " to later"]
+        .iter()
+        .filter_map(|p| t.find(p))
+        .min()?;
+    let own = t[..cut].trim();
+    if own.is_empty() || ["that", "this", "it", "that one", "this one"].contains(&own) {
+        return None;
+    }
+    Some(own.to_string())
 }

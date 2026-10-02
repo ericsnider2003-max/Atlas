@@ -258,3 +258,21 @@ fn something_watching_the_lock_goes_at_once_when_atlas_quits() {
     let mut w = Watching::default();
     assert!(!w.still_there(&Found::Free, 1));
 }
+
+/// 1 Oct 2026: a crash left the lock as 16 zero bytes, and every start for
+/// eight hours said "already running, checked in 0 seconds ago". Unreadable
+/// contents are judged by when the file was last written: nobody has
+/// rewritten it for longer than a live holder ever goes, so nobody holds it.
+#[test]
+fn a_lock_a_crash_zeroed_is_taken_over_once_nobody_has_touched_it() {
+    let d = Dir::new("zeroed");
+    let l = d.lock();
+    fs::write(l.path(), [0u8; 16]).unwrap();
+    let written = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    // Just written: it may be a holder mid-write, so it's occupied.
+    assert!(matches!(l.look(written), Found::Running { .. }));
+    // Untouched for longer than a holder ever goes between beats: abandoned.
+    let later = written + GONE_AFTER_SECS + 60;
+    assert!(matches!(l.look(later), Found::Abandoned { .. }), "{:?}", l.look(later));
+    assert!(l.take(later).is_ok());
+}

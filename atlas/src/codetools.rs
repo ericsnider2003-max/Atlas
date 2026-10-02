@@ -83,7 +83,10 @@ pub fn tool_pieces() -> Vec<Piece> {
 /// The folders Atlas's own tools live in, put first on this process's
 /// search path (`getpieces::use_own_tools`), for the ones that are here.
 pub fn bin_dirs(root: &Path) -> Vec<PathBuf> {
-    ["tools/pyenv/Scripts", "tools/pyenv/bin", "tools/node", "tools/go/bin", "tools/llvm/bin", "tools/rust/cargo/bin", "tools/uv"]
+    // Not tools/llvm/bin: its `x86_64-w64-mingw32-gcc` is clang, which Rust's
+    // GNU toolchain then links with and fails (no libgcc) -- measured on the
+    // laptop, 1 Oct 2026. The C++ tools are found by `llvm_program` instead.
+    ["tools/pyenv/Scripts", "tools/pyenv/bin", "tools/node", "tools/go/bin", "tools/rust/cargo/bin", "tools/uv"]
         .iter()
         .map(|d| root.join(d))
         .filter(|d| d.is_dir())
@@ -97,6 +100,16 @@ pub fn rust_env(root: &Path) -> Vec<(&'static str, PathBuf)> {
         return Vec::new();
     }
     vec![("RUSTUP_HOME", rust.join("rustup")), ("CARGO_HOME", rust.join("cargo"))]
+}
+
+/// The C++ tools by their full path, when Atlas fetched them (they are kept
+/// off the search path: see `bin_dirs`).
+pub fn llvm_program(program: &str, root: &Path) -> Option<PathBuf> {
+    if !matches!(program, "clang++" | "clang" | "clang-format" | "clang-tidy") {
+        return None;
+    }
+    let p = root.join("tools/llvm/bin").join(if cfg!(windows) { format!("{program}.exe") } else { program.to_string() });
+    p.is_file().then_some(p)
 }
 
 /// A program a gate names that is a script for node, not a program of its

@@ -157,6 +157,20 @@ const JS_SMOKE: &str = "const test = require('node:test');\n\ntest('it loads', (
 /// The TypeScript draft's test: it loads.
 const TS_SMOKE: &str = "import { test } from 'node:test';\n\ntest('it loads', async () => {\n  await import('./main.ts');\n});\n";
 
+/// The program a gate names, made absolute when it is a file the gate itself
+/// built in `dir` (`atlas-check.exe`): Windows looks for a bare program name
+/// beside the *parent* process and in its folder, never in the folder a
+/// child is started in, so the C++ run gate said "isn't installed" for the
+/// program it had just built (the laptop, 1 Oct 2026).
+pub fn program_in(dir: &std::path::Path, program: &str) -> String {
+    let local = dir.join(program.trim_start_matches("./").trim_start_matches(".\\"));
+    if program == cpp_program() && local.is_file() {
+        local.to_string_lossy().into_owned()
+    } else {
+        program.to_string()
+    }
+}
+
 /// What the C++ draft is built to, and run as, for its Behaviour gate.
 fn cpp_program() -> &'static str {
     if cfg!(windows) { "atlas-check.exe" } else { "./atlas-check" }
@@ -367,7 +381,10 @@ pub fn ladder(lang: Lang) -> Vec<Gate> {
             },
             Gate {
                 tells: Tells::Style,
-                command: "clang-tidy main.cpp -- -std=c++20".into(),
+                // Checks named: llvm-mingw's clang-tidy has none on by default
+                // and refuses ("no checks enabled"), measured on the laptop 1
+                // Oct 2026.
+                command: "clang-tidy --checks=-*,bugprone-*,performance-*,portability-* --warnings-as-errors=* main.cpp -- -std=c++20".into(),
                 seconds: 15,
                 on_fail: "it compiles, but there are things worth changing".into(),
             },

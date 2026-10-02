@@ -1090,6 +1090,8 @@ impl<'a> Daemon<'a> {
         // re-embedded off the tick — its old vector described text that no
         // longer exists.
         let mut lib = crate::recall::library_from_dir(&dir);
+        // And what Atlas has read, chunked and cited (`add_readings`).
+        crate::recall::add_readings(&mut lib, &crate::roots::data_sub("reading"));
         for p in lib.pieces.iter_mut() {
             p.embedding = self.meaning.get(&p.title, &p.text).cloned();
         }

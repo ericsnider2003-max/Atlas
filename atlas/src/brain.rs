@@ -1879,6 +1879,11 @@ fn made_up_action(d: &Decision, transcript: &str) -> bool {
             a.trim().is_empty() || !t.contains(a.trim())
         }
         Intent::WorkspaceOn | Intent::WorkspaceOff => !t.contains("workspace"),
+        // What Atlas can do, or what would make it better, is an answer to a
+        // question about Atlas -- not to "what should I make for dinner" or
+        // "where did I put that lease" (1 Oct 2026: every model ranked reached
+        // for the capability list on those). Asked again without tools.
+        Intent::Capabilities(_) | Intent::Recommend => !about_atlas_itself(&t),
         // A small model reaches for the web on any question ("tell me a fun
         // fact about octopuses" came back as research, 27 Sep 2026, with a
         // 0.6B model): looking something up is for when you asked for it, or
@@ -1897,6 +1902,18 @@ fn made_up_action(d: &Decision, transcript: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// Is this sentence about Atlas -- what it can do, how it could be better?
+fn about_atlas_itself(t: &str) -> bool {
+    [
+        "what can you", "can you do", "could you do", "are you able", "what can't you", "what cant you", "your abilities",
+        "what's new", "whats new", "what are you", "who are you", "make you", "help you", "you be better", "you better",
+        "you faster", "you slow", "yourself", "atlas", "capabilit", "what do you do", "what else can you", "do you know how to",
+        "do you have", "are you", "could you use", "can you use", "is there anything you",
+    ]
+    .iter()
+    .any(|p| t.contains(p))
 }
 
 /// The schema came back with nothing to say where something had to be said:

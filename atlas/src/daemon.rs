@@ -1358,6 +1358,8 @@ pub struct Daemon<'a> {
     /// When Atlas last looked for missing downloads to fetch itself
     /// (`keep_everything_here`); 0 until it has.
     pub last_top_up: u64,
+    /// "Get to know me", in progress (`getknow`).
+    pub interview: Option<crate::getknow::Interview>,
     /// Set when a night ends, cleared once the brief has been said.
     morning_brief: Option<String>,
     /// Where you were while the last stretch of unattended work happened.
@@ -1938,6 +1940,7 @@ impl<'a> Daemon<'a> {
             last_sync_check: 0,
             last_auto_sync: 0,
             last_top_up: 0,
+            interview: None,
             morning_brief: None,
             worked_while: None,
             last_turn_failed: false,
@@ -2524,7 +2527,11 @@ fn check_draft_in_sandbox(
         let mut args: Vec<String> = parts.map(str::to_string).collect();
         // npm, prettier and tsc are node scripts (`.cmd` on Windows, which
         // can't be started directly): run by the node Atlas fetched.
-        let mut program = program.to_string();
+        // The program the C++ ladder just built, by its full path.
+        let mut program = crate::craft::program_in(&sandbox.root, program);
+        if let Some(p) = crate::codetools::llvm_program(&program, &crate::roots::install_root()) {
+            program = p.to_string_lossy().into_owned();
+        }
         if let Some((node, script)) = crate::codetools::by_node(&program, &crate::roots::install_root()) {
             args.insert(0, script.to_string_lossy().into_owned());
             program = node.to_string_lossy().into_owned();
