@@ -100,6 +100,10 @@ impl<'a> Daemon<'a> {
         };
         let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
         let ask = said.trim().to_string();
+        let draft_cfg = self.tools_cfg().draft.clone();
+        let for_someone = ["letter", "reference", "recommendation", "complaint", "proposal", "note to", "thank you note", "resume", "cv", "bio"]
+            .iter()
+            .any(|d| what.starts_with(d) || what.contains(&format!(" {d}")));
         let title: String = what.split_whitespace().take(8).collect::<Vec<_>>().join(" ");
         let work: crew::Work = Box::new(move |ctl| {
             if ctl.checkpoint() {
@@ -114,6 +118,26 @@ impl<'a> Daemon<'a> {
             if text.is_empty() {
                 return Err("the model wrote nothing".into());
             }
+            // The critique on what Atlas writes for you (nine-repos report,
+            // 1 Oct 2026): throat-clearing, filler, chatbot lines, blanks.
+            // One rewrite pass at a time, kept only when it has fewer faults
+            // (`draft::revise`), and said in the reply -- "what changed".
+            let (text, tidied) = match crate::draft::revise(&text, &*llm, &draft_cfg) {
+                crate::draft::Outcome::Revised { text: better, fixed, .. } => {
+                    let better = crate::phonemodel::without_thinking(&better).trim().to_string();
+                    if better.is_empty() { (text, Vec::new()) } else { (better, fixed) }
+                }
+                _ => (text, Vec::new()),
+            };
+            // A blind reviewer for what goes to someone else (nine-repos
+            // report, career-ops): a fresh call that reads only the letter,
+            // as the person receiving it, then one rewrite on its points --
+            // kept only if the critique doesn't get worse.
+            let (text, reviewed) = if for_someone {
+                review_once(&*llm, &text, &draft_cfg)
+            } else {
+                (text, false)
+            };
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let slug: String = title.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string();
             let path = std::path::Path::new(&dir).join(format!("{}-{slug}.md", crate::store::now()));
@@ -121,12 +145,72 @@ impl<'a> Daemon<'a> {
             crate::research::mark_last(&dir, crate::research::LAST_WRITTEN, &path.display().to_string());
             let words = text.split_whitespace().count();
             let opening: String = text.split(['.', '\n']).find(|l| l.split_whitespace().count() > 3).unwrap_or("").trim().to_string();
+            let mut tidy = tidied_line(&tidied);
+            if reviewed {
+                tidy.push_str(" A second read, as the person receiving it, sharpened it.");
+            }
             Ok(format!(
-                "Written: your {title}, about {words} words. It opens: \"{opening}.\" Say \"read me the report\" to hear it, or \"open the report\" to see it."
+                "Written: your {title}, about {words} words.{tidy} It opens: \"{opening}.\" Say \"read me the report\" to hear it, or \"open the report\" to see it."
             ))
         });
         Some(if self.hand_off("writing", crate::store::now(), work, Some(what.clone()), SpeakPolicy::Always) {
             format!("Writing your {} now. I'll tell you when it's ready.", what.split_whitespace().take(6).collect::<Vec<_>>().join(" "))
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        })
+    }
+
+    /// "Check my writing", "is this slop", "check this draft": what's wrong
+    /// with the text on the clipboard, each with the words that show it
+    /// (nine-repos report, 1 Oct 2026). Detect only -- it never rewrites
+    /// your words unasked, and never says who or what wrote them.
+    pub(super) fn check_writing_help(&mut self, said: &str) -> Option<String> {
+        if !asks_to_check_writing(said) {
+            return None;
+        }
+        let copied = self.plat.read_clipboard().ok().flatten().unwrap_or_default();
+        if copied.split_whitespace().count() < 5 {
+            return Some("Copy the text first, then ask me to check your writing -- I read what's on the clipboard.".into());
+        }
+        let notes = crate::draft::critique(&copied, None, &self.tools_cfg().draft);
+        Some(writing_report(&notes))
+    }
+
+    /// "Ask my documents ...": an answer from your notes and what Atlas has
+    /// read for you, a source after every sentence, each one checked
+    /// against its passage (`recall::check_cites`).
+    pub(super) fn askdocs_help(&mut self, said: &str) -> Option<String> {
+        let question = crate::recall::docs_question(said)?;
+        if self.library.is_empty() {
+            return Some("There's nothing of yours for me to search yet -- no notes, and nothing I've read for you. Say \"learn\" and a file name to give me something.".into());
+        }
+        let mut cfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
+        cfg.results = cfg.results.max(5);
+        let hits = self.library.search(&question, None, &cfg, crate::store::now());
+        let passages: Vec<(String, String)> = hits
+            .iter()
+            .filter_map(|h| self.library.get(h.id))
+            .take(5)
+            .map(|p| (p.title.clone(), p.text.chars().take(1500).collect()))
+            .collect();
+        if passages.is_empty() {
+            return Some(format!("Nothing in your documents mentions {question}."));
+        }
+        let Some(llm) = self.llm.clone() else {
+            return Some(format!("I can't write an answer without a language model, but the closest passage is {}: \"{}\"", passages[0].0, hits[0].quote));
+        };
+        let work: crew::Work = Box::new(move |ctl| {
+            if ctl.checkpoint() {
+                return Err("stopped".into());
+            }
+            let (system, user) = crate::recall::docs_prompt(&question, &passages);
+            let answer = llm.complete(&system, &user).map_err(|e| format!("the answer didn't come back ({e})"))?;
+            let answer = crate::phonemodel::without_thinking(&answer);
+            let checked = crate::recall::check_cites(&answer, &passages);
+            Ok(crate::recall::docs_reply(&checked, &passages))
+        });
+        Some(if self.hand_off("documents", crate::store::now(), work, None, SpeakPolicy::Always) {
+            "Looking through your documents.".into()
         } else {
             "I'm swamped with background work right now -- ask me again in a moment.".into()
         })
@@ -1052,4 +1136,80 @@ impl Daemon<'_> {
             None => "Nothing's running, and nothing has run yet this session.".into(),
         })
     }
+}
+
+
+/// Is this asking Atlas to check a piece of writing?
+fn asks_to_check_writing(said: &str) -> bool {
+    let t = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
+    let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ").trim_start_matches("can you ").trim_start_matches("please ");
+    [
+        "check my writing", "check this draft", "check my draft", "is this slop", "check what i wrote",
+        "critique my writing", "critique this draft", "does this read well", "how does this read",
+    ]
+    .iter()
+    .any(|p| t == *p || t.starts_with(&format!("{p} ")))
+}
+
+/// What the critique found, said with the words that show it: the count,
+/// then up to three, each quoted so it can be checked.
+fn writing_report(notes: &[crate::draft::Note]) -> String {
+    if notes.is_empty() {
+        return crate::draft::spoken(notes);
+    }
+    let shown: Vec<String> = notes
+        .iter()
+        .take(3)
+        .map(|n| {
+            let ev = n.evidence.trim();
+            if ev.is_empty() { format!("it {}", n.fault.what()) } else { format!("it {} (\"{ev}\")", n.fault.what()) }
+        })
+        .collect();
+    let more = notes.len().saturating_sub(shown.len());
+    let tail = if more > 0 { format!(", and {more} more") } else { String::new() };
+    let list = shown.join("; ");
+    let list = list.strip_prefix("it ").map(|r| format!("It {r}")).unwrap_or(list);
+    format!("{} {list}{tail}.", crate::draft::spoken(notes))
+}
+
+/// "Tidied 2 things (filler; a chatbot line)." for the written reply, or
+/// nothing when nothing was changed.
+fn tidied_line(fixed: &[crate::draft::Fault]) -> String {
+    match fixed.len() {
+        0 => String::new(),
+        n => format!(
+            " I tidied {n} thing{} first: it {}.",
+            if n == 1 { "" } else { "s" },
+            fixed.iter().map(|f| f.what()).collect::<Vec<_>>().join("; it ")
+        ),
+    }
+}
+
+
+/// What the blind reviewer is told: only the letter, no brief, no history.
+const REVIEWER: &str = "You are the person this was written to. Read it as they would. In at most three short \
+     points, say what's missing, unclear or weak -- things a careful reader would want fixed. If nothing \
+     needs fixing, reply with exactly NOTHING. Points only, no rewrite.";
+
+/// The rewrite on the reviewer's points.
+const ON_REVIEW: &str = "Rewrite this to fix the reader's points below. Keep everything that was good, \
+     add no facts that aren't already in it, and return only the rewritten text.";
+
+/// One blind review and one rewrite. The rewrite is kept only when it isn't
+/// empty and the critique finds no more faults in it than before.
+fn review_once(llm: &dyn crate::brain::Llm, text: &str, cfg: &crate::draft::DraftConfig) -> (String, bool) {
+    let Ok(points) = llm.complete(REVIEWER, text) else { return (text.to_string(), false) };
+    let points = crate::phonemodel::without_thinking(&points).trim().to_string();
+    if points.is_empty() || points.eq_ignore_ascii_case("nothing") || points.to_lowercase().starts_with("nothing") {
+        return (text.to_string(), false);
+    }
+    let Ok(better) = llm.complete(ON_REVIEW, &format!("The reader's points:\n{points}\n\nThe text:\n{text}")) else {
+        return (text.to_string(), false);
+    };
+    let better = crate::phonemodel::without_thinking(&better).trim().to_string();
+    let before = crate::draft::critique(text, None, cfg).len();
+    if better.is_empty() || crate::draft::critique(&better, None, cfg).len() > before {
+        return (text.to_string(), false);
+    }
+    (better, true)
 }

@@ -1231,6 +1231,9 @@ impl<'a> Daemon<'a> {
     fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
+            .or_else(|| self.check_writing_help(raw))
+            .or_else(|| crate::hunting::fit_asked(self, raw))
+            .or_else(|| self.askdocs_help(raw))
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
@@ -1269,6 +1272,9 @@ impl<'a> Daemon<'a> {
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
+            .or_else(|| self.check_writing_help(raw))
+            .or_else(|| crate::hunting::fit_asked(self, raw))
+            .or_else(|| self.askdocs_help(raw))
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
@@ -1411,7 +1417,11 @@ impl<'a> Daemon<'a> {
         //
         // `min` of all three: a mode that asks for brevity beats a chatty
         // register, and the config ceiling beats both.
+        // Three rough turns running: stop retrying, find the wrong
+        // assumption (`persona::spiral_line`).
+        self.rough_in_a_row = if register == crate::register::Register::Rough { self.rough_in_a_row + 1 } else { 0 };
         let mut persona = self.persona_now();
+        persona.spiral = crate::persona::spiral_line(self.rough_in_a_row).is_some();
         // Only a mode somebody actually turned on gets to cap this. See
         // `Modes::verbosity_if_set`.
         // `.map(|v| f(v))` rather than `.map(f)`, and not as a style choice:

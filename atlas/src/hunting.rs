@@ -616,3 +616,30 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     };
     hub::back_with(Page::Opportunities.href(), "", &said)
 }
+
+/// "How well do I fit this job?" over the posting on the clipboard
+/// (nine-repos report, 1 Oct 2026). `None` when that isn't what was asked.
+pub fn fit_asked(d: &mut Daemon, said: &str) -> Option<String> {
+    let t = said.trim().trim_end_matches(['?', '.', '!']).to_lowercase();
+    let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ");
+    const ASKS: &[&str] = &[
+        "how well do i fit this job", "do i fit this job", "how do i fit this job", "am i a fit for this job",
+        "am i a good fit for this job", "job fit", "check this job posting", "score this job", "how well do i fit this posting",
+        "do i fit this posting", "how well do i match this job",
+    ];
+    if !ASKS.iter().any(|a| t == *a) {
+        return None;
+    }
+    let posting = d.plat.read_clipboard().ok().flatten().unwrap_or_default();
+    if posting.split_whitespace().count() < 20 {
+        return Some("Copy the job posting first, then ask me how well you fit it -- I read what's on the clipboard.".into());
+    }
+    let you = Interests::from_facts(&d.facts);
+    Some(match hunt::fit_to_posting(&posting, &you) {
+        Some(fit) => hunt::fit_said(&fit),
+        None if you.skills.is_empty() => {
+            "I don't know your skills yet, so I can't score it honestly. Say \"my skills are\" and list them, then ask again.".into()
+        }
+        None => "I couldn't find what that posting asks for -- it doesn't name any skills I can match.".into(),
+    })
+}

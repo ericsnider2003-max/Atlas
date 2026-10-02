@@ -933,3 +933,9 @@ mod mcp_server;
 mod what_the_model_ranking_found;
 #[path = "greet_once.rs"]
 mod greet_once;
+#[path = "writing_checked.rs"]
+mod writing_checked;
+#[path = "job_fit.rs"]
+mod job_fit;
+#[path = "ask_my_documents.rs"]
+mod ask_my_documents;

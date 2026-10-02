@@ -149,7 +149,6 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "dictate::ask_which",
     "dictate::parse",
     "dictate::render",
-    "draft::spoken",
     "editcraft::ladder",
     "enrol::read",
     "events::gaps",

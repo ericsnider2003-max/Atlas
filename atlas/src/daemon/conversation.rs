@@ -336,6 +336,12 @@ impl<'a> Daemon<'a> {
         let short_spoken = self.reply_is_spoken() && !crate::persona::asks_for_more(said);
         let sentences = if short_spoken { persona.max_spoken_sentences.min(SPOKEN_SENTENCES) } else { persona.max_spoken_sentences };
         now.push_str(&persona.for_this_turn_on(register, sentences, said, self.mid_flow()));
+        // Three rough turns running: stop retrying, find the wrong assumption
+        // (counted where the register is read, in `turn.rs`).
+        if let Some(line) = crate::persona::spiral_line(self.rough_in_a_row).filter(|_| register == crate::register::Register::Rough) {
+            now.push(' ');
+            now.push_str(line);
+        }
 
         let tools = if handed_over { Vec::new() } else { self.turn_tools(said) };
         // One tool is the same every turn: the capabilities tool (`turn_tools`).
