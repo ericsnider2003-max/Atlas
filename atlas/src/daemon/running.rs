@@ -384,6 +384,10 @@ impl<'a> Daemon<'a> {
             // A tick is time the hub and the typing box wait: a slow one is
             // written down, so where the time goes can be seen.
             let tick_ms = tick_started.elapsed().as_millis() as u64;
+            // Whatever ran after the last named part, named too -- every tick,
+            // not only slow ones (2 Oct 2026: it was left out of the quarter
+            // hour's sum, so a cost hiding there was never in the reading).
+            self.tick_laps.mark("the rest");
             // Every tick's parts, added up; every quarter hour, Atlas's own
             // CPU over it and where the loop's time went (`cpuuse`).
             self.cpu_meter.add(self.tick_laps.parts());
@@ -401,7 +405,6 @@ impl<'a> Daemon<'a> {
             if tick_ms >= SLOW_TICK_MS {
                 // Which parts took it, so the next look at a log says where
                 // the time went (30 Sep 2026: the laptop's said only "1777ms").
-                self.tick_laps.mark("the rest");
                 self.log.info(&format!("timing: tick took {tick_ms}ms ({})", self.tick_laps.plain(3)));
             }
             // A tick that ran long (a render, a sweep) is Atlas busy, not

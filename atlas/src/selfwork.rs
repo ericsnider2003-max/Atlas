@@ -1332,6 +1332,26 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
         }
     }
     let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))?;
+    // The walk below reads up to 4000 folders. Its answer is kept for ten
+    // minutes (2 Oct 2026: asked every tick, it was most of the daemon's
+    // idle CPU), and is checked still to be a checkout before it's reused.
+    static WALKED: std::sync::Mutex<Option<(String, std::time::Instant, Option<PathBuf>)>> = std::sync::Mutex::new(None);
+    if let Ok(w) = WALKED.lock() {
+        if let Some((h, at, found)) = w.as_ref() {
+            if *h == home && at.elapsed() < std::time::Duration::from_secs(600) && found.as_ref().map_or(true, |p| is_a_source_checkout(p)) {
+                return found.clone();
+            }
+        }
+    }
+    let found = walk_home_for_source(&home);
+    if let Ok(mut w) = WALKED.lock() {
+        *w = Some((home, std::time::Instant::now(), found.clone()));
+    }
+    found
+}
+
+fn walk_home_for_source(home: &str) -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
     const SKIP: &[&str] = &["appdata", "library", "pictures", "music", "videos", "node_modules", "target", "onedrive", "dropbox", "google drive", "icloud drive"];
     let mut level = vec![PathBuf::from(home)];
     let mut seen = 0usize;
