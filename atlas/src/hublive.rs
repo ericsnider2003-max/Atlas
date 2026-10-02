@@ -729,8 +729,8 @@ impl Daemon<'_> {
                     ));
                 }
                 let page = hub::status_page(&lines, settings.changed().len());
-                // "Make it run well" beside it (2 Oct 2026).
-                with_block(page, &format!("{}{}", self.space_section_live(), hub::speed_section()))
+                // "Make it run well" beside it, and "Sort my files" (2 Oct 2026).
+                with_block(page, &format!("{}{}{}", self.space_section_live(), hub::speed_section(), hub::sorting_section()))
             }
             Page::Settings => {
                 // What's kept, not what this run started with: a change made

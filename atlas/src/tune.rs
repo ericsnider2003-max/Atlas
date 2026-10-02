@@ -1815,6 +1815,11 @@ pub enum TuneUndo {
     Startup(StartupEntry),
     /// Move these files back: (where it was, where it is).
     Moves(Vec<(std::path::PathBuf, std::path::PathBuf)>),
+    /// A folder sorted (`organize`, 2 Oct 2026): each file moved back, then
+    /// the folders the sorting made taken away again, innermost first, but
+    /// only those that are empty once the files are back -- anything you've
+    /// put in one since keeps it.
+    Organized { moves: Vec<(std::path::PathBuf, std::path::PathBuf)>, made: Vec<std::path::PathBuf> },
 }
 
 pub const TUNE_UNDO_RECORD: &str = "tune_undo";
@@ -1834,6 +1839,22 @@ pub fn undo_tune_change(u: &TuneUndo) -> Result<String, String> {
                 s.push_str(&format!(" Not moved: {}.", not.join("; ")));
             }
             if back == 0 {
+                Err(s)
+            } else {
+                Ok(s)
+            }
+        }
+        TuneUndo::Organized { moves, made } => {
+            let (back, not) = move_back(moves);
+            // `remove_dir` only ever removes an empty folder.
+            for d in made.iter().rev() {
+                let _ = std::fs::remove_dir(d);
+            }
+            let mut s = format!("Put {back} of {} back where {} were.", moves.len(), if back == 1 { "it" } else { "they" });
+            if !not.is_empty() {
+                s.push_str(&format!(" Not put back: {}.", not.join("; ")));
+            }
+            if back == 0 && !moves.is_empty() {
                 Err(s)
             } else {
                 Ok(s)

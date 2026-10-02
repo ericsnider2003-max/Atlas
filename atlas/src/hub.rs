@@ -4274,6 +4274,33 @@ pub fn speed_section() -> String {
     out
 }
 
+/// "Sort my files", on the Status page beside "Make it run well" (2 Oct
+/// 2026). Like those buttons, each says its sentence to Atlas on the Talk
+/// page: the plan comes back there, and "yes" carries it out.
+pub fn sorting_section() -> String {
+    let mut out = String::from(
+        "<section id=sorting aria-labelledby=sorting-h><h2 id=sorting-h>Sort my files</h2>\
+         <p class=what>I say what I'd move first: a folder for each kind of file, copies and old installers \
+         into \"To review\" for you to empty. Nothing is deleted or written over, and \"undo that\" puts \
+         everything back. To sort another folder, say \"sort the files in\" and its full path.</p>",
+    );
+    for (said, label) in [
+        ("organize my PC", "Organize my PC"),
+        ("organize my downloads", "Sort Downloads"),
+        ("clean up my desktop", "Clean up the desktop"),
+        ("find duplicates in my downloads", "Find duplicates in Downloads"),
+    ] {
+        out.push_str(&format!(
+            "<form class=inline method=post action=/hub/talk><input type=hidden name=text value=\"{}\">\
+             <button>{}</button></form> ",
+            esc(said),
+            esc(label)
+        ));
+    }
+    out.push_str("</section>");
+    out
+}
+
 pub fn space_section(v: &SpaceView) -> String {
     let mut out = String::from("<section id=space aria-labelledby=space-h><h2 id=space-h>Free up space</h2>");
     if let Some(said) = v.said.as_deref().filter(|s| !s.is_empty()) {

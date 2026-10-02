@@ -1272,37 +1272,53 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    /// "Organize my desktop" (Eric, 29 Sep 2026): the loose files on the
-    /// desktop, each with where it would go (`filing::plan_folder`), said
-    /// first and done only on a yes (`carry_out_desktop_plan`). Shortcuts,
-    /// folders and files whose names don't say what they are stay put.
+    /// "Organize my PC", "clean up my desktop", "sort the files in D:\Stuff",
+    /// "find duplicates in my downloads" (Eric, 29 Sep and 2 Oct 2026: "can't
+    /// organize my PC properly"). The whole sentence is read
+    /// (`organize::read_sort_request`): the folder named, or the desktop,
+    /// Downloads and Documents as this machine has them. The plan is said --
+    /// how many of each kind go where, with a few names, the copies and old
+    /// installers that go to "To review", what's left and why -- and nothing
+    /// moves until the yes (`carry_out_sorting`). Before 2 Oct this only
+    /// filed the desktop's and Downloads' loose files by extension into
+    /// Documents\Filed, found no copies and couldn't be undone.
     pub(super) fn tidy_desktop(&mut self) -> String {
         let sys = self.tools_cfg().system.clone();
         if !sys.enabled {
-            return "Moving your files is switched off -- turn on System changes in Settings and ask me again. I'd only move loose files into folders, never delete anything."
+            return "Moving your files is switched off -- turn on System changes in Settings and ask me again. I'd only move files into folders, never delete anything."
                 .into();
         }
-        let Some(home) = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")) else {
-            return "I couldn't work out where your home folder is, so I can't find your desktop.".into();
-        };
-        let home = std::path::PathBuf::from(home);
-        // Windows moves the desktop (and Documents) into OneDrive when
-        // OneDrive backs them up.
-        let known = |name: &str| {
-            [home.join("OneDrive").join(name), home.join(name)].into_iter().find(|d| d.is_dir()).unwrap_or_else(|| home.join(name))
-        };
-        let desktop = known("Desktop");
-        let root = known("Documents").join("Filed");
-        // The desktop and Downloads, the two places loose files pile up
-        // (1 Oct 2026: "organize my PC" only ever looked at the desktop).
-        let now = crate::store::now();
-        let mut plan = crate::filing::plan_folder(&desktop, &root, now);
-        let downloads = home.join("Downloads");
-        if downloads.is_dir() {
-            plan.extend(crate::filing::plan_folder(&downloads, &root, now));
+        let said = self.last_said.clone();
+        let ask = crate::organize::read_sort_request(&said);
+        if let Some(words) = &ask.not_found {
+            return format!(
+                "I couldn't find a folder called \"{words}\" on this computer. Say it with its full path, like the one Explorer shows at the top."
+            );
         }
-        let words = crate::filing::tidy_plan_words("your desktop and Downloads", &plan, &root);
-        if plan.iter().any(|(_, s)| matches!(s, crate::filing::Suggestion::Move { .. })) {
+        if ask.folders.is_empty() {
+            return "I couldn't work out where your desktop, Downloads and Documents are on this computer -- name the folder with its full path.".into();
+        }
+        // The same gate every move will go through, asked once up front, so
+        // a folder outside the ones Atlas may work in is said now rather
+        // than as a list of refusals after the yes.
+        let probe = |from: &std::path::Path, to: &std::path::Path| {
+            crate::system::judge(
+                &crate::system::Change::MoveFile {
+                    from: from.join("x").display().to_string(),
+                    to: to.join(crate::organize::TO_REVIEW).join("x").display().to_string(),
+                },
+                &sys,
+            )
+        };
+        for f in &ask.folders {
+            if let crate::system::Verdict::Refuse(why) = probe(f, ask.into.as_deref().unwrap_or(f)) {
+                return format!("I can't sort {}: {why}", f.display());
+            }
+        }
+        let now = crate::store::now();
+        let plan = crate::organize::plan_folders(&ask.folders, ask.into.as_deref(), ask.copies_only, now, std::time::Duration::from_secs(8));
+        let words = crate::organize::plan_said(&plan);
+        if plan.has_moves() {
             self.session.ask(&words);
             self.pending_desktop = Some(plan);
         }
@@ -1558,41 +1574,35 @@ impl<'a> Daemon<'a> {
         said
     }
 
-    /// The desktop plan, carried out: each move judged and done
-    /// (`filing::file_one`), and what happened said -- how many went where,
-    /// and each one that didn't, with why.
-    pub(super) fn carry_out_desktop_plan(&mut self, plan: Vec<(std::path::PathBuf, crate::filing::Suggestion)>) -> String {
+    /// A sorting plan, carried out on its yes (2 Oct 2026): each move judged
+    /// and done (`organize::carry_out_moves` -- never over a file, never one
+    /// open elsewhere, nothing deleted), every one written into the history
+    /// "what did you do" reads and kept beside it, so "undo that" puts each
+    /// file back where it was (`tune::TuneUndo::Organized`).
+    pub(super) fn carry_out_sorting(&mut self, plan: crate::organize::SortPlan, t: u64) -> String {
         let sys = self.tools_cfg().system.clone();
-        let mut filed = 0usize;
-        let mut into: Option<std::path::PathBuf> = None;
-        let mut not: Vec<String> = Vec::new();
-        for (from, s) in &plan {
-            if crate::filing::as_change(from, s).is_none() {
-                continue;
+        let done = crate::organize::carry_out_moves(&plan, &sys, crate::store::now());
+        if !done.moved.is_empty() {
+            let names: Vec<String> =
+                plan.folders.iter().map(|f| f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.display().to_string())).collect();
+            let what = format!(
+                "sorted {} file{} in {} into folders",
+                done.moved.len(),
+                if done.moved.len() == 1 { "" } else { "s" },
+                names.join(", ")
+            );
+            self.journal.record_at(Act::Upkeep, &what, true, t);
+            let id = self.history.note(&what, "files", crate::undo::Undo::Atlas("move them back".into()), true, t);
+            let mut record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
+            record.push((id, crate::tune::TuneUndo::Organized { moves: done.moved.clone(), made: done.made.clone() }));
+            // Kept bounded, like the history it belongs to.
+            if record.len() > 200 {
+                record.drain(0..record.len() - 200);
             }
-            match crate::filing::file_one(from, s, &sys) {
-                Ok(to) => {
-                    filed += 1;
-                    if into.is_none() {
-                        into = to.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf());
-                    }
-                    self.journal.record_at(Act::Upkeep, &format!("filed {} to {}", from.display(), to.display()), true, crate::store::now());
-                }
-                Err(why) => {
-                    let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    not.push(format!("{name} ({why})"));
-                }
-            }
+            let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record);
+            let _ = self.store.save("undo_history", &self.history);
         }
-        let mut said = match (&into, filed) {
-            (_, 0) => "Nothing moved.".to_string(),
-            (Some(root), n) => format!("Filed {n} from your desktop and Downloads, into folders under {}.", root.display()),
-            (None, n) => format!("Filed {n} from your desktop and Downloads."),
-        };
-        if !not.is_empty() {
-            said.push_str(&format!(" Not moved: {}.", not.join("; ")));
-        }
-        said
+        crate::organize::done_said(&plan, &done)
     }
 
     /// "Use my webcam mic" (Eric, 29 Sep 2026): the microphones this machine

@@ -946,16 +946,17 @@ impl<'a> Daemon<'a> {
                 }
                 return self.carry_out_undo(id);
             }
-            // The desktop's loose files, filed on a yes (29 Sep 2026).
+            // A folder's sorting plan, carried out on a yes (29 Sep 2026;
+            // any folder since 2 Oct 2026).
             if let Some(plan) = self.pending_desktop.take() {
                 self.session.pending = Pending::Nothing;
                 if is_no(said) {
-                    return "Alright, your desktop stays as it is.".into();
+                    return "Alright, I left everything where it is.".into();
                 }
                 if !is_yes(said) {
                     return self.turn_from(said, t, how);
                 }
-                return self.carry_out_desktop_plan(plan);
+                return self.carry_out_sorting(plan, t);
             }
             // An optimization run's offer: all of it, on one yes.
             if let Some(plan) = self.pending_optimize.take() {

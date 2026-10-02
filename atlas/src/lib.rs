@@ -245,6 +245,9 @@ pub mod council;
 pub mod build_it;
 pub mod brief;
 pub mod filing;
+// Sorting a folder by kind, copies and old installers to "To review", on
+// one yes and undone by "undo that" (2 Oct 2026).
+pub mod organize;
 pub mod files;
 pub mod pdftext;
 pub mod hotkeys;
