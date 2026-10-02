@@ -129,6 +129,8 @@ pub fn category_of(intent: &Intent) -> Category {
         Intent::TwoFactor(_) => Category::StandardExternal,
         // Building on this machine, in a scratch copy.
         Intent::KeepAtIt => Category::LocalCreative,
+        // Running what was built: a program on this machine, asked first.
+        Intent::RunBuild(_) => Category::LocalOperational,
         Intent::Goals(_) => Category::LocalOperational,
         Intent::Later(_) => Category::LocalOperational,
         // A pairing is a commitment made as you, exactly like a signup --
@@ -180,6 +182,9 @@ pub fn category_of(intent: &Intent) -> Category {
         // taken back ask first, in the handler.
         Intent::PressButton(_) => Category::LocalOperational,
         Intent::MoveBigFiles(_) => Category::LocalOperational,
+        // Looks, then offers; closing, startup changes, clearing and moving
+        // happen only on the yes to that offer (2 Oct 2026).
+        Intent::PcTune(_) => Category::LocalOperational,
         // Shows the plan and waits for a yes; every move through `system::judge`.
         Intent::TidyDesktop => Category::LocalOperational,
         Intent::UseMic(_) => Category::LocalOperational,

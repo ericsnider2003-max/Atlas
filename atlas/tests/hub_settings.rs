@@ -86,14 +86,14 @@ fn the_permissions_page_gathers_everything_consequential() {
 const DELIBERATELY_DIFFERENT: &[(&str, &str)] = &[
     (
         "tts_engine.engine",
-        "kokoro in the shipped file since Phase 0.8 (1 Oct 2026): Kokoro is the voice Atlas ships with and \
-         piper the fallback when its model isn't there yet. The struct default stays piper, the engine that \
-         needs nothing downloaded beyond its own voice.",
+        "Kokoro ships in tools.yaml from 1 Oct 2026 (why-stale report 0.8: the warmer voice Eric chose), \
+         with piper as the fallback `is_consistent` accepts. The struct default stays piper: Kokoro needs \
+         its model pieces, and an install with no tools.yaml has fetched none.",
     ),
     (
         "voice_settings.voice",
-        "af_bella in the shipped file, a Kokoro preset, because Kokoro ships as the engine (Phase 0.8). The \
-         struct default stays a piper voice, to match the struct's own engine.",
+        "af_heart is Kokoro's voice name, shipped with Kokoro above; the struct default names piper's \
+         voice, for the engine the struct defaults to.",
     ),
     (
         "self_work.enabled",

@@ -894,7 +894,7 @@ fn talk_is_spoken_length_unless_you_ask_for_more() {
 fn the_prompt_forbids_made_up_history() {
     let c = atlas::persona::Persona::default().character();
     assert!(c.contains("Never invent past events, shared memories"), "{c}");
-    assert!(c.contains("Don't mention the time of day"));
+    assert!(c.contains("Mention the time only if it matters"));
 }
 
 /// The bench's checks catch what a person heard as wrong.

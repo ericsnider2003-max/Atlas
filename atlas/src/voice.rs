@@ -139,6 +139,10 @@ pub struct ToolsConfig {
     /// How much of one core hand tracking may use.
     #[serde(default)]
     pub pace: crate::handtrack::PaceConfig,
+    /// How heavy hand tracking may be on this machine: automatic, light or
+    /// full, the NPU, and when to stop with no hand in view (2 Oct 2026).
+    #[serde(default)]
+    pub hands: crate::handweight::HandsConfig,
     /// Reading a market: how structure is found, where levels go, and what
     /// counts as having earned the right to be believed.
     ///

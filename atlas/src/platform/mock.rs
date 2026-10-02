@@ -206,6 +206,11 @@ impl Platform for MockPlatform {
     fn cloud_folder(&self) -> Option<std::path::PathBuf> {
         None
     }
+    /// Nothing is installed on a mock machine.
+    fn find_program(&self, _name: &str) -> Option<String> {
+        None
+    }
+
     /// Nothing measured: `health::assess` says nothing about a machine with
     /// no totals, so no test reply carries the real machine's state.
     fn readings(&self) -> crate::health::Readings {

@@ -707,15 +707,29 @@ impl<'a> Daemon<'a> {
     /// finds reaches you as a self-repair recommendation, not a sentence.
     pub(super) fn maybe_mutation_sweep(&mut self, t: u64) {
         const EVERY_SECS: u64 = 24 * 3600;
-        if self.rehearsal || !self.tools_cfg().self_work.enabled {
+        // Asked every tick, due once a day. Until 2 Oct 2026 this found the
+        // source first -- a walk of up to 4000 folders under your home, every
+        // tick -- and only then read the date: ~80 ms of CPU every second or
+        // two, the daemon's whole idle cost on Eric's laptop (measured: the
+        // main thread in 50-90 ms bursts, "the rest" of each tick). Now the
+        // date first, from memory; the disk once a quarter hour at most; the
+        // source only on the day it's due.
+        if t < self.next_sweep_look {
             return;
         }
-        let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
-        if !root.join("Cargo.toml").is_file() || !root.join("src").is_dir() {
+        if self.rehearsal || !self.tools_cfg().self_work.enabled {
+            self.next_sweep_look = t + 900;
             return;
         }
         let last: u64 = self.store.load("mutation_sweep_at");
         if t.saturating_sub(last) < EVERY_SECS {
+            self.next_sweep_look = (last + EVERY_SECS).min(t + 900);
+            return;
+        }
+        let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
+        if !root.join("Cargo.toml").is_file() || !root.join("src").is_dir() {
+            // No source on this computer: look again in an hour, not a tick.
+            self.next_sweep_look = t + 3600;
             return;
         }
         let _ = self.store.save("mutation_sweep_at", &t);

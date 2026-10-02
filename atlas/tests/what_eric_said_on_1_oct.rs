@@ -170,19 +170,29 @@ fn a_desktop_in_onedrive_is_one_atlas_may_organize() {
 /// starts for nothing, clear junk -- not just report.
 #[test]
 fn an_optimization_run_offers_to_close_stop_and_clear() {
-    use atlas::tune::{may_close, parse_reg_run, parse_windowed, Plan};
+    use atlas::tune::{may_close, parse_reg_values, parse_windowed, Plan};
     let v = "\"Discord.exe\",\"88\",\"Console\",\"1\",\"410,500 K\",\"Running\",\"LE3O\\\\erics\",\"0:01:02\",\"#general - Discord\"\n\
              \"svchost.exe\",\"900\",\"Services\",\"0\",\"30,000 K\",\"Unknown\",\"N/A\",\"0:00:01\",\"N/A\"\n";
     assert_eq!(parse_windowed(v), vec!["Discord".to_string()], "only programs with a window");
     let reg = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\r\n    OneDrive    REG_SZ    \"C:\\x\\OneDrive.exe\" /background\r\n    Spotify    REG_SZ    C:\\y\\Spotify.exe\r\n";
-    assert_eq!(parse_reg_run(reg), vec!["OneDrive".to_string(), "Spotify".to_string()]);
+    let names: Vec<String> = parse_reg_values(reg).into_iter().map(|(n, _)| n).collect();
+    assert_eq!(names, vec!["OneDrive".to_string(), "Spotify".to_string()]);
     let keep = vec!["onedrive".to_string()];
     assert!(may_close("Discord", &keep) && may_close("Spotify", &keep));
     assert!(!may_close("OneDrive", &keep) && !may_close("explorer", &keep) && !may_close("atlas", &keep) && !may_close("claude", &keep));
+    // (2 Oct 2026: a plan now carries what was measured -- the program's
+    // processes, and where each startup entry lives -- not just names.)
     let plan = Plan {
-        close: vec![("Discord".into(), 410)],
-        stop_starting: vec!["Spotify".into()],
+        close: vec![atlas::tune::Load { name: "Discord".into(), pids: vec![88], mem_mb: 410, windowed: true, alone: true, ..Default::default() }],
+        stop_starting: vec![atlas::tune::StartupEntry {
+            name: "Spotify".into(),
+            from: atlas::tune::StartupFrom::YourRunKey,
+            command: "C:\\y\\Spotify.exe".into(),
+            key: "Spotify".into(),
+            on: true,
+        }],
         temp: Some((std::env::temp_dir(), 2300)),
+        moves: None,
     };
     let o = plan.offer();
     assert!(o.contains("close Discord (410 MB)") && o.contains("stop Spotify starting with Windows") && o.contains("2300 MB") && o.ends_with("Go ahead?"), "{o}");

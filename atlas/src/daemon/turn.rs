@@ -555,20 +555,43 @@ impl<'a> Daemon<'a> {
         // and started nothing). With nothing asked yet, it says how to ask.
         // "Take that off my outstanding list" (1 Oct 2026: there was no way).
         if let Some(removal) = crate::backlog::removal_asked(said) {
-            let reply = match self.backlog.find_for_removal(&removal) {
-                Ok(ids) => {
-                    let named: Vec<String> = ids
-                        .iter()
-                        .filter_map(|id| self.backlog.outstanding().into_iter().find(|i| i.id == *id).map(|i| i.request.trim().to_string()))
-                        .collect();
-                    for id in &ids {
-                        self.backlog.dismiss(*id);
+            // Matched against everything the Outstanding page can take off,
+            // in its order, not only the backlog (2 Oct 2026), and removed
+            // the one way the page's buttons remove (`drop_outstanding`).
+            let listed = self.outstanding_removable(t);
+            // "Clear my outstanding list" clears the list; it doesn't stop
+            // work a worker is in the middle of. Those are stopped by name,
+            // or with their own Stop it.
+            let listed: Vec<(String, String)> = match removal {
+                crate::backlog::Removal::All => listed.into_iter().filter(|(k, _)| !k.starts_with("e:")).collect(),
+                _ => listed,
+            };
+            let titles: Vec<String> = listed.iter().map(|(_, title)| title.clone()).collect();
+            let reply = match crate::backlog::pick_for_removal(&removal, &titles) {
+                Ok(at) => {
+                    let mut off = Vec::new();
+                    let mut refused = Vec::new();
+                    for n in at {
+                        match self.drop_outstanding(&listed[n].0, t) {
+                            Ok(o) => off.push(o),
+                            Err(why) => refused.push(why),
+                        }
                     }
-                    match self.backlog.save(&self.store) {
-                        Err(e) => format!("I took it off, but couldn't save the list ({e}) -- it may come back after a restart."),
-                        Ok(()) if named.len() == 1 => format!("Done -- \"{}\" is off your outstanding list.", named[0]),
-                        Ok(()) => format!("Done -- cleared {} things off your outstanding list.", named.len()),
+                    let unsaved = off.iter().find_map(|o| o.unsaved.clone());
+                    let mut said = match (off.as_slice(), &unsaved) {
+                        (_, Some(e)) => format!("I took it off, but couldn't save the list ({e}) -- it may come back after a restart."),
+                        ([], None) => String::new(),
+                        ([one], None) if one.stopping => format!("Asked \"{}\" to stop -- it's off your outstanding list once it winds down.", one.title),
+                        ([one], None) => format!("Done -- \"{}\" is off your outstanding list.", one.title),
+                        (many, None) => format!("Done -- cleared {} things off your outstanding list.", many.len()),
+                    };
+                    for why in refused {
+                        if !said.is_empty() {
+                            said.push(' ');
+                        }
+                        said.push_str(&why);
                     }
+                    said
                 }
                 Err(say) => say,
             };
@@ -745,6 +768,12 @@ impl<'a> Daemon<'a> {
                         self.scheduler.complete(jid, t, &r, !r.starts_with("error"));
                     }
                     r
+                } else if let Some(own) = crate::coding_agent::declined(&intent) {
+                    // A no to handing it to a coding agent is a no to the
+                    // agent, not to the work: Atlas writes it itself (2 Oct
+                    // 2026).
+                    self.pending_job = None;
+                    self.execute(&own)
                 } else {
                     self.pending_job = None;
                     // Worth learning once, per its own doc comment -- not a rule
@@ -923,16 +952,17 @@ impl<'a> Daemon<'a> {
                 }
                 return self.carry_out_undo(id);
             }
-            // The desktop's loose files, filed on a yes (29 Sep 2026).
+            // A folder's sorting plan, carried out on a yes (29 Sep 2026;
+            // any folder since 2 Oct 2026).
             if let Some(plan) = self.pending_desktop.take() {
                 self.session.pending = Pending::Nothing;
                 if is_no(said) {
-                    return "Alright, your desktop stays as it is.".into();
+                    return "Alright, I left everything where it is.".into();
                 }
                 if !is_yes(said) {
                     return self.turn_from(said, t, how);
                 }
-                return self.carry_out_desktop_plan(plan);
+                return self.carry_out_sorting(plan, t);
             }
             // An optimization run's offer: all of it, on one yes.
             if let Some(plan) = self.pending_optimize.take() {
@@ -1279,6 +1309,14 @@ impl<'a> Daemon<'a> {
     fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
+            .or_else(|| self.check_writing_help(raw))
+            .or_else(|| crate::hunting::fit_asked(self, raw))
+            .or_else(|| self.askdocs_help(raw))
+            .or_else(|| self.wrapup_help(raw, t))
+            .or_else(|| self.worksession_help(raw, t))
+            .or_else(|| self.why_moved_help(raw, t))
+            .or_else(|| self.studio_help(raw, t))
+            .or_else(|| self.noticed_help(raw, t))
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
@@ -1317,6 +1355,14 @@ impl<'a> Daemon<'a> {
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
+            .or_else(|| self.check_writing_help(raw))
+            .or_else(|| crate::hunting::fit_asked(self, raw))
+            .or_else(|| self.askdocs_help(raw))
+            .or_else(|| self.wrapup_help(raw, t))
+            .or_else(|| self.worksession_help(raw, t))
+            .or_else(|| self.why_moved_help(raw, t))
+            .or_else(|| self.studio_help(raw, t))
+            .or_else(|| self.noticed_help(raw, t))
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
@@ -1459,7 +1505,11 @@ impl<'a> Daemon<'a> {
         //
         // `min` of all three: a mode that asks for brevity beats a chatty
         // register, and the config ceiling beats both.
+        // Three rough turns running: stop retrying, find the wrong
+        // assumption (`persona::spiral_line`).
+        self.rough_in_a_row = if register == crate::register::Register::Rough { self.rough_in_a_row + 1 } else { 0 };
         let mut persona = self.persona_now();
+        persona.spiral = crate::persona::spiral_line(self.rough_in_a_row).is_some();
         // Only a mode somebody actually turned on gets to cap this. See
         // `Modes::verbosity_if_set`.
         // `.map(|v| f(v))` rather than `.map(f)`, and not as a style choice:

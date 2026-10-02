@@ -253,12 +253,14 @@ pub const NEVER: &[(&str, &str)] = &[
     ("set_key", "it changes Atlas's keys"),
     ("edit_media", "it writes files beside yours"),
     ("move_big_files", "it moves folders between your drives"),
+    ("pc_tune", "it closes your programs and changes what starts with Windows"),
     ("press_button", "it presses buttons in other apps as if it were you"),
     ("schedule_post", "it decides when your posts go out"),
     ("sort_mail", "it moves your mail"),
     ("later", "it's your own list"),
     ("goals", "it's your own goals"),
     ("keep_at_it", "it keeps changing Atlas's own code"),
+    ("run_build", "it runs a program on your computer"),
     // 25k's, decided when 25k was merged in (26 Sep 2026).
     ("clock", "it's yours to ask; an add-on can read the time itself"),
     // Round 6's four, decided when they were merged onto the split (29 Sep

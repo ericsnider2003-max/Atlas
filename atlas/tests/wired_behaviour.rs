@@ -76,6 +76,11 @@ fn every_phrase_in_the_command_file_parses_to_something_real() {
                 // only with a project named (round 10: "change the volume"
                 // was being asked which project it was for).
                 format!("{p} parser on the atlas project")
+            } else if c.intent == "build_it" {
+                // The short leads ("write a", "build an") reach code only
+                // when what follows names code (2 Oct 2026): "write a haiku"
+                // is not a program.
+                format!("{p} script that renames files by date")
             } else {
                 example(p, c.takes_argument, c.argument_optional)
             };

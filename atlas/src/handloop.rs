@@ -94,7 +94,10 @@ impl Tracking {
     }
 
     pub fn running(&self) -> bool {
-        self.joined.is_some() && !self.stop.load(Ordering::Relaxed)
+        // And not finished on its own (2 Oct 2026): the thread now stops by
+        // itself when no hand has been in view for a while, and a handle to a
+        // thread that has ended answered "Already watching." forever.
+        self.joined.as_ref().is_some_and(|t| !t.is_finished()) && !self.stop.load(Ordering::Relaxed)
     }
 }
 
@@ -120,6 +123,91 @@ pub trait Eyes: Send {
     /// Blocking is fine; this is the thread's own time. How long it takes is
     /// measured and fed to the pace.
     fn look(&mut self) -> Option<crate::handshape::Landmarks>;
+
+    /// What the last look cost in work, in milliseconds, when the eyes can
+    /// tell it apart from waiting for the camera (2 Oct 2026). The pace is
+    /// a share of a core, and time spent blocked on the next frame uses no
+    /// core at all; counting it made the pace back off for nothing. `None`
+    /// means "measure the whole look", which is what it did before.
+    fn spent_ms(&self) -> Option<u32> {
+        None
+    }
+}
+
+/// What one look cost the last time hand tracking ran in this Atlas, so the
+/// next start can choose a lighter plan on a machine where it struggled
+/// (`handweight::plan`). 0 until it has run.
+static LAST_COST_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// What one look cost last time hand tracking ran, if it has.
+pub fn last_cost_ms() -> Option<u32> {
+    Some(LAST_COST_MS.load(Ordering::Relaxed)).filter(|ms| *ms > 0)
+}
+
+/// One of the two hand models, wherever it runs (2 Oct 2026).
+///
+/// In ONNX Runtime when it is here (it comes with the Kokoro voice): on the
+/// NPU when this machine has one, its engine is downloaded and `hands.npu`
+/// is on -- the same engine search and voice ID already use (item 20) --
+/// and otherwise on the processor, one thread that sleeps between looks.
+/// Measured on 2 Oct 2026 on one processor thread, ONNX Runtime read a hand
+/// in about 5 ms and found one in about 16; `tract` took about 47 and 116
+/// for the same files. `tract` stays as the fallback for a machine without
+/// the runtime, or a model the runtime refuses. Both models take one fixed
+/// picture size, which is exactly what the NPU wants.
+enum Reader {
+    Here(crate::infer::Model),
+    Runtime { session: crate::npu::Session, input: String, kind: crate::infer::Kind },
+}
+
+impl Reader {
+    fn open(kind: crate::infer::Kind, models: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> crate::error::Result<Reader> {
+        if let Some(root) = root.filter(|r| crate::npu::runtime_ready(r)) {
+            let model = models.join(kind.file());
+            let shape: Vec<i64> = kind.recipe().shape().iter().map(|d| *d as i64).collect();
+            let want = if npu && crate::npu::npu_ready(root) { crate::npu::Where::Npu } else { crate::npu::Where::Cpu };
+            let opened = crate::npu::Session::input_names(root, &model).and_then(|names| {
+                let input = names.first().cloned().ok_or_else(|| "the model has no input".to_string())?;
+                let shapes = [(input.clone(), shape)];
+                // An NPU that refuses the model still leaves ONNX Runtime on
+                // the processor, which is far quicker than `tract`.
+                let session = match crate::npu::Session::open_with(root, &model, &shapes, want, true) {
+                    Err(why) if want == crate::npu::Where::Npu => {
+                        crate::outln!("{} stays off the NPU: {why}", kind.plain());
+                        crate::npu::Session::open_with(root, &model, &shapes, crate::npu::Where::Cpu, true)?
+                    }
+                    other => other?,
+                };
+                Ok((session, input))
+            });
+            match opened {
+                Ok((session, input)) => return Ok(Reader::Runtime { session, input, kind }),
+                Err(why) => crate::outln!("{} stays on tract: {why}", kind.plain()),
+            }
+        }
+        Ok(Reader::Here(crate::infer::Model::load(kind, models)?))
+    }
+
+    fn run(&mut self, pixels: &[f32]) -> crate::error::Result<crate::infer::Outputs> {
+        match self {
+            Reader::Here(m) => m.run(pixels),
+            Reader::Runtime { session, input, kind } => {
+                let shape: Vec<i64> = kind.recipe().shape().iter().map(|d| *d as i64).collect();
+                let values = session
+                    .run(vec![crate::npu::In::F32(input.clone(), shape, pixels.to_vec())])
+                    .map_err(crate::error::AtlasError::Platform)?;
+                Ok(crate::infer::Outputs::of(kind.file(), values))
+            }
+        }
+    }
+
+    fn on(&self) -> &'static str {
+        match self {
+            Reader::Here(_) => "tract on the processor",
+            Reader::Runtime { session, .. } if session.on == crate::npu::Where::Npu => "the NPU",
+            Reader::Runtime { .. } => "ONNX Runtime on the processor",
+        }
+    }
 }
 
 /// The real eyes: a camera, and models to read what it sees.
@@ -129,26 +217,69 @@ pub trait Eyes: Send {
 /// lit and nothing is looking through it.
 pub struct Seeing {
     rolling: crate::frames::Rolling,
-    finding: crate::infer::Model,
-    reading: crate::infer::Model,
+    finding: Reader,
+    reading: Reader,
     /// Said once if the camera dies, rather than reporting no hands forever —
     /// which looks exactly like sitting still.
     pub camera_died: bool,
+    /// The last look's thumbnail, for the movement check.
+    before: Vec<u8>,
+    /// Where to read the hand next look, when the last one found it.
+    following: Option<crate::vision::Patch>,
+    /// When the palm finder last ran.
+    found_at: Option<std::time::Instant>,
+    /// What the last look cost in work, not counting the camera wait.
+    spent: u32,
 }
 
 impl Seeing {
-    pub fn start(feed: &crate::frames::Feed, models: &std::path::Path) -> crate::error::Result<Seeing> {
+    /// Open the camera and both models. `root` is the install folder, where
+    /// ONNX Runtime and the NPU engine live (`None` keeps both models on
+    /// `tract`); `npu` is the `hands.npu` setting.
+    pub fn start(feed: &crate::frames::Feed, models: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> crate::error::Result<Seeing> {
+        // Models first: a model that won't open should not leave a camera
+        // light on for the moment it took to find out.
+        let finding = Reader::open(crate::infer::Kind::HandPresence, models, root, npu)?;
+        let reading = Reader::open(crate::infer::Kind::HandLandmarks, models, root, npu)?;
         Ok(Seeing {
             rolling: crate::frames::Rolling::start(feed)?,
-            finding: crate::infer::Model::load(crate::infer::Kind::HandPresence, models)?,
-            reading: crate::infer::Model::load(crate::infer::Kind::HandLandmarks, models)?,
+            finding,
+            reading,
             camera_died: false,
+            before: Vec::new(),
+            following: None,
+            found_at: None,
+            spent: 0,
         })
+    }
+
+    /// Where the two models run, in words, for the log.
+    pub fn engine_in_use(&self) -> String {
+        let (a, b) = (self.finding.on(), self.reading.on());
+        if a == b {
+            a.to_string()
+        } else {
+            format!("{a} (finding) and {b} (reading)")
+        }
+    }
+
+    /// Run the palm finder over the whole picture.
+    fn find(&mut self, frame: &[u8], w: usize, h: usize) -> Option<crate::vision::Patch> {
+        self.found_at = Some(std::time::Instant::now());
+        let (fw, fh) = crate::infer::Kind::HandPresence.wants();
+        let small = crate::infer::fit(frame, w, h, fw, fh);
+        let found = self.finding.run(&small).ok()?;
+        where_the_hand_is(&found)
     }
 }
 
 impl Eyes for Seeing {
+    fn spent_ms(&self) -> Option<u32> {
+        Some(self.spent)
+    }
+
     fn look(&mut self) -> Option<crate::handshape::Landmarks> {
+        use crate::handweight::Step;
         if self.camera_died {
             return None;
         }
@@ -160,6 +291,38 @@ impl Eyes for Seeing {
                 return None;
             }
         };
+        // The work starts here; the wait for the frame above is not work.
+        let began = std::time::Instant::now();
+
+        // Did anything move? (2 Oct 2026.) With no hand being followed and a
+        // picture that hasn't changed, no model runs at all -- an empty room
+        // used to cost both models every look, all day.
+        let thumb = crate::handweight::thumbnail(&frame, w, h);
+        let moved = crate::handweight::moved(&self.before, &thumb);
+        self.before = thumb;
+        let since_found = self.found_at.map(|t| t.elapsed().as_millis().min(u32::MAX as u128) as u32).unwrap_or(u32::MAX);
+
+        // Follow the hand from where it was rather than finding it again: the
+        // palm finder is the expensive model, and MediaPipe only runs it when
+        // the hand is lost. A follow that comes back unsure falls through to
+        // a proper find in the same look.
+        let seen = match crate::handweight::step(self.following, moved, since_found) {
+            Step::Skip => None,
+            Step::Follow(at) => match self.read_hand(&frame, w, h, at, 0.0) {
+                Some(m) if m.sure >= crate::handweight::STILL_A_HAND => Some(m),
+                _ => self.find(&frame, w, h).and_then(|p| self.read_hand(&frame, w, h, p, HAND_MARGIN)),
+            },
+            Step::Find => self.find(&frame, w, h).and_then(|p| self.read_hand(&frame, w, h, p, HAND_MARGIN)),
+        };
+        self.following = seen.as_ref().and_then(|m| crate::handweight::follow_box(m, w, h));
+        self.spent = began.elapsed().as_millis().min(u32::MAX as u128) as u32;
+        seen
+    }
+}
+
+impl Seeing {
+    /// Read the twenty-one joints of the hand in `hand`, widened by `margin`.
+    fn read_hand(&mut self, frame: &[u8], w: usize, h: usize, hand: crate::vision::Patch, margin: f32) -> Option<crate::handshape::Landmarks> {
 
         // Where are the hands? Asked first because it is the cheaper of the
         // two models, and running the expensive one on an empty room is the
@@ -180,19 +343,16 @@ impl Eyes for Seeing {
         //   everything downstream multiplies it by the width of the screen.
         //   Uncorrected, the first sighting would have thrown the pointer
         //   several thousand pixels off the display and left it there.
-        let (fw, fh) = crate::infer::Kind::HandPresence.wants();
-        let small = crate::infer::fit(&frame, w, h, fw, fh);
-        let found = self.finding.run(&small).ok()?;
-        let hand = where_the_hand_is(&found)?;
+        // (`find` does the finding now, and `look` decides whether to.)
 
         // The crop, widened: the palm box stops at the wrist, and fingers are
-        // the part being read.
-        let (cx, cy, cw, ch) = hand.in_pixels(w, h, HAND_MARGIN);
+        // the part being read. A box from `follow_box` is already widened.
+        let (cx, cy, cw, ch) = hand.in_pixels(w, h, margin);
         if cw == 0 || ch == 0 {
             return None;
         }
         let bigger =
-            crate::infer::prepare_crop(&frame, w, h, (cx, cy, cw, ch), crate::infer::Kind::HandLandmarks);
+            crate::infer::prepare_crop(frame, w, h, (cx, cy, cw, ch), crate::infer::Kind::HandLandmarks);
         let out = self.reading.run(&bigger).ok()?;
 
         // Result zero is the joints; result one is how sure the model is that
@@ -287,6 +447,10 @@ pub struct Setup {
     pub vocabulary: crate::handshape::Vocabulary,
     pub smoothing: crate::handtrack::SmoothConfig,
     pub pace: crate::handtrack::PaceConfig,
+    /// Looks a second with no hand in view (`handweight::Plan`).
+    pub idle_per_second: u32,
+    /// When to stop with no hand in view.
+    pub hands: crate::handweight::HandsConfig,
 }
 
 /// Start tracking.
@@ -319,12 +483,37 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
     let (w, h) = setup.pointer.screen();
     let began = std::time::Instant::now();
     let mut complained = false;
+    // When a hand was last in view. Starts at the start, so switching it on
+    // counts as having just seen one.
+    let mut hand_at: u32 = 0;
 
     while !stop.load(Ordering::Relaxed) {
         let now_ms = began.elapsed().as_millis().min(u32::MAX as u128) as u32;
         let looked = std::time::Instant::now();
         let seen = setup.eyes.look();
-        pace.took(looked.elapsed().as_millis().min(u32::MAX as u128) as u32);
+        let wall = looked.elapsed().as_millis().min(u32::MAX as u128) as u32;
+        pace.took(setup.eyes.spent_ms().unwrap_or(wall));
+        if let Some(ms) = pace.typical_ms() {
+            LAST_COST_MS.store(ms.max(1), Ordering::Relaxed);
+        }
+        if seen.is_some() {
+            hand_at = now_ms;
+        }
+        let quiet_ms = now_ms.saturating_sub(hand_at);
+
+        // It switches itself off (2 Oct 2026). Nothing used to: once on, the
+        // camera and both models ran until you said stop, with the room
+        // empty and the laptop's fans going.
+        if crate::handweight::time_to_stop(quiet_ms, &setup.hands) {
+            let mins = (setup.hands.stop_after_quiet_secs + 59) / 60;
+            let _ = say.send(Said::Trouble(format!(
+                "I've stopped watching your hands -- none in view for {mins} minute{}. \
+                 Say \"watch my hands\" to start again.",
+                if mins == 1 { "" } else { "s" }
+            )));
+            let _ = say.send(Said::HandsGone);
+            break;
+        }
 
         // Said once, not every frame. A loop that complains twenty times a
         // second about being slow is itself the problem.
@@ -384,7 +573,9 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
         // detector running at fifteen a second feel immediate — and it is why
         // this loop cannot live in the daemon's tick, where the gap would be
         // two seconds rather than sixty milliseconds.
-        let wait = pace.wait_ms(&setup.pace).max(1);
+        // With no hand for a moment, look less often: an empty room needs a
+        // few looks a second to notice a hand coming up, not twenty.
+        let wait = crate::handweight::wait_ms(pace.wait_ms(&setup.pace), quiet_ms, setup.idle_per_second).max(1);
         let step = 16u32.min(wait);
         let mut waited = 0;
         while waited < wait && !stop.load(Ordering::Relaxed) {

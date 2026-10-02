@@ -177,14 +177,15 @@ fn the_guard_is_what_the_transcription_paths_actually_use() {
     // as the defect it is about. `discard_audio` had a doc, a config flag,
     // tests, and no caller.
     let daemon = crate::common::source_of("daemon");
-    let live = match daemon.find("#[cfg(test)]") {
-        Some(at) => &daemon[..at],
-        None => &daemon[..],
-    };
+    // The program without its inline test blocks. Cutting at the first
+    // `#[cfg(test)]` cut off every daemon file after making.rs once that one
+    // gained a test module (2 Oct 2026).
+    let (program, _) = crate::common::split_production_and_tests(&daemon);
+    let live = program.as_str();
     let uses = live.matches("retention::Recording::new(").count();
     assert!(
-        uses >= 2,
-        "only {uses} of the two audio paths use the guard; the other is back to a \
+        uses >= 3,
+        "only {uses} of the three audio paths (two recordings and the video studio's scratch sound) use the guard; the other is back to a \
          `remove_file` on the happy path, which leaks on every early return"
     );
     assert!(

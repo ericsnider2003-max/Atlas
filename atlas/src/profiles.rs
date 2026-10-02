@@ -54,6 +54,8 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
     "two_factor",
     // A long job on the owner's model and disk, like `build_it`.
     "keep_at_it",
+    // Running a program on the owner's machine.
+    "run_build",
     // The owner's goals and their list for later: reading them is reading
     // the owner, and changing them is theirs alone.
     "goals",
@@ -66,6 +68,9 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
     "press_button",
     // Moving the owner's files between drives.
     "move_big_files",
+    // Closing the owner's programs and changing what starts with Windows
+    // (2 Oct 2026).
+    "pc_tune",
     "edit_media",
     // Editing a photo writes a new file beside the owner's original, and
     // "undo the last photo edit" removes one -- the owner's files, the same

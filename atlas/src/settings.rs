@@ -155,6 +155,7 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
     ("When it speaks first", "Whether Atlas starts a conversation, and when it holds off."),
     ("What it can see", "The screen, the camera, the clipboard, and what it notices about how you work."),
     ("What it may touch", "Changes it can make to this machine and to its own work, without asking each time."),
+    ("Writing code", "Who writes the code you ask for: a coding agent installed here, and whether it asks first."),
     ("Your accounts and secrets", "The vault, signing in, and how carefully it treats what it holds."),
     ("Reaching outside this machine", "Anything that leaves the laptop: the web, your phone, your mail, a paid model."),
     ("Social", "Your social accounts' numbers and the people you watch: which of them Atlas reads on its own."),
@@ -685,14 +686,12 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     // when empty, set here when it's somewhere unusual.
     items.push(Setting {
         key: "self_work.source_dir".into(),
-        name: "Atlas's source".into(),
+        name: "Source folder".into(),
         what: "The folder holding Atlas's own source code, for fixing itself. Empty: I look for it.".into(),
-        cost: "Self-repair changes whatever code is in this folder, so point it only at Atlas's own.".into(),
+        cost: "Self-repair reads and edits the code in this folder; any change still waits for your yes.".into(),
         value: Value::Text(t.self_work.source_dir.clone()),
         default: Value::Text(t.self_work.source_dir.clone()),
         weight: Sensitive,
-        // Not "What it may touch": that group was at twelve, and this is a
-        // place on this machine, like the sync folder, not a permission.
         group: "Your devices".into(),
     });
     // Your own handles, for the Social page's refresh (29 Sep 2026).
@@ -940,6 +939,32 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Weight::Preference,
         group: "Sound".into(),
     });
+
+    // Writing code (2 Oct 2026): a coding agent installed on this computer
+    // -- Claude Code or Codex -- may be handed builds and project changes.
+    let agent_options = vec!["auto".to_string(), "off".to_string()];
+    items.push(Setting {
+        key: "build.coding_agent".into(),
+        name: "Coding agent".into(),
+        what: "When Claude Code or Codex is installed here, offer it the code you ask for, since it writes code far better than Atlas's own models.".into(),
+        cost: "It runs on this computer and writes files in the folder it's given; Atlas checks what it writes, and asks before it touches a project of yours.".into(),
+        value: Value::Choice {
+            value: format!("{:?}", t.build.coding_agent).to_lowercase(),
+            options: agent_options.clone(),
+        },
+        default: Value::Choice { value: "auto".into(), options: agent_options },
+        weight: Weight::Permission,
+        group: "Writing code".into(),
+    });
+    items.push(toggle(
+        "build.agent_asks_first",
+        "Confirm hand-overs",
+        "Ask each time before handing a new build to the coding agent.",
+        "Off, a new build goes straight to it. A change to one of your own projects is asked about either way.",
+        t.build.agent_asks_first,
+        Weight::Permission,
+        "Writing code",
+    ));
     items.push(toggle("sound.muted", "Mute Atlas",
         "Nothing is said out loud. Everything still works and is shown.",
         "Replies and notes appear on screen instead.",
@@ -1009,6 +1034,27 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         "Use the camera to tell whether you're there, whether you're looking, and read a thumbs up or down.",
         "The picture is deleted the moment it's read. Recognising your face never approves anything.",
         t.gaze.enabled, Weight::Sensitive, "What it can see"));
+
+    // How heavy hand tracking may be (2 Oct 2026: "may need a lighter model
+    // for gestures" -- the laptop's fans spun while it watched his hands).
+    // Automatic picks from the machine; this is the way to overrule it.
+    let weight_options: Vec<String> = crate::handweight::Weight::WORDS.iter().map(|s| s.to_string()).collect();
+    items.push(Setting {
+        key: "hands.weight".into(),
+        name: "Hand tracking weight".into(),
+        what: "Auto picks from this machine (processors, memory, battery, and how long reading a hand took here last time). Light uses a smaller picture and fewer looks a second; full uses the whole picture and pace.".into(),
+        cost: "Light is easier on the fans and battery and a little less precise at the edges of the picture.".into(),
+        value: Value::Choice { value: t.hands.weight.word().into(), options: weight_options.clone() },
+        // Placeholder; `registry` derives the real default. See `build`.
+        default: Value::Choice { value: t.hands.weight.word().into(), options: weight_options },
+        weight: Weight::Preference,
+        group: "What it can see".into(),
+    });
+
+    items.push(toggle("hands.npu", "NPU for hands",
+        "Read your hands on the laptop's Intel NPU when it has one, instead of the processor.",
+        "Needs the NPU engine (the same download search and voice ID use). Anything the NPU refuses stays on the processor.",
+        t.hands.npu, Weight::Preference, "What it can see"));
 
     items.push(toggle("vision.enabled", "Recognising things",
         "Name the things in front of the camera, tell faces apart, and learn anything you show it and name.",

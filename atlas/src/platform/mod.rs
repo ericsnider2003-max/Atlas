@@ -306,6 +306,12 @@ pub trait Platform {
         crate::sync::best_folder().map(|(p, _)| p)
     }
 
+    /// Where a program is on this machine's PATH (`tools::which`): a coding
+    /// agent, before Atlas offers to hand it work.
+    fn find_program(&self, name: &str) -> Option<String> {
+        crate::tools::which(name)
+    }
+
     /// Disk, memory and battery, for the health notices, the self-check and
     /// the night's work. Behind the platform for the same reason: a test's
     /// mock machine is calm, where the real laptop under a three-chat build

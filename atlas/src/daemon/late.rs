@@ -774,7 +774,14 @@ impl<'a> Daemon<'a> {
             crate::getknow::Next::Done { keep, say } => (keep, say, false),
         };
         for f in keep {
-            self.facts.learn(f, t);
+            // The hunt's two lists are lists, kept whole under their own
+            // names -- `learn` would merge the second into the first, their
+            // words being the same.
+            if f.name == crate::facts::slug(crate::hunt::FACT_WANT) || f.name == crate::facts::slug(crate::hunt::FACT_SKILLS) {
+                self.facts.put(f);
+            } else {
+                self.facts.learn(f, t);
+            }
         }
         let _ = self.facts.save(&self.store);
         if more {
@@ -1272,118 +1279,337 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    /// "Organize my desktop" (Eric, 29 Sep 2026): the loose files on the
-    /// desktop, each with where it would go (`filing::plan_folder`), said
-    /// first and done only on a yes (`carry_out_desktop_plan`). Shortcuts,
-    /// folders and files whose names don't say what they are stay put.
+    /// "Organize my PC", "clean up my desktop", "sort the files in D:\Stuff",
+    /// "find duplicates in my downloads" (Eric, 29 Sep and 2 Oct 2026: "can't
+    /// organize my PC properly"). The whole sentence is read
+    /// (`organize::read_sort_request`): the folder named, or the desktop,
+    /// Downloads and Documents as this machine has them. The plan is said --
+    /// how many of each kind go where, with a few names, the copies and old
+    /// installers that go to "To review", what's left and why -- and nothing
+    /// moves until the yes (`carry_out_sorting`). Before 2 Oct this only
+    /// filed the desktop's and Downloads' loose files by extension into
+    /// Documents\Filed, found no copies and couldn't be undone.
     pub(super) fn tidy_desktop(&mut self) -> String {
         let sys = self.tools_cfg().system.clone();
         if !sys.enabled {
-            return "Moving your files is switched off -- turn on System changes in Settings and ask me again. I'd only move loose files into folders, never delete anything."
+            return "Moving your files is switched off -- turn on System changes in Settings and ask me again. I'd only move files into folders, never delete anything."
                 .into();
         }
-        let Some(home) = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")) else {
-            return "I couldn't work out where your home folder is, so I can't find your desktop.".into();
-        };
-        let home = std::path::PathBuf::from(home);
-        // Windows moves the desktop (and Documents) into OneDrive when
-        // OneDrive backs them up.
-        let known = |name: &str| {
-            [home.join("OneDrive").join(name), home.join(name)].into_iter().find(|d| d.is_dir()).unwrap_or_else(|| home.join(name))
-        };
-        let desktop = known("Desktop");
-        let root = known("Documents").join("Filed");
-        // The desktop and Downloads, the two places loose files pile up
-        // (1 Oct 2026: "organize my PC" only ever looked at the desktop).
-        let now = crate::store::now();
-        let mut plan = crate::filing::plan_folder(&desktop, &root, now);
-        let downloads = home.join("Downloads");
-        if downloads.is_dir() {
-            plan.extend(crate::filing::plan_folder(&downloads, &root, now));
+        let said = self.last_said.clone();
+        let ask = crate::organize::read_sort_request(&said);
+        if let Some(words) = &ask.not_found {
+            return format!(
+                "I couldn't find a folder called \"{words}\" on this computer. Say it with its full path, like the one Explorer shows at the top."
+            );
         }
-        let words = crate::filing::tidy_plan_words("your desktop and Downloads", &plan, &root);
-        if plan.iter().any(|(_, s)| matches!(s, crate::filing::Suggestion::Move { .. })) {
+        if ask.folders.is_empty() {
+            return "I couldn't work out where your desktop, Downloads and Documents are on this computer -- name the folder with its full path.".into();
+        }
+        // The same gate every move will go through, asked once up front, so
+        // a folder outside the ones Atlas may work in is said now rather
+        // than as a list of refusals after the yes.
+        let probe = |from: &std::path::Path, to: &std::path::Path| {
+            crate::system::judge(
+                &crate::system::Change::MoveFile {
+                    from: from.join("x").display().to_string(),
+                    to: to.join(crate::organize::TO_REVIEW).join("x").display().to_string(),
+                },
+                &sys,
+            )
+        };
+        for f in &ask.folders {
+            if let crate::system::Verdict::Refuse(why) = probe(f, ask.into.as_deref().unwrap_or(f)) {
+                return format!("I can't sort {}: {why}", f.display());
+            }
+        }
+        let now = crate::store::now();
+        let plan = crate::organize::plan_folders(&ask.folders, ask.into.as_deref(), ask.copies_only, now, std::time::Duration::from_secs(8));
+        let words = crate::organize::plan_said(&plan);
+        if plan.has_moves() {
             self.session.ask(&words);
             self.pending_desktop = Some(plan);
         }
         words
     }
 
-    /// An optimization run's plan, done: each program asked to close (never
-    /// forced), each startup entry marked off the way Task Manager does it,
-    /// the old temporary files cleared. What happened to each is said.
+    /// What an optimization run would offer, measured now (2 Oct 2026):
+    /// the programs worth closing from a sampled reading (`tune::pick_to_close`,
+    /// with Atlas's own process tree, its name on this machine, the program
+    /// in front of you and what you've used in the last hour all spared), and
+    /// the startup entries you haven't opened this week. Temp and moves are
+    /// the caller's to add.
+    pub(super) fn tune_plan(&mut self, sampled: Option<&crate::tune::Sampled>, with_tasks: bool) -> crate::tune::Plan {
+        let cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
+        let now = crate::store::now();
+        let apps_since = |since: u64| -> Vec<String> {
+            let mut v: Vec<String> = self.worklog.between(since, now).iter().map(|sp| sp.app.clone()).collect();
+            v.sort();
+            v.dedup();
+            v
+        };
+        let in_use = apps_since(now.saturating_sub(3600));
+        let week = apps_since(now.saturating_sub(7 * 86_400));
+        let own_exe = std::env::current_exe().ok();
+        let own_name = own_exe.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let close = match sampled {
+            Some(sm) => {
+                let mut own_names: Vec<String> = crate::tune::ATLAS_HELPERS.iter().map(|s| s.to_string()).collect();
+                if !own_name.is_empty() {
+                    own_names.push(own_name.clone());
+                }
+                let spare = crate::tune::Spare {
+                    own_pids: crate::tune::atlas_family(&sm.procs, std::process::id()),
+                    own_names,
+                    foreground: self.plat.active_window().ok().flatten().map(|w| w.process),
+                    foreground_pid: sm.foreground_pid,
+                    in_use,
+                    keep: cfg.keep.clone(),
+                    min_mb: cfg.min_mb,
+                    min_cpu: 5.0,
+                };
+                crate::tune::pick_to_close(&sm.load, &spare)
+            }
+            None => Vec::new(),
+        };
+        let own_path = own_exe.map(|p| p.display().to_string()).unwrap_or_default();
+        let stop_starting = crate::tune::pick_startup_to_stop(&crate::tune::startup_entries(with_tasks), &week, &cfg.keep, &own_path);
+        crate::tune::Plan { close, stop_starting, temp: None, moves: None }
+    }
+
+    /// "Close what I don't need", "what's slowing my computer down", "what
+    /// starts with Windows", "what's taking my space", "clear my temp
+    /// files", "move my big downloads to D:\Archive" (Eric, 2 Oct 2026: "for
+    /// optimization I want Atlas to be able to do more"). Each looks, says
+    /// what it found with the numbers, and offers what it would do -- done
+    /// only on your yes (`carry_out_optimize`), and every change kept where
+    /// "undo" and "what did you do" find it.
+    pub(super) fn tune_up(&mut self, said: &str) -> String {
+        use crate::tune::TuneAsk;
+        let cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
+        let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")).map(std::path::PathBuf::from);
+        let downloads = home.as_ref().map(|h| h.join("Downloads"));
+        let temp = std::env::temp_dir();
+        let ask = crate::tune::tune_ask(said);
+        let (mut words, plan) = match ask {
+            TuneAsk::Slowing | TuneAsk::Close => {
+                let Some(sm) = crate::tune::sample_machine(std::time::Duration::from_secs(2)) else {
+                    let mem: Vec<String> =
+                        crate::tune::memory_by_app().into_iter().take(4).map(|(a, mb)| format!("{a} {mb} MB")).collect();
+                    return format!(
+                        "Measuring each program's processor use, and closing programs, is only done on Windows, and this isn't Windows.{}",
+                        if mem.is_empty() { String::new() } else { format!(" Holding the most memory: {}.", mem.join(", ")) }
+                    );
+                };
+                let plan = self.tune_plan(Some(&sm), false);
+                let mut w = crate::tune::slowest_words(&sm.load);
+                if plan.close.is_empty() {
+                    w.push_str(" Nothing is worth closing: everything heavy is either in use, in front of you, part of Windows, or me.");
+                }
+                (w, crate::tune::Plan { stop_starting: Vec::new(), ..plan })
+            }
+            TuneAsk::Startup => {
+                if !cfg!(windows) {
+                    return "Startup programs are only read and changed on Windows, and this isn't Windows.".into();
+                }
+                let all = crate::tune::startup_entries(true);
+                let mut plan = self.tune_plan(None, true);
+                plan.close.clear();
+                (crate::tune::startup_words(&all), plan)
+            }
+            TuneAsk::Space | TuneAsk::ClearTemp => {
+                let look = match &downloads {
+                    Some(d) => crate::tune::look_at_space(d, &temp, std::time::Duration::from_secs(3)),
+                    None => crate::tune::SpaceLook {
+                        temp_mb: crate::tune::folder_mb(&temp, std::time::Duration::from_millis(500)),
+                        complete: true,
+                        ..Default::default()
+                    },
+                };
+                let mut w = if ask == TuneAsk::ClearTemp {
+                    format!("{} MB of temporary files.", look.temp_mb)
+                } else {
+                    crate::tune::space_words(&look)
+                };
+                if ask == TuneAsk::Space && (!look.biggest.is_empty() || !look.duplicates.is_empty()) {
+                    w.push_str(" Say \"move my big downloads to\" a folder, or \"move the duplicates to\" one, and I'll move them there -- undo moves them back.");
+                }
+                let floor = if ask == TuneAsk::ClearTemp { 1 } else { cfg.min_mb };
+                let temp_offer = (look.temp_mb >= floor).then(|| (temp.clone(), look.temp_mb));
+                (w, crate::tune::Plan { temp: temp_offer, ..Default::default() })
+            }
+            TuneAsk::MoveWhere => {
+                return "Where to? Name the folder in full -- \"move my big downloads to D:\\Archive\" -- and I'll say what would go before anything moves.".into();
+            }
+            TuneAsk::MoveInto { to, duplicates } => {
+                if !self.tools_cfg().system.enabled {
+                    return "Moving your files is switched off -- turn on System changes in Settings and ask me again. I'd only move them into the folder you named, and undo moves them back.".into();
+                }
+                let Some(d) = downloads.clone().filter(|d| d.is_dir()) else {
+                    return "I couldn't find your Downloads folder, so there's nothing for me to move.".into();
+                };
+                if let Err(why) = crate::tune::may_move_into(&to, &d) {
+                    return format!("I won't move them there: {why}.");
+                }
+                let look = crate::tune::look_at_space(&d, &temp, std::time::Duration::from_secs(3));
+                let files: Vec<std::path::PathBuf> = if duplicates {
+                    look.extra_copies()
+                } else {
+                    look.biggest.iter().filter(|(_, mb)| *mb >= 100).map(|(p, _)| p.clone()).collect()
+                };
+                if files.is_empty() {
+                    return if duplicates {
+                        "There are no duplicate files in Downloads to move.".into()
+                    } else {
+                        "Nothing in Downloads is 100 MB or more, so there's nothing big to move.".into()
+                    };
+                }
+                let names: Vec<String> = files
+                    .iter()
+                    .take(6)
+                    .map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+                    .collect();
+                let more = files.len().saturating_sub(names.len());
+                let w = format!(
+                    "From Downloads: {}{}.",
+                    names.join(", "),
+                    if more > 0 { format!(" and {more} more") } else { String::new() }
+                );
+                (w, crate::tune::Plan { moves: Some((files, to)), ..Default::default() })
+            }
+        };
+        if !plan.is_empty() {
+            let offer = plan.offer();
+            words.push(' ');
+            words.push_str(&offer);
+            self.session.ask(&offer);
+            self.pending_optimize = Some(plan);
+        }
+        words
+    }
+
+    /// An optimization run's plan, done. Each program asked to close and
+    /// waited on; a background one that won't is ended, one with a window is
+    /// left (it's nearly always asking to save). Each startup entry switched
+    /// off the way Task Manager does it. Old temporary files cleared. Files
+    /// moved into the folder you named. Every one is written into the history
+    /// "what did you do" reads, with how to take it back where that's
+    /// possible -- startup and moves through "undo" itself (2 Oct 2026).
     pub(super) fn carry_out_optimize(&mut self, plan: crate::tune::Plan, t: u64) -> String {
+        use crate::undo::Undo;
         let mut done: Vec<String> = Vec::new();
         let mut not: Vec<String> = Vec::new();
-        for (app, mb) in &plan.close {
-            match crate::tune::close_program(app) {
-                Ok(()) => {
-                    done.push(format!("closed {app} ({mb} MB)"));
+        let mut undo_record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
+        let closed = crate::tune::close_loads(&plan.close, std::time::Duration::from_secs(5));
+        for (l, how) in plan.close.iter().zip(closed) {
+            let app = &l.name;
+            match how {
+                crate::tune::Closed::Asked | crate::tune::Closed::Ended => {
+                    done.push(format!("closed {app} ({} MB)", l.mem_mb));
                     self.journal.record_at(Act::Upkeep, &format!("closed {app} to free memory"), true, t);
+                    // "closed X" is what `undo_intent` reads to open it again;
+                    // a background program comes back by itself.
+                    let undo = if l.windowed {
+                        Undo::Atlas(format!("open {app} again"))
+                    } else {
+                        Undo::You("it starts again the next time you open it or restart".into())
+                    };
+                    let what = if l.windowed { format!("closed {app}") } else { format!("ended {app}, running in the background") };
+                    self.history.note(&what, "windows", undo, true, t);
                 }
-                Err(e) => not.push(format!("{app} didn't close ({e})")),
+                crate::tune::Closed::Gone => done.push(format!("{app} had already closed")),
+                crate::tune::Closed::LeftOpen => {
+                    not.push(format!("{app} is still open -- it may be asking you to save something, so I didn't force it"))
+                }
+                crate::tune::Closed::Failed(e) => not.push(format!("{app} didn't close ({e})")),
             }
         }
-        for name in &plan.stop_starting {
-            match crate::tune::stop_starting(name) {
+        for e in &plan.stop_starting {
+            let name = &e.name;
+            match crate::tune::set_startup(e, false) {
                 Ok(()) => {
                     done.push(format!("{name} won't start with Windows"));
-                    self.journal.record_at(Act::Upkeep, &format!("stopped {name} starting with Windows (Task Manager > Startup turns it back on)"), true, t);
+                    self.journal.record_at(Act::Upkeep, &format!("stopped {name} starting with Windows"), true, t);
+                    let id = self.history.note(
+                        &format!("stopped {name} starting with Windows"),
+                        "settings",
+                        Undo::Atlas(format!("let {name} start with Windows again")),
+                        true,
+                        t,
+                    );
+                    undo_record.push((id, crate::tune::TuneUndo::Startup(e.clone())));
                 }
-                Err(e) => not.push(format!("{name}'s startup ({e})")),
+                Err(err) => not.push(format!("{name}'s startup ({err})")),
             }
         }
         if let Some((dir, _)) = &plan.temp {
             let c = crate::tune::clear_old_files(dir, 86_400);
             done.push(format!("cleared {} MB of temporary files ({} files; {} in use or recent, left)", c.mb, c.files, c.skipped));
             self.journal.record_at(Act::Upkeep, &format!("cleared {} MB of temporary files", c.mb), true, t);
+            self.history.note(
+                &format!("cleared {} MB of temporary files", c.mb),
+                "files",
+                Undo::Cannot("temporary files are deleted, not kept".into()),
+                true,
+                t,
+            );
         }
+        if let Some((files, to)) = &plan.moves {
+            let (moved, failed) = crate::tune::move_files_into(files, to);
+            if !moved.is_empty() {
+                let what = format!("moved {} file{} from Downloads into {}", moved.len(), if moved.len() == 1 { "" } else { "s" }, to.display());
+                done.push(what.clone());
+                self.journal.record_at(Act::Upkeep, &what, true, t);
+                let id = self.history.note(&what, "files", Undo::Atlas("move them back".into()), true, t);
+                undo_record.push((id, crate::tune::TuneUndo::Moves(moved)));
+            }
+            not.extend(failed);
+        }
+        // Kept bounded, like the history it belongs to.
+        if undo_record.len() > 200 {
+            undo_record.drain(0..undo_record.len() - 200);
+        }
+        let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record);
+        let _ = self.store.save("undo_history", &self.history);
         let mut said = if done.is_empty() { "Nothing changed.".to_string() } else { format!("Done: {}.", done.join("; ")) };
         if !not.is_empty() {
             said.push_str(&format!(" Not done: {}.", not.join("; ")));
         }
         let r = self.plat.readings();
-        if r.ram_total_gb > 0.0 {
+        if r.ram_total_gb > 0.0 && !plan.close.is_empty() {
             said.push_str(&format!(" Memory is at {:.0}% now.", r.ram_used_gb / r.ram_total_gb * 100.0));
         }
         said
     }
 
-    /// The desktop plan, carried out: each move judged and done
-    /// (`filing::file_one`), and what happened said -- how many went where,
-    /// and each one that didn't, with why.
-    pub(super) fn carry_out_desktop_plan(&mut self, plan: Vec<(std::path::PathBuf, crate::filing::Suggestion)>) -> String {
+    /// A sorting plan, carried out on its yes (2 Oct 2026): each move judged
+    /// and done (`organize::carry_out_moves` -- never over a file, never one
+    /// open elsewhere, nothing deleted), every one written into the history
+    /// "what did you do" reads and kept beside it, so "undo that" puts each
+    /// file back where it was (`tune::TuneUndo::Organized`).
+    pub(super) fn carry_out_sorting(&mut self, plan: crate::organize::SortPlan, t: u64) -> String {
         let sys = self.tools_cfg().system.clone();
-        let mut filed = 0usize;
-        let mut into: Option<std::path::PathBuf> = None;
-        let mut not: Vec<String> = Vec::new();
-        for (from, s) in &plan {
-            if crate::filing::as_change(from, s).is_none() {
-                continue;
+        let done = crate::organize::carry_out_moves(&plan, &sys, crate::store::now());
+        if !done.moved.is_empty() {
+            let names: Vec<String> =
+                plan.folders.iter().map(|f| f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.display().to_string())).collect();
+            let what = format!(
+                "sorted {} file{} in {} into folders",
+                done.moved.len(),
+                if done.moved.len() == 1 { "" } else { "s" },
+                names.join(", ")
+            );
+            self.journal.record_at(Act::Upkeep, &what, true, t);
+            let id = self.history.note(&what, "files", crate::undo::Undo::Atlas("move them back".into()), true, t);
+            let mut record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
+            record.push((id, crate::tune::TuneUndo::Organized { moves: done.moved.clone(), made: done.made.clone() }));
+            // Kept bounded, like the history it belongs to.
+            if record.len() > 200 {
+                record.drain(0..record.len() - 200);
             }
-            match crate::filing::file_one(from, s, &sys) {
-                Ok(to) => {
-                    filed += 1;
-                    if into.is_none() {
-                        into = to.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf());
-                    }
-                    self.journal.record_at(Act::Upkeep, &format!("filed {} to {}", from.display(), to.display()), true, crate::store::now());
-                }
-                Err(why) => {
-                    let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    not.push(format!("{name} ({why})"));
-                }
-            }
+            let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record);
+            let _ = self.store.save("undo_history", &self.history);
         }
-        let mut said = match (&into, filed) {
-            (_, 0) => "Nothing moved.".to_string(),
-            (Some(root), n) => format!("Filed {n} from your desktop and Downloads, into folders under {}.", root.display()),
-            (None, n) => format!("Filed {n} from your desktop and Downloads."),
-        };
-        if !not.is_empty() {
-            said.push_str(&format!(" Not moved: {}.", not.join("; ")));
-        }
-        said
+        crate::organize::done_said(&plan, &done)
     }
 
     /// "Use my webcam mic" (Eric, 29 Sep 2026): the microphones this machine
@@ -1489,6 +1715,21 @@ impl<'a> Daemon<'a> {
         if d.undone {
             return format!("\"{}\" is already undone.", d.what);
         }
+        // A startup entry switched off, or files moved, by an optimization
+        // run (2 Oct 2026): taken back from what was kept beside it.
+        let mut record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
+        if let Some(pos) = record.iter().position(|(rid, _)| *rid == id) {
+            return match crate::tune::undo_tune_change(&record[pos].1) {
+                Ok(said) => {
+                    record.remove(pos);
+                    let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record);
+                    self.history.mark_undone(id);
+                    let _ = self.store.save("undo_history", &self.history);
+                    format!("Undone: {}. {said}", d.what)
+                }
+                Err(why) => why,
+            };
+        }
         let said = if d.what == "wrote a draft" {
             // The newest draft, thrown away (cancelled, never sent).
             let draft = self
@@ -1555,6 +1796,98 @@ impl<'a> Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
+    /// "Get this video ready: C:\clips\bakery.mp4" -- the studio (`studio`):
+    /// dead air cut, captions, thumbnail frames, a title, all on a copy.
+    pub(super) fn studio_help(&mut self, said: &str, t: u64) -> Option<String> {
+        let low = said.to_ascii_lowercase();
+        if !["get this video ready", "get my video ready", "get the video ready", "video studio", "prep this video", "prepare this video", "ready this video", "studio this"]
+            .iter()
+            .any(|p| low.contains(p))
+        {
+            return None;
+        }
+        let Some((path, _)) = crate::edit::path_and_wish(said) else {
+            return Some("Which video? Give me its path -- get this video ready: \"C:\\clips\\bakery.mp4\".".into());
+        };
+        let original = std::path::PathBuf::from(&path);
+        if !original.is_file() {
+            return Some(format!("I can't find {path}."));
+        }
+        let tools = self.tools_cfg();
+        let video = tools.video.clone();
+        let timed = tools.stt_timed.clone();
+        let mut vars = tools.vars.clone();
+        self.add_language_vars(&mut vars);
+        let llm = self.background_llm();
+        let stem = original.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
+        let folder = original.with_file_name(format!("{stem} - ready"));
+        let work: crew::Work = Box::new(move |ctl| {
+            let run = |tool: &crate::tools::ExternalTool, args: Vec<String>| -> std::result::Result<std::process::Output, String> {
+                crate::tools::command(&tool.command).args(args).output().map_err(|e| format!("couldn't run {}: {e}", tool.command))
+            };
+            std::fs::create_dir_all(&folder).map_err(|e| format!("couldn't make {}: {e}", folder.display()))?;
+            let s = |p: &std::path::Path| p.display().to_string();
+            let src = s(&original);
+            let probed = run(&video.ffprobe, crate::edit::probe_args(&src))?;
+            let before = crate::edit::duration_from_probe(&String::from_utf8_lossy(&probed.stdout)).ok_or("I couldn't read how long the video is")?;
+            if ctl.checkpoint() {
+                return Err("stopped".into());
+            }
+            let found = run(&video.ffmpeg, crate::studio::silence_args(&src))?;
+            let spans = crate::studio::keep_spans(&crate::studio::silences(&String::from_utf8_lossy(&found.stderr), before), before);
+            let cut = folder.join(format!("{stem} - cut.mp4"));
+            let made = run(&video.ffmpeg, crate::studio::cut_args(&src, &spans, &s(&cut)))?;
+            if !made.status.success() || !cut.is_file() {
+                return Err("ffmpeg couldn't make the cut".into());
+            }
+            let after: f64 = spans.iter().map(|(a, b)| b - a).sum();
+            let _ = run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg"))));
+            let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-")).count()).unwrap_or(0);
+            let mut transcript = String::new();
+            if let Some(timed) = &timed {
+                let wav = folder.join("sound.wav");
+                // The sound is a scratch copy of the cut, never kept whatever
+                // the recordings setting says (the video itself is): the
+                // guard drops it and the timed transcript's file on every
+                // way out, as for a recording.
+                let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
+                let mut sound = crate::retention::Recording::new(&wav, &scratch);
+                sound.and_also(&wav.with_extension("srt"));
+                if run(&video.ffmpeg, crate::studio::audio_args(&s(&cut), &s(&wav))).is_ok() {
+                    let mut v = vars.clone();
+                    let stem_path = wav.with_extension("");
+                    v.insert("in_wav".into(), s(&wav));
+                    v.insert("stem".into(), s(&stem_path));
+                    v.insert("srt".into(), format!("{}.srt", s(&stem_path)));
+                    v.entry("task_opt".into()).or_default();
+                    v.entry("lang_opt".into()).or_default();
+                    v.entry("lang_val".into()).or_default();
+                    let mut tool = timed.clone();
+                    tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
+                    if let Ok(srt) = tool.run(&v, None) {
+                        let _ = std::fs::write(folder.join(format!("{stem} - cut.srt")), &srt);
+                        transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
+                    }
+                }
+                drop(sound);
+            }
+            let mut title = None;
+            if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
+                let quoted = crate::untrusted::Read::new("the video", &transcript, crate::store::now()).quoted();
+                if let Some((t, d)) = m.complete(crate::studio::TITLE_PROMPT, &quoted).ok().and_then(|r| crate::studio::title_and_description(&r, &transcript)) {
+                    let _ = std::fs::write(folder.join("title and description.txt"), format!("{t}\n\n{d}\n"));
+                    title = Some(t);
+                }
+            }
+            Ok(crate::studio::ready_said(&s(&folder), before, after, !transcript.is_empty(), thumbs, title.as_deref()))
+        });
+        Some(if self.hand_off("studio", t, work, Some(path.clone()), SpeakPolicy::Always) {
+            format!("Getting {path} ready on a copy -- dead air, captions, thumbnails and a title. I'll tell you when it's done.")
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        })
+    }
+
     pub(super) fn edit_media(&mut self, said: &str, t: u64) -> String {
         let Some((path, wish)) = crate::edit::path_and_wish(said) else {
             return "Which video? Give me its path — \"edit \"C:\\clips\\trip.mp4\" to cut the dead air\".".into();
@@ -1769,32 +2102,29 @@ impl<'a> Daemon<'a> {
         .trim()
         .to_string();
         let words: Vec<&str> = what.split_whitespace().filter(|w| w.len() > 2).collect();
+        // Looked for across everything the Outstanding page can take off,
+        // not only the backlog, and taken off the one way the page's buttons
+        // do it (2 Oct 2026), which keeps a dropped backlog item findable.
         let found = self
-            .backlog
-            .outstanding()
+            .outstanding_removable(t)
             .into_iter()
-            .map(|i| (words.iter().filter(|w| i.request.to_lowercase().contains(**w)).count(), i.id, i.request.clone(), i.first_seen))
-            .filter(|(n, ..)| *n > 0)
-            .max_by_key(|(n, ..)| *n);
-        let Some((_, id, request, first_seen)) = found else {
+            .map(|(key, title)| (words.iter().filter(|w| title.to_lowercase().contains(**w)).count(), key))
+            .filter(|(n, _)| *n > 0)
+            .max_by_key(|(n, _)| *n);
+        let Some((_, key)) = found else {
             return if what.is_empty() {
                 "Which one? Say \"drop the task\" and some of its words.".into()
             } else {
                 format!("I can't find \"{what}\" on your list.")
             };
         };
-        self.backlog.dismiss(id);
-        let _ = self.backlog.save(&self.store);
-        self.dropped.retain(|d| d.title != request);
-        self.dropped.push(crate::daily::Dropped {
-            title: request.clone(),
-            when: t,
-            carried_for: (t.saturating_sub(first_seen) / 86_400) as u32,
-            about: None,
-            thinking: Vec::new(),
-        });
-        let _ = self.store.save("dropped", &self.dropped);
-        format!("Dropped \"{request}\". It's kept — \"bring back what I dropped\" finds it again.")
+        match self.drop_outstanding(&key, t) {
+            Ok(off) if off.can_bring_back && off.unsaved.is_none() => {
+                format!("Dropped \"{}\". It's kept — \"bring back what I dropped\" finds it again.", off.title)
+            }
+            Ok(off) => off.said(),
+            Err(why) => why,
+        }
     }
 
     fn what_was_dropped(&mut self, said: &str) -> String {
@@ -2142,7 +2472,8 @@ impl<'a> Daemon<'a> {
         if !missing.is_empty() {
             return crate::infer::spoken(&missing);
         }
-        let Some(mut eyes) = self.build_eyes(&models) else {
+        let plan = self.hands_plan();
+        let Some(mut eyes) = self.build_eyes(&models, &plan) else {
             return "I couldn't start the camera.".into();
         };
         let (n, d) = (name.clone(), does.clone());

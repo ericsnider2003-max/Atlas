@@ -175,6 +175,9 @@ pub fn classify(intent: &Intent) -> Decision {
         Intent::TwoFactor(_) => Decision::AutoProceed,
         // You asked for it, and it works in a scratch copy.
         Intent::KeepAtIt => Decision::AutoProceed,
+        // It asks for itself, naming the file and how it will be run
+        // (`Daemon::run_build`); a second, vaguer question would be a nag.
+        Intent::RunBuild(_) => Decision::AutoProceed,
         // Your own list of what you're aiming at.
         Intent::Goals(_) => Decision::AutoProceed,
         Intent::Later(_) => Decision::AutoProceed,
@@ -293,6 +296,8 @@ pub fn classify(intent: &Intent) -> Decision {
         | Intent::PressButton(_)
         // Shows the plan and waits for a yes itself (G5).
         | Intent::MoveBigFiles(_)
+        // Looks, says what it found, and waits for a yes itself (2 Oct 2026).
+        | Intent::PcTune(_)
         // Shows the plan and waits for a yes itself; nothing is deleted.
         | Intent::TidyDesktop
         // Which microphone to record from: undone by naming another.

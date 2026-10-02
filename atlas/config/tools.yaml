@@ -482,6 +482,15 @@ uia:
   min_nodes: 4
   min_named_ratio: 0.4
 
+# Writing code (2 Oct 2026). `coding_agent`: when Claude Code (`claude`) or
+# Codex (`codex`) is installed on this computer, offer it the code you ask
+# for -- `auto` -- or never -- `off`. `agent_asks_first`: ask before each new
+# build goes to it; a change to one of your own projects is always asked
+# about. Atlas runs its own checks on whatever the agent writes.
+build:
+  coding_agent: auto
+  agent_asks_first: true
+
 # Atlas's own model layer — no Ollama in the path.
 # Atlas reads GGUF files itself, works out what fits in memory, formats the
 # prompt for each model's trained chat format, and drives llama.cpp's own
@@ -2435,6 +2444,19 @@ gaze:
   # "sometimes I want Atlas to see me when talking" is not "watch every
   # conversation", and watching every one is a camera on most of the day.
   watch_while_talking: false
+
+# How heavy hand tracking may be (2 Oct 2026: "may need a lighter model for
+# gestures" -- the laptop's fans spun while it watched his hands).
+# Settings: What it can see -> Hand tracking weight, NPU for hands.
+hands:
+  # auto picks from the machine: processors, memory, battery, and what
+  # reading a hand cost here last time. light: a smaller picture and fewer
+  # looks a second. full: the whole picture and pace.
+  weight: auto
+  # Read hands on the Intel NPU when there is one and its engine is here.
+  npu: true
+  # Stop watching after this many seconds with no hand in view (0: never).
+  stop_after_quiet_secs: 120
 
 # ---------------------------------------------------------------------------
 # Reading a market

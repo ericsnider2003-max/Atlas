@@ -268,9 +268,19 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
     (
+        "that's all",
+        "said to the phone's hands-free Talk page, which stops listening on it in the page's own \
+         script (`hubpages::talk_page`, tests/hands_free.rs) -- it never reaches the parser.",
+    ),
+    (
+        "end the session",
+        "heard before the parser by `worksession::heard` in `daemon/away.rs` \
+         `worksession_help`, beside the session it ends (`tests/lets_work.rs` says it).",
+    ),
+    (
         "get to know me",
         "heard before the parser, by `getknow::asked_to_start` in `daemon/late.rs` \
-         `interview_turn`, because the six questions after it are answers, not commands \
+         `interview_turn`, because the seven questions after it are answers, not commands \
          (`tests/greet_once.rs` offers it; `tests/what_the_model_ranking_found.rs` runs it).",
     ),
     (

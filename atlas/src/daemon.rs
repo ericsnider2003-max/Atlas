@@ -591,6 +591,14 @@ pub struct Daemon<'a> {
     pub cam_watch: Option<crate::camwatch::Watcher>,
     /// A watch asked for before the camera was allowed: started on the yes.
     pub watch_after_allow: Option<(u64, bool)>,
+    /// How a coding agent's program is looked for: this machine's PATH, or
+    /// the tests' stand-in (`coding_agent`, 2 Oct 2026).
+    pub(crate) agent_lookup: Option<fn(&str) -> Option<String>>,
+    /// What Atlas last asked your yes for that only a yes may start -- a
+    /// hand-over to a coding agent, running a build -- exactly as it will
+    /// come back. A request carrying the marker any other way (a model's
+    /// tool call, say) is asked about again, never taken as the yes.
+    pub(crate) offered_for_yes: Option<String>,
     /// Everything Atlas has been shown and told the name of.
     ///
     /// This is the part that makes seeing open-ended. The models know a fixed
@@ -750,6 +758,10 @@ pub struct Daemon<'a> {
     /// When Atlas last said hello of any kind (`returning::hello_now`),
     /// kept across a restart.
     last_greeted_at: u64,
+    /// Rough turns in a row (`persona::spiral_line`).
+    rough_in_a_row: u32,
+    /// A "let's work" session under way (`worksession`), kept across a restart.
+    work_session: Option<crate::worksession::Session>,
     /// The last turn that was yours. Atlas's own work does not count.
     ///
     /// What tells working through the night from starting a day: the gap
@@ -1310,9 +1322,10 @@ pub struct Daemon<'a> {
     pending_storage: Option<crate::tune::StoragePlan>,
     /// What an optimization run offered to do, waiting on your yes.
     pending_optimize: Option<crate::tune::Plan>,
-    /// The desktop's loose files and where each would go, shown and waiting
-    /// for your yes ("tidy my desktop", 29 Sep 2026).
-    pending_desktop: Option<Vec<(std::path::PathBuf, crate::filing::Suggestion)>>,
+    /// A folder's sorting plan, said and waiting for your yes ("tidy my
+    /// desktop", 29 Sep 2026; since 2 Oct 2026 any folder, by kind, with
+    /// copies and old installers to "To review" -- `organize::SortPlan`).
+    pending_desktop: Option<crate::organize::SortPlan>,
     /// An undo asked about ("Undo X?"), waiting for your yes.
     pending_undo: Option<u64>,
     /// A dropped task you asked about: put back on the list on a yes (H8).
@@ -1502,6 +1515,10 @@ pub struct Daemon<'a> {
     /// `Mind` never issues zero.
     flow_mind: u64,
     last_backup: u64,
+    /// When the backup schedule and the self-repair sweep are next looked
+    /// at (2 Oct 2026: both were looked at every tick, from disk).
+    next_backup_look: u64,
+    next_sweep_look: u64,
     /// When the current unbroken stretch of work started.
     ///
     /// `person.hours_before_saying` is a threshold on this, and nothing was
@@ -1644,6 +1661,8 @@ impl<'a> Daemon<'a> {
             looking: None,
             cam_watch: None,
             watch_after_allow: None,
+            agent_lookup: None,
+            offered_for_yes: None,
             album: crate::vision::Album::load(&store_for_load2),
             track: crate::handtrack::Track::default(),
             pace: crate::handtrack::Pace::default(),
@@ -1691,6 +1710,8 @@ impl<'a> Daemon<'a> {
             // failure `morning_brief` already documents.
             last_brief_at: store_for_load.load::<u64>("last_brief_at"),
             last_greeted_at: store_for_load.load::<u64>("last_greeted_at"),
+            rough_in_a_row: 0,
+            work_session: store_for_load.load("work_session"),
             // Loaded too, and for the opposite reason. Zeroed, a restart
             // looks like an infinite gap, so every restart would read as you
             // arriving -- and restarts happen in the middle of the night you
@@ -1758,7 +1779,11 @@ impl<'a> Daemon<'a> {
             notebook: notebook_at_start,
             workday: Default::default(),
             gate: crate::interrupt::Gate::default(),
-            workspace: Vec::new(),
+            // Loaded, so an item taken off Outstanding stays off after a
+            // restart (2 Oct 2026). Nothing was ever kept here before, so the
+            // first start after this finds nothing and begins empty, as it
+            // always did.
+            workspace: store_for_load.load("workspace"),
             layout: crate::layout_prefs::Layout::default_layout(),
             last_seen: 0,
             carried: Vec::new(),
@@ -2048,6 +2073,8 @@ impl<'a> Daemon<'a> {
             peer_tries: std::collections::BTreeMap::new(),
             flow_mind: 0,
             last_backup: 0,
+            next_backup_look: 0,
+            next_sweep_look: 0,
             working_since: None,
         };
         // Built here rather than at the two call sites in main.rs, so every
@@ -2363,6 +2390,20 @@ fn verify_project_change(
     // clearly-named proposal file.
     let write_path = target.clone().unwrap_or(fallback_path);
     let files = vec![crate::workshop::FileEdit { path: write_path.clone(), content: code.to_string() }];
+    // A whole-file replacement of a file you have is queued only once it
+    // has passed -- its own checks, and the project's where they can run.
+    // Anything less goes beside it as `<file>.proposed`, so "implement" can
+    // never write a half-finished or failing file over yours (2 Oct 2026).
+    let beside = || -> Vec<crate::workshop::FileEdit> {
+        match &target {
+            Some(rel) => vec![crate::workshop::FileEdit { path: format!("{rel}.proposed"), content: code.to_string() }],
+            None => files.clone(),
+        }
+    };
+    let beside_note = |rel: &Option<String>| match rel {
+        Some(r) => format!(" It would replace all of {r}, so it's kept beside it as {r}.proposed rather than over it."),
+        None => String::new(),
+    };
 
     // Integrated verification is possible only for a built draft that replaces
     // a real file in a buildable project on disk.
@@ -2376,6 +2417,14 @@ fn verify_project_change(
             match crate::selfwork::prove_in_project(root, &cmd, &edits, base) {
                 Ok(proof) => {
                     let verified = proof.built_and_passed && proof.replaced_existing;
+                    if !proof.built_and_passed {
+                        let summary = format!(
+                            "Queued \"{title}\" on {project} as a draft. {}{}",
+                            proof.plain(project),
+                            beside_note(&target)
+                        );
+                        return (false, summary, beside());
+                    }
                     let summary = format!(
                         "Queued \"{title}\" on {project}. {} Say \"implement {title}\" and I'll \
                          write it with a .before backup; nothing running is touched.",
@@ -2399,6 +2448,10 @@ fn verify_project_change(
         // project, or a draft that didn't even pass its own checks. An isolated
         // compile is never "verified" for a project — that flag is reserved for
         // an integrated pass.
+        // A draft that didn't pass its own checks never replaces a file.
+        _ if !isolated.is_built() && target.is_some() => {
+            (false, format!("{}{}", isolated.in_project(project, title, lang), beside_note(&target)), beside())
+        }
         _ => (false, isolated.in_project(project, title, lang), files),
     }
 }
@@ -2563,8 +2616,6 @@ fn check_draft_in_sandbox(
     lang: crate::craft::Lang,
     code: &str,
 ) -> crate::build_it::Check {
-    use crate::craft::{ladder, read_ladder, Next, Ran, Tells};
-
     // Lay the draft down as something the toolchain can act on. The scaffold
     // is the language's own (a Rust crate, a Go module, a tsconfig beside the
     // file), so the ladder's commands always have what they expect.
@@ -2573,9 +2624,63 @@ fn check_draft_in_sandbox(
             return crate::build_it::Check::Failed(format!("couldn't scaffold the draft: {e}"));
         }
     }
+    // Packages a Python draft declares, installed into the sandbox -- not
+    // into your Python -- through Atlas's own uv (2 Oct 2026). Without them
+    // the checks fail on the import, which isn't the code's fault.
+    if lang == crate::craft::Lang::Python {
+        let deps = crate::build_it::python_deps(code);
+        if !deps.is_empty() {
+            if let Err(missing) = install_python_deps(&sandbox.root, &deps) {
+                return crate::build_it::Check::CannotCheck(missing);
+            }
+        }
+    }
+    run_ladder_in(&sandbox.root, lang, true)
+}
 
+/// A Python draft's packages into `dir/.deps`, with the files that point the
+/// checks at them. `Err` names what couldn't be had, as the thing that isn't
+/// on this computer.
+fn install_python_deps(dir: &std::path::Path, deps: &[String]) -> std::result::Result<(), String> {
+    let root = crate::roots::install_root();
+    let Some(uv) = crate::codetools::uv_program(&root) else {
+        return Err(format!("uv (to install {})", deps.join(", ")));
+    };
+    for (path, text) in crate::build_it::python_dep_files() {
+        if std::fs::write(dir.join(&path), text).is_err() {
+            return Err(format!("room to install {}", deps.join(", ")));
+        }
+    }
+    let mut args: Vec<String> = vec!["pip".into(), "install".into(), "--target".into(), crate::build_it::PY_DEPS_DIR.into()];
+    if let Some(py) = crate::codetools::own_python(&root) {
+        args.push("--python".into());
+        args.push(py.to_string_lossy().into_owned());
+    }
+    args.extend(deps.iter().cloned());
+    let cache = root.join("tools/uv-cache");
+    let cache = cache.to_string_lossy().into_owned();
+    let (ok, said) = crate::sandbox::run_within(&uv.to_string_lossy(), &args, &[("UV_CACHE_DIR", cache.as_str())], dir, 300, 2000);
+    if ok {
+        Ok(())
+    } else {
+        let why = said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
+        Err(format!("{} (uv couldn't install it: {why})", deps.join(", ")))
+    }
+}
+
+/// Run `craft`'s ladder for `lang` in `dir`, as a `build_it::Check`. In a
+/// sandbox the formatting gates run too; in a folder of yours
+/// (`run_ladder_in(folder, lang, false)`, 2 Oct 2026, after a coding agent
+/// changed it) they don't -- a check reads your files, it doesn't rewrite
+/// them. A project with no tests isn't failed for having none.
+fn run_ladder_in(dir: &std::path::Path, lang: crate::craft::Lang, rewrite_allowed: bool) -> crate::build_it::Check {
+    use crate::craft::{ladder, read_ladder, Next, Ran, Tells};
     let mut ran: Vec<Ran> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     for gate in ladder(lang) {
+        if !rewrite_allowed && gate.tells == Tells::Shape {
+            continue;
+        }
         // Build a runnable tool from the gate's command line.
         let mut parts = gate.command.split_whitespace();
         let Some(program) = parts.next() else { continue };
@@ -2583,7 +2688,7 @@ fn check_draft_in_sandbox(
         // npm, prettier and tsc are node scripts (`.cmd` on Windows, which
         // can't be started directly): run by the node Atlas fetched.
         // The program the C++ ladder just built, by its full path.
-        let mut program = crate::craft::program_in(&sandbox.root, program);
+        let mut program = crate::craft::program_in(dir, program);
         if let Some(p) = crate::codetools::llvm_program(&program, &crate::roots::install_root()) {
             program = p.to_string_lossy().into_owned();
         }
@@ -2591,31 +2696,29 @@ fn check_draft_in_sandbox(
             args.insert(0, script.to_string_lossy().into_owned());
             program = node.to_string_lossy().into_owned();
         }
-        let tool = crate::tools::ExternalTool {
-            command: program,
-            args,
-            stdin_text: false,
-            result_file: None,
-            // Generous against the gate's rough estimate; a compile that runs
-            // far past it is stuck, not slow.
-            timeout_secs: (gate.seconds as u64) * 4 + 30,
-        };
-        let attempt = sandbox.run(&tool, &Default::default(), 4000);
-        ran.push(Ran {
-            command: gate.command.clone(),
-            tells: gate.tells,
-            passed: attempt.passed,
-            output: attempt.output.clone(),
-        });
+        // Generous against the gate's rough estimate; a compile that runs
+        // far past it is stuck, not slow.
+        let limit = (gate.seconds as u64) * 4 + 30;
+        let (mut passed, output) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 4000);
+        // pytest with nothing to collect exits 5: in a sandbox the smoke test
+        // is always there, so only a folder of yours can have none.
+        if !passed && !rewrite_allowed && gate.tells == Tells::Behaviour && output.contains("no tests ran") {
+            passed = true;
+            notes.push("there are no tests to run".into());
+        }
+        ran.push(Ran { command: gate.command.clone(), tells: gate.tells, passed, output });
         // Stop after the first blocking failure — the rest would be noise.
-        if !attempt.passed && gate.tells == Tells::Sound {
+        if !passed && gate.tells == Tells::Sound {
             break;
         }
     }
 
     match read_ladder(lang, &ran) {
-        Next::Good => crate::build_it::Check::Passed(vec![]),
-        Next::WorksWithNotes(notes) => crate::build_it::Check::Passed(notes),
+        Next::Good => crate::build_it::Check::Passed(notes),
+        Next::WorksWithNotes(mut more) => {
+            more.extend(notes);
+            crate::build_it::Check::Passed(more)
+        }
         Next::Fix { output, .. } => crate::build_it::Check::Failed(output),
         Next::CannotCheck { program, .. } => crate::build_it::Check::CannotCheck(program),
     }

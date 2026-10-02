@@ -220,6 +220,35 @@ commands:
               "what can be cleared", "what's eating the memory", "whats eating the memory",
               "what's using my memory", "whats using my memory"]
 
+  # Looking after the machine, more than a reading (Eric, 2 Oct 2026: "for
+  # optimization I want Atlas to be able to do more as it is a very tedious
+  # process. Like closing things in the task manager that aren't needed,
+  # moving files, doing deeper dives"). The whole sentence is read
+  # (`tune::tune_ask`); each looks, says what it found, and offers -- nothing
+  # is closed, switched off, cleared or moved before a yes.
+  - intent: pc_tune
+    describe: "Look after the computer: close programs that aren't needed, say what's slowing it down (CPU measured over a few seconds), list or switch off what starts with Windows, find big and duplicate files and clear temp files, or move big downloads into a folder the user names. Offers first, acts on a yes, undo reverses. arg: the user's sentence."
+    phrases: ["close what i don't need", "close what i dont need", "close what i do not need", "close what isn't needed",
+              "close what isnt needed", "close the things i don't need", "close the things i dont need",
+              "close what i'm not using", "close what im not using", "close stuff i'm not using", "close stuff im not using",
+              "close unneeded programs", "close unnecessary programs", "close background programs",
+              "what's slowing my computer down", "whats slowing my computer down", "what is slowing my computer down",
+              "what's slowing my pc down", "whats slowing my pc down", "what is slowing my pc down",
+              "what's slowing my laptop down", "whats slowing my laptop down", "what is slowing my laptop down",
+              "what's slowing down my computer", "whats slowing down my computer", "what's slowing my computer",
+              "whats slowing my computer", "what's using my cpu", "whats using my cpu", "what's using the cpu", "whats using the cpu",
+              "what starts with windows", "what starts up with windows", "what runs at startup", "what runs on startup",
+              "what launches at startup", "my startup programs", "show my startup programs", "list my startup programs",
+              "startup programs", "stop things starting with windows", "clean up my startup",
+              "clear my temp files", "clear temp files", "clean my temp files", "clean up temp files", "delete temp files",
+              "clear temporary files", "clean up my temporary files",
+              "what's taking up my space", "whats taking up my space", "what's taking up space", "whats taking up space",
+              "find duplicate files", "find my duplicate files", "find big files", "find my big files",
+              "move my big downloads", "move the big downloads", "move the big files in my downloads",
+              "move my downloads to", "move the duplicates to", "move my duplicates to"]
+    takes_argument: true
+    argument_optional: true
+
   - intent: self_check
     describe: "Run Atlas's self-check and say what setup is still missing."
     phrases: ["check yourself", "self check", "run a self check", "run a checkup",
@@ -812,15 +841,33 @@ commands:
   # "Organize my desktop" (Eric, 29 Sep 2026): the desktop's loose files
   # filed into folders by kind (`filing::plan_folder`), the plan said first
   # and carried out only on a yes. Shortcuts and folders are never touched.
+  # Since 2 Oct 2026 any folder, named in full or by name ("my downloads"),
+  # sorted by kind with copies and old installers put in "To review"
+  # (`organize`); the whole sentence is read, so the phrase may carry a
+  # folder after it ("sort the files in D:\Stuff", "find duplicates in my
+  # downloads"). "Undo that" puts every file back.
   - intent: tidy_desktop
-    describe: "Organize the user's PC: file the loose files on the desktop and in Downloads into folders. Says the plan and asks first; never deletes anything."
+    describe: "Organize the user's PC or a folder they name: sort the loose files into a folder for each kind (documents, pictures, videos, music, archives, installers, code...), put copies of the same file and old installers into a 'To review' folder, and say the plan first; acts on a yes, never deletes, and undo puts everything back. arg: the user's sentence, with the folder if they named one."
     phrases: ["tidy my desktop", "tidy up my desktop", "tidy the desktop", "organize my desktop", "organise my desktop",
               "clean up my desktop", "sort my desktop", "sort out my desktop",
               # Eric, 1 Oct 2026: "can't organize my PC properly".
               "organize my pc", "organise my pc", "organize my computer", "organise my computer",
               "organize my laptop", "organise my laptop", "organize my files", "organise my files",
               "organize my downloads", "organise my downloads", "tidy my downloads", "clean up my downloads",
-              "sort my files", "sort out my files", "tidy up my files", "tidy my files"]
+              "sort my files", "sort out my files", "tidy up my files", "tidy my files",
+              # Eric, 2 Oct 2026: any folder, named after the phrase.
+              "organize my documents", "organise my documents", "tidy my documents", "sort my documents",
+              "tidy up my downloads", "sort my downloads", "sort out my downloads", "clean up my documents",
+              "organize my pictures", "organise my pictures", "sort my pictures", "organize my photos", "organise my photos",
+              "sort the files in", "sort files in", "sort out the files in", "sort the folder", "sort this folder",
+              "organize the files in", "organise the files in", "organize files in", "organise files in",
+              "organize the folder", "organise the folder", "organize this folder", "organise this folder",
+              "tidy the files in", "tidy up the files in", "clean up the files in", "tidy the folder", "tidy up the folder",
+              "find duplicates in", "find the duplicates in", "find duplicate files in", "find copies in",
+              "find duplicates on", "find the duplicates on", "find the duplicate files in"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
 
   # "Use my webcam mic" (Eric, 29 Sep 2026): record from the microphone
   # named by kind, and keep to it (`hearing::mic_by_kind`).
@@ -872,6 +919,16 @@ commands:
               "what are my goals", "my goals"]
     takes_argument: true
     argument_optional: true
+
+  # Run what Atlas last built, after you say yes, and say what it printed
+  # (2 Oct 2026). The whole sentence, so "run it by me" stays conversation.
+  - intent: run_build
+    describe: "Run the program Atlas last built and say what it printed."
+    phrases: ["run it", "run the script", "run that script", "run what you built", "run what you made",
+              "run the program", "run that program", "run the last build", "run the code", "run that code",
+              "try running it", "run the thing you built", "run my script", "run the script you wrote",
+              "test it by running it", "run it and show me"]
+    anchored: true
 
   - intent: keep_at_it
     describe: "Keep working on the last build that ran out of tries, as a long job."
@@ -967,9 +1024,16 @@ commands:
   # description verbatim, since code details (names, symbols) matter.
   - intent: build_it
     describe: "Write a program or script from a description. arg: what to build."
+    # 2 Oct 2026: "write a python script ...", "create a script ...", "make me
+    # a ... tool" and "write code to ..." all reached nothing. The short
+    # leads ("write a", "create a", "make me a") only count when what
+    # follows names something that is code (`intent::fits_the_command`).
     phrases: ["build me", "write me a", "write a function", "write a script",
               "code me", "make me a program", "build a tool that",
-              "write code", "code up"]
+              "write code", "code up", "write a", "write an", "create a", "create an",
+              "create me a", "make me a", "make me an", "make a script", "make a program",
+              "write code to", "write me some code", "write some code", "code a", "program a",
+              "build a", "build an"]
     takes_argument: true
     argument_optional: true
     raw_argument: true
@@ -979,8 +1043,10 @@ commands:
   # builds and checks it, and files a proposed change in that project's queue.
   - intent: improve
     describe: "Change or refactor one of the user's code projects. arg: the change and the project."
+    # "add a feature to my app" (2 Oct 2026) reached nothing.
     phrases: ["improve", "on the", "increase", "add to", "change the",
-              "update the", "work on the", "refactor", "fix the"]
+              "update the", "work on the", "refactor", "fix the",
+              "add a feature", "add a feature to", "add feature", "add a new feature"]
     takes_argument: true
     argument_optional: true
     raw_argument: true

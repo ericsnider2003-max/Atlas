@@ -235,11 +235,15 @@ pub struct Brief {
     /// one piece a day. Yours, so it's said in your words.
     #[serde(default)]
     pub push: Option<String>,
+    /// One thing Atlas noticed in your own record (`daily::one_thing_noticed`),
+    /// once a day.
+    #[serde(default)]
+    pub noticed: Option<String>,
 }
 
 impl Brief {
     pub fn is_empty(&self) -> bool {
-        self.yours.is_empty() && self.drafted.is_empty() && self.conflicts.is_empty() && self.push.is_none()
+        self.yours.is_empty() && self.drafted.is_empty() && self.conflicts.is_empty() && self.push.is_none() && self.noticed.is_none()
     }
 
     /// Lines it would print. Used to keep it under `MAX_LINES`.
@@ -263,6 +267,7 @@ pub fn run(items: &[Item], day: &[Commitment], cfg: &BriefConfig) -> Brief {
         conflicts: Vec::new(),
         blocking: None,
         push: None,
+        noticed: None,
     };
     if !cfg.enabled {
         return b;
@@ -394,7 +399,10 @@ pub fn spoken(b: &Brief) -> String {
     }
     // Truncated rather than allowed to sprawl -- but the push is kept: it
     // is the one line that's about you rather than about the queue.
-    out.truncate(MAX_LINES - usize::from(b.push.is_some()));
+    out.truncate(MAX_LINES - usize::from(b.push.is_some()) - usize::from(b.noticed.is_some()));
+    if let Some(n) = &b.noticed {
+        out.push(format!("One thing I noticed: {n}"));
+    }
     if let Some(p) = &b.push {
         out.push(p.clone());
     }
@@ -775,19 +783,29 @@ pub fn from_here(s: &Sources, cfg: &BriefConfig, now: u64, since: u64) -> Brief 
 /// on: habits, posting and deadlines"): one piece a day, in turn, so a
 /// list of three isn't read out every morning. `None` when there's nothing.
 pub fn push_for_day(asked: &str, day: u64) -> Option<String> {
+    push_piece(asked, day).map(|one| format!("You asked me to push you on {one} -- what's today's step?"))
+}
+
+/// The piece of your push for this day, on its own ("your habits").
+pub fn push_piece(asked: &str, day: u64) -> Option<String> {
     let asked = asked.trim();
     let asked = asked.strip_prefix("Push them on:").unwrap_or(asked).trim();
+    // Said at length ("I need you to push me on my habits, and my projects.
+    // I need you to take work off my plate..."): the first sentence, its
+    // lead taken off, turned round to be said to you (1 Oct 2026).
+    let first = asked.split(['.', '!', '?']).find(|p| !p.trim().is_empty()).unwrap_or("");
+    let turned = crate::getknow::said_back(&crate::getknow::without_push_lead(first));
+    let asked = turned.as_str();
     let pieces: Vec<&str> = asked
         .split([',', ';'])
         .flat_map(|p| p.split(" and "))
         .map(|p| p.trim().trim_start_matches("and ").trim_end_matches(['.', '!']).trim())
-        .filter(|p| p.len() > 1)
+        .filter(|p| p.len() > 1 && p.split_whitespace().count() <= 8)
         .collect();
     if pieces.is_empty() {
         return None;
     }
-    let one = pieces[(day % pieces.len() as u64) as usize];
-    Some(format!("You asked me to push you on {one} -- what's today's step?"))
+    Some(pieces[(day % pieces.len() as u64) as usize].to_string())
 }
 
 /// First `n` words, so a note or a post body reads as a subject line.

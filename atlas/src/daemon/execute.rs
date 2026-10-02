@@ -187,6 +187,7 @@ impl<'a> Daemon<'a> {
             Intent::TwoFactor(said) => self.two_factor(said),
             // The last build that ran out of tries, as a long job (E3).
             Intent::KeepAtIt => self.keep_at_it(crate::store::now()),
+            Intent::RunBuild(what) => self.run_build(what),
             // Goals, for the nudges toward them (F4).
             Intent::Goals(said) => self.goals(said, crate::store::now()),
             // The list for later (F8).
@@ -199,6 +200,7 @@ impl<'a> Daemon<'a> {
             Intent::PressButton(said) => self.press_button(said),
             // Big folders to another drive, findable afterwards (G5).
             Intent::MoveBigFiles(said) => self.move_big_files(said, crate::store::now()),
+            Intent::PcTune(said) => self.tune_up(said),
             // The desktop's loose files filed, after a yes (29 Sep 2026).
             Intent::TidyDesktop => self.tidy_desktop(),
             // The microphone you named, kept to (29 Sep 2026).
@@ -1079,7 +1081,7 @@ impl<'a> Daemon<'a> {
         if b.is_empty() { tail } else { format!("{head} {tail}") }
     }
 
-    fn on_queued(&mut self) -> String {
+    pub(crate) fn on_queued(&mut self) -> String {
         // Used to answer only about posts waiting to be sent, while
         // `crew::queued`, `crew::in_hand` and `crew::why_waiting` --
         // written for exactly this question -- had no caller at all.
@@ -1353,37 +1355,28 @@ impl<'a> Daemon<'a> {
         // The deeper look: what's holding the memory, whoever it is.
         let mut top: Vec<&(String, u64, bool)> = survey.memory_by_app.iter().collect();
         top.sort_by(|a, b| b.1.cmp(&a.1));
-        if !top.is_empty() {
+        // (On Windows the sampled reading below says this, with CPU.)
+        if !top.is_empty() && !cfg!(windows) {
             let named: Vec<String> = top.iter().take(4).map(|(a, mb, _)| format!("{a} {}", if *mb >= 1024 { format!("{:.1} GB", *mb as f32 / 1024.0) } else { format!("{mb} MB") })).collect();
             s.push_str(&format!(" Using the most memory: {}.", named.join(", ")));
         }
         // And what to do about it, on one yes (1 Oct 2026, Eric: "closing
         // things in the task manager that aren't needed, moving files, doing
         // deeper dives and actually making it run well").
+        // Deeper since 2 Oct 2026: each program's CPU measured over two
+        // seconds rather than memory read once, closing open to background
+        // programs that stand on their own (never Windows', never Atlas's,
+        // never the one in front of you), and startup read from every place
+        // Windows starts things from, not only your Run key
+        // (`tune_plan`, shared with "close what I don't need").
         let tune_cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
-        let windowed = crate::tune::windowed_programs();
-        let week: Vec<String> = self.worklog.between(now.saturating_sub(7 * 86_400), now).iter().map(|sp| sp.app.to_lowercase()).collect();
-        let used_this_week = |app: &str| {
-            let a = app.to_lowercase();
-            week.iter().any(|u| u.contains(&a) || a.contains(u.as_str()))
-        };
-        let plan = crate::tune::Plan {
-            close: survey
-                .memory_by_app
-                .iter()
-                .filter(|(app, mb, today)| {
-                    *mb >= tune_cfg.min_mb && !*today && windowed.iter().any(|w| w.eq_ignore_ascii_case(app)) && crate::tune::may_close(app, &tune_cfg.keep)
-                })
-                .map(|(app, mb, _)| (app.clone(), *mb))
-                .take(4)
-                .collect(),
-            stop_starting: crate::tune::startup_programs()
-                .into_iter()
-                .filter(|n| !used_this_week(n) && crate::tune::may_close(n, &tune_cfg.keep))
-                .take(5)
-                .collect(),
-            temp: (temp_mb >= tune_cfg.min_mb).then(|| (temp.clone(), temp_mb)),
-        };
+        let sampled = crate::tune::sample_machine(std::time::Duration::from_secs(2));
+        if let Some(sm) = &sampled {
+            s.push(' ');
+            s.push_str(&crate::tune::slowest_words(&sm.load));
+        }
+        let mut plan = self.tune_plan(sampled.as_ref(), false);
+        plan.temp = (temp_mb >= tune_cfg.min_mb).then(|| (temp.clone(), temp_mb));
         if !plan.is_empty() {
             let offer = plan.offer();
             s.push(' ');

@@ -253,10 +253,11 @@ fn every_placeholder_in_a_command_resolves_to_something() {
 /// better than a heuristic that cannot fail, and adding to it forces the one
 /// useful question: *how does this setting actually take effect?*
 const APPLIED_IN_CODE: &[(&str, &str)] = &[
+    ("self_work.source_dir", "selfwork's source lookup reads it first (selfwork.rs, `cfg.source_dir`), before looking anywhere else"),
     ("push_to_talk.key", "hotkeys::Keys::from_settings hands it to the keyboard hook at start-up"),
     ("quick_input.hotkey", "hotkeys::Keys::from_settings registers it with Windows at start-up"),
     ("persona.tone", "persona::spoken shapes the reply"),
-    ("self_work.source_dir", "selfwork::source_root looks there first, before ATLAS_SOURCE and the program's folders"),
+    ("build.coding_agent", "Daemon::coding_agent_here reads it before offering a build or a project change to Claude Code or Codex"),
     ("sound.speak_replies", "Daemon::say asks SoundConfig::may_speak_now, with whether the turn was typed"),
     ("sound.volume", "Voice::speak scales the synthesised WAV before it plays (sound::scale_wav)"),
     ("sound.quiet_from", "the start of that window"),
@@ -286,6 +287,8 @@ const APPLIED_IN_CODE: &[(&str, &str)] = &[
     // Offered since 29 Sep 2026 (opportunity hunting).
     ("hunt.top_n", "hunting::brief_items and the voice list take the best top_n from HuntState::top"),
     ("hunt.max_requests_per_day", "HuntConfig::budget caps a day's requests at it (never above hunt::HARD_CEILING); hunting::tick skips a source that would pass it"),
+    // Offered since 2 Oct 2026 ("may need a lighter model for gestures").
+    ("hands.weight", "handweight::plan reads it (Daemon::hands_plan) every time hand tracking starts: the picture size, pace and idle rate follow from it"),
 ];
 
 #[test]

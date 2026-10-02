@@ -100,11 +100,14 @@ pub struct Proactive {
     /// gates that ask in one tick get one answer, and the bound's clock is
     /// moved once per tick rather than reset by the second asker.
     decided: Option<(u64, bool)>,
+    /// A work session holds everything that isn't urgent until then
+    /// (`worksession`, 1 Oct 2026).
+    pub quiet_until: u64,
 }
 
 impl Proactive {
     pub fn new(cfg: ProactiveConfig) -> Self {
-        Proactive { cfg, last_offer: 0, recent: Vec::new(), held_since: None, decided: None }
+        Proactive { cfg, last_offer: 0, recent: Vec::new(), held_since: None, decided: None, quiet_until: 0 }
     }
 
     /// Everything that must be true before Atlas is allowed to speak first.
@@ -114,6 +117,10 @@ impl Proactive {
         }
         // Never talk over an active conversation.
         if s.in_conversation {
+            return false;
+        }
+        // Nor into a work session you started.
+        if t < self.quiet_until {
             return false;
         }
         // Let a thought finish.

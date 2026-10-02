@@ -120,6 +120,7 @@ const EVERYDAY: &[(&str, &str)] = &[
     ("delegate", "reply respond draft answer message email"),
     ("message", "text message send friend"),
     ("machine_health", "computer laptop slow memory ram disk cpu fan hot space storage left free drive room battery"),
+    ("pc_tune", "close kill task manager startup programs boot background processes temp duplicates downloads slowing"),
     ("recommend", "improve improving faster slow slower quality"),
     ("work_on_yourself", "fix yourself improve yourself own code"),
     ("clock", "time date"),
@@ -372,7 +373,16 @@ impl Router {
         // A command's own phrase leading it, of two words or more ("check my
         // email"); a one-word phrase ("write", "wait") leads too much else.
         let lead = leading_words(said);
-        if self.entries.iter().any(|e| e.phrases.iter().any(|p| p.split_whitespace().count() >= 2 && starts_with_phrase(&lead, p))) {
+        // The same gate the parser uses (`intent::fits_the_command`): "write
+        // a" leads a request only when what follows is code -- "write a
+        // haiku about rain" is conversation (2 Oct 2026).
+        if self.entries.iter().any(|e| {
+            e.phrases.iter().any(|p| {
+                p.split_whitespace().count() >= 2
+                    && starts_with_phrase(&lead, p)
+                    && crate::intent::fits_the_command(&e.name, p, lead.get(p.len()..).unwrap_or(""))
+            })
+        }) {
             return true;
         }
         // Or the words match one tool strongly and clearly ahead of the next:
@@ -448,6 +458,8 @@ const SAID_FOR: &[(&str, &str)] = &[
     ("machine_health", "why is my laptop so slow right now"),
     ("machine_health", "is something hogging the processor"),
     ("machine_health", "how much room is left on my drive"),
+    ("pc_tune", "shut the stuff I'm not using"),
+    ("pc_tune", "which programs launch when I turn the computer on"),
     ("self_check", "are you working properly"),
     ("self_check", "check yourself for problems"),
     ("tidy_desktop", "clean up all the icons on my desktop"),

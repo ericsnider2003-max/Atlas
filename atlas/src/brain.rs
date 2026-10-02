@@ -263,6 +263,114 @@ pub trait Llm: Send + Sync {
     fn complete_hard(&self, system: &str, user: &str) -> Result<String> {
         self.complete(system, user)
     }
+
+    /// A long answer -- a whole file of code -- with room to write it, and
+    /// whether the model stopped because it ran out of that room (2 Oct
+    /// 2026: every one-prompt call was capped at 512 words' worth, so any
+    /// file past about sixty lines came back cut off and every fix round
+    /// cut it off again). A model that can't be told how much to write, or
+    /// can't say it was cut off, answers as `complete_hard` does and leaves
+    /// `cut_off` false; the caller still looks at the text itself.
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
+        let _ = max_tokens;
+        self.complete_hard(system, user).map(|text| LongReply { text, cut_off: false })
+    }
+
+    /// How many tokens this model reads and writes in one go, when known.
+    fn context_tokens(&self) -> Option<u32> {
+        None
+    }
+}
+
+/// What `complete_long` hands back: the words, and whether the model said
+/// it stopped for want of room rather than because it had finished.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LongReply {
+    pub text: String,
+    pub cut_off: bool,
+}
+
+/// A request body with its "how much to write" set to `max_tokens`, under
+/// whichever name the server reads: llama.cpp's `n_predict`, an OpenAI- or
+/// Anthropic-shaped `max_tokens`, Ollama's `options.num_predict`. A body
+/// that isn't JSON, or names none of them, is left as it was (2 Oct 2026).
+pub fn with_max_tokens(body: &str, max_tokens: u32) -> String {
+    let Ok(mut v) = serde_json::from_str::<Value>(body) else { return body.to_string() };
+    let Some(o) = v.as_object_mut() else { return body.to_string() };
+    let mut set = false;
+    for k in ["n_predict", "max_tokens", "max_new_tokens", "max_completion_tokens"] {
+        if o.contains_key(k) {
+            o.insert(k.into(), serde_json::json!(max_tokens));
+            set = true;
+        }
+    }
+    if let Some(opts) = o.get_mut("options").and_then(|x| x.as_object_mut()) {
+        if opts.contains_key("num_predict") {
+            opts.insert("num_predict".into(), serde_json::json!(max_tokens));
+            set = true;
+        }
+    }
+    if !set {
+        return body.to_string();
+    }
+    v.to_string()
+}
+
+/// Did a model's raw reply say it stopped because it ran out of room?
+/// llama.cpp says `stopped_limit` / `stop_type: "limit"`; OpenAI-shaped
+/// servers `finish_reason: "length"`; Anthropic `stop_reason:
+/// "max_tokens"`; Ollama `done_reason: "length"`.
+pub fn says_cut_off(reply: &Value) -> bool {
+    let s = |path: &str| dig(reply, path).and_then(|x| x.as_str()).map(str::to_string);
+    reply.get("stopped_limit").and_then(|b| b.as_bool()).unwrap_or(false)
+        || s("stop_type").as_deref() == Some("limit")
+        || s("choices.0.finish_reason").as_deref() == Some("length")
+        || s("stop_reason").as_deref() == Some("max_tokens")
+        || s("done_reason").as_deref() == Some("length")
+}
+
+/// A model somewhere else, asked with secrets and personal numbers swapped
+/// for placeholders on the way out and back in the answer (`redact`) --
+/// what `FallbackLlm` does for its secondary, for a second model the code
+/// builder asks by name (2 Oct 2026).
+pub struct Scrubbed(pub std::sync::Arc<dyn Llm>);
+
+impl Scrubbed {
+    fn scrubbed(system: &str, user: &str) -> (crate::redact::Scrubber, String, String) {
+        let mut scrub = crate::redact::Scrubber::default();
+        let (mut system_out, user_out) = (scrub.scrub(system), scrub.scrub(user));
+        if let Some(note) = scrub.say() {
+            system_out.push_str(&format!(
+                "\n\n({note}; they appear as placeholders like ⟦EMAIL_1⟧. Use the placeholders exactly as written.)"
+            ));
+        }
+        (scrub, system_out, user_out)
+    }
+}
+
+impl Llm for Scrubbed {
+    fn complete(&self, system: &str, user: &str) -> Result<String> {
+        let (scrub, s, u) = Scrubbed::scrubbed(system, user);
+        self.0.complete(&s, &u).map(|r| scrub.put_back(&r))
+    }
+
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
+        let (scrub, s, u) = Scrubbed::scrubbed(system, user);
+        self.0.complete_long(&s, &u, max_tokens).map(|r| LongReply { text: scrub.put_back(&r.text), cut_off: r.cut_off })
+    }
+
+    fn context_tokens(&self) -> Option<u32> {
+        self.0.context_tokens()
+    }
+}
+
+/// Would anything in this text be kept back from a model somewhere else
+/// (`redact`: keys, card and account numbers, email addresses, phone
+/// numbers)? The code builder asks a free online model only when not.
+pub fn holds_something_private(text: &str) -> bool {
+    let mut scrub = crate::redact::Scrubber::default();
+    let _ = scrub.scrub(text);
+    scrub.say().is_some()
 }
 
 /// A local-first model with an optional stronger fallback.
@@ -345,6 +453,26 @@ impl FallbackLlm {
     }
 }
 
+impl FallbackLlm {
+    /// `try_secondary` for a long answer: scrubbed the same way, through
+    /// the breaker the same way.
+    fn try_secondary_long(&self, system: &str, user: &str, max_tokens: u32) -> Option<Result<LongReply>> {
+        let s = self.secondary.as_ref()?;
+        let now = now_ms();
+        if !self.breaker.lock().map(|mut b| b.allow(now)).unwrap_or(true) {
+            return None;
+        }
+        let r = Scrubbed(s.clone()).complete_long(system, user, max_tokens);
+        if let Ok(mut b) = self.breaker.lock() {
+            match &r {
+                Ok(_) => b.success(),
+                Err(_) => b.failure(now_ms()),
+            }
+        }
+        Some(r)
+    }
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -376,6 +504,31 @@ impl Llm for FallbackLlm {
                 None => Err(primary_err),
             },
         }
+    }
+
+    /// Routed as `complete_hard` is -- your own second model first when it's
+    /// yours, else local first and the secondary only when the local model
+    /// can't answer -- each with room to write (2 Oct 2026). The code builder
+    /// also names its writers itself (`build_it::writers`), so it can say
+    /// which one wrote the code.
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
+        if self.hard_first {
+            return match self.try_secondary_long(system, user, max_tokens) {
+                Some(Ok(reply)) => Ok(reply),
+                _ => self.primary.complete_long(system, user, max_tokens),
+            };
+        }
+        match self.primary.complete_long(system, user, max_tokens) {
+            Ok(r) => Ok(r),
+            Err(local_err) => match self.try_secondary_long(system, user, max_tokens) {
+                Some(Ok(reply)) => Ok(reply),
+                _ => Err(local_err),
+            },
+        }
+    }
+
+    fn context_tokens(&self) -> Option<u32> {
+        self.primary.context_tokens()
     }
 
     fn complete_hard(&self, system: &str, user: &str) -> Result<String> {
@@ -636,6 +789,28 @@ impl Llm for ShellLlm {
                     truncate(&raw, 200)
                 ))
             })
+    }
+
+    /// `complete`, with the body's word limit raised to `max_tokens` and the
+    /// server's own "I ran out of room" read back.
+    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
+        let mut v = self.vars.clone();
+        v.insert("system".into(), json_escape(system));
+        v.insert("user".into(), json_escape(user));
+        let body = with_max_tokens(&expand(&self.cfg.request, &v), max_tokens);
+        let body = with_keep_alive(&body, &self.cfg, keep_warm());
+        // Room to write it in, on a laptop's processor too: a few thousand
+        // tokens at ten a second is minutes, not the three a sentence gets.
+        let mut tool = self.cfg.tool.clone();
+        tool.timeout_secs = tool.timeout_secs.max(60 + u64::from(max_tokens) / 8);
+        let raw = tool.run(&self.vars, Some(&body))?;
+        let parsed: Value = serde_json::from_str(&raw).map_err(|e| {
+            AtlasError::Platform(format!("model returned non-JSON: {e}. Got: {}", truncate(&raw, 200)))
+        })?;
+        let text = dig(&parsed, &self.cfg.response_path).and_then(|v| v.as_str().map(str::to_string)).ok_or_else(|| {
+            AtlasError::Platform(format!("no text at response_path '{}' in model reply: {}", self.cfg.response_path, truncate(&raw, 200)))
+        })?;
+        Ok(LongReply { text, cut_off: says_cut_off(&parsed) })
     }
 }
 
@@ -2172,12 +2347,14 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         "sign_in" => Intent::SignIn(arg),
         "two_factor" => Intent::TwoFactor(arg),
         "keep_at_it" => Intent::KeepAtIt,
+        "run_build" => Intent::RunBuild(arg),
         "goals" => Intent::Goals(arg),
         "later" => Intent::Later(arg),
         "sort_mail" => Intent::SortMail(arg),
         "schedule_post" => Intent::SchedulePost(arg),
         "press_button" => Intent::PressButton(arg),
         "move_big_files" => Intent::MoveBigFiles(arg),
+        "pc_tune" => Intent::PcTune(arg),
         "tidy_desktop" => Intent::TidyDesktop,
         "use_mic" => Intent::UseMic(arg),
         "edit_media" => Intent::EditMedia(arg),
@@ -2258,6 +2435,7 @@ pub fn model_must_ask(i: &Intent) -> bool {
             | Intent::SchedulePost(_)
             | Intent::PressButton(_)
             | Intent::MoveBigFiles(_)
+            | Intent::PcTune(_)
             | Intent::TidyDesktop
             | Intent::UseMic(_)
             | Intent::Undo
@@ -2271,6 +2449,7 @@ pub fn model_must_ask(i: &Intent) -> bool {
             | Intent::Implement(_)
             | Intent::Improve(_)
             | Intent::Build(_)
+            | Intent::RunBuild(_)
             | Intent::PhoneModel(_)
             | Intent::WorkspaceOff
             | Intent::CloseApp(_)
@@ -2460,12 +2639,14 @@ pub fn default_say(i: &Intent) -> String {
         Intent::TypeCode(_) => String::new(),
         Intent::TwoFactor(_) => String::new(),
         Intent::KeepAtIt => String::new(),
+        Intent::RunBuild(_) => String::new(),
         Intent::Goals(_) => String::new(),
         Intent::Later(_) => String::new(),
         Intent::SortMail(_) => String::new(),
         Intent::SchedulePost(_) => String::new(),
         Intent::PressButton(_) => String::new(),
         Intent::MoveBigFiles(_) => String::new(),
+        Intent::PcTune(_) => String::new(),
         Intent::TidyDesktop => String::new(),
         Intent::UseMic(_) => String::new(),
         Intent::EditMedia(_) => String::new(),
@@ -2535,5 +2716,34 @@ fn truncate(s: &str, n: usize) -> String {
         s.to_string()
     } else {
         s.chars().take(n).collect::<String>() + "…"
+    }
+}
+
+#[cfg(test)]
+mod long_answers {
+    use super::*;
+
+    #[test]
+    fn the_word_limit_is_set_under_whichever_name_the_server_reads() {
+        let llama = with_max_tokens(r#"{"prompt":"x","n_predict":512}"#, 6000);
+        assert!(llama.contains("\"n_predict\":6000"), "{llama}");
+        let openai = with_max_tokens(r#"{"messages":[],"max_tokens":700}"#, 3000);
+        assert!(openai.contains("\"max_tokens\":3000"));
+        let ollama = with_max_tokens(r#"{"prompt":"x","options":{"num_predict":128}}"#, 4000);
+        assert!(ollama.contains("\"num_predict\":4000"));
+        // Nothing to set, or not JSON: left exactly as it was.
+        assert_eq!(with_max_tokens(r#"{"prompt":"x"}"#, 10), r#"{"prompt":"x"}"#);
+        assert_eq!(with_max_tokens("not json", 10), "not json");
+    }
+
+    #[test]
+    fn each_servers_ran_out_of_room_is_read() {
+        let v = |s: &str| serde_json::from_str::<Value>(s).unwrap();
+        assert!(says_cut_off(&v(r#"{"content":"x","stopped_limit":true}"#)));
+        assert!(says_cut_off(&v(r#"{"content":"x","stop_type":"limit"}"#)));
+        assert!(says_cut_off(&v(r#"{"choices":[{"finish_reason":"length"}]}"#)));
+        assert!(says_cut_off(&v(r#"{"stop_reason":"max_tokens"}"#)));
+        assert!(says_cut_off(&v(r#"{"done_reason":"length"}"#)));
+        assert!(!says_cut_off(&v(r#"{"content":"x","stopped_eos":true,"stop_type":"eos"}"#)));
     }
 }

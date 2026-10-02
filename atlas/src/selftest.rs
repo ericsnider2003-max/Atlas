@@ -82,8 +82,8 @@ pub fn tier(kind: &str) -> Tier {
     // anything real whatever its settings point at.
     const NEVER: &[&str] = &[
         "self_test", "hand_over", "take_it_back", "unlock", "back_up", "undo", "sync", "capture", "refile", "files", "unzip",
-        "edit_photo", "edit_media", "move_big_files", "tidy_desktop", "pdf", "receipt", "finish_setup",
-        "work_on_yourself", "implement", "improve", "build_it", "keep_at_it", "delegate", "sort_mail", "dictate",
+        "edit_photo", "edit_media", "move_big_files", "pc_tune", "tidy_desktop", "pdf", "receipt", "finish_setup",
+        "work_on_yourself", "implement", "improve", "build_it", "keep_at_it", "run_build", "delegate", "sort_mail", "dictate",
         "gestures", "call_notes",
     ];
     if NEVER.contains(&kind) {

@@ -141,6 +141,7 @@ struct HubView: UIViewRepresentable {
         let js = """
         window.AtlasShell={listen:function(){webkit.messageHandlers.atlas.postMessage({do:'listen'})},\
         stop:function(){webkit.messageHandlers.atlas.postMessage({do:'stop'})},\
+        converse:function(){webkit.messageHandlers.atlas.postMessage({do:'converse'})},\
         speak:function(t){webkit.messageHandlers.atlas.postMessage({do:'speak',text:t})}};
         """
         cfg.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))

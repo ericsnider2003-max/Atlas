@@ -652,12 +652,34 @@ impl Daemon<'_> {
                 crate::yourchanges::forget(&crate::roots::config_dir(), &file, &path)
                     .map(|_| "Put back to how it shipped.".to_string()),
             ),
+            // The plain API another Atlas reads (`elsewhere::ask`: "how's the
+            // homelab Atlas?"). These were routed and then fell through to
+            // "That isn't a page", so every check-in read HTML as its answer
+            // (2 Oct 2026).
+            Action::Health => Reply::ok("ok"),
+            Action::Status => Reply::ok(self.api_status()),
+            Action::Outstanding => Reply::ok(
+                crate::brief::from_backlog(&self.backlog).iter().map(|i| i.headline()).collect::<Vec<_>>().join("\n"),
+            ),
+            Action::Queued => Reply::ok(self.on_queued()),
+            Action::Say(text) => {
+                let _ = self.hub_post("/hub/talk", &[("text".to_string(), text)]);
+                Reply::ok("heard")
+            }
             // Everything else on this port belongs to the API, not the hub.
             _ => Reply::html(hub::shell(
                 "Atlas",
                 "<p class=note>That isn't a page.</p>",
             )),
         }
+    }
+
+    /// One line: running, what's in hand, what's waiting.
+    fn api_status(&self) -> String {
+        let doing = self.crew.active();
+        let waiting = self.crew.queued();
+        let paused = if self.attention.is_paused() { " Paused." } else { "" };
+        format!("Running. {doing} errand{} in hand, {waiting} waiting.{paused}", if doing == 1 { "" } else { "s" })
     }
 
     fn hub_page(&mut self, page: Page) -> String {
@@ -746,7 +768,8 @@ impl Daemon<'_> {
                     ));
                 }
                 let page = hub::status_page(&lines, settings.changed().len());
-                with_block(page, &self.space_section_live())
+                // "Make it run well" beside it, and "Sort my files" (2 Oct 2026).
+                with_block(page, &format!("{}{}{}", self.space_section_live(), hub::speed_section(), hub::sorting_section()))
             }
             Page::Settings => {
                 // What's kept, not what this run started with: a change made
@@ -1581,19 +1604,31 @@ impl Daemon<'_> {
     /// for, and changes it built that wait on your yes. The same things the
     /// waiting count at the top of every page counts.
     fn home_asks(&self, now: u64) -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = self
-            .outstanding_lines(now)
-            .into_iter()
-            .map(|t| (t, hub::Page::Workspace.href().to_string()))
-            .collect();
+        self.home_asks_keyed(now).into_iter().map(|(what, href, _)| (what, href)).collect()
+    }
+
+    /// `home_asks`, each with the key its Drop it button sends (see
+    /// `hub::Drops`). Worked out here, where each ask is made, rather than
+    /// matched back up by its words afterwards: two things can read the same.
+    fn home_asks_keyed(&self, now: u64) -> Vec<(String, String, Option<String>)> {
+        let mut out: Vec<(String, String, Option<String>)> = Vec::new();
+        if let Some(view) = crate::workspace_view::shipped().into_iter().find(|v| v.name == "Now") {
+            for i in crate::workspace_view::apply(&self.workspace, &view, now) {
+                out.push((i.title.clone(), hub::Page::Workspace.href().to_string(), Some(format!("w:{}", i.id))));
+            }
+        }
         for b in self.backlog.items.iter().filter(|i| !i.done && !i.dismissed) {
             if waits_on_you(&b.blocker) {
-                out.push((sentence(&b.request), hub::Page::Outstanding.href().to_string()));
+                out.push((sentence(&b.request), hub::Page::Outstanding.href().to_string(), Some(format!("b:{}", b.id))));
             }
         }
         for p in &self.workshop.projects {
             for c in p.ready() {
-                out.push((format!("Approve \"{}\" ({})", c.title, p.name), hub::Page::Workshop.href().to_string()));
+                out.push((
+                    format!("Approve \"{}\" ({})", c.title, p.name),
+                    hub::Page::Workshop.href().to_string(),
+                    Some(format!("c:{}:{}", c.id, p.name)),
+                ));
             }
         }
         out
@@ -1711,55 +1746,183 @@ impl Daemon<'_> {
 
     /// Outstanding, in the design's four lanes.
     fn open_work(&self, now: u64) -> hub::Open {
-        let mut waiting: Vec<(String, String, String)> = self
-            .home_asks(now)
-            .into_iter()
-            .map(|(what, href)| (what, String::new(), href))
-            .collect();
+        let mut drops = hub::Drops::default();
+        let mut waiting: Vec<(String, String, String)> = Vec::new();
+        for (what, href, key) in self.home_asks_keyed(now) {
+            waiting.push((what, String::new(), href));
+            drops.waiting.push(key);
+        }
         // A question or a yes it's waiting on carries its reason with it.
         for w in waiting.iter_mut() {
             if let Some(i) = self.backlog.items.iter().find(|i| !i.done && !i.dismissed && sentence(&i.request) == w.0) {
                 w.1 = sentence(&i.blocker.explain());
             }
         }
-        let blocked: Vec<hub::Stopped> = self
-            .backlog
-            .items
-            .iter()
-            .filter(|i| !i.done && !i.dismissed && !waits_on_you(&i.blocker))
-            .map(|i| hub::Stopped {
+        let mut blocked: Vec<hub::Stopped> = Vec::new();
+        for i in self.backlog.items.iter().filter(|i| !i.done && !i.dismissed && !waits_on_you(&i.blocker)) {
+            blocked.push(hub::Stopped {
                 what: sentence(&i.request),
                 tried: format!("To {}.", i.request.trim().trim_end_matches('.')),
                 stopped: sentence(&i.blocker.explain()),
                 needs: i.blocker.needs(),
                 area: None,
-            })
-            .collect();
-        let mut in_progress: Vec<(String, String)> = self
+            });
+            drops.blocked.push(Some(format!("b:{}", i.id)));
+        }
+        let mut in_progress: Vec<(String, String)> = Vec::new();
+        for t in self
             .queue
             .tasks
             .iter()
             .filter(|t| !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed))
-            .map(|t| {
-                let how = match t.state {
-                    crate::lanes::TaskState::Running => "Running now.",
-                    crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work.",
-                    _ => "Next in line.",
-                };
-                (sentence(&t.command), how.to_string())
-            })
-            .collect();
+        {
+            let how = match t.state {
+                crate::lanes::TaskState::Running => "Running now.",
+                crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work.",
+                _ => "Next in line.",
+            };
+            in_progress.push((sentence(&t.command), how.to_string()));
+            // A queued task runs inside the tick, start to finish, with no
+            // way to be told to stop part way: one marked running gets no
+            // button rather than one that can't do what it says.
+            drops.in_progress.push((t.state != crate::lanes::TaskState::Running).then(|| format!("t:{}", t.id)));
+        }
         for e in self.crew.errands() {
             in_progress.push((e.name.clone(), "Handed to a worker — I check what comes back before you see it.".into()));
+            drops.in_progress.push(Some(format!("e:{}", e.id)));
         }
         let today = crate::localclock::midnight(now, crate::localclock::offset_secs());
-        let carried: Vec<(String, u64)> = self
-            .workspace
+        let mut carried: Vec<(String, u64)> = Vec::new();
+        for i in self.workspace.iter().filter(|i| i.at < today && i.status.live()) {
+            carried.push((i.title.clone(), ((today - i.at) / 86_400).max(1)));
+            drops.carried.push(Some(format!("w:{}", i.id)));
+        }
+        hub::Open { waiting, blocked, in_progress, carried, drops }
+    }
+
+    /// Everything on the Outstanding page that can be taken off it, in the
+    /// page's own order, as (key, what to call it). What "remove the second
+    /// one from my outstanding list" counts through, so the second one is
+    /// the second one you can see (2 Oct 2026: the spoken path only knew the
+    /// backlog, so anything else on the page "wasn't on the list").
+    ///
+    /// A workspace item can be on the page twice (waiting on you, and
+    /// carried over): it's listed once. A backlog item is called what you
+    /// said, not the page's tidied sentence, because that's what you'll say
+    /// back.
+    pub(crate) fn outstanding_removable(&self, now: u64) -> Vec<(String, String)> {
+        let o = self.open_work(now);
+        let titles = o
+            .waiting
             .iter()
-            .filter(|i| i.at < today && i.status.live())
-            .map(|i| (i.title.clone(), ((today - i.at) / 86_400).max(1)))
-            .collect();
-        hub::Open { waiting, blocked, in_progress, carried }
+            .map(|w| w.0.clone())
+            .chain(o.blocked.iter().map(|b| b.what.clone()))
+            .chain(o.in_progress.iter().map(|p| p.0.clone()))
+            .chain(o.carried.iter().map(|c| c.0.clone()));
+        let pad = |v: &Vec<Option<String>>, n: usize| (0..n).map(|i| v.get(i).cloned().flatten()).collect::<Vec<_>>();
+        let keys = pad(&o.drops.waiting, o.waiting.len())
+            .into_iter()
+            .chain(pad(&o.drops.blocked, o.blocked.len()))
+            .chain(pad(&o.drops.in_progress, o.in_progress.len()))
+            .chain(pad(&o.drops.carried, o.carried.len()));
+        let mut out: Vec<(String, String)> = Vec::new();
+        for (key, title) in keys.zip(titles) {
+            let Some(key) = key else { continue };
+            if out.iter().any(|(k, _)| *k == key) {
+                continue;
+            }
+            let title = key
+                .strip_prefix("b:")
+                .and_then(|id| id.parse::<u64>().ok())
+                .and_then(|id| self.backlog.items.iter().find(|i| i.id == id))
+                .map(|i| i.request.trim().to_string())
+                .unwrap_or(title);
+            out.push((key, title));
+        }
+        out
+    }
+
+    /// Take one thing off the Outstanding page, by the key its button (or
+    /// `outstanding_removable`) gave it, and keep that. The one way every
+    /// path removes -- the hub's buttons, "take it off my outstanding list",
+    /// "drop the task" -- so none of them can forget to save, and none can
+    /// say gone while it comes back after a restart (2 Oct 2026).
+    ///
+    /// Each kind goes the way its own model already has for it: a backlog
+    /// item is dismissed (and kept with what you dropped, so "bring back
+    /// what I dropped" finds it), a workspace item is marked dropped, a
+    /// queued task that hasn't started is taken out of the queue, a worker's
+    /// errand is asked to stop, and a project change waiting for your yes is
+    /// dropped. `Err` is what to say when there was nothing to take off.
+    pub(crate) fn drop_outstanding(&mut self, key: &str, now: u64) -> Result<OffTheList, String> {
+        let (kind, rest) = key.split_once(':').unwrap_or((key, ""));
+        let gone = || "That's already off the list.".to_string();
+        match kind {
+            "b" => {
+                let id: u64 = rest.parse().map_err(|_| gone())?;
+                let item = self.backlog.outstanding().into_iter().find(|i| i.id == id).cloned().ok_or_else(gone)?;
+                self.backlog.dismiss(id);
+                let request = item.request.trim().to_string();
+                self.dropped.retain(|d| d.title != request);
+                self.dropped.push(crate::daily::Dropped {
+                    title: request.clone(),
+                    when: now,
+                    carried_for: (now.saturating_sub(item.first_seen) / 86_400) as u32,
+                    about: None,
+                    thinking: Vec::new(),
+                });
+                let kept = self.backlog.save(&self.store).and_then(|_| self.store.save("dropped", &self.dropped));
+                Ok(OffTheList { title: request, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: true })
+            }
+            "w" => {
+                let i = self.workspace.iter_mut().find(|i| i.id == rest && i.status.live()).ok_or_else(gone)?;
+                i.status = crate::workspace_view::Status::Dropped;
+                i.closed_at = Some(now);
+                let title = i.title.clone();
+                let kept = self.store.save("workspace", &self.workspace);
+                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
+            }
+            "t" => {
+                let id: u64 = rest.parse().map_err(|_| gone())?;
+                let t = self.queue.tasks.iter().find(|t| t.id == id).ok_or_else(gone)?;
+                match t.state {
+                    crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap => {}
+                    crate::lanes::TaskState::Running => {
+                        return Err("That one's already running, and a queued job can't be stopped part way. It'll be off the list when it finishes.".into())
+                    }
+                    _ => return Err(gone()),
+                }
+                let title = t.command.trim().to_string();
+                self.queue.tasks.retain(|t| t.id != id);
+                let kept = self.queue.save(&self.store);
+                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
+            }
+            "e" => {
+                let id: u64 = rest.parse().map_err(|_| gone())?;
+                let e = self.crew.errands().into_iter().find(|e| e.id == id).ok_or_else(gone)?;
+                // Not waited on: the errand stops at its next safe point and
+                // its ending comes back through `settle` like any other. One
+                // still waiting for a hand is simply dropped.
+                self.crew.ask_to_stop(id);
+                let stopping = self.crew.in_hand(id);
+                Ok(OffTheList { title: e.name, unsaved: None, stopping, can_bring_back: false })
+            }
+            "c" => {
+                let (id, project) = rest.split_once(':').ok_or_else(gone)?;
+                let id: u64 = id.parse().map_err(|_| gone())?;
+                let p = self.workshop.projects.iter_mut().find(|p| p.name == project).ok_or_else(gone)?;
+                let c = p
+                    .changes
+                    .iter_mut()
+                    .find(|c| c.id == id && c.state == crate::workshop::State::Ready)
+                    .ok_or_else(gone)?;
+                c.state = crate::workshop::State::Dropped;
+                let title = format!("Approve \"{}\" ({})", c.title, project);
+                let kept = self.workshop.save(&self.store);
+                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
+            }
+            _ => Err(gone()),
+        }
     }
 
     pub(crate) fn outstanding_lines(&self, now: u64) -> Vec<String> {
@@ -3359,6 +3522,24 @@ impl Daemon<'_> {
                 let said = self.social_post(f, now);
                 hub::back_with(Page::Social.href(), "", &said)
             }
+            // Outstanding's Drop it / Stop it (2 Oct 2026). The key is looked
+            // up again in `drop_outstanding`, so a stale page (pressed twice,
+            // or after the thing finished) says it's already off rather than
+            // taking off something else.
+            "/hub/outstanding" => {
+                let key = field_of(f, "key").unwrap_or_default();
+                if what != "drop" || key.is_empty() {
+                    return hub::back_with(Page::Outstanding.href(), "", "That button didn't say which thing, so nothing changed.");
+                }
+                if let Some(no) = self.handed_over_refusal(&Intent::DropTask(String::new())) {
+                    return hub::back_with(Page::Outstanding.href(), "", &no);
+                }
+                let said = match self.drop_outstanding(&key, now) {
+                    Ok(off) => off.said(),
+                    Err(why) => why,
+                };
+                hub::back_with(Page::Outstanding.href(), "", &said)
+            }
             "/hub/messages" => {
                 if what == "start" {
                     let who = field_of(f, "who").unwrap_or_default();
@@ -3752,6 +3933,38 @@ impl Daemon<'_> {
 /// (28 Sep 2026). The client list and the shared tasks are read from disk for
 /// each click, so a failed save is the change gone at once -- and the page
 /// used to say "Added" anyway.
+/// One thing taken off the Outstanding page, as `drop_outstanding` did it.
+pub(crate) struct OffTheList {
+    /// What it was called, as you'd say it back.
+    pub title: String,
+    /// Why keeping it failed, when it did: it's off for now and may come
+    /// back after a restart, and that is said rather than hidden.
+    pub unsaved: Option<String>,
+    /// A worker was asked to stop and hasn't yet: it leaves the page when it
+    /// winds down, not this second.
+    pub stopping: bool,
+    /// "bring back what I dropped" finds it again.
+    pub can_bring_back: bool,
+}
+
+impl OffTheList {
+    /// What the hub's notice says.
+    pub(crate) fn said(&self) -> String {
+        let mut said = if self.stopping {
+            format!("Asked \"{}\" to stop. It finishes the step it's on, then it's off the list.", self.title)
+        } else {
+            format!("\"{}\" is off your outstanding list.", self.title)
+        };
+        if self.can_bring_back {
+            said.push_str(" \"Bring back what I dropped\" finds it again.");
+        }
+        if let Some(e) = &self.unsaved {
+            said.push_str(&format!(" But I couldn't save that ({e}), so it may come back after a restart."));
+        }
+        said
+    }
+}
+
 fn didnt_stick(e: &crate::error::AtlasError) -> String {
     format!("I couldn't save that, so it didn't stick: {e}. Try again in a moment.")
 }

@@ -149,6 +149,8 @@ mod budget;
 mod bug_sweep;
 #[path = "build_from_a_description.rs"]
 mod build_from_a_description;
+#[path = "atlas_writes_real_code.rs"]
+mod atlas_writes_real_code;
 #[path = "capability_honesty.rs"]
 mod capability_honesty;
 #[path = "capability_routine.rs"]
@@ -299,6 +301,8 @@ mod hands_read_the_model;
 mod handshape;
 #[path = "handtrack.rs"]
 mod handtrack;
+#[path = "handweight.rs"]
+mod handweight;
 #[path = "health_modes.rs"]
 mod health_modes;
 #[path = "health_readings.rs"]
@@ -933,6 +937,10 @@ mod mcp_server;
 mod what_the_model_ranking_found;
 #[path = "what_eric_said_on_1_oct.rs"]
 mod what_eric_said_on_1_oct;
+#[path = "pc_tune_up.rs"]
+mod pc_tune_up;
+#[path = "taking_things_off_outstanding.rs"]
+mod taking_things_off_outstanding;
 #[path = "greet_once.rs"]
 mod greet_once;
 #[path = "selftest_examples.rs"]
@@ -943,6 +951,12 @@ mod answers_not_timings;
 mod the_silence_after_you_speak;
 #[path = "there_when_you_sit_down.rs"]
 mod there_when_you_sit_down;
+#[path = "writing_checked.rs"]
+mod writing_checked;
+#[path = "job_fit.rs"]
+mod job_fit;
+#[path = "ask_my_documents.rs"]
+mod ask_my_documents;
 #[path = "the_npu_engine.rs"]
 mod the_npu_engine;
 #[path = "apple_first_then_atlas.rs"]
@@ -955,3 +969,19 @@ mod reaching_the_iphone_with_atlas_closed;
 mod apple_weather_first;
 #[path = "friends_get_nothing_of_erics.rs"]
 mod friends_get_nothing_of_erics;
+#[path = "sorting_a_folder.rs"]
+mod sorting_a_folder;
+#[path = "end_of_the_day.rs"]
+mod end_of_the_day;
+#[path = "lets_work.rs"]
+mod lets_work;
+#[path = "after_the_call.rs"]
+mod after_the_call;
+#[path = "the_plain_api_answers.rs"]
+mod the_plain_api_answers;
+#[path = "market_desk.rs"]
+mod market_desk;
+#[path = "video_studio.rs"]
+mod video_studio;
+#[path = "hands_free.rs"]
+mod hands_free;

@@ -196,12 +196,41 @@ fn get_to_know_me_fills_the_stores_from_your_answers() {
     d.turn("skip", NOW + 30);
     d.turn("posting twice a week", NOW + 40);
     d.turn("Desktop and Dropbox", NOW + 50);
+    d.turn("video editing and T-shirt design", NOW + 55);
     let end = d.turn("no", NOW + 60);
     assert!(end.contains("Here's what I kept") && end.contains("YouTube channel"), "{end}");
-    assert_eq!(d.facts.facts.len(), before + 6, "name, three projects, push, folders");
+    assert!(end.contains("I'll look out for video editing, t-shirt design."), "{end}");
+    assert_eq!(d.facts.facts.len(), before + 8, "name, three projects, push, folders, and the hunt's two lists");
+    assert_eq!(atlas::hunt::Interests::from_facts(&d.facts).want, vec!["video editing", "t-shirt design"]);
     assert!(d.interview.is_none());
     // A question part way through ends it rather than being kept as an answer.
     d.turn("get to know me", NOW + 100);
     let _ = d.turn("what time is it?", NOW + 110);
     assert!(d.interview.is_none());
+}
+
+/// The debug-spiral rule (nine-repos report, 1 Oct 2026): after three rough
+/// turns running, the model is told to stop retrying and find the wrong
+/// assumption; before that, it isn't; a calm turn resets it.
+#[test]
+fn three_rough_turns_running_ask_for_the_wrong_assumption() {
+    let c = cfg();
+    let plat = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let heard = std::sync::Arc::new(Heard(Default::default()));
+    let mut d = Daemon::new(&c, &plat, Some(heard.clone()), Store::new(tmp("spiral")), Proactive::new(ProactiveConfig::default()));
+    let rough = ["that didn't work", "it's still broken", "why isn't it working, this is broken"];
+    let mut seen_at = Vec::new();
+    for (i, s) in rough.iter().enumerate() {
+        heard.0.lock().unwrap().clear();
+        d.turn(s, NOW + 30 * i as u64);
+        let seen = heard.0.lock().unwrap().join("\n").to_lowercase();
+        assert!(!seen.is_empty(), "\"{s}\" never reached the model");
+        seen_at.push(seen.contains("which assumption might be wrong"));
+    }
+    assert_eq!(seen_at, vec![false, false, true]);
+    heard.0.lock().unwrap().clear();
+    d.turn("what's a good name for a bakery", NOW + 200);
+    assert!(!heard.0.lock().unwrap().join("\n").to_lowercase().contains("which assumption"));
+    assert_eq!(atlas::persona::spiral_line(2), None);
+    assert_eq!(atlas::persona::spiral_line(3), Some(atlas::persona::DEBUG_SPIRAL));
 }

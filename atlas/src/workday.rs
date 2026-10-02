@@ -680,8 +680,22 @@ impl Daemon<'_> {
             crate::tradeday::When::After => cfg.after.clone(),
         };
         let schedule = if when == crate::tradeday::When::Before { crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone()) } else { vec![] };
+        // Before the open: today's scheduled releases, from the checked
+        // event tables (the general market desk -- general trading knowledge only).
+        let releases = if when == crate::tradeday::When::Before {
+            let off = crate::localclock::offset_secs();
+            let from = crate::localclock::midnight(t, off) as i64 * 1000;
+            let (y, m, _) = crate::civil::civil_from_days((from + off * 1000) / 86_400_000);
+            crate::market::events::month(y as i32, m)
+                .ok()
+                .and_then(|ev| crate::tradeday::releases_in(&ev, from, from + 86_400_000, off))
+                .map(|s| format!("\n{s}"))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         self.workday.set_follow(Some(Follow::Trade(qs.clone())), t);
-        format!("{}\n{}", crate::tradeday::ask(&qs, when, &schedule), crate::tradeday::THE_LINE)
+        format!("{}{releases}\n{}", crate::tradeday::ask(&qs, when, &schedule), crate::tradeday::THE_LINE)
     }
 
     /// Before the open and after the close, on a trading day, once each.

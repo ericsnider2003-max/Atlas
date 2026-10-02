@@ -74,7 +74,6 @@ const AMBIGUOUS: &[&str] = &[
     "delegate::interpret",
     "delivery::spoken",
     "dictate::ask_which",
-    "draft::spoken",
     // explain::check (added 21 Sep 2026) is the fixed-Normal convenience over
     // `check_at`; the `atlas explain` handler always calls `check_at` with a
     // depth read from the request, so `check` has no production caller and looks

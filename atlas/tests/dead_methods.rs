@@ -387,7 +387,6 @@ const ORPHAN_METHODS: &[&str] = &[
     // 26 Sep 2026, claims::over and session::is_overlap: their only caller was
     // trading-system code that left personal Atlas (Eric: general trading
     // knowledge only). Kept for the next trading caller.
-    "claims::over",
     // backends::spec came off 22 Sep 2026: deleted. A redundant lookup accessor
     // (`self.specs.iter().find(...)`) that nothing called; `choose`/`eligible`
     // reach the spec table directly. Also removed from KNOWN in
@@ -499,17 +498,26 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
 fn without_test_blocks(body: &str) -> String {
     let mut out = Vec::new();
     let mut in_test = false;
+    let mut opened = false;
     let mut depth: i32 = 0;
     for line in body.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             in_test = true;
+            opened = false;
             depth = 0;
             continue;
         }
         if in_test {
+            // Ended when the braces it opened close again -- on any line, not
+            // only one that also opens a brace (2 Oct 2026: a test module
+            // whose last line is a lone `}`, in daemon/making.rs, swallowed
+            // every daemon file after it and hid all their calls).
+            if line.contains('{') {
+                opened = true;
+            }
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
-            if line.contains('{') && depth <= 0 {
+            if opened && depth <= 0 {
                 in_test = false;
             }
             continue;

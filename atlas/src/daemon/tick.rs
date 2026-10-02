@@ -837,6 +837,7 @@ impl<'a> Daemon<'a> {
             self.reminded.insert(key);
             self.journal.record_at(Act::Offered, &format!("reminder: {}", occ.title), true, t);
         }
+        self.tick_laps.mark("calendar reminders");
 
         // Anything hand tracking has said since the last tick. It runs on its
         // own thread precisely so the pointer does not wait for this — only
@@ -857,6 +858,7 @@ impl<'a> Daemon<'a> {
         if let Some(said) = self.look_at_the_room(t) {
             out.push(said);
         }
+        self.tick_laps.mark("hands and the room");
 
         // Anything you handed over from another device. Read one per tick;
         // said only when Atlas may speak at all, so a tray filling up while
@@ -866,6 +868,7 @@ impl<'a> Daemon<'a> {
                 out.push(said);
             }
         }
+        self.tick_laps.mark("handed things");
 
         // --- Backup, on its own schedule ---
         //
@@ -874,8 +877,16 @@ impl<'a> Daemon<'a> {
         // waiting on it the way they are for a spoken command, which makes
         // it the worst possible thing to block the tick. Handed to the
         // crew; `take_crew_news` reports it when it actually finishes.
-        let bcfg = self.backup_cfg();
-        if due_for_backup(&bcfg, t) && t.saturating_sub(self.last_backup) > 3600 {
+        // Whether one is due is looked at once every ten minutes, not every
+        // tick (2 Oct 2026): `due_for_backup` counts every file in every
+        // backup on disk, and on Eric's laptop that ran every 1.3 s.
+        let look = t >= self.next_backup_look
+            && t.saturating_sub(self.last_backup) > 3600;
+        let bcfg = if look { self.backup_cfg() } else { BackupConfig::default() };
+        if look {
+            self.next_backup_look = t + 600;
+        }
+        if look && due_for_backup(&bcfg, t) {
             let root = self.store.root().to_path_buf();
             let cfg_for_errand = bcfg.clone();
             let work: crew::Work = Box::new(move |_stop| match back_up(&root, &cfg_for_errand, crate::store::now()) {
@@ -916,6 +927,7 @@ impl<'a> Daemon<'a> {
         // here: `OvernightConfig::apply_while_asleep` is `#[serde(skip)]` and
         // hard-wired false, and `the_night_never_applies_anything` holds it.
         self.run_the_night(t);
+        self.tick_laps.mark("the night");
 
         // --- How you're working, when it's worth a word ---
         //
@@ -961,6 +973,7 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
+        self.tick_laps.mark("how you're working");
 
         // --- Going somewhere your texts won't reach you ---
         //
@@ -1059,7 +1072,9 @@ impl<'a> Daemon<'a> {
         // One file of Atlas's own code broken on purpose a day, to find
         // what no test notices (`mutation`; research report, Stage 2 item
         // 12). Only where Atlas runs from its source with self-repair on.
+        self.tick_laps.mark("going away, the envelope");
         self.maybe_mutation_sweep(t);
+        self.tick_laps.mark("self-repair sweep");
 
         // Gated on `may_interrupt` before the look rather than after it. The
         // clock is only marked when it actually looked, so a week spent in
@@ -1320,6 +1335,7 @@ impl<'a> Daemon<'a> {
             let here_now = self.quiet_for(t) < BRIEF_WHEN_HERE_WITHIN_SECS;
             if bcfg.enabled
                 && here_now
+                && self.work_session.is_none()
                 && arrival == crate::daily::Arrival::Starting
                 && this_hour >= bcfg.not_before_hour
             {
@@ -1331,6 +1347,17 @@ impl<'a> Daemon<'a> {
                 // on with the rest." -- which is the right answer to someone
                 // who just asked and the wrong thing to volunteer every
                 // morning for the rest of your life.
+                // One thing noticed (idea 11): once a day, with the brief --
+                // said to someone who's arrived, never to an empty room.
+                let mut b = b;
+                let today = crate::localclock::midnight(t, crate::localclock::offset_secs());
+                let noticed_on: u64 = self.store.load("noticed_on");
+                if noticed_on != today {
+                    if let Some(n) = crate::daily::one_thing_noticed(&self.noticed_days(t)) {
+                        b.noticed = Some(n);
+                        let _ = self.store.save("noticed_on", &today);
+                    }
+                }
                 if !b.is_empty() {
                     self.last_greeted_at = t;
                     let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
@@ -1344,6 +1371,45 @@ impl<'a> Daemon<'a> {
                         Some(night) => self.morning_brief = Some(format!("{night} {line}")),
                         None => self.morning_brief = Some(line),
                     }
+                }
+            }
+        }
+
+        // A work session (idea 3): interruptions held until it ends, one
+        // check-in halfway if you're there, and how it went at the end.
+        if let Some(s) = self.work_session.clone() {
+            if s.over(t) {
+                let said = self.end_work_session(t);
+                out.push(said);
+            } else {
+                self.proactive.quiet_until = s.until;
+                if s.check_in_due(t) && self.quiet_for(t) < crate::returning::GREET_HERE_WITHIN_SECS {
+                    out.push(crate::worksession::halfway(&s, t));
+                    if let Some(w) = self.work_session.as_mut() {
+                        w.checked_in = true;
+                    }
+                    let _ = self.store.save("work_session", &self.work_session);
+                }
+            }
+        }
+
+        // The evening wrap-up (why-stale idea 2, 1 Oct 2026): once an
+        // evening, while you're here, after a real day at the machine --
+        // done, slipping, tomorrow's first move; the week on Fridays. It is
+        // the evening's hello, so the part-of-day greeting after it is spent.
+        {
+            let off = crate::localclock::offset_secs();
+            let today = crate::localclock::midnight(t, off);
+            let wrapped_on: u64 = self.store.load("wrapped_on");
+            let here = self.quiet_for(t) < crate::returning::GREET_HERE_WITHIN_SECS;
+            let hour = crate::localclock::hour_here(t);
+            if self.work_session.is_none() && wrapped_on != today && here && (crate::daily::WRAP_FROM_HOUR..crate::daily::WRAP_UNTIL_HOUR).contains(&hour) {
+                let w = self.wrap_now(t, false);
+                if crate::daily::wrap_due(hour, today, wrapped_on, w.active_secs, here) {
+                    let _ = self.store.save("wrapped_on", &today);
+                    self.last_greeted_at = t;
+                    let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
+                    out.push(crate::daily::wrap_said(&w));
                 }
             }
         }

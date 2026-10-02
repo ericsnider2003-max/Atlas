@@ -287,13 +287,16 @@ fn atlas_starts_its_own_model_server_and_keeps_one() {
     assert_eq!(std::fs::read_to_string(&marker).unwrap().lines().count(), 1, "a second server was started");
 
     // Let go after the quiet it's allowed, and started again when needed.
-    // The quiet allowed is half an hour where the model doesn't fit and a
-    // week where it does (Phase 0.2, `lifecycle::model_stays_when_it_fits`),
-    // and which one depends on the machine the test runs on -- so past both.
-    let later = NOW + 20 + atlas::lifecycle::MODEL_RESIDENT_SECS + 1;
-    let stopped = d.helpers.reap(later);
+    // Where the machine has room it stays loaded far longer than half an
+    // hour (`lifecycle::model_stays_when_it_fits`, 1 Oct 2026: no more
+    // stop-and-restart every 30 minutes); otherwise half an hour stands.
+    let mut stopped = d.helpers.reap(NOW + 20 + 1_800);
+    if d.helpers.is_running("model-server") {
+        assert!(stopped.is_empty());
+        stopped = d.helpers.reap(NOW + 20 + atlas::lifecycle::MODEL_RESIDENT_SECS + 1);
+    }
     assert!(!stopped.is_empty() && !d.helpers.is_running("model-server"));
-    let _ = d.turn("one more", later + 100);
+    let _ = d.turn("one more", NOW + 20 + atlas::lifecycle::MODEL_RESIDENT_SECS + 100);
     let waited = std::time::Instant::now();
     while std::fs::read_to_string(&marker).unwrap().lines().count() < 2 && waited.elapsed().as_secs() < 5 {
         std::thread::sleep(std::time::Duration::from_millis(100));
