@@ -714,23 +714,22 @@ impl<'a> Daemon<'a> {
         // main thread in 50-90 ms bursts, "the rest" of each tick). Now the
         // date first, from memory; the disk once a quarter hour at most; the
         // source only on the day it's due.
-        static NOT_BEFORE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        if t < NOT_BEFORE.load(std::sync::atomic::Ordering::Relaxed) {
+        if t < self.next_sweep_look {
             return;
         }
         if self.rehearsal || !self.tools_cfg().self_work.enabled {
-            NOT_BEFORE.store(t + 900, std::sync::atomic::Ordering::Relaxed);
+            self.next_sweep_look = t + 900;
             return;
         }
         let last: u64 = self.store.load("mutation_sweep_at");
         if t.saturating_sub(last) < EVERY_SECS {
-            NOT_BEFORE.store((last + EVERY_SECS).min(t + 900), std::sync::atomic::Ordering::Relaxed);
+            self.next_sweep_look = (last + EVERY_SECS).min(t + 900);
             return;
         }
         let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
         if !root.join("Cargo.toml").is_file() || !root.join("src").is_dir() {
             // No source on this computer: look again in an hour, not a tick.
-            NOT_BEFORE.store(t + 3600, std::sync::atomic::Ordering::Relaxed);
+            self.next_sweep_look = t + 3600;
             return;
         }
         let _ = self.store.save("mutation_sweep_at", &t);
