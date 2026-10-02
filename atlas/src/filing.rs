@@ -262,44 +262,7 @@ pub fn file_one(from: &Path, s: &Suggestion, sys: &crate::system::SystemConfig) 
     }
 }
 
-/// What Atlas says before tidying a folder: how many loose files, how many
-/// it would move and where to, how many it would leave. Ends with the
-/// question when there is something to move.
-pub fn tidy_plan_words(what: &str, plan: &[(PathBuf, Suggestion)], root: &Path) -> String {
-    let moves: Vec<&Bucket> = plan
-        .iter()
-        .filter_map(|(_, s)| match s {
-            Suggestion::Move { bucket, .. } => Some(bucket),
-            Suggestion::Leave { .. } => None,
-        })
-        .collect();
-    let left = plan.len() - moves.len();
-    if plan.is_empty() {
-        return format!("There are no loose files on {what} -- only folders and shortcuts, which I leave where they are.");
-    }
-    if moves.is_empty() {
-        return format!(
-            "{} loose file{} on {what}, and none I'd move with any confidence -- their names or kinds don't say where they \
-             belong, so they stay where you put them.",
-            plan.len(),
-            if plan.len() == 1 { "" } else { "s" }
-        );
-    }
-    let mut by: Vec<String> = Vec::new();
-    for b in [Bucket::Projects, Bucket::Areas, Bucket::Resources, Bucket::Archive] {
-        let n = moves.iter().filter(|m| ***m == b).count();
-        if n > 0 {
-            by.push(format!("{n} to {}", b.folder()));
-        }
-    }
-    format!(
-        "{} loose file{} on {what}. I'd file {} into {} -- {} -- and leave {left} where {} (shortcuts and folders aren't \
-         touched). Nothing is deleted, and I'll say where each one went. Go ahead?",
-        plan.len(),
-        if plan.len() == 1 { "" } else { "s" },
-        moves.len(),
-        root.display(),
-        by.join(", "),
-        if left == 1 { "it is" } else { "they are" }
-    )
-}
+// `tidy_plan_words`, what "organize my desktop" used to say, was replaced on
+// 2 Oct 2026 by `organize::plan_said`: the daemon sorts by kind with copies
+// and old installers to "To review" now. `plan_folder` and `file_one` stay
+// for `atlas file`, which still files by PARA.

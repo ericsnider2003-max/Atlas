@@ -213,7 +213,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "index", what: "know where your files are", area: Files, state: Working, needs: None, offline: true, added: 4, runs: &[Needs::Files], modules: &["index", "chunker", "bm25"] },
         Capability { id: "recall", what: "find something you wrote — by a word that was in it, and by what it was about once an embedding model is installed", area: Files, state: Working, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["recall", "meaning", "stemmer", "bm25", "asking"] },
         Capability { id: "remember", what: "remember what you tell it and what it researches, learn a whole document at once, and answer 'what do you know about X' — from one indexed fact book that recalls associatively, strengthens with repetition, corrects on restatement, and stays fast and bounded as it grows; and 'get to know me' fills it in seven questions", area: Files, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["facts", "freshness", "consolidate", "contents", "getknow"] },
-        Capability { id: "system", what: "move files, set a wallpaper, tidy the desktop", area: Files, state: Off, needs: None, offline: true, added: 10, runs: &[Needs::Files], modules: &["system"] },
+        Capability { id: "system", what: "move files, set a wallpaper, and sort a folder -- the desktop, Downloads, Documents or one you name -- into a folder for each kind of file, copies and old installers into \"To review\", said first, done on your yes, never deleting, and put back by \"undo that\"", area: Files, state: Off, needs: None, offline: true, added: 10, runs: &[Needs::Files], modules: &["system", "organize"] },
         Capability { id: "tune", what: "find what's slowing the machine down -- each program's CPU measured over a few seconds, everything that starts with Windows, big and duplicate downloads -- and on your yes close what isn't needed (never Windows, never itself, never what's in front of you), switch startup programs off, clear temporary files and move big downloads into a folder you name, with undo for the startup changes and the moves", area: Files, state: Off, needs: None, offline: true, added: 10, runs: &[Needs::Files, Needs::Background], modules: &["tune", "checks"] },
         Capability { id: "backup", what: "back itself up", area: Files, state: Working, needs: None, offline: true, added: 5, runs: &[Needs::Files], modules: &["store", "safety"] },
         // One way, by decision: personal never reaches a business space, and
@@ -1550,7 +1550,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (hearing through sherpa-onnx with NVIDIA's Parakeet -- part of `wake`),
 // `keeping` (reminders, timers, events moved -- part of `calendar`) and
 // `weather` (Open-Meteo). 437 -> 442. 442 -> 443: `texting`. 443 -> 444: `speakernet` (part of `diarize`).
-pub const MODULES_IN_TREE: usize = 463;
+// 2 Oct 2026: `organize` (sorting a folder -- part of `system`), on top
+// of the other chat's 463.
+pub const MODULES_IN_TREE: usize = 464;
 
 /// Every module no capability claims, and why it is not one.
 ///

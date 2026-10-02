@@ -1314,9 +1314,10 @@ pub struct Daemon<'a> {
     pending_storage: Option<crate::tune::StoragePlan>,
     /// What an optimization run offered to do, waiting on your yes.
     pending_optimize: Option<crate::tune::Plan>,
-    /// The desktop's loose files and where each would go, shown and waiting
-    /// for your yes ("tidy my desktop", 29 Sep 2026).
-    pending_desktop: Option<Vec<(std::path::PathBuf, crate::filing::Suggestion)>>,
+    /// A folder's sorting plan, said and waiting for your yes ("tidy my
+    /// desktop", 29 Sep 2026; since 2 Oct 2026 any folder, by kind, with
+    /// copies and old installers to "To review" -- `organize::SortPlan`).
+    pending_desktop: Option<crate::organize::SortPlan>,
     /// An undo asked about ("Undo X?"), waiting for your yes.
     pending_undo: Option<u64>,
     /// A dropped task you asked about: put back on the list on a yes (H8).

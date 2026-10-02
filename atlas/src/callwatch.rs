@@ -95,6 +95,14 @@ pub fn call_now() -> Option<&'static str> {
     if !cfg!(windows) {
         return None;
     }
+    // Read straight from the registry (2 Oct 2026): this runs every 15 s,
+    // and starting reg.exe each time was a new process four times a minute
+    // and the largest share of the idle loop's time on Eric's laptop.
+    // reg.exe stays as the way back if the direct read fails.
+    #[cfg(windows)]
+    if let Some(users) = mic_users_direct() {
+        return call_from(&users);
+    }
     let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
     let reg = root.join("System32").join("reg.exe");
     let out = crate::firstlaunch::run_quietly(
@@ -103,6 +111,72 @@ pub fn call_now() -> Option<&'static str> {
     )
     .ok()?;
     call_from(&mic_users_from(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Windows' "using your microphone" list, read with the registry calls
+/// rather than reg.exe. Store apps are direct children of the key; desktop
+/// programs sit one level down, under `NonPackaged`.
+#[cfg(windows)]
+fn mic_users_direct() -> Option<Vec<MicUser>> {
+    use windows::core::{HSTRING, PWSTR};
+    use windows::Win32::System::Registry::{RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ};
+    const MIC: &str = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
+    struct Key(HKEY);
+    impl Drop for Key {
+        fn drop(&mut self) {
+            // SAFETY: a key this module opened, closed once.
+            unsafe {
+                let _ = RegCloseKey(self.0);
+            }
+        }
+    }
+    fn open(parent: HKEY, sub: &str) -> Option<Key> {
+        let mut k = HKEY::default();
+        // SAFETY: `k` outlives the call; the name is a live HSTRING.
+        let r = unsafe { RegOpenKeyExW(parent, &HSTRING::from(sub), 0, KEY_READ, &mut k) };
+        r.is_ok().then_some(Key(k))
+    }
+    fn children(k: &Key) -> Vec<String> {
+        let mut out = Vec::new();
+        for i in 0..4096u32 {
+            let mut buf = [0u16; 512];
+            let mut len = buf.len() as u32;
+            // SAFETY: the buffer and its length are passed together.
+            let r = unsafe { RegEnumKeyExW(k.0, i, PWSTR(buf.as_mut_ptr()), &mut len, None, PWSTR::null(), None, None) };
+            if r.is_err() {
+                break;
+            }
+            out.push(String::from_utf16_lossy(&buf[..len as usize]));
+        }
+        out
+    }
+    fn qword(k: &Key, name: &str) -> Option<u64> {
+        let mut v = [0u8; 8];
+        let mut len = 8u32;
+        // SAFETY: an 8-byte buffer and its length.
+        let r = unsafe { RegQueryValueExW(k.0, &HSTRING::from(name), None, None, Some(v.as_mut_ptr()), Some(&mut len)) };
+        (r.is_ok() && len == 8).then(|| u64::from_le_bytes(v))
+    }
+    fn entry(k: &Key, who: &str, out: &mut Vec<MicUser>) {
+        if let (Some(start), Some(stop)) = (qword(k, "LastUsedTimeStart"), qword(k, "LastUsedTimeStop")) {
+            out.push(MicUser { who: who.to_string(), now: start != 0 && stop == 0 });
+        }
+    }
+    let root = open(HKEY_CURRENT_USER, MIC)?;
+    let mut out = Vec::new();
+    for name in children(&root) {
+        let Some(k) = open(root.0, &name) else { continue };
+        if name == "NonPackaged" {
+            for inner in children(&k) {
+                if let Some(ik) = open(k.0, &inner) {
+                    entry(&ik, &inner, &mut out);
+                }
+            }
+        } else {
+            entry(&k, &name, &mut out);
+        }
+    }
+    Some(out)
 }
 
 /// A call starting or ending, from two looks in a row.

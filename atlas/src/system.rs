@@ -217,7 +217,18 @@ fn within_roots(path: &str, roots: &[String]) -> bool {
         // work in, so "organize my desktop" moved nothing).
         let onedrive = (!profile.is_empty() && r.starts_with(&profile))
             .then(|| format!("{profile}/onedrive{}", &r[profile.len()..]));
-        p.starts_with(&r) || onedrive.is_some_and(|o| p.starts_with(&o))
+        // And wherever this machine really keeps that folder (2 Oct 2026):
+        // Windows lets Downloads or Documents be moved to another drive, and
+        // Linux names them in the person's own language, so
+        // "%USERPROFILE%/Downloads" means the Downloads Windows (or XDG)
+        // says, not only the one under home (`organize::user_folder`).
+        let known = (!profile.is_empty())
+            .then(|| r.trim_end_matches('/').strip_prefix(&format!("{profile}/")).map(str::to_string))
+            .flatten()
+            .filter(|rest| ["desktop", "documents", "downloads", "pictures", "videos", "music"].contains(&rest.as_str()))
+            .and_then(|which| crate::organize::user_folder(&which))
+            .map(|k| k.display().to_string().replace('\\', "/").to_lowercase().trim_end_matches('/').to_string());
+        p.starts_with(&r) || onedrive.is_some_and(|o| p.starts_with(&o)) || known.is_some_and(|k| p == k || p.starts_with(&format!("{k}/")))
     })
 }
 

@@ -841,15 +841,33 @@ commands:
   # "Organize my desktop" (Eric, 29 Sep 2026): the desktop's loose files
   # filed into folders by kind (`filing::plan_folder`), the plan said first
   # and carried out only on a yes. Shortcuts and folders are never touched.
+  # Since 2 Oct 2026 any folder, named in full or by name ("my downloads"),
+  # sorted by kind with copies and old installers put in "To review"
+  # (`organize`); the whole sentence is read, so the phrase may carry a
+  # folder after it ("sort the files in D:\Stuff", "find duplicates in my
+  # downloads"). "Undo that" puts every file back.
   - intent: tidy_desktop
-    describe: "Organize the user's PC: file the loose files on the desktop and in Downloads into folders. Says the plan and asks first; never deletes anything."
+    describe: "Organize the user's PC or a folder they name: sort the loose files into a folder for each kind (documents, pictures, videos, music, archives, installers, code...), put copies of the same file and old installers into a 'To review' folder, and say the plan first; acts on a yes, never deletes, and undo puts everything back. arg: the user's sentence, with the folder if they named one."
     phrases: ["tidy my desktop", "tidy up my desktop", "tidy the desktop", "organize my desktop", "organise my desktop",
               "clean up my desktop", "sort my desktop", "sort out my desktop",
               # Eric, 1 Oct 2026: "can't organize my PC properly".
               "organize my pc", "organise my pc", "organize my computer", "organise my computer",
               "organize my laptop", "organise my laptop", "organize my files", "organise my files",
               "organize my downloads", "organise my downloads", "tidy my downloads", "clean up my downloads",
-              "sort my files", "sort out my files", "tidy up my files", "tidy my files"]
+              "sort my files", "sort out my files", "tidy up my files", "tidy my files",
+              # Eric, 2 Oct 2026: any folder, named after the phrase.
+              "organize my documents", "organise my documents", "tidy my documents", "sort my documents",
+              "tidy up my downloads", "sort my downloads", "sort out my downloads", "clean up my documents",
+              "organize my pictures", "organise my pictures", "sort my pictures", "organize my photos", "organise my photos",
+              "sort the files in", "sort files in", "sort out the files in", "sort the folder", "sort this folder",
+              "organize the files in", "organise the files in", "organize files in", "organise files in",
+              "organize the folder", "organise the folder", "organize this folder", "organise this folder",
+              "tidy the files in", "tidy up the files in", "clean up the files in", "tidy the folder", "tidy up the folder",
+              "find duplicates in", "find the duplicates in", "find duplicate files in", "find copies in",
+              "find duplicates on", "find the duplicates on", "find the duplicate files in"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
 
   # "Use my webcam mic" (Eric, 29 Sep 2026): record from the microphone
   # named by kind, and keep to it (`hearing::mic_by_kind`).

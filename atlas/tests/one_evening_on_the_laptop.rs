@@ -541,9 +541,20 @@ fn tidying_a_desktop_says_the_plan_and_moves_only_on_the_rules() {
     let plan = atlas::filing::plan_folder(&desk, &root, atlas::store::now());
     let names: Vec<String> = plan.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string()).collect();
     assert!(!names.iter().any(|n| n.ends_with(".lnk") || n.ends_with(".ini") || n == "a folder"), "{names:?}");
-    let words = atlas::filing::tidy_plan_words("your desktop", &plan, &root);
-    assert!(words.starts_with("5 loose files on your desktop. I'd file 3"), "{words}");
-    assert!(words.ends_with("Go ahead?"), "{words}");
+    // What "organize my desktop" says is the organizer's plan since 2 Oct
+    // 2026 (`organize::plan_said`, replacing `filing::tidy_plan_words`):
+    // shortcuts and the folder's settings file are left out of it too, and
+    // it ends with the question.
+    let sorting = atlas::organize::plan_folders(&[desk.clone()], None, false, atlas::store::now() + 3600, std::time::Duration::from_secs(5));
+    let words = atlas::organize::plan_said(&sorting);
+    assert!(!sorting.moves.iter().any(|m| m.from.ends_with("Chrome.lnk") || m.from.ends_with("desktop.ini")), "{words}");
+    // (On Windows this test's folder is in AppData, under the system's
+    // temporary folder, which is never sorted -- and the plan says that.)
+    if sorting.refused.is_empty() {
+        assert!(words.ends_with("Go ahead?"), "{words}");
+    } else {
+        assert!(cfg!(windows) && words.contains("won't sort"), "{words}");
+    }
 
     // Switched off: nothing moves, and it says what to change.
     let off = atlas::system::SystemConfig { enabled: false, ..Default::default() };

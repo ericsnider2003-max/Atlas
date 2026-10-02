@@ -91,7 +91,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | know where your files are | working | `index` `chunker` `bm25` | ready | ready | ready | catch | would | catch |
 | find something you wrote — by a word that was in it, and by what it was about once an embedding model is installed | working | `recall` `meaning` `stemmer` `bm25` `asking` | ready | ready | ready | catch | would | catch |
 | remember what you tell it and what it researches, learn a whole document at once, and answer 'what do you know about X' — from one indexed fact book that recalls associatively, strengthens with repetition, corrects on restatement, and stays fast and bounded as it grows; and 'get to know me' fills it in seven questions | working | `facts` `freshness` `consolidate` `contents` `getknow` | ready | ready | ready | ready | ready | ready |
-| move files, set a wallpaper, tidy the desktop | switched off | `system` | ready | ready | ready | catch | would | catch |
+| move files, set a wallpaper, and sort a folder -- the desktop, Downloads, Documents or one you name -- into a folder for each kind of file, copies and old installers into "To review", said first, done on your yes, never deleting, and put back by "undo that" | switched off | `system` `organize` | ready | ready | ready | catch | would | catch |
 | find what's slowing the machine down -- each program's CPU measured over a few seconds, everything that starts with Windows, big and duplicate downloads -- and on your yes close what isn't needed (never Windows, never itself, never what's in front of you), switch startup programs off, clear temporary files and move big downloads into a folder you name, with undo for the startup changes and the moves | switched off | `tune` `checks` | ready | would | would | catch | would | **no** |
 | back itself up | working | `store` `safety` | ready | ready | ready | catch | would | catch |
 | keep your own work out of anything you share | built, never run for real | `firewall` | ready | ready | ready | catch | would | catch |
@@ -362,4 +362,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-243 things, across 422 of 463 source files. The other 41 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+243 things, across 423 of 464 source files. The other 41 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
