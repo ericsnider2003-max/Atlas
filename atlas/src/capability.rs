@@ -491,7 +491,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "phone", what: "reach you on your phone when you're away from the laptop and something can't wait", area: Keeping, state: Off, needs: None, offline: false, added: 40, runs: &[Needs::Background], modules: &["phone"] },
         Capability { id: "companion", what: "show a glance on your phone -- what it's doing, what's next, how many things wait on you -- with no secrets on the lock screen", area: Keeping, state: Untested, needs: Some("the phone app"), offline: true, added: 40, runs: &[Needs::Background], modules: &["companion", "glance"] },
         Capability { id: "remote", what: "take a job from your phone for the laptop at home, and carry a task's files to the phone so you can keep going without signal", area: Keeping, state: Untested, needs: Some("a second device"), offline: false, added: 40, runs: &[Needs::Files], modules: &["remote", "workingset"] },
-        Capability { id: "mobile", what: "run on a phone as itself -- the same Atlas standing alone -- and say what an iPhone and an Android phone will and won't allow", area: Keeping, state: Untested, needs: Some("the phone app built and on a phone"), offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["mobile", "ios", "android"] },
+        Capability { id: "mobile", what: "run on a phone as itself -- the same Atlas standing alone -- and say what an iPhone and an Android phone will and won't allow", area: Keeping, state: Untested, needs: Some("the phone app built and on a phone"), offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["mobile", "ios", "android", "phonemode"] },
         Capability { id: "presence", what: "notice whether you're at the desk, and read a nod, a thumbs-up or where you're looking off the camera", area: Seeing, state: Off, needs: None, offline: true, added: 40, runs: &[Needs::Camera], modules: &["presence", "gaze"] },
         Capability { id: "settings", what: "keep every switch on one page, and keep what you change -- sound and voice too: when it speaks, how loud, when it may pop up", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["settings", "preferences", "sound"] },
         Capability { id: "dash", what: "arrange the hub's home the way you want it -- which parts, in what order, how big", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Files], modules: &["dash", "layout_prefs"] },
@@ -1557,7 +1557,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // of the other chat's 463.
 // 2 Oct 2026, Chat A: `phrasebook`, `misses`, `coder`, `projectread`, on
 // top of the other chat's 466.
-pub const MODULES_IN_TREE: usize = 470;
+// + `phonemode` (Chat B).
+pub const MODULES_IN_TREE: usize = 471;
 
 /// Every module no capability claims, and why it is not one.
 ///

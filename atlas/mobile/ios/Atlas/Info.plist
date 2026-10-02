@@ -22,6 +22,8 @@
 	<!-- The hub is on this phone, on 127.0.0.1: plain http to loopback only. -->
 	<key>NSAppTransportSecurity</key>
 	<dict><key>NSAllowsLocalNetworking</key><true/></dict>
+	<key>NSCameraUsageDescription</key><string>So you can take a photo to hand to Atlas. It stays on this phone.</string>
+	<key>NSLocalNetworkUsageDescription</key><string>So Atlas on this phone can find your own Atlas on your other devices, when you've linked them.</string>
 	<key>NSMicrophoneUsageDescription</key><string>So you can talk to Atlas. What you say is heard on this phone.</string>
 	<key>NSSpeechRecognitionUsageDescription</key><string>Atlas turns what you say into words on this phone, without sending it anywhere.</string>
 	<key>NSSupportsLiveActivities</key><true/>

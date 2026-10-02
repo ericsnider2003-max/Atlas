@@ -175,6 +175,15 @@ pub const NAV: &[(&str, &[Page])] = &[
 ];
 
 impl Page {
+    /// Shown on this device: on the phone app, not the pages that only make
+    /// sense on a laptop -- putting Atlas on a phone, updating itself (the
+    /// App Store or TestFlight does that), syncing, offline packs, camera
+    /// gestures and add-ons (`phonemode`, 2 Oct 2026).
+    pub fn here(self) -> bool {
+        !(crate::phonemode::on()
+            && matches!(self, Page::Phone | Page::Updates | Page::Sync | Page::Offline | Page::Gestures | Page::AddOns))
+    }
+
     /// Pages whose address carries a choice: which conversation, business or
     /// view, or what a share sheet sent.
     pub fn reads_query(self) -> bool {
@@ -663,6 +672,11 @@ fn kept_word(k: crate::credentials::Kept) -> &'static str {
 }
 
 pub fn route(path: &str) -> Option<Page> {
+    route_any(path).filter(|p| p.here())
+}
+
+/// Every page's address, whatever device this is.
+fn route_any(path: &str) -> Option<Page> {
     // An anchor is the browser's business, not the server's. It arrives here
     // only from a link Atlas wrote itself — the palette's jumps into a
     // settings category — and letting it fall through to "no such page" would
@@ -1126,11 +1140,13 @@ fn shell_with(here: Option<Page>, title: &str, body: &str, waiting: usize) -> St
          <a class=skip href='#main'>Skip to the page</a>\
          <div class=wrap>{sidebar}<div class=col-main>\
          <header><a class=hbrand href='/hub' aria-label='Atlas, Home'>{MARK}<span>Atlas</span></a>{trail}<span class=grow></span>\
-         <a class=tool id=palopen href='/hub/find' aria-label='Find anything'>{SEARCH_ICON}<span class=lbl>Find anything</span><kbd class=ck>Ctrl K</kbd></a>\
+         <a class=tool id=palopen href='/hub/find' aria-label='Find anything'>{SEARCH_ICON}<span class=lbl>Find anything</span>{ctrl_k}</a>\
          <a class='tool talkbtn' href='/hub/talk' aria-label='Talk'>{MIC_ICON}</a>\
          {waiting_link}<a class='tool help' href='/hub/help' aria-label='Help'>{HELP_ICON}<span class=lbl>Help</span></a>{theme_chip}{menu}</header>\
          <main id=main tabindex=-1>{heading}{body}</main></div></div>{tabs}</body></html>",
         t = esc(title),
+        // A phone has no Ctrl key (`phonemode`).
+        ctrl_k = if crate::phonemode::on() { "" } else { "<kbd class=ck>Ctrl K</kbd>" },
         // Two stored appearances, merged 26 Sep 2026. The hub's own "Aa" menu
         // (theme paper/light/dark/auto, text size, contrast, motion) is written in by
         // `with_appearance`, right after `<html lang=en`, so it comes first and
@@ -1224,7 +1240,8 @@ fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     let mut out = format!(
         "<nav class=sidebar aria-label='Atlas'><a class=brand href='/hub' aria-label='Atlas, Home'>{MARK}<span class=owner>Atlas</span></a>\
          <a class=nav href='/hub/find'><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>\
-         <circle cx=11 cy=11 r=7 /><path d='M21 21l-4-4'/></svg>Search<kbd class=ck>Ctrl K</kbd></a>"
+         <circle cx=11 cy=11 r=7 /><path d='M21 21l-4-4'/></svg>Search{}</a>",
+        if crate::phonemode::on() { "" } else { "<kbd class=ck>Ctrl K</kbd>" }
     );
     // The sidebar's own groups, shown open. Settings sits at the foot rather
     // than in a group, as drawn; the rest go under More.
@@ -1233,7 +1250,7 @@ fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
         if !group.is_empty() {
             out.push_str(&format!("<p class=grp>{}</p>", esc(group)));
         }
-        for page in *pages {
+        for page in pages.iter().filter(|p| p.here()) {
             let extra = if *page == Page::Outstanding && waiting > 0 {
                 format!("<span class=count>{waiting}</span>")
             } else {
@@ -1244,7 +1261,7 @@ fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     }
     // The three things from Your devices people reach for, shown open.
     out.push_str("<p class=grp>Your devices</p>");
-    for page in [Page::Phone, Page::Updates, Page::Help] {
+    for page in [Page::Phone, Page::Updates, Page::Help].into_iter().filter(|p| p.here()) {
         out.push_str(&item(page, page.label(), ""));
     }
     out.push_str(BUSINESS_SLOT);
@@ -1261,7 +1278,7 @@ fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
         );
         for (group, pages) in groups {
             m.push_str(&format!("<p class=gh>{}</p>", esc(group)));
-            for page in *pages {
+            for page in pages.iter().filter(|p| p.here()) {
                 m.push_str(&format!(
                     "<a class='{}' href='{}'{}>{}</a>",
                     if here == Some(*page) { "here" } else { "" },
@@ -1300,7 +1317,7 @@ fn menu_html(here: Option<Page>) -> String {
     );
     for (group, pages) in NAV {
         out.push_str(&format!("<p class=gh>{}</p>", esc(if group.is_empty() { "Atlas" } else { group })));
-        for page in *pages {
+        for page in pages.iter().filter(|p| p.here()) {
             out.push_str(&format!(
                 "<a class='{}' href='{}'{}>{}</a>",
                 if here == Some(*page) { "here" } else { "" },
@@ -2876,6 +2893,9 @@ fn brief_html(d: &Deck) -> String {
 /// First run: calm, not blank. A few guided steps, each skippable, all of
 /// which work offline.
 fn first_run_html(d: &Deck) -> String {
+    if crate::phonemode::on() {
+        return first_run_on_the_phone(d);
+    }
     format!(
         "<section class=brief aria-label='Welcome'>{MARK}<div><p><b>{greet}</b> This is home. It fills in as you go — \
          your brief, your day, what I'm working on. Nothing here yet, so let's give it a little to work with. \
@@ -2895,6 +2915,31 @@ fn first_run_html(d: &Deck) -> String {
         cal = Page::Phone.href(),
         acc = format!("{}#set-mail.enabled", Page::Settings.href()),
         give = Page::Give.href(),
+    )
+}
+
+/// First run on the phone app: what works here, on this phone, with
+/// nothing else set up -- no laptop, no accounts (the TestFlight review
+/// audit, 2 Oct 2026: the laptop's steps sent a phone to pages about adding
+/// a phone).
+fn first_run_on_the_phone(d: &Deck) -> String {
+    format!(
+        "<section class=brief aria-label='Welcome'>{MARK}<div><p><b>{greet}</b> This is home. It fills in as you go -- \
+         your reminders, notes and what I'm working on. Everything you tell me is kept on this phone.</p></div></section>\
+         <ol class=firststeps>\
+         <li><b>Talk to me</b><span>Tap the microphone, or type. Try \u{201c}remind me to call Mum at 6\u{201d} or \u{201c}note that the wifi password is on the fridge\u{201d}.</span>\
+         <a class=btn href='{talk}'>Start talking</a></li>\
+         <li><b>Hand me something to look at</b><span>A file, a link or a photo.</span>\
+         <a class=btn href='{give}'>Give Atlas a file</a></li>\
+         <li><b>Bring in your calendar</b><span>So your day here matches the phone's. The phone asks you first; it stays on this phone.</span>\
+         <button class=btn type=button onclick='window.AtlasShell&&AtlasShell.calendar&&AtlasShell.calendar()'>Bring in your calendar</button></li>\
+         <li><b>Choose what I'm allowed to do</b><span>Every switch, in plain words. Nothing is on that you didn't choose.</span>\
+         <a class=btn href='{set}'>Open Settings</a></li>\
+         </ol>",
+        greet = esc(&d.greeting),
+        talk = Page::Talk.href(),
+        give = Page::Give.href(),
+        set = Page::Settings.href(),
     )
 }
 
@@ -3291,6 +3336,16 @@ fn palette_row(e: &crate::palette::Entry, first: bool) -> String {
 /// The whole thing is inside a plain `<form>` pointing at a real page, so with
 /// no script at all typing and pressing enter still lands somewhere useful.
 pub fn palette_overlay(entries: &[crate::palette::Entry], recent: &crate::palette::Recent) -> String {
+    // On the phone app, nothing that goes to a page it hasn't got (`phonemode`).
+    let kept: Vec<crate::palette::Entry> = entries
+        .iter()
+        .filter(|e| {
+            let (crate::palette::Does::Go(to) | crate::palette::Does::Run(to, _)) = e.does;
+            route_any(to.split('?').next().unwrap_or(to)).is_none_or(|p| p.here())
+        })
+        .cloned()
+        .collect();
+    let entries = &kept[..];
     let first = recent.first(entries);
     let shown: Vec<&crate::palette::Entry> = if first.is_empty() {
         entries.iter().take(crate::palette::SHOW).collect()

@@ -78,7 +78,7 @@ pub unsafe extern "C" fn atlas_mobile_apple_model(f: Option<AppleFn>) {
 }
 
 /// Is Apple's model there to ask?
-fn registered() -> bool {
+pub(crate) fn registered() -> bool {
     APPLE.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 

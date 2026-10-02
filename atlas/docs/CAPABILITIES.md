@@ -310,7 +310,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | reach you on your phone when you're away from the laptop and something can't wait | switched off | `phone` | ready | would | would | catch | would | **no** |
 | show a glance on your phone -- what it's doing, what's next, how many things wait on you -- with no secrets on the lock screen | built, never run for real | `companion` `glance` | ready | would | would | catch | would | **no** |
 | take a job from your phone for the laptop at home, and carry a task's files to the phone so you can keep going without signal | built, never run for real | `remote` `workingset` | ready | ready | ready | catch | would | catch |
-| run on a phone as itself -- the same Atlas standing alone -- and say what an iPhone and an Android phone will and won't allow | built, never run for real | `mobile` `ios` `android` | ready | ready | ready | ready | ready | ready |
+| run on a phone as itself -- the same Atlas standing alone -- and say what an iPhone and an Android phone will and won't allow | built, never run for real | `mobile` `ios` `android` `phonemode` | ready | ready | ready | ready | ready | ready |
 
 ## Your calendar and what's coming up
 
@@ -364,4 +364,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-245 things, across 429 of 470 source files. The other 41 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+245 things, across 430 of 471 source files. The other 41 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

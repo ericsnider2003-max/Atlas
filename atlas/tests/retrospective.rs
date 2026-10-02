@@ -105,6 +105,12 @@ fn no_test_asserts_nothing() {
 /// thing it refused), so it is not prose-only here any more. The second
 /// assertion below is what would have caught that drift.
 const PROSE_ONLY_BASELINE: &[&str] = &[
+    // 2 Oct 2026, merge of Chat A's learning-how-you-talk: both drive a real
+    // Daemon turn and read the prompt the stand-in model was actually sent
+    // (people, project, a learned wording as a hint); the shape heuristic
+    // reads `ProactiveConfig::default()` as a constant.
+    "learning_how_you_talk::a_learned_wording_is_a_hint_when_it_is_only_close",
+    "learning_how_you_talk::the_people_and_project_a_sentence_names_reach_the_model",
     // 2 Oct 2026, merge of Chat A's PC organizing: drives a real Daemon
     // turn with system changes off and checks the refusal it gives back; the
     // shape heuristic reads `ProactiveConfig::default()` as a constant.

@@ -135,7 +135,8 @@ struct HubView: UIViewRepresentable {
         window.AtlasShell={listen:function(){webkit.messageHandlers.atlas.postMessage({do:'listen'})},\
         stop:function(){webkit.messageHandlers.atlas.postMessage({do:'stop'})},\
         converse:function(){webkit.messageHandlers.atlas.postMessage({do:'converse'})},\
-        speak:function(t){webkit.messageHandlers.atlas.postMessage({do:'speak',text:t})}};
+        speak:function(t){webkit.messageHandlers.atlas.postMessage({do:'speak',text:t})},\
+        calendar:function(){webkit.messageHandlers.atlas.postMessage({do:'calendar'})}};
         """
         cfg.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let w = WKWebView(frame: .zero, configuration: cfg)

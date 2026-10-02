@@ -1334,6 +1334,9 @@ impl<'a> Daemon<'a> {
         {
             let attached = crate::phonemodel::attached();
             if what == "get" && attached.is_none() {
+                // Your yes, kept: the phone carries on fetching it on Wi-Fi
+                // after this, and never fetched it before (`phonemode`).
+                let _ = self.store.save(crate::phonemode::MODEL_ASKED_FOR, &true);
                 let dir = crate::models::Registry::dir_for(&self.tools_cfg().models);
                 if let Some((path, m)) = crate::phonemodel::present(&dir) {
                     std::thread::spawn(move || {
@@ -2287,8 +2290,10 @@ impl<'a> Daemon<'a> {
         // whose channel announced it -- or from any friend who already has it
         // (gap AD: the signature is the check, not who hands it over).
         // Resumes where it stopped.
+        // Never on the phone app: the App Store or TestFlight updates it, and
+        // an app may not fetch new versions of itself (`phonemode`).
         let avail = crate::update_courier::Available::load(&self.store);
-        if avail.notice.is_some() && avail.downloaded.is_empty() {
+        if !crate::phonemode::on() && avail.notice.is_some() && avail.downloaded.is_empty() {
             let k = "release:fetch".to_string();
             let owner = (!avail.from.is_empty()).then(|| pairings.name_of_key(&avail.from)).flatten();
             let friends: Vec<String> = pairings.contacts.iter().map(|c| c.name.clone()).collect();

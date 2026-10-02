@@ -754,7 +754,13 @@ impl Daemon<'_> {
                 }
                 let page = hub::status_page(&lines, settings.changed().len());
                 // "Make it run well" beside it, and "Sort my files" (2 Oct 2026).
-                with_block(page, &format!("{}{}{}", self.space_section_live(), hub::speed_section(), hub::sorting_section()))
+                // Neither is about a phone: what starts with Windows, and a
+                // PC's folders (`phonemode`).
+                if crate::phonemode::on() {
+                    with_block(page, &self.space_section_live())
+                } else {
+                    with_block(page, &format!("{}{}{}", self.space_section_live(), hub::speed_section(), hub::sorting_section()))
+                }
             }
             Page::Settings => {
                 // What's kept, not what this run started with: a change made
@@ -1336,6 +1342,10 @@ impl Daemon<'_> {
     fn start_phone_code(&mut self, kind: crate::phoneadd::Kind, what: &str) -> Reply {
         use crate::phoneadd::{app_file, Kind, Showing, MINUTES};
         use std::sync::atomic::AtomicBool;
+        // The phone app never serves an app to install (`phonemode`).
+        if crate::phonemode::on() {
+            return hub::back_with(Page::Dashboard.href(), "", "That's done from Atlas on a computer, not from the phone.");
+        }
         if let Some(old) = self.phone_code.take() {
             old.stop.store(true, std::sync::atomic::Ordering::Relaxed);
         }
@@ -1543,6 +1553,7 @@ impl Daemon<'_> {
                 "Nothing underway.".to_string(),
                 match next {
                     Some((_, time, what, _)) => format!("Next: {what} at {time}."),
+                    None if crate::phonemode::on() => "Say what you need, or tap the search to find anything.".to_string(),
                     None => "Say what you need, or press Ctrl K to find anything.".to_string(),
                 },
                 "You're here".to_string(),

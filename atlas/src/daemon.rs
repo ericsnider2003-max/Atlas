@@ -4252,6 +4252,13 @@ fn opens_with_deciding(said: &str) -> bool {
 /// A failed model call, in words: what went wrong and that the next message
 /// tries again (`brain` puts "Model unreachable: <why>" in `say`).
 pub fn model_failed_words(why: &str) -> String {
+    // The phone app with no model yet: what to say to get one, not an error.
+    if why.contains(crate::phonemode::ASK_ONLINE) {
+        return crate::phonemode::ASK_ONLINE.to_string();
+    }
+    if why.contains("no language model on this phone yet") {
+        return crate::phonemode::NO_MODEL_YET.to_string();
+    }
     let mut why = why.trim().trim_start_matches("Model unreachable:").trim().to_string();
     // The error's kind, once or twice over ("platform: platform: I couldn't
     // reach..."), and the promise to try again, said twice (the real-model

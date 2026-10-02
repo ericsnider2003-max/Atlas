@@ -1430,13 +1430,19 @@ impl<'a> Daemon<'a> {
             format!("{facts} fact{} remembered", if facts == 1 { "" } else { "s" }),
         ));
 
+        // The phone app: no screens to arrange, nothing of a laptop's to
+        // fetch or commission (2 Oct 2026, Eric's phone listed hand
+        // tracking and Windows keys as "your part in setup").
+        let phone = crate::phonemode::on();
         // The screen — that it can see the displays it will arrange on.
-        match self.plat.monitors() {
+        if !phone {
+            match self.plat.monitors() {
             Ok(m) => checks.push(Check::note(
                 "displays",
                 format!("{} screen{} it can see", m.len(), if m.len() == 1 { "" } else { "s" }),
             )),
-            Err(e) => checks.push(Check::fail("displays", e.to_string())),
+                Err(e) => checks.push(Check::fail("displays", e.to_string())),
+            }
         }
 
         // The model — configured or not, and where it runs. Reported, not
@@ -1456,13 +1462,18 @@ impl<'a> Daemon<'a> {
         checks.push(Check::note("what's ready", crate::capability::summary()));
         // How much of the first-run verification actually needs you — the
         // answer is "a short list", not "all of it".
-        checks.push(Check::note("your part in setup", crate::capability::commissioning_report()));
+        if !phone {
+            checks.push(Check::note("your part in setup", crate::capability::commissioning_report()));
+        } else {
+            checks.push(Check::note("models on this phone", crate::phonemode::models_said()));
+        }
 
         // Setup, and the language model: what "what's outstanding in your
         // setup" was really asking (Eric, 27 Sep 2026).
         let root = self.store.install_root();
         let missing: Vec<&str> = crate::getpieces::setup_pieces()
             .iter()
+            .filter(|_| !phone)
             .filter(|p| !crate::getpieces::have(p, &root))
             .map(|p| p.name)
             .collect();
