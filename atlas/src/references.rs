@@ -136,7 +136,7 @@ pub fn starts_the_research(said: &str) -> bool {
 }
 
 /// How many words, as the pronoun rules count them.
-pub fn words_in(text: &str) -> usize {
+pub fn word_count(text: &str) -> usize {
     words(text).len()
 }
 

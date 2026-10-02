@@ -1391,7 +1391,11 @@ impl<'a> Daemon<'a> {
             self.session.ask(&offer);
             self.pending_optimize = Some(plan);
         } else if let Some(f) = crate::tune::actionable(&findings).first().copied().or(findings.first()) {
+            let (mb, _) = crate::tune::worth_it(&findings);
             s.push_str(&format!(" {}", f.what));
+            if mb > 0 {
+                s.push_str(&format!(" About {mb} MB could come back in all."));
+            }
         }
         if !watched.starts_with("Not watching") {
             s.push(' ');

@@ -589,7 +589,10 @@ impl<'a> Daemon<'a> {
                 out.push(why.to_string());
                 out.extend(self.carry_out(said));
             }
-        } else if t.saturating_sub(self.last_call_look) >= 5 {
+        } else if t.saturating_sub(self.last_call_look) >= if self.call_notes.call.is_some() { 5 } else { 15 } {
+            // Every 5 s in a call (its end matters); every 15 s otherwise --
+            // each look runs reg.exe, and a call starting is still caught
+            // within seconds (1 Oct 2026: Atlas's own cost, measured).
             self.last_call_look = t;
             let said = self.call_notes.look(t, crate::callwatch::call_now());
             out.extend(self.carry_out(said));

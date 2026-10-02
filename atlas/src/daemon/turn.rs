@@ -643,7 +643,7 @@ impl<'a> Daemon<'a> {
             // reached Atlas as "... when <the last topic> gets approval").
             // Only a short command leans on what came before: "close it",
             // "move it to the other screen".
-            Resolution::Resolved { .. } if crate::references::words_in(said) > 6 => said,
+            Resolution::Resolved { .. } if crate::references::word_count(said) > 6 => said,
             Resolution::Resolved { text, .. } => {
                 said_owned = text;
                 said_owned.as_str()

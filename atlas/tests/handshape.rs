@@ -1023,7 +1023,7 @@ fn losing_the_hand_forgets_the_trail() {
 /// and never read a hand. A hand answering is now read from its joints.
 #[test]
 fn a_thumb_up_a_thumb_down_and_an_open_palm_answer_a_question() {
-    use atlas::handshape::answer_from;
+    use atlas::handshape::hand_answer as answer_from;
     let mut up = fist();
     extend(&mut up, 0);
     assert_eq!(answer_from(&up).map(|a| a.0), Some("thumb_up"));

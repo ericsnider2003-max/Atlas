@@ -998,7 +998,7 @@ impl Looking {
     pub fn look_at_you(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album) -> Sight {
         let mut sight = self.look_for(rgb, w, h, cfg, album, false);
         if let Some(hand) = self.hand(rgb, w, h) {
-            let g = crate::handshape::answer_from(&hand).map(|(g, s)| (g.to_string(), s));
+            let g = crate::handshape::hand_answer(&hand).map(|(g, s)| (g.to_string(), s));
             if let Sight::Looked(scene) = &mut sight {
                 scene.gesture = g;
             }

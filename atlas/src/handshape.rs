@@ -1362,7 +1362,7 @@ fn sentence_list(items: &[&str]) -> String {
 /// from the two small hand models alone (1 Oct 2026: the look that was meant
 /// to catch a thumbs-up ran every seeing model there is -- faces, things,
 /// what the picture shows -- and took 400-700 ms, and never read a hand).
-pub fn answer_from(hand: &Landmarks) -> Option<(&'static str, f32)> {
+pub fn hand_answer(hand: &Landmarks) -> Option<(&'static str, f32)> {
     let mut r = Reading::of(hand);
     let folded = (1..5).filter(|f| r.curl(*f) > 0.55).count();
     let out = r.extended();
