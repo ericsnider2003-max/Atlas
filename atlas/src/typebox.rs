@@ -88,6 +88,14 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
             let hwnd = crate::winpark::handle_of(cc);
             let (tx, rx) = std::sync::mpsc::channel::<Option<isize>>();
             if standby {
+                touch(false);
+                std::thread::spawn(|| loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    let idle = crate::store::now().saturating_sub(LAST_USED.load(std::sync::atomic::Ordering::Relaxed));
+                    if !ON_SCREEN.load(std::sync::atomic::Ordering::Relaxed) && idle >= HIDDEN_EXIT.as_secs() {
+                        std::process::exit(0);
+                    }
+                });
                 let ctx = cc.egui_ctx.clone();
                 std::thread::spawn(move || {
                     use std::io::BufRead;
@@ -98,6 +106,7 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
                             // window's own loop to wake: on the laptop the
                             // first words typed went to the app underneath.
                             let was_in = front_window();
+                            touch(true);
                             show_now(hwnd);
                             if tx.send(was_in).is_err() {
                                 break;
@@ -161,7 +170,7 @@ impl eframe::App for Box_ {
             // again every half second kept eframe's loop spinning -- a core
             // at 75% for a box nobody could see (29 Sep 2026).
             if self.hidden_told < crate::overlaywin::HIDE_FRAMES {
-                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                { touch(false); ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
                 self.hidden_told += 1;
                 if self.hidden_told < crate::overlaywin::HIDE_FRAMES {
                     ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -207,7 +216,7 @@ impl eframe::App for Box_ {
             // let it have the keyboard. Put away rather than left on top of
             // everything with your typing going to the window underneath
             // (29 Sep 2026). The key brings it back.
-            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            { touch(false); ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
             self.frames = u32::MAX;
             return;
         }
@@ -225,7 +234,7 @@ impl eframe::App for Box_ {
         if done {
             give_back(self.was_in.take());
             if self.standby {
-                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                { touch(false); ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
                 self.frames = u32::MAX;
             } else {
                 ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -250,6 +259,19 @@ impl eframe::App for Box_ {
 #[cfg(not(feature = "desktop-ui"))]
 pub fn run(_cfg: QuickInputConfig, _standby: bool) -> Result<(), String> {
     Err("this build of Atlas has no windows, so there's no typing box -- type in the console instead".into())
+}
+
+/// When the box was last asked for or used, in seconds since the epoch, and
+/// whether it's on screen: read by the standby box's own watch thread, which
+/// ends it once it has sat hidden for `HIDDEN_EXIT` (1 Oct 2026: a parked
+/// eframe window never ran its own check, and the hidden box still held a
+/// fifth of a core).
+static LAST_USED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static ON_SCREEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn touch(on_screen: bool) {
+    LAST_USED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
+    ON_SCREEN.store(on_screen, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// How long a hidden box waits for its key before it goes.
