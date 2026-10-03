@@ -66,6 +66,11 @@ tract-onnx = { version = "0.23", optional = true }
 # (`load-dynamic`, nothing linked in) -- the copy the Kokoro voice already
 # brings -- with Intel's OpenVINO plugin registered for the NPU. See `npu`.
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "std", "api-22"] }
+# Apple's push service (item 15) takes only ES256-signed tokens: P-256
+# ECDSA from the RustCrypto project (Apache-2.0/MIT, pure Rust), reading the
+# .p8 key Apple gives. Signing a curve Atlas doesn't otherwise have is not
+# something to write by hand.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
 # The mail client's transport. Uses the system's OpenSSL rather than a
 # vendored Rust TLS stack (rustls pulls in its own crypto backend, which
 # is a much heavier build for one socket's worth of TLS) -- lighter, and

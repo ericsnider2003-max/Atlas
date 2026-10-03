@@ -963,6 +963,14 @@ mod ask_my_documents;
 mod the_npu_engine;
 #[path = "apple_first_then_atlas.rs"]
 mod apple_first_then_atlas;
+#[path = "reminders_ring_with_the_app_closed.rs"]
+mod reminders_ring_with_the_app_closed;
+#[path = "reaching_the_iphone_with_atlas_closed.rs"]
+mod reaching_the_iphone_with_atlas_closed;
+#[path = "apple_weather_first.rs"]
+mod apple_weather_first;
+#[path = "friends_get_nothing_of_erics.rs"]
+mod friends_get_nothing_of_erics;
 #[path = "sorting_a_folder.rs"]
 mod sorting_a_folder;
 #[path = "end_of_the_day.rs"]

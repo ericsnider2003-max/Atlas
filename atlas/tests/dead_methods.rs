@@ -57,10 +57,6 @@ use std::collections::{BTreeSet, HashSet};
 ///
 /// The `KNOWN` list of `new_capabilities_are_wired.rs`, for methods.
 const TEST_ONLY_METHODS: &[&str] = &[
-    // 2 Oct 2026 (decision 2): which model answered the last phone request,
-    // for the tests; on the phone the hand-over itself is written to the log
-    // (`applebrain::AppleFirst::chat`).
-    "applebrain::last_answered_by",
     // --- 28 Sep: the second scan ----------------------------------------------
     //
     // `serve_once` lost its one caller when settings-only mode moved to the
@@ -514,6 +510,13 @@ fn without_test_blocks(body: &str) -> String {
             continue;
         }
         if in_test {
+            // Ended when the braces it opened close again -- on any line, not
+            // only one that also opens a brace (2 Oct 2026: a test module
+            // whose last line is a lone `}`, in daemon/making.rs, swallowed
+            // every daemon file after it and hid all their calls).
+            if line.contains('{') {
+                opened = true;
+            }
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
             opened |= line.contains('{');

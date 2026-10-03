@@ -1266,6 +1266,8 @@ pub fn everything_else() -> Vec<Piece> {
         crate::npu::pieces(),
         // The coding model this machine has room for, if any (2 Oct 2026).
         crate::coder::pieces_for_here(),
+        // curl with HTTP/2, for Apple's push service (item 15).
+        crate::apns::curl_piece().into_iter().collect(),
     ]
         .into_iter()
         .flatten()

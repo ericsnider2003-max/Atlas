@@ -66,7 +66,6 @@ const KNOWN: &[&str] = &[
     // not grow silently, which it has been doing.
     "accounts::asked_to_weaken",
     "accounts::instead",
-    "applebrain::last_answered_by", // Chat C, 1 Oct: read by tests only until the iPhone shell / hub shows it
     "asking::query",
     // b64::decode came off 18 Sep 2026 -- `sync::read_bundle` and
     // `KeptKey::phrase` both read base64 back now. Until then everything in
@@ -446,7 +445,6 @@ const KNOWN: &[&str] = &[
     // actually asked for and Atlas couldn't do.
     // `wants::slowest` wired 21 Sep 2026: the `Recommend` intent handler now
     // leads its reply with `obs.slowest()`, the measured bottleneck.
-    "voicefirst::model_lowered", // Chat C, 1 Oct: read by tests only until the iPhone shell / hub shows it
     "watch::down_for",
     "workspace_view::why_this_took_so_long",
 ];

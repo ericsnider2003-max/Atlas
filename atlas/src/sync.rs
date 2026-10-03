@@ -1252,18 +1252,29 @@ pub fn sweep_handoffs(folder: &std::path::Path, now: u64) -> usize {
 /// devices that are never on together still meet. `None` when there's none.
 pub fn best_folder() -> Option<(std::path::PathBuf, Carry)> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok().map(std::path::PathBuf::from);
-    let mut tries: Vec<std::path::PathBuf> = Vec::new();
-    for var in ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"] {
-        if let Ok(p) = std::env::var(var) {
-            tries.push(std::path::PathBuf::from(p));
-        }
-    }
-    if let Some(h) = &home {
+    let onedrive = ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]
+        .iter()
+        .filter_map(|v| std::env::var(v).ok().map(std::path::PathBuf::from))
+        .collect::<Vec<_>>();
+    best_folder_from(home.as_deref(), &onedrive, Some(std::path::Path::new("G:\\My Drive")))
+}
+
+/// [`best_folder`] with the machine passed in: the home folder and whatever
+/// OneDrive's variables say. Tests use this so they never reach the cloud
+/// folders of the machine they run on -- on 2 Oct a test run on Eric's laptop
+/// left a bundle in his real Dropbox through `best_folder`.
+pub fn best_folder_from(
+    home: Option<&std::path::Path>,
+    onedrive: &[std::path::PathBuf],
+    google_drive_letter: Option<&std::path::Path>,
+) -> Option<(std::path::PathBuf, Carry)> {
+    let mut tries: Vec<std::path::PathBuf> = onedrive.to_vec();
+    if let Some(h) = home {
         tries.push(h.join("Dropbox"));
         tries.push(h.join("Google Drive"));
         tries.push(h.join("iCloudDrive"));
     }
-    tries.push(std::path::PathBuf::from("G:\\My Drive"));
+    tries.extend(google_drive_letter.map(std::path::Path::to_path_buf));
     tries.into_iter().find(|p| p.is_dir()).map(|p| (p.join("Atlas sync"), Carry::CloudFolder))
 }
 

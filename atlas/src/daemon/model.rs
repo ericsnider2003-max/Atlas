@@ -101,7 +101,7 @@ impl<'a> Daemon<'a> {
     /// How a coding agent's program is looked for, for the tests: a stand-in
     /// for this machine's PATH (`coding_agent`).
     pub fn find_coding_agents_with_for_test(&mut self, lookup: fn(&str) -> Option<String>) {
-        self.agent_lookup = lookup;
+        self.agent_lookup = Some(lookup);
     }
 
     /// Where the deep model is and what it has done, for the tests.

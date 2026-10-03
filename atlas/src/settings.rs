@@ -160,7 +160,7 @@ pub const GROUP_ORDER: &[(&str, &str)] = &[
     ("Reaching outside this machine", "Anything that leaves the laptop: the web, your phone, your mail, a paid model."),
     ("Social", "Your social accounts' numbers and the people you watch: which of them Atlas reads on its own."),
     ("Looking for opportunities", "Gigs, grants and niches found once a day: where from, how many requests, and what makes the brief."),
-    ("Your devices", "Where your devices meet to carry things between them, and what this one is called. Set on the Sync page."),
+    ("Your devices", "Where your devices meet to carry things between them, what this one is called, and where Atlas's own source is. Set on the Sync page."),
 ];
 
 /// The settings that only take effect when Atlas starts, because what they

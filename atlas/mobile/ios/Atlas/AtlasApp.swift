@@ -1,8 +1,11 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 @main
 struct AtlasApp: App {
+    /// Push: iOS gives the app its push address here (item 15).
+    @UIApplicationDelegateAdaptor(PushDelegate.self) private var push
     @Environment(\.scenePhase) private var phase
     @StateObject private var model = HubModel()
 
@@ -52,6 +55,10 @@ final class HubModel: ObservableObject {
         if await AtlasCore.shared.start() {
             url = AtlasCore.shared.hubURL
             LiveActivity.shared.begin()
+            // Ask iOS for this phone's push address, so the laptop's Atlas can
+            // reach it with the app closed (item 15). No prompt: alerts were
+            // already asked for when Atlas first had something to say.
+            UIApplication.shared.registerForRemoteNotifications()
             await takeShared()
         } else {
             failed = true
@@ -150,4 +157,19 @@ struct HubView: UIViewRepresentable {
     }
 
     func updateUIView(_ w: WKWebView, context: Context) {}
+}
+
+/// Hands the phone's push address to Atlas on this phone, which carries it to
+/// your laptop as a sync event (item 15, `src/apns.rs`). Nothing else leaves.
+final class PushDelegate: NSObject, UIApplicationDelegate {
+    func application(_ app: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+        let hex = token.map { String(format: "%02x", $0) }.joined()
+        Task { await AtlasCore.shared.keepPushAddress(hex) }
+    }
+
+    func application(_ app: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // Without a push address the laptop can't reach this phone while Atlas
+        // is closed; everything else works. Said in the device log only.
+        NSLog("Atlas: no push address from iOS: \(error.localizedDescription)")
+    }
 }

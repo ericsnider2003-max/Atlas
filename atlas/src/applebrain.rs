@@ -115,7 +115,7 @@ fn last_said(req: &ChatRequest) -> &str {
 }
 
 /// Should this request skip Apple's model? `None`: ask it first.
-pub fn skip(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
+pub fn skip_apple(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
     if !apple_here {
         return Some(Skip::NotOnThisPhone);
     }
@@ -180,7 +180,7 @@ pub fn request_json(req: &ChatRequest) -> String {
 }
 
 /// What the shell's code and buffer come to.
-pub fn read_answer(code: i32, out: &str) -> Apple {
+pub fn read_apple_answer(code: i32, out: &str) -> Apple {
     match code {
         code::OK => match serde_json::from_str::<serde_json::Value>(out) {
             Ok(v) => match v.get("text").and_then(|t| t.as_str()) {
@@ -204,7 +204,7 @@ fn ask_apple(req: &ChatRequest) -> Apple {
     let mut buf = vec![0u8; ANSWER_BYTES];
     let rc = unsafe { f(body.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
     let out = unsafe { CStr::from_ptr(buf.as_ptr().cast()) }.to_string_lossy().into_owned();
-    read_answer(rc, &out)
+    read_apple_answer(rc, &out)
 }
 
 /// The iPhone's brain: Apple's model first, Atlas's own model for each
@@ -227,7 +227,7 @@ impl AppleFirst {
     }
 
     /// Who answered the last request: "apple" or "atlas".
-    pub fn last_answered_by(&self) -> Option<&'static str> {
+    pub fn last_answered_by_for_test(&self) -> Option<&'static str> {
         self.last.lock().ok().and_then(|g| *g)
     }
 }
@@ -239,7 +239,7 @@ impl Llm for AppleFirst {
             max_tokens: 512,
             ..Default::default()
         };
-        if skip(&req, registered()).is_none() {
+        if skip_apple(&req, registered()).is_none() {
             if let Apple::Answered(t) = ask_apple(&req) {
                 self.answered_by("apple");
                 return Ok(t);
@@ -254,7 +254,7 @@ impl Llm for AppleFirst {
     }
 
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
-        if skip(req, registered()).is_none() {
+        if skip_apple(req, registered()).is_none() {
             match ask_apple(req) {
                 Apple::Answered(t) => {
                     self.answered_by("apple");

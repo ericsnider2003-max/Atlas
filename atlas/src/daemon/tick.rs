@@ -29,7 +29,7 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn readings(&self) -> Readings {
-        crate::health::read_machine()
+        self.plat.readings()
     }
 
     pub(super) fn current_work(&self) -> Option<String> {
@@ -1926,6 +1926,14 @@ impl<'a> Daemon<'a> {
         lines
     }
 
+    /// This phone's push address, carried to your other devices as a sync
+    /// event so the laptop can reach it with Atlas closed (item 15, `apns`).
+    pub(crate) fn carry_push_address(&mut self, token: &str, env: &str, now: u64) {
+        let (id, field, to) = crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
+        self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+        let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+    }
+
     /// Record what changed about your add-ons since your other devices were
     /// last told, as ordinary sync events (`plugins::changes_to_carry`).
     fn note_addon_changes(&mut self, now: u64) {
@@ -1964,6 +1972,12 @@ impl<'a> Daemon<'a> {
                     let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok();
                     if let Some(s) = crate::groups::take_synced(&self.store, me.as_ref(), id, to, sealed) {
                         said.push(s);
+                    }
+                }
+                // An iPhone's push address (item 15), from your own devices only.
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::apns::SYNC_PREFIX) => {
+                    if let Some(s) = crate::apns::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                        self.log.info(&s);
                     }
                 }
                 crate::sync::What::Changed { id, field, to } if id.starts_with(crate::plugins::SYNC_PREFIX) => {
@@ -2109,8 +2123,8 @@ impl<'a> Daemon<'a> {
         // cloud folder this machine already syncs.
         let mut dir = cfg.folder.trim().to_string();
         if dir.is_empty() {
-            match crate::sync::best_folder() {
-                Some((p, _)) => dir = p.display().to_string(),
+            match self.plat.cloud_folder() {
+                Some(p) => dir = p.display().to_string(),
                 // No folder: straight to your named devices (`carry_direct_only`).
                 None if self.has_named_peers() => return self.carry_direct_only(&cfg, now),
                 None => return NOWHERE_TO_SYNC.into(),
@@ -2579,7 +2593,7 @@ impl<'a> Daemon<'a> {
         // morning's charge is worse than not starting it. So the decision
         // gates whether tonight's work begins, and its reason is recorded
         // once rather than discarded.
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         let power = crate::awake::Power {
             on_battery: r.on_battery,
             battery_pct: r.battery_percent.map(|p| p as u32).unwrap_or(100),

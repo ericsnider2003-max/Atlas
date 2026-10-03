@@ -217,7 +217,28 @@ fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>
     // The NPU first, where there is one (item 20): the same windows, the
     // same averaging.
     if npu {
+        let t = std::time::Instant::now();
         if let Some(v) = on_npu(&wins, models_dir) {
+            // The first voice on the NPU is checked against the processor's
+            // once: kept only if it agrees and is quicker (`npu::worth_keeping`).
+            if NPU_JUDGED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return Ok(v);
+            }
+            let npu_took = t.elapsed();
+            let t = std::time::Instant::now();
+            let cpu = embed_where(samples, models_dir, false)?;
+            let agree = crate::npu::agreement(&cpu, &v);
+            if !crate::npu::worth_keeping(npu_took, t.elapsed(), agree) {
+                crate::outln!(
+                    "telling voices apart stays on the processor: the NPU took {} ms against {} ms (answers agree to {agree:.3})",
+                    npu_took.as_millis(),
+                    t.elapsed().as_millis()
+                );
+                if let Ok(mut g) = ON_NPU.lock() {
+                    *g = Some(None);
+                }
+                return Ok(cpu);
+            }
             return Ok(v);
         }
     }
@@ -258,6 +279,10 @@ fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>
     }
     Ok(normalised(sum))
 }
+
+/// Whether the NPU's first voice was checked against the processor's.
+#[cfg(feature = "onnx")]
+static NPU_JUDGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The model on the NPU: opened once, `None` inside once refused (said
 /// once), so it stays on `tract`.

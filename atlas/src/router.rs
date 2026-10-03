@@ -373,11 +373,16 @@ impl Router {
         // A command's own phrase leading it, of two words or more ("check my
         // email"); a one-word phrase ("write", "wait") leads too much else.
         let lead = leading_words(said);
-        // A lead ending in "a"/"an" ("write a", "make me a") names no tool on
-        // its own -- "write a haiku about rain" is a poem (2 Oct 2026: the
-        // short code leads made it sure of `build_it`).
-        let names_a_tool = |p: &str| p.split_whitespace().count() >= 2 && !matches!(p.split_whitespace().last(), Some("a" | "an"));
-        if self.entries.iter().any(|e| e.phrases.iter().any(|p| names_a_tool(p) && starts_with_phrase(&lead, p))) {
+        // The same gate the parser uses (`intent::fits_the_command`): "write
+        // a" leads a request only when what follows is code -- "write a
+        // haiku about rain" is conversation (2 Oct 2026).
+        if self.entries.iter().any(|e| {
+            e.phrases.iter().any(|p| {
+                p.split_whitespace().count() >= 2
+                    && starts_with_phrase(&lead, p)
+                    && crate::intent::fits_the_command(&e.name, p, lead.get(p.len()..).unwrap_or(""))
+            })
+        }) {
             return true;
         }
         // Or the words match one tool strongly and clearly ahead of the next:

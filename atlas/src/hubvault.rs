@@ -294,7 +294,7 @@ impl Daemon<'_> {
                 hub::HouseView::NoneYet
             },
             suggested_folder: if cfg.folder.trim().is_empty() {
-                crate::sync::best_folder().map(|(p, _)| p.display().to_string())
+                self.plat.cloud_folder().map(|p| p.display().to_string())
             } else {
                 None
             },

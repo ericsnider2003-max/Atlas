@@ -1229,7 +1229,7 @@ impl<'a> Daemon<'a> {
             let each: Vec<String> = moved.iter().map(|m| format!("{} → {} ({} MB)", m.from, m.to, m.mb)).collect();
             return format!("Moved: {}.", each.join("; "));
         }
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         let survey = crate::tune::Survey {
             disk_free_gb: r.disk_free_gb,
             disk_total_gb: r.disk_total_gb,
@@ -1574,7 +1574,7 @@ impl<'a> Daemon<'a> {
         if !not.is_empty() {
             said.push_str(&format!(" Not done: {}.", not.join("; ")));
         }
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         if r.ram_total_gb > 0.0 && !plan.close.is_empty() {
             said.push_str(&format!(" Memory is at {:.0}% now.", r.ram_used_gb / r.ram_total_gb * 100.0));
         }
@@ -1846,18 +1846,13 @@ impl<'a> Daemon<'a> {
             let mut transcript = String::new();
             if let Some(timed) = &timed {
                 let wav = folder.join("sound.wav");
-                // The sound pulled out for the transcriber, and the .srt it
-                // writes beside it, are scratch: gone however this ends, an
-                // early return or a panic included.
-                struct Scratch(Vec<std::path::PathBuf>);
-                impl Drop for Scratch {
-                    fn drop(&mut self) {
-                        for f in &self.0 {
-                            let _ = std::fs::remove_file(f);
-                        }
-                    }
-                }
-                let _scratch = Scratch(vec![wav.clone(), wav.with_extension("srt")]);
+                // The sound is a scratch copy of the cut, never kept whatever
+                // the recordings setting says (the video itself is): the
+                // guard drops it and the timed transcript's file on every
+                // way out, as for a recording.
+                let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
+                let mut sound = crate::retention::Recording::new(&wav, &scratch);
+                sound.and_also(&wav.with_extension("srt"));
                 if run(&video.ffmpeg, crate::studio::audio_args(&s(&cut), &s(&wav))).is_ok() {
                     let mut v = vars.clone();
                     let stem_path = wav.with_extension("");
@@ -1874,6 +1869,7 @@ impl<'a> Daemon<'a> {
                         transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
                     }
                 }
+                drop(sound);
             }
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {

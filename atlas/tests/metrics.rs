@@ -45,6 +45,7 @@ const EVERY_DEPENDENCY: &[(&str, &str)] = &[
     ("chacha20poly1305", "actually encrypting the vault"),
     ("miniz_oxide", "inflating what PDFs and zips store deflated, so \"read this PDF\" and unzipping need no outside program (already in the tree under the image decoders)"),
     ("tract-onnx", "running models inside atlas.exe rather than shelling out to Python"),
+    ("p256", "signing the token Apple's push service requires (ES256, P-256) with Eric's own key, so an iPhone hears from Atlas with the app closed -- a curve Atlas has nowhere else, and not one to hand-write"),
     ("ort", "putting the search and voice models on the laptop's NPU (item 20): ONNX Runtime opened at run time, the copy Kokoro already brings, with Intel's OpenVINO plugin -- the NPU has no other open route"),
     ("windows", "talking to the operating system at all"),
     ("cpal", "Windows builds only: recording a call -- your microphone, and what the laptop plays (WASAPI loopback) once the others have said yes (Eric, 24 Sep 2026). Talking to the sound devices is Windows' own COM plumbing; this is the maintained wrapper rather than several hundred lines of unsafe FFI"),

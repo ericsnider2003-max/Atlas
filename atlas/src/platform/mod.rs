@@ -299,6 +299,27 @@ impl OsQuiet {
 }
 
 pub trait Platform {
+    /// A cloud folder this machine already syncs, for bundles when no
+    /// `sync.folder` is set (`sync::best_folder`, H13i). Behind the platform
+    /// so a test's mock machine has none: the real one is Eric's Dropbox.
+    fn cloud_folder(&self) -> Option<std::path::PathBuf> {
+        crate::sync::best_folder().map(|(p, _)| p)
+    }
+
+    /// Where a program is on this machine's PATH (`tools::which`): a coding
+    /// agent, before Atlas offers to hand it work.
+    fn find_program(&self, name: &str) -> Option<String> {
+        crate::tools::which(name)
+    }
+
+    /// Disk, memory and battery, for the health notices, the self-check and
+    /// the night's work. Behind the platform for the same reason: a test's
+    /// mock machine is calm, where the real laptop under a three-chat build
+    /// prefixed "Memory is nearly full" to replies and failed 2 Oct's tests.
+    fn readings(&self) -> crate::health::Readings {
+        crate::health::read_machine()
+    }
+
     /// The focused window, or None if nothing is focused.
     fn active_window(&self) -> Result<Option<ActiveWindow>> {
         Ok(None)

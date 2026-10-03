@@ -2379,6 +2379,15 @@ phone:
   timeout_secs: 5           # short: this runs inside the tick
   include_detail: false     # true puts the message body on your lock screen
   widget_titles_on_lock_screen: false  # true shows what's next on a lock-screen widget, not just the time
+  # Apple's push service, so the laptop reaches your iPhone with Atlas closed
+  # (item 15). The key is the .p8 from your Apple Developer account (Keys ->
+  # Apple Push Notifications service); it stays on this computer. With these
+  # set and `enabled: true`, no push server (`host`) is needed for an iPhone.
+  apns:
+    key_file: ""            # e.g. data/state/apns/AuthKey_XXXXXXXXXX.p8
+    key_id: ""              # the ten characters in the key file's name
+    team_id: ""             # Membership details in your Apple Developer account
+    topic: "com.ericsnider.atlas"
 
 # Reading a face and a pair of hands off the camera.
 #

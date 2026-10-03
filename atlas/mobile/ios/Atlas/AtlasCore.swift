@@ -47,8 +47,10 @@ final class AtlasCore {
             return nil
         }.value
         guard let s = url else { return false }
-        // Apple's model as the first brain where this iPhone has it (decision 2).
+        // Apple's model as the first brain where this iPhone has it (decision 2),
+        // and Apple's weather for weather answers.
         AppleBrain.register()
+        AppleWeather.register()
         hubURL = URL(string: s)
         token = URLComponents(string: s)?.queryItems?.first(where: { $0.name == "t" })?.value
         if !watching {
@@ -139,6 +141,19 @@ final class AtlasCore {
 }
 
 extension AtlasCore {
+    /// This phone's push address, to Atlas on this phone (`/hub/push-token`).
+    /// Ad hoc and TestFlight builds use Apple's production push service.
+    func keepPushAddress(_ hex: String) async {
+        guard let u = url("/hub/push-token"), let t = token,
+              let body = try? JSONSerialization.data(withJSONObject: ["token": hex, "env": "production"]) else { return }
+        var r = URLRequest(url: u)
+        r.httpMethod = "POST"
+        r.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = body
+        _ = try? await URLSession.shared.data(for: r)
+    }
+
     /// The widgets' glance (/hub/glance.json), the same bearer as live().
     func glance() async -> Glance? {
         guard let u = url("/hub/glance.json"), let t = token else { return nil }
@@ -154,11 +169,15 @@ struct LiveState: Decodable {
     struct Ready: Decodable { let title: String; let href: String }
     /// What Atlas said in the background, numbered (reminders, finished work).
     struct Said: Decodable { let id: Int64; let text: String }
+    /// A reminder still to come (item 15): handed to iOS on going to the
+    /// background so it rings with the app closed.
+    struct Upcoming: Decodable { let id: Int64; let due: Int64; let text: String }
     let status: String
     let working: Working?
     let ready: [Ready]
     let waiting: Int
     let said: [Said]?
+    let upcoming: [Upcoming]?
 }
 
 /// A session that doesn't follow the hub's redirect after a form: the

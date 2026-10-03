@@ -162,7 +162,8 @@ fn a_failing_tool_still_reports_its_own_error_text() {
 fn zero_means_the_default_rather_than_no_limit() {
     // A config that omits the field, or sets it to 0, must not mean "wait
     // forever" — that is the behaviour being removed.
-    let t = tool("echo", &["x"], 0);
+    // `echo` is a shell built-in on Windows, not a program.
+    let t = if cfg!(windows) { tool("cmd", &["/c", "echo", "x"], 0) } else { tool("echo", &["x"], 0) };
     assert_eq!(t.timeout_secs, 0);
     // Runs and returns; the point is that it does not hang.
     assert!(t.run(&Vars::default(), None).is_ok());

@@ -103,6 +103,10 @@ impl Daemon<'_> {
                     // What the background said (a reminder, a finished job),
                     // numbered: an app shows each new one as a notification.
                     "said": self.said_for_apps.iter().map(|(id, text)| serde_json::json!({ "id": id, "text": text })).collect::<Vec<_>>(),
+                    // Reminders still to come (item 15): the iPhone hands
+                    // these to iOS when the app goes to the background, so
+                    // they ring with the app closed -- nothing online.
+                    "upcoming": crate::phonealarms::upcoming(&self.scheduler, now),
                 });
                 Reply::ok(&body.to_string())
             }
@@ -110,6 +114,19 @@ impl Daemon<'_> {
                 Ok(bytes) => Reply::media("audio/mpeg", bytes),
                 Err(why) => Reply { status: 404, body: serde_json::json!({ "error": why }).to_string(), ..Reply::default() },
             },
+            Action::PushToken(body) => {
+                // `{"token": "<hex>", "env": "production"}` from the iPhone
+                // app: carried to your other devices as a sync event, so the
+                // laptop can reach this phone with Atlas closed (`apns`).
+                let v: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                let token = v.get("token").and_then(|t| t.as_str()).unwrap_or("").trim().to_lowercase();
+                let env = v.get("env").and_then(|t| t.as_str()).unwrap_or("production");
+                if !crate::apns::looks_like_a_token(&token) || !matches!(env, "production" | "sandbox") {
+                    return Reply { status: 400, body: serde_json::json!({ "error": "That isn't a push address." }).to_string(), ..Reply::default() };
+                }
+                self.carry_push_address(&token, env, crate::store::now());
+                Reply::ok(&serde_json::json!({ "kept": true }).to_string())
+            }
             Action::PhoneCalendar(body) => {
                 let now = crate::store::now();
                 Reply::ok(&self.phone_calendar(&body, now).to_string())
@@ -963,7 +980,7 @@ impl Daemon<'_> {
 
     /// Health, as rings: memory, disk, and the battery when there is one.
     fn card_machine(&self) -> String {
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         if r.ram_total_gb <= 0.0 && r.disk_total_gb <= 0.0 {
             return hub::nothing("I can't read this machine's memory or disk.");
         }
@@ -2051,7 +2068,7 @@ impl Daemon<'_> {
     }
 
     fn status_lines(&self) -> Vec<(String, String)> {
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         let mut out = vec![
             (
                 "Listening".to_string(),

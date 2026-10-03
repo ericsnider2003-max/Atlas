@@ -6,5 +6,12 @@
 	     this group's folder (Shared/SharedInbox.swift). -->
 	<key>com.apple.security.application-groups</key>
 	<array><string>group.group.com.ericsnider.atlas</string></array>
+	<!-- Apple's push service, so the laptop's Atlas can reach this phone with
+	     the app closed (item 15). Ad hoc builds use the production service. -->
+	<key>aps-environment</key>
+	<string>production</string>
+	<!-- Apple's weather for Atlas's weather answers (AppleWeather.swift). -->
+	<key>com.apple.developer.weatherkit</key>
+	<true/>
 </dict>
 </plist>

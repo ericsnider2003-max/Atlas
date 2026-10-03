@@ -600,7 +600,7 @@ pub struct Daemon<'a> {
     pub watch_after_allow: Option<(u64, bool)>,
     /// How a coding agent's program is looked for: this machine's PATH, or
     /// the tests' stand-in (`coding_agent`, 2 Oct 2026).
-    pub(crate) agent_lookup: fn(&str) -> Option<String>,
+    pub(crate) agent_lookup: Option<fn(&str) -> Option<String>>,
     /// What Atlas last asked your yes for that only a yes may start -- a
     /// hand-over to a coding agent, running a build -- exactly as it will
     /// come back. A request carrying the marker any other way (a model's
@@ -1690,7 +1690,7 @@ impl<'a> Daemon<'a> {
             last_sight: None,
             cam_watch: None,
             watch_after_allow: None,
-            agent_lookup: crate::tools::which,
+            agent_lookup: None,
             offered_for_yes: None,
             album: crate::vision::Album::load(&store_for_load2),
             track: crate::handtrack::Track::default(),

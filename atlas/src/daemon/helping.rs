@@ -253,7 +253,9 @@ impl<'a> Daemon<'a> {
             return Some("I can't check the weather without the internet, and I'd only be guessing.".into());
         }
         let cfg = self.tools_ref().map(|t| t.weather.clone()).unwrap_or_default();
-        Some(match crate::weather::answer(&cfg, &asked, self.weather_place.as_ref()) {
+        // Apple's weather, with the same Apple key as push (Eric, 2 Oct 2026).
+        let apple = self.tools_ref().map(|t| t.phone.apns.clone());
+        Some(match crate::weather::answer(&cfg, &asked, self.weather_place.as_ref(), apple.as_ref()) {
             Ok((said, place)) => {
                 if asked.place.is_none() {
                     self.weather_place = Some(place);

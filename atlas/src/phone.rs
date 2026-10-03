@@ -62,6 +62,9 @@ pub struct PhoneConfig {
     /// reason as `include_detail`: a lock screen is read by whoever holds the
     /// phone.
     pub widget_titles_on_lock_screen: bool,
+    /// Apple's push service, for an iPhone with Atlas closed (item 15,
+    /// `apns`). Works beside the push server above, or instead of it.
+    pub apns: crate::apns::ApnsConfig,
 }
 
 impl Default for PhoneConfig {
@@ -74,6 +77,7 @@ impl Default for PhoneConfig {
             timeout_secs: 5,
             include_detail: false,
             widget_titles_on_lock_screen: false,
+            apns: crate::apns::ApnsConfig::default(),
         }
     }
 }
@@ -115,6 +119,10 @@ pub fn configured(cfg: &PhoneConfig) -> std::result::Result<(), NotSet> {
     }
     let h = cfg.host.trim();
     if h.is_empty() {
+        // No push server, but an iPhone Apple can reach: that's a way.
+        if apple_can_reach(cfg) {
+            return Ok(());
+        }
         return Err(NotSet::NoHost);
     }
     // An https address is fine now (TLS, round 5). One with nothing after the
@@ -188,6 +196,32 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
     if let Err(e) = configured(cfg) {
         return Err(crate::error::AtlasError::Platform(e.plain()));
     }
+    // One way to reach your phone, two senders (decision 3): the push server
+    // (Android, and anything subscribed to it) and Apple's push service for
+    // an iPhone. Delivered if either got it.
+    let by_apple = if apple_can_reach(cfg) { Some(crate::apns::send(note, cfg)) } else { None };
+    if cfg.host.trim().is_empty() {
+        return match by_apple {
+            Some(Ok(())) => Ok(()),
+            Some(Err(why)) => Err(crate::error::AtlasError::Platform(why)),
+            None => Err(crate::error::AtlasError::Platform(NotSet::NoHost.plain())),
+        };
+    }
+    match (send_to_server(note, cfg), by_apple) {
+        (Ok(()), _) | (_, Some(Ok(()))) => Ok(()),
+        (Err(e), _) => Err(e),
+    }
+}
+
+/// Is an iPhone reachable through Apple's push service: the key set up, and
+/// at least one phone has given its address?
+fn apple_can_reach(cfg: &PhoneConfig) -> bool {
+    cfg.apns.ready(&crate::roots::install_root()).is_ok()
+        && !crate::apns::Devices::load(&crate::roots::state_dir()).devices.is_empty()
+}
+
+/// The push server (ntfy's JSON publish).
+fn send_to_server(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
     let body = body_for(note, cfg);
     let timeout = Duration::from_secs(cfg.timeout_secs.max(1));
     let token = cfg.token.as_deref().filter(|t| !t.trim().is_empty());

@@ -1,0 +1,34 @@
+# Text is LF in every checkout, Windows included.
+#
+# Without this, Git for Windows' core.autocrlf=true turns every text file into
+# CRLF on the laptop. Tests that read sources, configs, CSS and the mark's SVGs
+# and look for "\n" then fail there and only there (2 Oct: the hub's colourways,
+# the mark files, the telegram block in tools.yaml, and the source scans), and
+# the shipped tools.yaml/hub pages differ by machine. LF is what rustc, cargo,
+# the hub and every editor on Windows already accept.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF: cmd.exe misreads labels in LF batch files.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Never touched.
+*.wav binary
+*.png binary
+*.heic binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.zip binary
+*.onnx binary
+*.lib binary
+*.res binary
+*.pyc binary
+*.stl binary
+*.obj binary
+
+# Fixtures and vendored code stay byte-for-byte as they came (a YouTube Studio
+# export is CRLF on purpose).
+atlas/tests/fixtures/** -text
+atlas/vendor/** -text

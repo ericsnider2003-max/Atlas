@@ -21,6 +21,8 @@ pub enum Action {
 
 pub struct MockPlatform {
     monitors: Vec<Monitor>,
+    /// What `readings` reports: nothing measured unless a test sets it.
+    readings: RefCell<crate::health::Readings>,
     /// How many find_window polls each app needs before its window "appears".
     appears_after: HashMap<String, u32>,
     polls: RefCell<HashMap<String, u32>>,
@@ -95,6 +97,7 @@ impl MockPlatform {
             polls: RefCell::new(HashMap::new()),
             launched: RefCell::new(HashSet::new()),
             running: RefCell::new(HashMap::new()),
+            readings: RefCell::new(crate::health::Readings::default()),
             log: RefCell::new(Vec::new()),
             active: RefCell::new(None),
             next_id: RefCell::new(1),
@@ -127,6 +130,11 @@ impl MockPlatform {
 
     /// Seed the fake OS clipboard, standing in for the person having copied
     /// something. What `read_clipboard` then hands back.
+    /// The disk, memory and battery this mock machine reports.
+    pub fn set_readings_for_test(&self, r: crate::health::Readings) {
+        *self.readings.borrow_mut() = r;
+    }
+
     pub fn set_clipboard(&self, text: &str) {
         *self.clipboard.borrow_mut() = Some(text.to_string());
     }
@@ -193,6 +201,21 @@ impl MockPlatform {
 }
 
 impl Platform for MockPlatform {
+    /// A mock machine syncs no cloud folder (a test that wants one sets
+    /// `sync.folder`), so nothing a test does lands in the real one.
+    fn cloud_folder(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+    /// Nothing is installed on a mock machine.
+    fn find_program(&self, _name: &str) -> Option<String> {
+        None
+    }
+
+    /// Nothing measured: `health::assess` says nothing about a machine with
+    /// no totals, so no test reply carries the real machine's state.
+    fn readings(&self) -> crate::health::Readings {
+        self.readings.borrow().clone()
+    }
     fn active_window(&self) -> Result<Option<ActiveWindow>> {
         Ok(self.active.borrow().clone())
     }

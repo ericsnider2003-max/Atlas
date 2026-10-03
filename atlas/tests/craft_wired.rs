@@ -94,6 +94,10 @@ fn cargo_check_on_a_real_broken_crate_actually_fails() {
     let out = std::process::Command::new("cargo")
         .args(["check", "--all-targets"])
         .current_dir(&dir)
+        // Its own target folder: under `cargo test` the outer run's
+        // CARGO_TARGET_DIR is inherited, and two toy crates of the same name
+        // checked in one shared folder raced each other there (2 Oct).
+        .env("CARGO_TARGET_DIR", dir.join("target"))
         .output()
         .expect("cargo must be on PATH for this test to mean anything");
     assert!(!out.status.success(), "a genuinely broken crate should fail cargo check");
@@ -108,6 +112,10 @@ fn cargo_check_on_a_real_working_crate_actually_passes() {
     let out = std::process::Command::new("cargo")
         .args(["check", "--all-targets"])
         .current_dir(&dir)
+        // Its own target folder: under `cargo test` the outer run's
+        // CARGO_TARGET_DIR is inherited, and two toy crates of the same name
+        // checked in one shared folder raced each other there (2 Oct).
+        .env("CARGO_TARGET_DIR", dir.join("target"))
         .output()
         .expect("cargo must be on PATH for this test to mean anything");
     assert!(out.status.success(), "a working crate should pass cargo check");

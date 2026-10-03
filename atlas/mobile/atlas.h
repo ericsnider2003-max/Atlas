@@ -29,4 +29,9 @@ void atlas_mobile_stop(void);
    it back. Each request it can't do goes to Atlas's own model. */
 typedef int32_t (*atlas_apple_fn)(const char *req, char *out, size_t out_len);
 void atlas_mobile_apple_model(atlas_apple_fn f);
+/* Apple's weather (iOS 16+, src/applewx.rs): reads {"lat","lon"} and writes
+   {"currentWeather": {...}, "forecastDaily": {"days": [...]}} in the shape of
+   WeatherKit's REST service, returning 0 when it answered. NULL takes it back. */
+typedef int32_t (*atlas_weather_fn)(const char *req, char *out, size_t out_len);
+void atlas_mobile_apple_weather(atlas_weather_fn f);
 #endif

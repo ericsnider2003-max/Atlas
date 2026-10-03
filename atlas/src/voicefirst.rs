@@ -26,7 +26,7 @@ pub fn model_started(pid: u32) {
 }
 
 /// Is the model server lowered for the voice right now?
-pub fn model_lowered() -> bool {
+pub fn model_lowered_for_test() -> bool {
     LOWERED.load(Ordering::SeqCst)
 }
 

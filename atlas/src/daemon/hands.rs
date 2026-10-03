@@ -216,7 +216,7 @@ impl<'a> Daemon<'a> {
     /// `doctor` has already found the missing tools and models by the time
     /// anything asks for this.
     pub(crate) fn vitals(&self) -> crate::diagnose::Vitals {
-        let r = crate::health::read_machine();
+        let r = self.plat.readings();
         crate::diagnose::Vitals {
             config_loaded: self.tools_ref().is_some(),
             config_error: None,

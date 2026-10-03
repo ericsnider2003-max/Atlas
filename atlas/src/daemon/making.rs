@@ -201,7 +201,13 @@ impl<'a> Daemon<'a> {
         if self.tools_cfg().build.coding_agent == crate::build_it::AgentUse::Off {
             return None;
         }
-        crate::coding_agent::installed_with(self.agent_lookup)
+        // The platform's PATH unless a test named one: a mock machine has no
+        // coding agents, where the machine running the tests may well have
+        // Claude Code (2 Oct 2026: after_a_restart was offered it).
+        match self.agent_lookup {
+            Some(lookup) => crate::coding_agent::installed_with(lookup),
+            None => crate::coding_agent::installed_with(|p| self.plat.find_program(p)),
+        }
     }
 
     /// Build code from a description, check it against the real toolchain, and

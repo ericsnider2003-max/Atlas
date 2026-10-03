@@ -37,6 +37,8 @@ pub struct Native {
     /// On the NPU (item 20), one fixed length per bucket: `None` once a
     /// length was tried there and refused, so it stays on `tract`.
     npu: HashMap<usize, Option<(crate::npu::Session, Vec<String>)>>,
+    /// Lengths whose first NPU run was checked against the processor's.
+    npu_judged: Vec<usize>,
     root: std::path::PathBuf,
 }
 
@@ -50,7 +52,7 @@ impl Native {
         let raw = std::fs::read_to_string(&v).ok()?;
         let vocab = raw.lines().enumerate().map(|(i, w)| (w.to_string(), i as i64)).collect();
         let proto = tract_onnx::onnx().model_for_path(&m).ok()?;
-        Some(Native { vocab, proto, compiled: HashMap::new(), npu: HashMap::new(), root: root.to_path_buf() })
+        Some(Native { vocab, proto, compiled: HashMap::new(), npu: HashMap::new(), npu_judged: Vec::new(), root: root.to_path_buf() })
     }
 
     /// Are the files there?
@@ -60,6 +62,14 @@ impl Native {
 
     pub fn embed(&mut self, text: &str) -> Option<Vec<f32>> {
         self.embed_where(text, true)
+    }
+
+    /// Which padded lengths run on the NPU now (true) or were sent back to
+    /// the processor (false), for `atlas npu-check`.
+    pub fn npu_lengths(&self) -> Vec<(usize, bool)> {
+        let mut v: Vec<(usize, bool)> = self.npu.iter().map(|(n, s)| (*n, s.is_some())).collect();
+        v.sort();
+        v
     }
 
     /// The same, on the processor only (`tract`): what `atlas npu-check`
@@ -102,6 +112,10 @@ impl Native {
             let model = root.join(MODEL);
             let names = crate::npu::Session::input_names(&root, &model).ok()?;
             let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|nm| (nm.clone(), vec![1, n as i64])).collect();
+            // Lost to the processor last time, with this engine: not tried again.
+            if crate::npu::lost_before(&model, &shapes) {
+                return None;
+            }
             match crate::npu::Session::open(&root, &model, &shapes, crate::npu::Where::Npu) {
                 Ok(s) => Some((s, names)),
                 Err(why) => {
@@ -111,6 +125,7 @@ impl Native {
             }
         });
         let (s, names) = session.as_ref()?;
+        let names_c = names.clone();
         // The export's own names, in its own order: ids, mask, segment.
         let name = |want: &str, i: usize| names.iter().find(|x| x.contains(want)).or(names.get(i)).cloned().unwrap_or_default();
         let real = ids.len().min(n);
@@ -125,8 +140,40 @@ impl Native {
         if names.len() > 2 {
             inputs.push(crate::npu::In::I64(name("token_type", 2), vec![1, n as i64], vec![0; n]));
         }
-        let hidden = s.run(inputs).ok()?.into_iter().next()?;
-        Some(pool_flat(&hidden, real, n))
+        let (out, npu_took) = s.run_timed(inputs).ok()?;
+        let v = pool_flat(out.first()?, real, n);
+        // The first sentence at this length runs on both, once: the NPU stays
+        // only if it gives the processor's answer and is quicker.
+        if !self.npu_judged.contains(&n) {
+            self.npu_judged.push(n);
+            let t = std::time::Instant::now();
+            let cpu = self.embed_where_tract(ids, n);
+            let cpu_took = t.elapsed();
+            let agree = cpu.as_ref().map(|c| crate::npu::agreement(c, &v)).unwrap_or(0.0);
+            let keep = crate::npu::worth_keeping(npu_took, cpu_took, agree);
+            let model = self.root.join(MODEL);
+            let shapes: Vec<(String, Vec<i64>)> = names_c.iter().map(|x| (x.clone(), vec![1, n as i64])).collect();
+            crate::npu::remember(&model, &shapes, keep);
+            if !keep {
+                crate::outln!(
+                    "search stays on the processor for {n}-word texts: the NPU took {} ms against {} ms (answers agree to {agree:.3})",
+                    npu_took.as_millis(),
+                    cpu_took.as_millis()
+                );
+                self.npu.insert(n, None);
+                return cpu;
+            }
+        }
+        Some(v)
+    }
+
+    /// `tract`'s answer for already-tokenized ids at length `n`.
+    fn embed_where_tract(&mut self, ids: &[i64], n: usize) -> Option<Vec<f32>> {
+        if !self.compiled.contains_key(&n) {
+            let m = shaped(self.proto.clone(), n).ok()?;
+            self.compiled.insert(n, m);
+        }
+        pooled(self.compiled.get(&n)?, ids, n).ok()
     }
 }
 
