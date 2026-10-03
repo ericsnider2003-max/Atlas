@@ -211,6 +211,8 @@ pub mod worksession;
 pub mod studio;
 pub mod applied;
 pub mod phonemode;
+pub mod connect;
+pub mod connecting;
 pub mod when;
 pub mod notify;
 pub mod nudge;

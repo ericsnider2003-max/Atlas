@@ -191,7 +191,7 @@ impl Page {
             self,
             Page::Messages | Page::Business | Page::SharedTasks | Page::Clients | Page::Give | Page::Sound
                 | Page::Trusted | Page::Talk | Page::Help | Page::Workshop | Page::Updates | Page::Feedback
-                | Page::Connections | Page::Documents | Page::Phone | Page::Recommendations
+                | Page::Connections | Page::Documents | Page::Phone | Page::Recommendations | Page::Accounts
         )
     }
 
@@ -1793,7 +1793,7 @@ pub fn settings_page(s: &Settings) -> String {
         (Page::Sound.href(), "Sound & voice", "Atlas's voice, volume, the wake word, quiet hours, mute — and when it may pop up."),
         (Page::Gestures.href(), "Gestures", "Hands-free on camera: whether it's on, and how each works."),
         (Page::Trusted.href(), "Trusted recipients", "Who Atlas can send to without asking."),
-        (Page::Accounts.href(), "Calendars & accounts", "Mailboxes, phone calendar sync, connected devices."),
+        (Page::Accounts.href(), "Calendars & accounts", "Connect your email and calendars, and see which are working."),
         (Page::Help.href(), "Help & accessibility", "Using Atlas with a screen reader, keyboard or larger text; the statement."),
     ] {
         body.push_str(&format!(
@@ -2607,6 +2607,22 @@ pub fn back_with(href: &str, extra: &str, said: &str) -> crate::server::Reply {
     ))
 }
 
+/// A block put straight after the page's heading (and the note under it).
+pub fn with_block_after_heading(page: String, block: &str) -> String {
+    match page.find("</h1>") {
+        Some(at) => {
+            let mut at = at + 5;
+            if page[at..].starts_with("<p class=pagenote>") {
+                if let Some(end) = page[at..].find("</p>") {
+                    at += end + 4;
+                }
+            }
+            format!("{}{block}{}", &page[..at], &page[at..])
+        }
+        None => page,
+    }
+}
+
 /// A page with a sentence saying what just happened, under its heading.
 pub fn with_said(page: String, said: Option<&str>) -> String {
     let Some(said) = said.filter(|s| !s.trim().is_empty()) else { return page };
@@ -2901,10 +2917,10 @@ fn first_run_html(d: &Deck) -> String {
          your brief, your day, what I'm working on. Nothing here yet, so let's give it a little to work with. \
          You can skip any of these and come back; I run fine offline the whole time.</p></div></section>\
          <ol class=firststeps>\
-         <li><b>Bring in your phone's calendar</b><span>The Atlas app on your phone sends its calendar here and keeps the two in step, kept on this machine.</span>\
-         <a class=btn href='{cal}'>Add your phone</a></li>\
-         <li><b>Email</b><span>Turn Email on in Settings so I can pull out what needs a reply. Adding the mailbox itself has no page yet.</span>\
-         <a class=btn href='{acc}'>Open the switch</a></li>\
+         <li><b>Connect your email</b><span>Type your address and I'll walk you through it -- for most providers that's one app password, tried before it's kept.</span>\
+         <a class=btn href='{acc}'>Connect your email</a></li>\
+         <li><b>Bring in your calendar</b><span>Paste your Google, Outlook or iCloud calendar's private link and I'll keep reading it.</span>\
+         <a class=btn href='{cal}'>Add a calendar</a></li>\
          <li><b>Hand me something to look at</b><span>A file, a link, a photo — any type, any size.</span>\
          <a class=btn href='{give}'>Give Atlas a file</a></li>\
          </ol><p class=note>Or just tell me what you need — say “Atlas”, or type in the bar. I'll take it from there.</p>",
@@ -2912,8 +2928,8 @@ fn first_run_html(d: &Deck) -> String {
         // Each goes where the thing is actually done (27 Sep 2026: "Connect"
         // opened the calendar, "Add" opened site security, and "Give Atlas a
         // file" opened search).
-        cal = Page::Phone.href(),
-        acc = format!("{}#set-mail.enabled", Page::Settings.href()),
+        cal = format!("{}#connect", Page::Accounts.href()),
+        acc = format!("{}#connect", Page::Accounts.href()),
         give = Page::Give.href(),
     )
 }

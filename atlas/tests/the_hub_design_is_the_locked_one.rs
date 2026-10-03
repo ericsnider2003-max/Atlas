@@ -229,8 +229,12 @@ fn a_business_shows_at_a_glance_and_first_run_is_calm_not_blank() {
     // 27 Sep 2026: the steps are named for what their pages can do, and each
     // link goes where that's done (the calendar comes from the phone's app;
     // a file is given on Give, not searched for).
-    assert!(html.contains("<ol class=firststeps>") && html.contains("Bring in your phone's calendar") && html.contains("<b>Email</b>"));
-    assert!(html.contains("href='/hub/phone'") && html.contains("href='/hub/give'") && html.contains("href='/hub/settings#set-mail.enabled'"), "{html}");
+    // 2 Oct 2026: email and calendars both go to Connect an account, where
+    // they can actually be connected (the email step said "no page yet", and
+    // the calendar one pointed at installing the phone app).
+    assert!(html.contains("<ol class=firststeps>") && html.contains("<b>Connect your email</b>") && html.contains("<b>Bring in your calendar</b>"));
+    assert!(html.contains("href='/hub/accounts#connect'") && html.contains("href='/hub/give'"), "{html}");
+    assert!(!html.contains("has no page yet"));
     assert!(!html.contains("href='/hub/find'>Give"), "Give Atlas a file opens search");
     assert!(html.contains("I run fine offline the whole time"));
 }

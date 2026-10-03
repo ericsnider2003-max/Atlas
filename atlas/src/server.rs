@@ -1085,7 +1085,9 @@ pub fn route(r: &Request) -> Option<Action> {
             | "/hub/talk" | "/hub/help" | "/hub/workshop" | "/hub/updates" | "/hub/feedback" | "/hub/phonemodel" | "/hub/documents" | "/hub/phone" | "/hub/mcp" | "/hub/draftmodel" | "/hub/brains"
             | "/hub/recommendations/go" | "/hub/reclaim" | "/hub/sync-setup" | "/hub/social" | "/hub/opportunities"
             // Outstanding's Drop it / Stop it buttons (2 Oct 2026).
-            | "/hub/outstanding",
+            | "/hub/outstanding"
+            // Connect an account (2 Oct 2026, `connecting`).
+            | "/hub/connect",
         ) => Some(Action::HubPost { path: r.path.clone(), fields: crate::hub::form_fields(&r.body) }),
         ("POST", "/hub/pause") => match crate::hub::form_field(&r.body, "what").as_deref() {
             Some("pause") => Some(Action::Pause(true)),
