@@ -1927,6 +1927,14 @@ impl<'a> Daemon<'a> {
 
     /// This phone's push address, carried to your other devices as a sync
     /// event so the laptop can reach it with Atlas closed (item 15, `apns`).
+    /// An Android phone's push address and keys, carried to your other
+    /// devices as a sync event (`webpush`).
+    pub(crate) fn carry_web_push_address(&mut self, endpoint: &str, p256dh: &str, auth: &str, now: u64) {
+        let (id, field, to) = crate::webpush::change_to_carry(&self.synclog.device.clone(), endpoint, p256dh, auth);
+        self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+        let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+    }
+
     pub(crate) fn carry_push_address(&mut self, token: &str, env: &str, now: u64) {
         let (id, field, to) = crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
         self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
@@ -1971,6 +1979,13 @@ impl<'a> Daemon<'a> {
                     let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok();
                     if let Some(s) = crate::groups::take_synced(&self.store, me.as_ref(), id, to, sealed) {
                         said.push(s);
+                    }
+                }
+                // An Android phone's push address and keys (item 15), from your
+                // own devices only.
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::webpush::SYNC_PREFIX) => {
+                    if let Some(s) = crate::webpush::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                        self.log.info(&s);
                     }
                 }
                 // An iPhone's push address (item 15), from your own devices only.

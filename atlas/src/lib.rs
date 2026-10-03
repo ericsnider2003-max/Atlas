@@ -135,6 +135,7 @@ pub mod applebrain;
 pub mod phonealarms;
 pub mod apns;
 pub mod applewx;
+pub mod webpush;
 pub mod onnxfix;
 pub mod freeonline;
 pub mod parakeet;
