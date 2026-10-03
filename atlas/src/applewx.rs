@@ -177,6 +177,12 @@ fn from_the_phone(p: &Place) -> Option<Reading> {
 /// The token WeatherKit's REST service asks for: ES256, with the service id
 /// (the app's id with WeatherKit on) in the header and as the subject.
 pub fn signed_token(key_pem: &str, key_id: &str, team_id: &str, service_id: &str, now: u64) -> Result<String, String> {
+    signed_token_for(key_pem, key_id, team_id, service_id, now, 3600)
+}
+
+/// `signed_token`, good for `life_secs`: what the laptop carries to your
+/// other devices (`carry_token`), so they ask Apple without the key.
+pub fn signed_token_for(key_pem: &str, key_id: &str, team_id: &str, service_id: &str, now: u64, life_secs: u64) -> Result<String, String> {
     use p256::ecdsa::signature::Signer;
     use p256::pkcs8::DecodePrivateKey;
     let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem).map_err(|e| format!("the Apple key isn't one Apple gives: {e}"))?;
@@ -191,7 +197,7 @@ pub fn signed_token(key_pem: &str, key_id: &str, team_id: &str, service_id: &str
     let claims = b64(format!(
         "{{\"iss\":\"{}\",\"iat\":{now},\"exp\":{},\"sub\":\"{}\"}}",
         team_id.trim(),
-        now + 3600,
+        now + life_secs,
         service_id.trim()
     )
     .as_bytes());
@@ -213,9 +219,16 @@ pub fn rest_path(p: &Place, zone: &str) -> String {
 
 fn from_the_rest_service(p: &Place, apns: &crate::apns::ApnsConfig) -> Option<Reading> {
     let root = crate::roots::install_root();
-    let key_path = apns.ready(&root).ok()?;
-    let pem = std::fs::read_to_string(key_path).ok()?;
-    let jwt = signed_token(&pem, &apns.key_id, &apns.team_id, &apns.topic, crate::store::now()).ok()?;
+    let now = crate::store::now();
+    // The laptop signs with Eric's key; his other devices -- an Android
+    // phone, another computer -- use the token it carried to them.
+    let jwt = match apns.ready(&root) {
+        Ok(key_path) => {
+            let pem = std::fs::read_to_string(key_path).ok()?;
+            signed_token(&pem, &apns.key_id, &apns.team_id, &apns.topic, now).ok()?
+        }
+        Err(_) => CarriedToken::load(&crate::roots::state_dir()).usable(now)?,
+    };
     let zone = crate::localclock::zone().name;
     let zone = if zone.contains('/') { zone } else { "UTC".to_string() };
     let auth = format!("Bearer {jwt}");
@@ -233,8 +246,82 @@ fn from_the_rest_service(p: &Place, apns: &crate::apns::ApnsConfig) -> Option<Re
     from_apple_json(&r.body)
 }
 
-/// Apple's weather for this place, from the phone's own service or the
-/// laptop's key; `None` means use Open-Meteo.
+// ------------------------------------------------------------------ carried
+
+/// How long a carried token is good for: a week, renewed with three days
+/// left, so a phone that syncs now and then always has one.
+pub const CARRIED_LIFE_SECS: u64 = 7 * 86_400;
+pub const RENEW_WITHIN_SECS: u64 = 3 * 86_400;
+
+/// The sync id prefix for a carried WeatherKit token.
+pub const SYNC_PREFIX: &str = "wxtoken:";
+
+/// Where a device keeps the token the laptop carried to it.
+pub const CARRIED_FILE: &str = "weatherkit-token.json";
+
+/// Apple Weather for Eric's devices without his key (item 24: "answerable
+/// on the computers and androids as well"). The laptop signs a token good
+/// for a week and carries it the way everything else travels between your
+/// devices: in your sealed bundles only, so a friend's Atlas -- another
+/// household -- never gets it. The key itself never leaves the laptop.
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct CarriedToken {
+    pub token: String,
+    pub until: u64,
+}
+
+impl CarriedToken {
+    pub fn load(state_dir: &std::path::Path) -> CarriedToken {
+        std::fs::read(state_dir.join(CARRIED_FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    pub fn save(&self, state_dir: &std::path::Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(state_dir)?;
+        std::fs::write(state_dir.join(CARRIED_FILE), serde_json::to_vec(self).unwrap_or_default())
+    }
+
+    /// The token, while it has at least a minute left.
+    pub fn usable(&self, now: u64) -> Option<String> {
+        (!self.token.is_empty() && self.until > now + 60).then(|| self.token.clone())
+    }
+}
+
+/// A fresh token to carry, when this device has the key and the last one it
+/// carried (`carried_until`) has less than three days left: `(id, field, to)`
+/// for a `sync::What::Changed`, and its expiry. `None` otherwise.
+pub fn carry_token(apns: &crate::apns::ApnsConfig, root: &std::path::Path, device: &str, carried_until: u64, now: u64) -> Option<((String, String, String), u64)> {
+    if carried_until > now + RENEW_WITHIN_SECS {
+        return None;
+    }
+    let pem = std::fs::read_to_string(apns.ready(root).ok()?).ok()?;
+    let until = now + CARRIED_LIFE_SECS;
+    let jwt = signed_token_for(&pem, &apns.key_id, &apns.team_id, &apns.topic, now, CARRIED_LIFE_SECS).ok()?;
+    Some(((format!("{SYNC_PREFIX}{device}"), "weatherkit".into(), format!("{until}|{jwt}")), until))
+}
+
+/// A carried token arriving by sync, kept only from a sealed bundle (your
+/// own devices) and only when newer than the one held.
+pub fn take_synced(state_dir: &std::path::Path, id: &str, to: &str, sealed: bool, now: u64) -> Option<String> {
+    id.strip_prefix(SYNC_PREFIX)?;
+    if !sealed {
+        return None;
+    }
+    let (until, token) = to.split_once('|')?;
+    let until: u64 = until.parse().ok()?;
+    if until <= now || token.split('.').count() != 3 || token.len() > 2048 {
+        return None;
+    }
+    let held = CarriedToken::load(state_dir);
+    if held.until >= until {
+        return None;
+    }
+    CarriedToken { token: token.into(), until }.save(state_dir).ok()?;
+    Some("Apple Weather can answer here now, with the laptop's say-so".into())
+}
+
+/// Apple's weather for this place, from the phone's own service, the
+/// laptop's key, or the token the laptop carried here; `None` means use
+/// Open-Meteo.
 pub fn reading(p: &Place, apns: &crate::apns::ApnsConfig) -> Option<Reading> {
     from_the_phone(p).or_else(|| from_the_rest_service(p, apns))
 }

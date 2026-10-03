@@ -67,6 +67,10 @@ impl<'a> Daemon<'a> {
         if let Some(reply) = self.interview_turn(said, t) {
             return reply;
         }
+        // "Ask the laptop to …" from the phone (item 24).
+        if let Some(reply) = self.ask_the_laptop_turn(said, t) {
+            return reply;
+        }
         // A question Atlas asked long ago is not what this answers.
         self.expire_stale_question(t);
         // The names "go to", "close" and "how's" may take.

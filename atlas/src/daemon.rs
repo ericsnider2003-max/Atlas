@@ -76,6 +76,7 @@ mod turn;
 mod tasks;
 mod operating;
 mod learning;
+mod askthelaptop;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
