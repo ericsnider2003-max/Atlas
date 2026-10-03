@@ -53,18 +53,25 @@ pub struct Reading {
     pub idle: bool,
     /// The loop's time by part, largest first, milliseconds.
     pub parts: Vec<(String, u64)>,
+    /// The same parts by this thread's CPU (2 Oct 2026): where the loop
+    /// *worked*, rather than where it waited.
+    #[serde(default)]
+    pub cpu_parts: Vec<(String, u64)>,
 }
 
 impl Reading {
-    /// "4.2% of one core over 15 min, idle; the loop's time: machine health 61%, observing 22%".
+    /// "4.2% of one core over 15 min, idle; the loop's CPU: observing 61%, ...; its time: ...".
     pub fn plain(&self) -> String {
         let total: u64 = self.parts.iter().map(|p| p.1).sum::<u64>().max(1);
         let parts: Vec<String> = self.parts.iter().take(3).map(|(n, ms)| format!("{n} {}%", ms * 100 / total)).collect();
+        let cpu_total: u64 = self.cpu_parts.iter().map(|p| p.1).sum::<u64>().max(1);
+        let cpu: Vec<String> = self.cpu_parts.iter().take(3).map(|(n, us)| format!("{n} {}%", us * 100 / cpu_total)).collect();
         format!(
-            "{:.1}% of one core over {} min{}; the loop's time: {}",
+            "{:.1}% of one core over {} min{}; the loop's CPU: {}; its time: {}",
             self.percent,
             self.secs / 60,
             if self.idle { ", idle" } else { "" },
+            if cpu.is_empty() { "nothing measurable".into() } else { cpu.join(", ") },
             if parts.is_empty() { "nothing measurable".into() } else { parts.join(", ") }
         )
     }
@@ -74,6 +81,7 @@ impl Reading {
 pub struct Meter {
     started: Option<(u64, u64)>,
     parts: std::collections::BTreeMap<&'static str, u64>,
+    cpu_parts: std::collections::BTreeMap<&'static str, u64>,
     talked: bool,
 }
 
@@ -86,6 +94,13 @@ impl Meter {
     }
 
     /// Someone talked to Atlas in this window.
+    /// One pass's parts by CPU (microseconds).
+    pub fn add_cpu(&mut self, parts: &[(&'static str, u64)]) {
+        for (n, us) in parts {
+            *self.cpu_parts.entry(n).or_insert(0) += *us;
+        }
+    }
+
     pub fn talked(&mut self) {
         self.talked = true;
     }
@@ -105,7 +120,9 @@ impl Meter {
         let percent = cpu.saturating_sub(c0) as f32 / (secs as f32 * 10.0);
         let mut parts: Vec<(String, u64)> = self.parts.iter().map(|(n, ms)| (n.to_string(), *ms)).filter(|p| p.1 > 0).collect();
         parts.sort_by(|a, b| b.1.cmp(&a.1));
-        let r = Reading { at: t, secs, percent, idle: !self.talked, parts };
+        let mut cpu_parts: Vec<(String, u64)> = self.cpu_parts.iter().map(|(n, us)| (n.to_string(), *us)).filter(|p| p.1 > 0).collect();
+        cpu_parts.sort_by(|a, b| b.1.cmp(&a.1));
+        let r = Reading { at: t, secs, percent, idle: !self.talked, parts, cpu_parts };
         *self = Meter { started: Some((t, cpu)), ..Default::default() };
         Some(r)
     }
@@ -124,12 +141,18 @@ mod tests {
         assert!(m.read(1000, Some(5_000)).is_none(), "the first call starts the clock");
         m.add(&[("machine health", 300), ("observing", 100)]);
         m.add(&[("machine health", 300)]);
+        m.add_cpu(&[("observing", 3_000), ("machine health", 1_000)]);
         assert!(m.read(1000 + 60, Some(6_000)).is_none(), "not a whole window yet");
         let r = m.read(1000 + WINDOW_SECS, Some(5_000 + 90_000)).unwrap();
         assert!((r.percent - 10.0).abs() < 0.01, "{}", r.percent);
         assert!(r.idle);
         assert_eq!(r.parts[0], ("machine health".to_string(), 600));
-        assert!(r.plain().starts_with("10.0% of one core over 15 min, idle; the loop's time: machine health 85%"), "{}", r.plain());
+        // By CPU, where it worked, first; then where its time went.
+        assert!(
+            r.plain().starts_with("10.0% of one core over 15 min, idle; the loop's CPU: observing 75%, machine health 25%; its time: machine health 85%"),
+            "{}",
+            r.plain()
+        );
     }
 
     #[test]

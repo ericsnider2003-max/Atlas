@@ -1699,6 +1699,12 @@ impl<'a> Daemon<'a> {
         self.tick_laps.parts().to_vec()
     }
 
+    /// The same, by this thread's CPU (microseconds).
+    #[doc(hidden)]
+    pub fn last_tick_cpu(&self) -> Vec<(&'static str, u64)> {
+        self.tick_laps.cpu_parts().to_vec()
+    }
+
     /// For a test: the index as if its read from disk hadn't finished.
     #[doc(hidden)]
     pub fn index_loading_for_test(&mut self, l: crate::index::Loading) {

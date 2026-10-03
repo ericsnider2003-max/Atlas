@@ -344,3 +344,7 @@ debug = false
 # hubwin: so atlas.exe starts without WebView2Loader.dll beside it. See
 # vendor/webview2-com-sys/ATLAS_VENDORED.md.
 webview2-com-sys = { path = "vendor/webview2-com-sys" }
+
+[[test]]
+name = "what_a_tick_costs"
+path = "tests/what_a_tick_costs.rs"
