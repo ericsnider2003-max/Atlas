@@ -57,6 +57,11 @@ pub struct Reading {
     /// *worked*, rather than where it waited.
     #[serde(default)]
     pub cpu_parts: Vec<(String, u64)>,
+    /// The whole process's CPU over the window, in ms: what the loop's parts
+    /// don't add up to was the other threads (the microphone, hand
+    /// tracking, the crew, the hub's connections).
+    #[serde(default)]
+    pub process_ms: u64,
 }
 
 impl Reading {
@@ -66,11 +71,14 @@ impl Reading {
         let parts: Vec<String> = self.parts.iter().take(3).map(|(n, ms)| format!("{n} {}%", ms * 100 / total)).collect();
         let cpu_total: u64 = self.cpu_parts.iter().map(|p| p.1).sum::<u64>().max(1);
         let cpu: Vec<String> = self.cpu_parts.iter().take(3).map(|(n, us)| format!("{n} {}%", us * 100 / cpu_total)).collect();
+        let loop_ms = self.cpu_parts.iter().map(|p| p.1).sum::<u64>() / 1000;
+        let loop_share = if self.process_ms > 0 { (loop_ms * 100 / self.process_ms).min(100) } else { 0 };
         format!(
-            "{:.1}% of one core over {} min{}; the loop's CPU: {}; its time: {}",
+            "{:.1}% of one core over {} min{}; the main loop {}% of that, its CPU: {}; its time: {}",
             self.percent,
             self.secs / 60,
             if self.idle { ", idle" } else { "" },
+            loop_share,
             if cpu.is_empty() { "nothing measurable".into() } else { cpu.join(", ") },
             if parts.is_empty() { "nothing measurable".into() } else { parts.join(", ") }
         )
@@ -122,7 +130,7 @@ impl Meter {
         parts.sort_by(|a, b| b.1.cmp(&a.1));
         let mut cpu_parts: Vec<(String, u64)> = self.cpu_parts.iter().map(|(n, us)| (n.to_string(), *us)).filter(|p| p.1 > 0).collect();
         cpu_parts.sort_by(|a, b| b.1.cmp(&a.1));
-        let r = Reading { at: t, secs, percent, idle: !self.talked, parts, cpu_parts };
+        let r = Reading { at: t, secs, percent, idle: !self.talked, parts, cpu_parts, process_ms: cpu.saturating_sub(c0) };
         *self = Meter { started: Some((t, cpu)), ..Default::default() };
         Some(r)
     }
@@ -149,7 +157,7 @@ mod tests {
         assert_eq!(r.parts[0], ("machine health".to_string(), 600));
         // By CPU, where it worked, first; then where its time went.
         assert!(
-            r.plain().starts_with("10.0% of one core over 15 min, idle; the loop's CPU: observing 75%, machine health 25%; its time: machine health 85%"),
+            r.plain().starts_with("10.0% of one core over 15 min, idle; the main loop 0% of that, its CPU: observing 75%, machine health 25%; its time: machine health 85%"),
             "{}",
             r.plain()
         );
