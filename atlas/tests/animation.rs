@@ -280,7 +280,12 @@ fn render_runs_the_configured_command_then_checks_the_output() {
     std::fs::write(&svg, "<svg/>").unwrap();
     let out = d.join("out.png");
 
-    let cmd = format!("cp {} {{out}}", fixture.display());
+    // Windows has no `cp`; its shell's copy does the same.
+    let cmd = if cfg!(windows) {
+        format!("cmd /c copy /y {} {{out}}", fixture.display())
+    } else {
+        format!("cp {} {{out}}", fixture.display())
+    };
     let findings = render(&svg, &out, &cmd, &Expect { kind: RenderKind::Png, width: 480, height: 480 })
         .expect("the stub renderer runs");
     assert!(findings.is_empty(), "the copied PNG matches the spec: {findings:?}");

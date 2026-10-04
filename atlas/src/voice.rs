@@ -1282,14 +1282,19 @@ impl Voice<'_> {
         std::fs::create_dir_all(&self.cfg.work_dir)
             .map_err(|e| AtlasError::Config(format!("can't make {}: {e}", self.cfg.work_dir)))?;
         let mut vars = self.vars()?;
-        let path = format!(
-            "{}/{kind}_{}.png",
-            self.cfg.work_dir,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0)
-        );
+        // Joined as a path (2 Oct 2026): "C:\\...\\work/screen_1.png" reached
+        // tools as a mixed path, and Windows' own tools (cmd's copy among
+        // them) read the "/screen..." half as a switch.
+        let path = std::path::Path::new(&self.cfg.work_dir)
+            .join(format!(
+                "{kind}_{}.png",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            ))
+            .to_string_lossy()
+            .to_string();
         vars.insert("out_png".into(), path.clone());
         tool.run(&vars, None)?;
         Ok(path)

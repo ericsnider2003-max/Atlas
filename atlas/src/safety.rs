@@ -1015,7 +1015,8 @@ mod resolved_dir_tests {
     fn a_relative_dir_is_resolved_under_the_store_root() {
         let cfg = BackupConfig { dir: "data/backups".into(), ..BackupConfig::default() };
         let resolved = cfg.resolved(Path::new("/tmp/some-install"));
-        assert_eq!(resolved.dir, "/tmp/some-install/data/backups");
+        // Compared as paths: Windows joins with a backslash (2 Oct 2026).
+        assert_eq!(Path::new(&resolved.dir), Path::new("/tmp/some-install").join("data/backups"));
     }
 
     #[test]

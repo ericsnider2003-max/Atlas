@@ -830,7 +830,8 @@ mod resolved_dir_tests {
     fn a_relative_notes_dir_is_resolved_under_the_store_root() {
         let cfg = ResearchConfig { notes_dir: "data/notes".into(), ..ResearchConfig::default() };
         let resolved = cfg.resolved(Path::new("/tmp/some-install"));
-        assert_eq!(resolved.notes_dir, "/tmp/some-install/data/notes");
+        // Compared as paths: Windows joins with a backslash (2 Oct 2026).
+        assert_eq!(Path::new(&resolved.notes_dir), Path::new("/tmp/some-install").join("data/notes"));
     }
 
     #[test]

@@ -145,12 +145,22 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
         t.call_notes.enabled = true;
         t.research.notes_dir = dir.join("notes").display().to_string();
         // A stand-in transcriber: writes one timed line for any recording.
-        t.stt_timed = Some(
+        t.stt_timed = Some(if cfg!(windows) {
+            // Windows has no sh or printf: cmd copies a ready transcript.
+            let line = dir.join("line.srt");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&line, "1\n00:00:00,000 --> 00:00:01,000\nShall we ship Friday?\n").unwrap();
+            serde_yaml::from_str(&format!(
+                "command: cmd\nargs: [\"/c\", \"copy /y {} {{srt}} >nul\"]\nresult_file: \"{{srt}}\"\n",
+                line.display().to_string().replace('\\', "\\\\")
+            ))
+            .unwrap()
+        } else {
             serde_yaml::from_str(
                 "command: sh\nargs: [\"-c\", \"printf '1\\\\n00:00:00,000 --> 00:00:01,000\\\\nShall we ship Friday?\\\\n' > {srt}\"]\nresult_file: \"{srt}\"\n",
             )
-            .unwrap(),
-        );
+            .unwrap()
+        });
     }
     let p = plat();
     let mut d = daemon(&p, cfg, "call-crew-store");

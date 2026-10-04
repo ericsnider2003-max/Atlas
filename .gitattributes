@@ -20,6 +20,10 @@
 *.woff binary
 *.woff2 binary
 *.zip binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.heic binary
 *.exe binary
 *.dll binary
 *.bundle binary
