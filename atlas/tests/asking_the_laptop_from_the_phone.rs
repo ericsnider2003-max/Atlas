@@ -183,3 +183,88 @@ fn apple_weather_reaches_your_other_devices_as_a_token_and_never_as_the_key() {
     // An older one doesn't replace a newer one.
     assert_eq!(applewx::take_synced(&state, &id, &to, true, T + 5), None);
 }
+
+// ---------------------------------------------------------------- item 16
+
+#[test]
+fn the_conversation_facts_later_list_and_reminders_are_the_same_on_the_phone() {
+    let (lc, pc, ls, ps, _) = pair("onethread");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let now = atlas::store::now();
+    let mut laptop = daemon(&lc, &lp, &ls);
+    laptop.turn("actually, my car is a Honda", now);
+    laptop.turn("remind me in 30 minutes to stretch", now + 1);
+    laptop.turn("add that to the later list", now + 2);
+    laptop.turn("sync", now + 10);
+
+    let mut phone = daemon(&pc, &pp, &ps);
+    phone.turn("sync", now + 20);
+    // The thread: the laptop's exchanges, in order, word for word.
+    let said: Vec<&str> = phone.thread.recent.iter().map(|x| x.said.as_str()).collect();
+    for s in ["actually, my car is a Honda", "remind me in 30 minutes to stretch"] {
+        assert!(said.contains(&s), "{s:?} never reached the phone's thread: {said:?}");
+    }
+    let lt: Vec<(u64, &str, &str)> = laptop.thread.recent.iter().filter(|x| x.said.starts_with("remind")).map(|x| (x.at, x.said.as_str(), x.reply.as_str())).collect();
+    let pt: Vec<(u64, &str, &str)> = phone.thread.recent.iter().filter(|x| x.said.starts_with("remind")).map(|x| (x.at, x.said.as_str(), x.reply.as_str())).collect();
+    assert_eq!(lt, pt, "the same exchange, with the laptop's reply");
+    // The fact.
+    let car = |d: &Daemon| d.facts.facts.iter().find(|f| f.body.to_lowercase().contains("honda")).map(|f| (f.name.clone(), f.as_of));
+    assert!(car(&laptop).is_some(), "the laptop didn't keep the fact");
+    assert_eq!(car(&phone), car(&laptop), "the fact never reached the phone");
+    // The reminder, with the same due time.
+    let due = |d: &Daemon| d.scheduler.active().into_iter().find(|j| j.command.contains("stretch")).map(|j| j.due);
+    assert!(due(&laptop).is_some());
+    assert_eq!(due(&phone), due(&laptop), "the reminder never reached the phone at the same time");
+
+    // And the phone's own turn reaches the laptop, without echoing back.
+    phone.turn("remember that the rack needs a ten inch shelf", now + 30);
+    phone.turn("sync", now + 40);
+    laptop.turn("sync", now + 50);
+    assert!(laptop.thread.recent.iter().any(|x| x.said == "remember that the rack needs a ten inch shelf"));
+    let count = |d: &Daemon, s: &str| d.thread.recent.iter().filter(|x| x.said == s).count();
+    phone.turn("sync", now + 60);
+    assert_eq!(count(&phone, "actually, my car is a Honda"), 1, "an exchange came back twice");
+    assert_eq!(count(&laptop, "remember that the rack needs a ten inch shelf"), 1);
+}
+
+#[test]
+fn nothing_private_travels_and_a_stranger_gets_none_of_it() {
+    let (lc, pc, ls, ps, _) = pair("private");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let now = atlas::store::now();
+    let mut laptop = daemon(&lc, &lp, &ls);
+    laptop.turn("actually, my card number is 4111 1111 1111 1111", now);
+    laptop.turn("sync", now + 10);
+    let mut phone = daemon(&pc, &pp, &ps);
+    phone.turn("sync", now + 20);
+    assert!(laptop.thread.recent.iter().any(|x| x.said.contains("4111")), "the laptop's own thread keeps it");
+    assert!(phone.thread.recent.iter().any(|x| x.said == "sync"), "nothing travelled at all, so this proves nothing");
+    assert!(!phone.thread.recent.iter().any(|x| x.said.contains("4111")), "a card number travelled in the thread");
+    assert!(!phone.facts.facts.iter().any(|f| f.body.contains("4111")), "a card number travelled as a fact");
+
+    // Somebody else's bundle (no household key): none of it is taken.
+    let r = root("stranger");
+    let folder = r.join("carrier");
+    std::fs::create_dir_all(&folder).unwrap();
+    let make = |name: &str| {
+        let mut c = Config::load(Path::new("config")).unwrap();
+        let t = c.tools.as_mut().unwrap();
+        t.sync.enabled = true;
+        t.sync.name = name.into();
+        t.sync.encrypt_bundles = false;
+        t.sync.folder = folder.to_string_lossy().into_owned();
+        c
+    };
+    let (sc, mc) = (make("stranger"), make("mine"));
+    let (ss, ms) = (Store::new(r.join("s")), Store::new(r.join("m")));
+    let (sp, mp) = (plat(), plat());
+    let mut stranger = daemon(&sc, &sp, &ss);
+    stranger.turn("remember that the password hint is fish", now);
+    stranger.turn("sync", now + 10);
+    let mut mine = daemon(&mc, &mp, &ms);
+    mine.turn("sync", now + 20);
+    assert!(!mine.thread.recent.iter().any(|x| x.said.contains("password hint")), "an unsealed bundle's thread was taken");
+    assert!(!mine.facts.facts.iter().any(|f| f.body.contains("fish")));
+}

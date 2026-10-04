@@ -70,6 +70,8 @@ impl<'a> Daemon<'a> {
         self.tick_laps.mark("talk queue");
         // What your phone asked the laptop to do (item 24).
         self.answer_requests_from_the_phone(t);
+        // What turns added for your other devices (item 16).
+        self.save_the_synclog_if_changed();
         // The deep model: started for background work waiting on it,
         // stopped once idle (`deepbrain`).
         self.keep_deep_brain();
@@ -1992,6 +1994,16 @@ impl<'a> Daemon<'a> {
                     if let Some(s) = crate::groups::take_synced(&self.store, me.as_ref(), id, to, sealed) {
                         said.push(s);
                     }
+                }
+                // One conversation on every device (item 16): the thread, facts,
+                // the later list and reminders -- your own devices only.
+                crate::sync::What::Said { text, .. } => self.take_an_exchange(text, sealed),
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::FACT_PREFIX) => self.take_a_fact(to, sealed),
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::LATER_PREFIX) => {
+                    self.take_a_later_item(id, to, sealed)
+                }
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::REMIND_PREFIX) => {
+                    self.take_a_reminder(id, to, sealed)
                 }
                 // Asked of the laptop from your phone, a yes to one held, and
                 // the laptop's answer back (item 24) -- your own devices only.

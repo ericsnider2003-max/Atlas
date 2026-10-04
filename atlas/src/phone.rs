@@ -222,7 +222,7 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
 
 /// Has an Android phone given Atlas its UnifiedPush address?
 fn android_can_reach() -> bool {
-    crate::webpush::can_reach(&crate::roots::state_dir())
+    !crate::webpush::Devices::load(&crate::roots::state_dir()).devices.is_empty()
 }
 
 /// Is an iPhone reachable through Apple's push service: the key set up, and

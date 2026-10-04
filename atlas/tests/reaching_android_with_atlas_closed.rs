@@ -70,8 +70,8 @@ fn the_phone_opens_what_was_sealed_for_it_and_nobody_else_can() {
     let ua_secret = p256::SecretKey::from_slice(&unb64(UA_PRIVATE)).unwrap();
     let auth = unb64(AUTH);
     let words = br#"{"title":"Your 3pm call","body":"Ask me when you're ready.","urgent":false}"#;
-    let a = webpush::seal(words, &unb64(UA_PUBLIC), &auth).unwrap();
-    let b = webpush::seal(words, &unb64(UA_PUBLIC), &auth).unwrap();
+    let a = webpush::seal_for_phone(words, &unb64(UA_PUBLIC), &auth).unwrap();
+    let b = webpush::seal_for_phone(words, &unb64(UA_PUBLIC), &auth).unwrap();
     assert_ne!(a, b, "a fresh key and salt every time");
     assert_eq!(open_as_the_phone(&a, &ua_secret, &auth).as_deref(), Some(&words[..]));
     // Another phone, or the right phone with the wrong secret: nothing.
@@ -123,7 +123,6 @@ fn the_phones_address_is_only_taken_from_your_own_devices() {
     let d = Devices::load(&dir);
     assert_eq!(d.devices.len(), 1);
     assert_eq!(d.devices[0].endpoint, endpoint);
-    assert!(webpush::can_reach(&dir));
     // A new address for the same phone replaces the old.
     let (id2, _, to2) = webpush::change_to_carry("erics-pixel", "https://ntfy.sh/upNew", UA_PUBLIC, AUTH);
     assert!(webpush::take_synced(&dir, &id2, &to2, true, 4).is_some());
@@ -144,20 +143,20 @@ fn the_phones_address_is_only_taken_from_your_own_devices() {
 fn the_lock_screen_gets_the_title_and_never_something_private() {
     let mut note = atlas::notify::Note::new("Your 3pm call", "with Sam about the account 4111 1111 1111 1111", atlas::notify::Urgency::Urgent, 1);
     let mut cfg = atlas::phone::PhoneConfig::default();
-    let p: serde_json::Value = serde_json::from_str(&webpush::push_payload(&note, &cfg)).unwrap();
+    let p: serde_json::Value = serde_json::from_str(&webpush::android_payload(&note, &cfg)).unwrap();
     assert_eq!(p["title"], "Your 3pm call");
     assert_eq!(p["body"], "Ask me when you're ready.");
     assert_eq!(p["urgent"], true);
     cfg.include_detail = true;
-    let p = webpush::push_payload(&note, &cfg);
+    let p = webpush::android_payload(&note, &cfg);
     assert!(p.contains("with Sam") && !p.contains("4111 1111"), "scrubbed: {p}");
     note.private = true;
-    assert!(!webpush::push_payload(&note, &cfg).contains("with Sam"));
+    assert!(!webpush::android_payload(&note, &cfg).contains("with Sam"));
 }
 
 #[test]
 fn the_signature_and_the_sealed_body_never_sit_on_a_command_line() {
-    let args = webpush::push_args(std::path::Path::new("/tmp/h.txt"), std::path::Path::new("/tmp/b.bin"), "https://ntfy.sh/up1");
+    let args = webpush::webpush_args(std::path::Path::new("/tmp/h.txt"), std::path::Path::new("/tmp/b.bin"), "https://ntfy.sh/up1");
     assert!(args.contains(&"@/tmp/h.txt".to_string()));
     assert!(args.contains(&"@/tmp/b.bin".to_string()));
     assert!(!args.iter().any(|a| a.contains("vapid")));
@@ -166,12 +165,12 @@ fn the_signature_and_the_sealed_body_never_sit_on_a_command_line() {
 
 #[test]
 fn the_distributors_answers_mean_what_they_say() {
-    assert_eq!(webpush::read_outcome("\n201"), Outcome::Delivered);
-    assert_eq!(webpush::read_outcome("{}\n200"), Outcome::Delivered);
-    assert_eq!(webpush::read_outcome("gone\n410"), Outcome::Gone);
-    assert_eq!(webpush::read_outcome("\n404"), Outcome::Gone);
-    assert!(matches!(webpush::read_outcome("\n000"), Outcome::Failed(w) if w.contains("couldn't reach")));
-    assert!(matches!(webpush::read_outcome("slow down\n429"), Outcome::Failed(w) if w.contains("429")));
+    assert_eq!(webpush::read_distributor_reply("\n201"), Outcome::Delivered);
+    assert_eq!(webpush::read_distributor_reply("{}\n200"), Outcome::Delivered);
+    assert_eq!(webpush::read_distributor_reply("gone\n410"), Outcome::Gone);
+    assert_eq!(webpush::read_distributor_reply("\n404"), Outcome::Gone);
+    assert!(matches!(webpush::read_distributor_reply("\n000"), Outcome::Failed(w) if w.contains("couldn't reach")));
+    assert!(matches!(webpush::read_distributor_reply("slow down\n429"), Outcome::Failed(w) if w.contains("429")));
 }
 
 #[test]

@@ -44,7 +44,10 @@ impl<'a> Daemon<'a> {
         self.watching_turn = true;
         let (watch, mended) = self.watch_the_turn(said);
         let heard = mended.as_deref().unwrap_or(said);
+        // What the turn adds goes to your other devices (item 16).
+        let before = self.before_the_turn();
         let reply = self.turn_unwatched(heard, t, how);
+        self.carry_what_the_turn_added(before, t);
         self.watching_turn = false;
         self.turn_watched(watch, heard, reply, t)
     }

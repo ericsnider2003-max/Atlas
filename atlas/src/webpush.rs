@@ -171,7 +171,7 @@ pub fn seal_with(
 }
 
 /// `seal_with` with a fresh sender key and salt, as every message needs.
-pub fn seal(plaintext: &[u8], ua_public: &[u8], auth: &[u8]) -> Result<Vec<u8>, String> {
+pub fn seal_for_phone(plaintext: &[u8], ua_public: &[u8], auth: &[u8]) -> Result<Vec<u8>, String> {
     let as_secret = fresh_secret();
     let mut salt = [0u8; 16];
     salt.copy_from_slice(&crate::vault::random_bytes(16));
@@ -233,7 +233,7 @@ pub fn vapid_header(key: &p256::SecretKey, endpoint: &str, now: u64) -> Result<S
 /// What goes to the phone, before sealing: the title, and the line
 /// `phone::body_for` would give (no detail unless allowed, never for
 /// something private). The Android app reads these three fields.
-pub fn push_payload(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> String {
+pub fn android_payload(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> String {
     let detail = if note.private || !cfg.include_detail {
         "Ask me when you're ready.".to_string()
     } else {
@@ -244,7 +244,7 @@ pub fn push_payload(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig)
 
 /// The curl arguments for one push; the headers come from a file so the
 /// signature isn't on a command line other programs can read.
-pub fn push_args(headers_file: &Path, body_file: &Path, endpoint: &str) -> Vec<String> {
+pub fn webpush_args(headers_file: &Path, body_file: &Path, endpoint: &str) -> Vec<String> {
     vec![
         "--silent".into(),
         "--max-time".into(),
@@ -271,7 +271,7 @@ pub enum Outcome {
 }
 
 /// Read curl's output: the body, then the status on the last line.
-pub fn read_outcome(out: &str) -> Outcome {
+pub fn read_distributor_reply(out: &str) -> Outcome {
     let (body, status) = out.rsplit_once('\n').unwrap_or(("", out));
     match status.trim() {
         "200" | "201" | "202" => Outcome::Delivered,
@@ -279,11 +279,6 @@ pub fn read_outcome(out: &str) -> Outcome {
         "" | "000" => Outcome::Failed("couldn't reach the push service".into()),
         s => Outcome::Failed(format!("the push service answered {s}: {}", body.trim().chars().take(200).collect::<String>())),
     }
-}
-
-/// Is an Android phone reachable this way: has one given its address?
-pub fn can_reach(state_dir: &Path) -> bool {
-    !Devices::load(state_dir).devices.is_empty()
 }
 
 /// Send to every Android phone the laptop knows. Ok when at least one got it.
@@ -294,7 +289,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
         return Err("no Android phone has given Atlas its push address yet".into());
     }
     let key = vapid_key(&state)?;
-    let payload = push_payload(note, cfg);
+    let payload = android_payload(note, cfg);
     let tmp = crate::roots::data_dir().join("tmp");
     let _ = std::fs::create_dir_all(&tmp);
     let now = crate::store::now();
@@ -305,7 +300,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
             continue;
         };
         let outcome = (|| -> Result<Outcome, String> {
-            let body = seal(payload.as_bytes(), &ua, &auth)?;
+            let body = seal_for_phone(payload.as_bytes(), &ua, &auth)?;
             let headers = tmp.join(format!("webpush-{}-{i}.txt", std::process::id()));
             let body_file = tmp.join(format!("webpush-{}-{i}.bin", std::process::id()));
             std::fs::write(
@@ -319,13 +314,13 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
             .map_err(|e| format!("couldn't prepare the push: {e}"))?;
             std::fs::write(&body_file, &body).map_err(|e| format!("couldn't prepare the push: {e}"))?;
             let out = crate::tools::command(crate::apns::pinned_curl(&crate::roots::install_root()))
-                .args(push_args(&headers, &body_file, &d.endpoint))
+                .args(webpush_args(&headers, &body_file, &d.endpoint))
                 .stderr(std::process::Stdio::null())
                 .output();
             let _ = std::fs::remove_file(&headers);
             let _ = std::fs::remove_file(&body_file);
             let out = out.map_err(|e| format!("couldn't start curl: {e}"))?;
-            Ok(read_outcome(&String::from_utf8_lossy(&out.stdout)))
+            Ok(read_distributor_reply(&String::from_utf8_lossy(&out.stdout)))
         })();
         match outcome {
             Ok(Outcome::Delivered) => delivered += 1,

@@ -1559,7 +1559,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // top of the other chat's 466.
 // 2 Oct 2026 (merge of chat-c-3): `apns`, `applewx`, `phonealarms` and
 // `onnxfix` (reaching the iPhone, Apple's weather, the NPU's fixed sizes).
-pub const MODULES_IN_TREE: usize = 474;
+// 2 Oct 2026, Chat C: `webpush` (Android with Atlas closed, item 15).
+pub const MODULES_IN_TREE: usize = 475;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1599,6 +1600,7 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("voicefirst", "lowers the model server's priority while a reply plays, so the voice keeps up"),
     ("applewx", "Apple's weather for the weather answer: the iPhone's own, or the laptop's Apple key; part of the weather"),
     ("apns", "reaches your iPhone with Atlas closed through Apple's push service, signed with your own key; part of reaching your phone"),
+    ("webpush", "reaches an Android phone with Atlas closed through its UnifiedPush address, sealed for that phone alone; part of reaching your phone"),
     ("phonealarms", "lists the reminders still to come so the iPhone app can hand them to iOS and they ring with the app closed"),
     ("applebrain", "on an iPhone with Apple Intelligence, asks Apple's on-device model first and hands each request it refuses or can't do to Atlas's own model"),
     ("onnxfix", "writes fixed input sizes into a copy of a model, which the NPU needs"),

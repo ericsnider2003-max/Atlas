@@ -35,6 +35,8 @@ fn dependency_count_ignores_feature_lists() {
 /// self-contained as it can be, so anything added has to be doing work Atlas
 /// genuinely cannot do itself.
 const EVERY_DEPENDENCY: &[(&str, &str)] = &[
+    ("aes-gcm", "sealing a push for one Android phone (Web Push, RFC 8291: AES-128-GCM), item 15, 2 Oct 2026"),
+    ("hmac", "the HKDF steps of that sealing (HMAC-SHA256), item 15, 2 Oct 2026"),
     ("libloading", "opening sherpa-onnx's library at run time for the Kokoro voice, so the exe needs no C++ link and stays small (28 Sep 2026)"),
     ("serde", "turning state into files and back"),
     ("serde_yaml", "the config format, which is meant to be hand-editable"),

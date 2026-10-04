@@ -182,7 +182,7 @@ pub fn signed_token(key_pem: &str, key_id: &str, team_id: &str, service_id: &str
 
 /// `signed_token`, good for `life_secs`: what the laptop carries to your
 /// other devices (`carry_token`), so they ask Apple without the key.
-pub fn signed_token_for(key_pem: &str, key_id: &str, team_id: &str, service_id: &str, now: u64, life_secs: u64) -> Result<String, String> {
+fn signed_token_for(key_pem: &str, key_id: &str, team_id: &str, service_id: &str, now: u64, life_secs: u64) -> Result<String, String> {
     use p256::ecdsa::signature::Signer;
     use p256::pkcs8::DecodePrivateKey;
     let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem).map_err(|e| format!("the Apple key isn't one Apple gives: {e}"))?;
