@@ -30,8 +30,8 @@ It is the only place with real history and branches. Folder copies elsewhere on
 this machine are snapshots and cannot be reconciled with it.
 
 - Remote: `https://github.com/ericsnider2003-max/Atlas.git`
-- A second remote (`escapemint`) points at the trading side, which is a
-  **separate** Atlas.
+- A second remote points at a **separate** Atlas, kept apart from this one
+  (the Atlas handed to friends carries none of it: `personal_atlas_is_its_own`).
 
 ## The control system
 

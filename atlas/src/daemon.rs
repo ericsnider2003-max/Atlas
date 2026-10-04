@@ -591,6 +591,10 @@ pub struct Daemon<'a> {
     /// The camera kept open between the looks Atlas takes on its own, and
     /// when it was last asked for a frame (`one_frame`, 2 Oct 2026).
     kept_camera: Option<(crate::frames::Latest, std::time::Instant)>,
+    /// A look running on its own thread (2 Oct 2026): the camera, the models
+    /// and the last sight go with it and come back with the answer, so the
+    /// loop never waits on a look.
+    look_in_flight: Option<(crate::gaze::Reason, std::time::Instant, std::sync::mpsc::Receiver<LookDone>)>,
     /// The last look's thumbnail, when, and what it saw: a room that hasn't
     /// changed isn't run through the models again (`see_you`).
     last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
@@ -1687,6 +1691,7 @@ impl<'a> Daemon<'a> {
             hands: None,
             looking: None,
             kept_camera: None,
+            look_in_flight: None,
             last_sight: None,
             cam_watch: None,
             watch_after_allow: None,
@@ -4326,4 +4331,16 @@ pub fn microphone_change(now_name: &str, now_device: &str, picked: &crate::heari
         crate::hearing::short(&picked.name),
         picked.why.trim().trim_end_matches('.')
     ))
+}
+
+/// What a look on its own thread hands back: its answer, and everything it
+/// took with it (`Daemon::look_in_flight`).
+pub(crate) struct LookDone {
+    pub printed: String,
+    /// The look's own work, not the wait for the tick to collect it.
+    pub spent_ms: u64,
+    pub camera: Option<crate::frames::Latest>,
+    pub opened_camera: bool,
+    pub looking: Option<crate::vision::Looking>,
+    pub last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
 }

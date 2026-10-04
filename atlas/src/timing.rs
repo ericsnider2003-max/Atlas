@@ -293,6 +293,43 @@ impl Recent {
 pub struct Laps {
     last: std::time::Instant,
     parts: Vec<(&'static str, u32)>,
+    /// This thread's CPU at the last mark, and each part's share of it
+    /// (microseconds). Wall time says where the loop *waited* -- a part that
+    /// starts reg.exe or asks the model server looks expensive and costs
+    /// nothing -- so the quarter-hour reading is by CPU (2 Oct 2026).
+    cpu_last: u64,
+    cpu_parts: Vec<(&'static str, u64)>,
+}
+
+/// This thread's CPU time so far, in microseconds. On Windows the counter
+/// moves in clock ticks (about 15.6 ms), so one short part reads 0 or a whole
+/// tick; summed over a quarter hour of passes the shares come out right.
+fn thread_cpu_us() -> u64 {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::FILETIME;
+        use windows::Win32::System::Threading::{GetCurrentThread, GetThreadTimes};
+        let (mut c, mut e, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        // SAFETY: four plain structs that outlive the call.
+        if unsafe { GetThreadTimes(GetCurrentThread(), &mut c, &mut e, &mut k, &mut u) }.is_err() {
+            return 0;
+        }
+        let t = |f: FILETIME| ((f.dwHighDateTime as u64) << 32 | f.dwLowDateTime as u64) / 10;
+        t(k) + t(u)
+    }
+    #[cfg(unix)]
+    {
+        let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        // SAFETY: `ts` outlives the call.
+        if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) } != 0 {
+            return 0;
+        }
+        ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1000
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        0
+    }
 }
 
 impl Default for Laps {
@@ -303,7 +340,7 @@ impl Default for Laps {
 
 impl Laps {
     pub fn start() -> Laps {
-        Laps { last: std::time::Instant::now(), parts: Vec::new() }
+        Laps { last: std::time::Instant::now(), parts: Vec::new(), cpu_last: thread_cpu_us(), cpu_parts: Vec::new() }
     }
 
     /// The part just finished, by name.
@@ -315,6 +352,18 @@ impl Laps {
             Some(p) => p.1 = p.1.saturating_add(ms),
             None => self.parts.push((name, ms)),
         }
+        let cpu = thread_cpu_us();
+        let used = cpu.saturating_sub(self.cpu_last);
+        self.cpu_last = cpu;
+        match self.cpu_parts.iter_mut().find(|(n, _)| *n == name) {
+            Some(p) => p.1 = p.1.saturating_add(used),
+            None => self.cpu_parts.push((name, used)),
+        }
+    }
+
+    /// Every part's CPU so far (microseconds), in the order first marked.
+    pub fn cpu_parts(&self) -> &[(&'static str, u64)] {
+        &self.cpu_parts
     }
 
     /// The slowest `n` parts, slowest first, that took any time at all.
@@ -342,7 +391,7 @@ mod laps_tests {
 
     #[test]
     fn the_slowest_parts_are_named_slowest_first() {
-        let mut l = Laps { last: std::time::Instant::now(), parts: vec![] };
+        let mut l = Laps::start();
         l.parts = vec![("a", 5), ("b", 50), ("c", 0), ("d", 20)];
         assert_eq!(l.slowest(2), vec![("b", 50), ("d", 20)]);
         assert_eq!(l.plain(5), "b 50ms, d 20ms, a 5ms");

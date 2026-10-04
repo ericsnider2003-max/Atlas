@@ -96,8 +96,131 @@ impl<'a> Daemon<'a> {
         }
         self.looked_at = t;
 
+        // Atlas's own seeing runs on its own thread (2 Oct 2026); the answer
+        // is read on a later tick. An outside detector is still run here.
+        if tools.gaze_detector.is_none() && self.start_a_look(reason, &tools) {
+            return None;
+        }
         let began = std::time::Instant::now();
         let printed = self.take_a_look_raw(&tools);
+        self.finish_a_look(reason, printed, began, t)
+    }
+
+    /// A look that has come back from its thread, read as the tick would
+    /// have read it. `None` while it's still looking.
+    pub(super) fn look_landed(&mut self, t: u64) -> Option<String> {
+        let (reason, began, done) = {
+            let (reason, began, rx) = self.look_in_flight.as_ref()?;
+            match rx.try_recv() {
+                Ok(done) => (*reason, *began, done),
+                Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // The thread died (a model panicked): the camera it held
+                    // went with it, so it leaves the budget too.
+                    self.look_in_flight = None;
+                    self.helpers.finished("camera");
+                    self.log.warn("camera: a look ended without an answer");
+                    return None;
+                }
+            }
+        };
+        self.look_in_flight = None;
+        let _ = began;
+        let began = std::time::Instant::now() - std::time::Duration::from_millis(done.spent_ms);
+        self.put_back(done.camera, done.opened_camera, done.looking, done.last_sight);
+        self.finish_a_look(reason, done.printed, began, t)
+    }
+
+    /// Wait for a look in flight to come back, so the camera and models are
+    /// here again (anything else that wants them calls this first).
+    pub(super) fn wait_for_the_look(&mut self) {
+        let Some((_, _, rx)) = self.look_in_flight.take() else { return };
+        match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+            Ok(done) => self.put_back(done.camera, done.opened_camera, done.looking, done.last_sight),
+            Err(_) => {
+                self.helpers.finished("camera");
+                self.log.warn("camera: a look didn't come back in time");
+            }
+        }
+    }
+
+    fn put_back(
+        &mut self,
+        camera: Option<crate::frames::Latest>,
+        opened: bool,
+        looking: Option<crate::vision::Looking>,
+        last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
+    ) {
+        match camera {
+            Some(c) => {
+                if opened {
+                    self.log.info("camera: open, kept open between looks");
+                }
+                self.kept_camera = Some((c, std::time::Instant::now()));
+            }
+            // No camera came back: whatever was on the books for it is let go.
+            None => self.helpers.finished("camera"),
+        }
+        if looking.is_some() {
+            self.looking = looking;
+        }
+        self.last_sight = last_sight;
+    }
+
+    /// Hand the camera, the models and the last sight to a thread that looks.
+    fn start_a_look(&mut self, reason: crate::gaze::Reason, tools: &crate::voice::ToolsConfig) -> bool {
+        if self.look_in_flight.is_some() {
+            return true;
+        }
+        let vcfg = tools.vision.clone();
+        // Anything that stops a look before it starts is said the way it
+        // always was, by the look on the loop (it returns at once).
+        if !vcfg.enabled || !self.camera_allowed(crate::store::now()) {
+            return false;
+        }
+        let Some(capture) = tools.capture_webcam.clone() else { return false };
+        let feed = crate::frames::Feed {
+            open_with: crate::frames::from_capture_args(&resolved(&capture.args, &tools.vars)),
+            per_second: Some(CAMERA_PER_SECOND),
+            ..crate::frames::Feed::default()
+        };
+        let camera = self.kept_camera.take().map(|(c, _)| c).filter(|c| c.alive());
+        if camera.is_none() {
+            // A fresh camera is asked for here, on the loop, so the budget
+            // can still say no.
+            if let Err(why) = self.helpers.want("camera", crate::lifecycle::typical_mb("camera"), crate::store::now(), || Ok(None)) {
+                self.log.info(&format!("camera: not opened ({why})"));
+                return false;
+            }
+        }
+        self.log.info("camera: one frame taken");
+        let looking = self.looking.take();
+        let models = std::path::PathBuf::from(&tools.models.dir);
+        let npu = tools.hands.npu;
+        let album = self.album.clone();
+        let last_sight = self.last_sight.take();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new().name("atlas-look".into()).spawn(move || {
+            let done = look_on_its_own(camera, feed, looking, &models, npu, &vcfg, &album, last_sight);
+            let _ = tx.send(done);
+        });
+        match spawned {
+            Ok(_) => {
+                self.look_in_flight = Some((reason, std::time::Instant::now(), rx));
+                true
+            }
+            Err(e) => {
+                self.helpers.finished("camera");
+                self.log.warn(&format!("camera: couldn't start a look: {e}"));
+                false
+            }
+        }
+    }
+
+    /// What the tick does with a look's answer, wherever it was taken.
+    fn finish_a_look(&mut self, reason: crate::gaze::Reason, printed: String, began: std::time::Instant, t: u64) -> Option<String> {
+        let tools = self.tools_cfg();
+        let cfg = tools.gaze.clone();
         // What it actually costs on this machine, rather than what it was
         // assumed to cost. Everything about pacing follows from this one
         // number and nothing else can know it.
@@ -322,6 +445,8 @@ impl<'a> Daemon<'a> {
     ///
     /// The camera is closed on the way out of this function, every time.
     pub(super) fn one_frame(&mut self) -> std::result::Result<(Vec<u8>, usize, usize), String> {
+        // A look on its own thread has the camera: it comes back first.
+        self.wait_for_the_look();
         // Never without your say-so (1 Oct 2026): every picture from the
         // camera, asked for or on Atlas's own initiative, needs the camera's
         // grant -- the question "Allow the camera?" answered yes once.
@@ -394,6 +519,7 @@ impl<'a> Daemon<'a> {
 
     /// Close the camera kept open between looks, if it is.
     pub(super) fn let_go_of_the_camera(&mut self, why: &str) {
+        self.wait_for_the_look();
         if self.kept_camera.take().is_some() {
             self.helpers.finished("camera");
             self.log.info(&format!("camera: closed ({why})"));
@@ -411,6 +537,7 @@ impl<'a> Daemon<'a> {
 
     /// Open the seeing models, if they are not open already.
     pub(super) fn start_looking(&mut self) -> &mut crate::vision::Looking {
+        self.wait_for_the_look();
         if self.looking.is_none() {
             let tools = self.tools_cfg();
             let models = std::path::Path::new(&tools.models.dir).to_path_buf();
@@ -2098,5 +2225,87 @@ mod camera_reuse_tests {
         }
         assert!(!reuse_sight(&a, &b, Duration::from_secs(1)), "a change in the room is looked at");
         assert!(!reuse_sight(&[], &a, Duration::from_secs(1)), "nothing to compare with: look");
+    }
+}
+
+/// One look, on its own thread: a frame from the kept camera (opened if it
+/// isn't), the movement check, and the light look at you -- with the camera,
+/// the models and the last sight handed back for the next one.
+#[allow(clippy::too_many_arguments)]
+fn look_on_its_own(
+    camera: Option<crate::frames::Latest>,
+    feed: crate::frames::Feed,
+    looking: Option<crate::vision::Looking>,
+    models: &std::path::Path,
+    npu: bool,
+    vcfg: &crate::vision::VisionConfig,
+    album: &crate::vision::Album,
+    last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
+) -> super::LookDone {
+    let began = std::time::Instant::now();
+    let you = vcfg.your_face.clone();
+    let mut done = super::LookDone { printed: String::new(), spent_ms: 0, camera, opened_camera: false, looking, last_sight };
+    if done.camera.is_none() {
+        match crate::frames::Latest::start(&feed) {
+            Ok(c) => {
+                done.camera = Some(c);
+                done.opened_camera = true;
+            }
+            Err(e) => {
+                done.printed = crate::vision::Sight::Unread(format!("the camera wouldn't open: {e}")).as_lines(&you);
+                done.spent_ms = began.elapsed().as_millis() as u64;
+                return done;
+            }
+        }
+    }
+    let cam = done.camera.as_ref().expect("just made sure");
+    let (w, h) = cam.size();
+    let wait = if done.opened_camera { std::time::Duration::from_secs(6) } else { std::time::Duration::from_millis(2500) };
+    let Some(frame) = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, wait) else {
+        // A camera that hands back nothing is closed rather than kept.
+        done.camera = None;
+        done.printed = crate::vision::Sight::Unread("the camera didn't hand back a picture".into()).as_lines(&you);
+        done.spent_ms = began.elapsed().as_millis() as u64;
+        return done;
+    };
+    // The wait for a frame isn't the look's work.
+    let working = std::time::Instant::now();
+    let thumb = crate::handweight::thumbnail(&frame, w, h);
+    if let Some((before, at, seen)) = done.last_sight.as_ref() {
+        if reuse_sight(before, &thumb, at.elapsed()) {
+            done.printed = seen.as_lines(&you);
+            done.spent_ms = working.elapsed().as_millis() as u64;
+            return done;
+        }
+    }
+    let looking = done
+        .looking
+        .get_or_insert_with(|| crate::vision::Looking::open_with(models, models.parent(), npu));
+    let seen = looking.look_at_you(&frame, w, h, vcfg, album);
+    done.printed = seen.as_lines(&you);
+    done.last_sight = Some((thumb, std::time::Instant::now(), seen));
+    done.spent_ms = working.elapsed().as_millis() as u64;
+    done
+}
+
+#[cfg(test)]
+mod look_on_its_own_tests {
+    #[test]
+    fn a_camera_that_wont_open_comes_back_as_unread_with_nothing_held() {
+        // An empty capture line can't open anything: the look says so, and
+        // hands back no camera for the loop to keep.
+        let feed = crate::frames::Feed::default();
+        let done = super::look_on_its_own(
+            None,
+            feed,
+            None,
+            std::path::Path::new("models"),
+            false,
+            &crate::vision::VisionConfig::default(),
+            &crate::vision::Album::default(),
+            None,
+        );
+        assert!(done.camera.is_none() && !done.opened_camera);
+        assert!(done.printed.contains("camera"), "{}", done.printed);
     }
 }

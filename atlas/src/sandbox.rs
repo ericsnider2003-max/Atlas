@@ -442,7 +442,11 @@ mod limits {
     fn a_run_past_its_limit_is_stopped_and_says_so() {
         let base = std::env::temp_dir().join("atlas-sandbox-limit");
         let mut sb = Sandbox::create(&base, "limit").unwrap();
-        let tool = ExternalTool { command: "sleep".into(), args: vec!["30".into()], timeout_secs: 1, ..Default::default() };
+        // Something that takes thirty seconds on either system (Windows has
+        // no `sleep` program).
+        let (command, args): (&str, Vec<String>) =
+            if cfg!(windows) { ("ping", vec!["-n".into(), "31".into(), "127.0.0.1".into()]) } else { ("sleep", vec!["30".into()]) };
+        let tool = ExternalTool { command: command.into(), args, timeout_secs: 1, ..Default::default() };
         let started = std::time::Instant::now();
         let a = sb.run(&tool, &Default::default(), 1000);
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it waited the whole run");

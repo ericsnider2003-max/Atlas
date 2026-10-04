@@ -353,6 +353,7 @@ impl<'a> Daemon<'a> {
                 let _ = self.chats.save(&self.store);
             }
         }
+        self.tick_laps.mark("messages to friends");
 
         // Paused means paused: no jobs, no posts, no offers. Only listening.
         if self.attention.is_paused() {
@@ -404,6 +405,7 @@ impl<'a> Daemon<'a> {
         // step that asks still asks. One at a time, and never over a sequence
         // already in hand -- a due one waits for the next tick rather than
         // being dropped.
+        self.tick_laps.mark("scheduled jobs");
         if self.current_flow.is_none() {
             let reg = crate::plugins::Registry::load_kept(&mut self.plugins_kept, &self.plugins_dir, &self.cfg.commands, &self.store).clone();
             let mut runs = crate::plugins::ScheduleRuns::load(&self.store);
@@ -856,6 +858,9 @@ impl<'a> Daemon<'a> {
         // Look at the room. Only a gesture answering a pending question ever
         // reaches you from this; presence just informs everything else.
         self.camera_idle_check();
+        if let Some(said) = self.look_landed(t) {
+            out.push(said);
+        }
         if let Some(said) = self.look_at_the_room(t) {
             out.push(said);
         }
