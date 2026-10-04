@@ -1,0 +1,32 @@
+# Every text file is checked out with LF line endings, on Windows too
+# (2 Oct 2026). The laptop's git has core.autocrlf=true, so the tree there
+# was CRLF: tests that read Atlas's own source or config and look for a
+# multi-line pattern ("self.pace\n            .took(", a line of
+# mobile/ios/project.yml ending in "\n") failed on Windows only, and
+# include_str! text carried \r into the program. Binary files are left alone.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.onnx binary
+*.gguf binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.bundle binary
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+# Kept exactly as they are: test exports that really arrive with CRLF, and
+# vendored code.
+atlas/tests/fixtures/** -text
+atlas/vendor/** -text
