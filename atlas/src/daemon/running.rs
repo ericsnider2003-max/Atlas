@@ -354,6 +354,10 @@ impl<'a> Daemon<'a> {
         // Words typed while the loop was napping, taken at the top of the
         // next pass.
         let mut typed_meanwhile: Option<crate::input::Utterance> = None;
+        // What the loop does between ticks -- answering the hub, the keys,
+        // the model server, looking around, napping -- counted too, by CPU
+        // (2 Oct 2026): the tick's own laps saw none of it.
+        let mut between = crate::timing::Laps::start();
         loop {
             // The way out. Checked here rather than at the bottom because
             // several paths below `continue`, and a `break` at the bottom of
@@ -391,6 +395,9 @@ impl<'a> Daemon<'a> {
             // Every tick's parts, added up; every quarter hour, Atlas's own
             // CPU over it and where the loop's time went (`cpuuse`).
             self.cpu_meter.add(self.tick_laps.parts());
+            self.cpu_meter.add_cpu(self.tick_laps.cpu_parts());
+            self.cpu_meter.add_cpu(between.cpu_parts());
+            between = crate::timing::Laps::start();
             if let Some(r) = self.cpu_meter.read(t, crate::cpuuse::own_cpu_ms()) {
                 if r.idle && r.percent >= crate::cpuuse::WARN_PERCENT {
                     self.log.warn(&format!("idle but busy: {}", r.plain()));
@@ -646,7 +653,9 @@ impl<'a> Daemon<'a> {
             self.look_again_at_the_microphone(clock());
             self.back_to_the_wake_word(mouth, clock());
             self.open_signal_door_again(clock());
+            between.mark("between ticks: keys, hub, upkeep");
             let signals = self.observe(clock());
+            between.mark("between ticks: observing");
             let nap = throttle.next_interval(&signals, self.power);
             if self.tiers.tier == Tier::Typed {
                 continue; // keyboard.wait already paced us
@@ -678,6 +687,7 @@ impl<'a> Daemon<'a> {
             // typing box's words sitting in a queue was most of why clicking
             // around and talking to Atlas felt slow.
             typed_meanwhile = self.nap_awake(keyboard, mouth, nap_ms);
+            between.mark("napping, answering the hub");
         }
 
         for line in self.shut_down() {
