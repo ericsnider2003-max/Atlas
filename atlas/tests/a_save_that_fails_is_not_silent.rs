@@ -192,3 +192,34 @@ fn a_healthy_store_says_nothing_at_all() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// 5 Oct 2026: `persist` checked its own sixteen records, but 287 other saves
+/// across the daemon are `let _ = store.save(..)` -- connected accounts,
+/// calendar links, the vault's install state. One of those failing said
+/// nothing. Now every failed save is recorded inside `Store::save`, and
+/// `persist` reports the ones that belong to its store.
+#[test]
+fn a_save_nobody_checked_is_still_reported() {
+    let c = Config::load(Path::new("config")).unwrap();
+    let p = plat();
+    let root = writable_root("unchecked");
+    let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    d.persist();
+    assert!(d.persist_failures.is_empty(), "{:?}", d.persist_failures);
+
+    // A directory sitting where one record's file goes: that record, and only
+    // that one, cannot be written.
+    std::fs::create_dir_all(root.join("calendar_links_for_test.json")).unwrap();
+    let _ = d.store.save("calendar_links_for_test", &vec!["https://example.com/cal.ics".to_string()]);
+
+    d.persist();
+    let names: Vec<&str> = d.persist_failures.iter().map(|(w, _)| *w).collect();
+    assert_eq!(names, vec!["calendar_links_for_test"], "an unchecked failed save went unreported: {names:?}");
+    let out = d.tick(1000);
+    assert!(out.iter().any(|s| s.contains("calendar_links_for_test")), "nobody was told: {out:?}");
+
+    // Reported once: the next persist, with nothing new failing, clears it.
+    d.persist();
+    assert!(d.persist_failures.is_empty(), "{:?}", d.persist_failures);
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -143,7 +143,10 @@ fn mel_bank(n_fft: usize, rate: usize) -> Vec<Vec<(usize, f64)>> {
         .collect()
 }
 
-fn fft_in_place(re: &mut [f64], im: &mut [f64]) {
+/// In-place radix-2 FFT over f64 (`re.len()` a power of two). The one copy:
+/// `vad` uses this too (until 5 Oct 2026 it carried its own, line for line).
+/// `speakernet` keeps an f32 one, because its model works in f32.
+pub(crate) fn fft_in_place(re: &mut [f64], im: &mut [f64]) {
     let n = re.len();
     let mut j = 0;
     for i in 1..n {
