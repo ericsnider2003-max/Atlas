@@ -283,18 +283,13 @@ fn save_overlay(config_dir: &Path, file: &str, changes: &[Change]) -> std::io::R
     }
     let body = serde_yaml::to_string(&OverlayFile { changes: changes.to_vec() })
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    write_whole(&path, &format!("{}{body}", HEADER.replace("FILE", file)))
+    write_yaml_whole(&path, &format!("{}{body}", HEADER.replace("FILE", file)))
 }
 
-/// Write by renaming a finished temporary file over the old one, so a crash
-/// leaves either the old file or the new one, never half of either.
-fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp = path.with_extension("yaml.writing");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path)
+/// Whole or not at all, as every small state file is written
+/// (`store::write_whole`; this module had its own copy until 5 Oct 2026).
+fn write_yaml_whole(path: &Path, text: &str) -> std::io::Result<()> {
+    crate::store::write_whole(path, text.as_bytes())
 }
 
 // ------------------------------------------------------------------ renames
@@ -400,7 +395,7 @@ fn record_setting_defaults(config_dir: &Path) {
              # Atlas keeps this to tell you when an update changes one of those defaults.\n{}",
             serde_yaml::to_string(&was).unwrap_or_default()
         );
-        let _ = write_whole(&settings_was_path(config_dir), &text);
+        let _ = write_yaml_whole(&settings_was_path(config_dir), &text);
     }
 }
 
@@ -578,7 +573,7 @@ pub fn keep_hand_edits_with(
         }
     }
     if anything_of_yours && !already {
-        let _ = write_whole(&told, version);
+        let _ = write_yaml_whole(&told, version);
     }
     kept
 }
@@ -612,7 +607,7 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
     };
     if disk_text == new_text {
         if std::fs::read_to_string(&base_file).ok().as_deref() != Some(new_text) {
-            let _ = write_whole(&base_file, new_text);
+            let _ = write_yaml_whole(&base_file, new_text);
         }
         return None;
     }
@@ -650,14 +645,14 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
         }
     }
     if base_text.as_deref() != Some(disk_text.as_str()) {
-        if let Err(e) = write_whole(&previous_path(config_dir, file), &disk_text) {
+        if let Err(e) = write_yaml_whole(&previous_path(config_dir, file), &disk_text) {
             return Some(format!("I couldn't save a copy of your config/{file} ({e}), so I left it as it is."));
         }
     }
-    if let Err(e) = write_whole(&disk_path, new_text) {
+    if let Err(e) = write_yaml_whole(&disk_path, new_text) {
         return Some(format!("I couldn't bring config/{file} up to this version: {e}"));
     }
-    let _ = write_whole(&base_file, new_text);
+    let _ = write_yaml_whole(&base_file, new_text);
 
     if count == 0 {
         return None;
@@ -834,7 +829,7 @@ mod tests {
         keep_hand_edits_with(&dir, &[("policy.yaml", V1)], &[], "1");
         let edited = V1.replace("limit: 5", "limit: 1");
         std::fs::write(dir.join("policy.yaml"), &edited).unwrap();
-        write_whole(&overlay_path(&dir, "policy.yaml"), "changes: [this is: not: valid").unwrap();
+        write_yaml_whole(&overlay_path(&dir, "policy.yaml"), "changes: [this is: not: valid").unwrap();
         let k = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
         assert!(k.notices.iter().any(|n| n.contains("does not parse")), "{:?}", k.notices);
         assert_eq!(std::fs::read_to_string(dir.join("policy.yaml")).unwrap(), edited);
@@ -865,7 +860,7 @@ mod tests {
     #[test]
     fn a_renamed_setting_carries_your_edit_and_your_choice_with_it() {
         let dir = scratch("rename");
-        write_whole(
+        write_yaml_whole(
             &overlay_path(&dir, "tools.yaml"),
             &serde_yaml::to_string(&OverlayFile {
                 changes: vec![Change {
@@ -931,7 +926,7 @@ mod tests {
     #[test]
     fn a_kept_edit_can_be_listed_and_given_up() {
         let dir = scratch("forget");
-        write_whole(
+        write_yaml_whole(
             &overlay_path(&dir, "policy.yaml"),
             &serde_yaml::to_string(&OverlayFile {
                 changes: vec![Change {

@@ -96,7 +96,7 @@ impl Devices {
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(state_dir)?;
-        std::fs::write(state_dir.join(FILE), serde_json::to_vec_pretty(self).unwrap_or_default())
+        crate::store::write_whole(&state_dir.join(FILE), &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
     }
 
     /// One address per device: a new one replaces the old (iOS changes it

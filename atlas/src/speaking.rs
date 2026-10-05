@@ -91,8 +91,8 @@ pub fn begin(data_dir: &Path, text: &str, wav: &[u8], now_ms: u64) -> std::io::R
     std::fs::create_dir_all(data_dir)?;
     // Written whole and renamed into place, so a reader never sees half.
     let tmp = data_dir.join("speaking.json.part");
-    std::fs::write(&tmp, serde_json::to_vec(&s).unwrap_or_default())?;
-    std::fs::rename(tmp, path(data_dir))
+    std::fs::write(&tmp, serde_json::to_vec(&s).map_err(std::io::Error::other)?)?;
+    crate::store::rename_patiently(&tmp, &path(data_dir))
 }
 
 /// The first sound of the turn being timed (Phase 0.2): set by the first

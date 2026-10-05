@@ -107,7 +107,7 @@ impl Preferences {
         // old file, never half of the new one.
         let part = dir.join("settings.yaml.part");
         std::fs::write(&part, format!("{header}{body}"))?;
-        std::fs::rename(&part, &file)?;
+        crate::store::rename_patiently(&part, &file)?;
         Ok(())
     }
 

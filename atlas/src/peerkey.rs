@@ -71,9 +71,9 @@ impl Identity {
                 let mut seed = [0u8; 32];
                 chacha20poly1305::aead::OsRng.fill_bytes(&mut seed);
                 std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-                let tmp = path.with_extension("json.writing");
-                std::fs::write(&tmp, serde_json::to_string(&Stored { seed: hex(&seed) }).unwrap_or_default())
-                    .and_then(|_| std::fs::rename(&tmp, &path))
+                serde_json::to_vec(&Stored { seed: hex(&seed) })
+                    .map_err(std::io::Error::other)
+                    .and_then(|body| crate::store::write_whole(&path, &body))
                     .map_err(|e| format!("couldn't save this Atlas's identity: {e}"))?;
                 Ok(Identity { key: SigningKey::from_bytes(&seed) })
             }

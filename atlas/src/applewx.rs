@@ -277,7 +277,7 @@ impl CarriedToken {
 
     pub fn save(&self, state_dir: &std::path::Path) -> std::io::Result<()> {
         std::fs::create_dir_all(state_dir)?;
-        std::fs::write(state_dir.join(CARRIED_FILE), serde_json::to_vec(self).unwrap_or_default())
+        crate::store::write_whole(&state_dir.join(CARRIED_FILE), &serde_json::to_vec(self).map_err(std::io::Error::other)?)
     }
 
     /// The token, while it has at least a minute left.

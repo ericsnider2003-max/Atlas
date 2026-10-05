@@ -286,7 +286,7 @@ impl Store {
         note_set_aside(&self.root, name, why);
         let from = self.path(name);
         let to = self.root.join(format!("{name}.{why}.{}.json.bak", now()));
-        if std::fs::rename(&from, &to).is_err() {
+        if rename_patiently(&from, &to).is_err() {
             // Nothing here can fix it, and something has to know. `preserved`
             // is what `doctor` reads; this is what makes the count include
             // the ones that could not be moved, rather than only the ones
@@ -447,7 +447,7 @@ impl Store {
         // On failure, take our own temp file with us. A hard kill still
         // leaves one behind, but it is named with the pid that made it rather
         // than sitting on the name the next writer wants.
-        if let Err(e) = std::fs::rename(&tmp, &final_path) {
+        if let Err(e) = rename_patiently(&tmp, &final_path) {
             let _ = std::fs::remove_file(&tmp);
             return Err(e.into());
         }
@@ -505,6 +505,74 @@ fn read_with_patience(path: &std::path::Path) -> std::io::Result<String> {
         }
     }
     Err(last.unwrap_or_else(|| std::io::Error::other("unreadable")))
+}
+
+/// Is this rename failure a lock that lets go (a virus scanner, OneDrive or
+/// the search indexer holding the file open for a moment), rather than a
+/// real refusal? Windows says ACCESS_DENIED (5), SHARING_VIOLATION (32) or
+/// LOCK_VIOLATION (33) for those. Elsewhere a rename over a file isn't
+/// blocked by a reader, so nothing is worth waiting for.
+fn is_a_passing_lock(e: &std::io::Error) -> bool {
+    cfg!(windows) && (e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(5 | 32 | 33)))
+}
+
+/// The waits between tries of a rename that hit a passing lock: about 1.3 s
+/// in all, the same patience Go's `robustio` and npm's `graceful-fs` give it
+/// in spirit, kept short because the tick may be the one waiting.
+const RENAME_PAUSES_MS: [u64; 7] = [10, 20, 40, 80, 160, 320, 640];
+
+/// `fs::rename(from, to)` over an existing file, tried again while Windows
+/// reports a passing lock (5 Oct 2026 audit, Q11). One failed rename used to
+/// mean a lost save, said as an error, whenever a scanner looked at the file
+/// at the wrong moment. Any other failure, or one that outlasts the waits,
+/// is returned as it was.
+pub fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<()> {
+    rename_patiently_with(from, to, &RENAME_PAUSES_MS, is_a_passing_lock, |f, t| std::fs::rename(f, t))
+}
+
+/// `rename_patiently`, with the waits, the test for a passing lock and the
+/// rename itself handed in, so the retrying is tested without Windows.
+pub fn rename_patiently_with(
+    from: &Path,
+    to: &Path,
+    pauses_ms: &[u64],
+    passing: impl Fn(&std::io::Error) -> bool,
+    mut rename: impl FnMut(&Path, &Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let mut pauses = pauses_ms.iter();
+    loop {
+        match rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) if passing(&e) => match pauses.next() {
+                Some(ms) => std::thread::sleep(std::time::Duration::from_millis(*ms)),
+                None => return Err(e),
+            },
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Write `bytes` as the whole of `path`, or leave the old file as it was:
+/// written beside it under a name only this process uses, flushed to the
+/// disk, then renamed over it (`rename_patiently`). For the small state files
+/// kept outside a `Store` -- a crash or a full disk mid-`fs::write` left them
+/// cut short, and the next start read them as empty (audit Q3/Q11).
+pub fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!("{name}.{}.writing", std::process::id()));
+    let written = std::fs::File::create(&tmp).and_then(|mut f| {
+        f.write_all(bytes)?;
+        f.sync_all()
+    });
+    let done = written.and_then(|_| rename_patiently(&tmp, path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
 }
 
 /// A saved file set aside because it couldn't be read: which, why, when, and

@@ -2754,7 +2754,7 @@ pub fn record_door(state_dir: &std::path::Path, door: &Door) -> std::io::Result<
     let text = serde_json::to_string(door).map_err(|e| std::io::Error::other(e.to_string()))?;
     let tmp = state_dir.join(format!("{DOOR_FILE}.new"));
     std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, state_dir.join(DOOR_FILE))
+    crate::store::rename_patiently(&tmp, &state_dir.join(DOOR_FILE))
 }
 
 /// What `record_door` last wrote, if anything.
