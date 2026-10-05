@@ -189,9 +189,55 @@ pub fn data_dir() -> PathBuf {
 /// a `Store`'s own idea of its install root still agrees with this one.
 pub fn data_home() -> PathBuf {
     if under_the_test_harness() {
+        static SWEPT: std::sync::Once = std::sync::Once::new();
+        SWEPT.call_once(|| {
+            sweep_old_test_scratch(&std::env::temp_dir(), std::time::SystemTime::now());
+        });
         return std::env::temp_dir().join(format!("atlas-test-{}", std::process::id()));
     }
     install_root()
+}
+
+/// How old a test run's scratch has to be before the next run clears it: no
+/// run of the suite takes this long, so nothing still in use is touched.
+pub const TEST_SCRATCH_KEPT_FOR: std::time::Duration = std::time::Duration::from_secs(2 * 3600);
+
+/// Clear what earlier test runs left in `dir` (5 Oct 2026, ledger Q21).
+///
+/// Hundreds of tests make a folder under the temp dir and few remove it; 18
+/// runs had left 11,452 folders, 12 GB. `.cargo/config.toml` points the
+/// tests' temp dir at `target/tmp`, and the first test in each run to reach
+/// `data_home` clears entries there older than `TEST_SCRATCH_KEPT_FOR`.
+///
+/// Only ever inside a folder named `tmp` under one named `target` -- a
+/// build's own scratch. Called anywhere else (the system temp dir, when the
+/// tests were started without cargo's config) it does nothing, so it can
+/// never reach a file of yours or a running Atlas's. Answers how many went.
+pub fn sweep_old_test_scratch(dir: &Path, now: std::time::SystemTime) -> usize {
+    let is_build_scratch = dir.file_name().is_some_and(|n| n == "tmp")
+        && dir.parent().and_then(|p| p.file_name()).is_some_and(|n| n == "target");
+    if !is_build_scratch {
+        return 0;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    let mut gone = 0;
+    for e in rd.flatten() {
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age > TEST_SCRATCH_KEPT_FOR);
+        if !old {
+            continue;
+        }
+        let p = e.path();
+        let removed = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+        if removed.is_ok() {
+            gone += 1;
+        }
+    }
+    gone
 }
 
 /// A cargo test binary (`target/<profile>/deps/<name>-<hash>`) that found its

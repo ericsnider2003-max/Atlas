@@ -1,0 +1,10 @@
+# One Rust for every build of Atlas (ledger Q20, 5 Oct 2026): the laptop,
+# CI and the phone and Windows release jobs all compile with this, so a new
+# stable release can't change a build's behaviour or warnings unannounced.
+# Move it on purpose, in its own commit, after the suite passes on the new one.
+# At the repo root so `rustup target add` in the workflows (run here or in
+# atlas/) and `cargo` in atlas/ use the same toolchain.
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
