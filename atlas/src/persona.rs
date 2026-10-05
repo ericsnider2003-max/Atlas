@@ -406,7 +406,7 @@ impl Persona {
             Tone::Dry => match seed % 3 {
                 0 => format!("{body} now"),
                 1 => body.to_string(),
-                _ => format!("{body}"),
+                _ => body.to_string(),
             },
             Tone::Plain => body.to_string(),
             // No "Right, {lowercased body}" variant, though it reads well.

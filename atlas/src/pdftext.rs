@@ -105,7 +105,7 @@ pub fn looks_like_words(text: &str) -> bool {
 
 fn trailer_has(bytes: &[u8], what: &[u8]) -> bool {
     let tail = &bytes[bytes.len().saturating_sub(2048)..];
-    find(tail, b"trailer").map_or(false, |i| find(&tail[i..], what).is_some())
+    find(tail, b"trailer").is_some_and(|i| find(&tail[i..], what).is_some())
 }
 
 fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
@@ -166,7 +166,7 @@ fn parse_obj(body: &[u8]) -> Obj {
         }
     }
     let filters = filters_of(&dict);
-    let jpeg = filters.last().map_or(false, |f| f == "DCTDecode") && dict.contains("/Image");
+    let jpeg = filters.last().is_some_and(|f| f == "DCTDecode") && dict.contains("/Image");
     let stream = decode(raw, &filters);
     Obj { dict, stream, jpeg }
 }
@@ -400,7 +400,7 @@ fn inline_dict_after(dict: &str, key: &str) -> Option<String> {
     let i = dict.find(key)?;
     let rest = &dict[i + key.len()..];
     let open = rest.find("<<")?;
-    if rest[..open].trim().len() > 0 {
+    if !rest[..open].trim().is_empty() {
         return None;
     }
     let b = rest.as_bytes();
@@ -567,7 +567,7 @@ fn text_of(stream: &[u8], fonts: &HashMap<String, Font>) -> String {
                     }
                     "Tm" => {
                         if let [.., Tok::Num(_), Tok::Num(y)] = operands.as_slice() {
-                            if last_y.map_or(false, |ly| (ly - y).abs() > 0.5) {
+                            if last_y.is_some_and(|ly| (ly - y).abs() > 0.5) {
                                 newline(&mut out);
                             } else if !out.ends_with(' ') && !out.is_empty() {
                                 out.push(' ');
@@ -576,11 +576,10 @@ fn text_of(stream: &[u8], fonts: &HashMap<String, Font>) -> String {
                         }
                     }
                     "T*" => newline(&mut out),
-                    "ET" => {
-                        if !out.ends_with('\n') && !out.ends_with(' ') && !out.is_empty() {
+                    "ET"
+                        if !out.ends_with('\n') && !out.ends_with(' ') && !out.is_empty() => {
                             out.push(' ');
                         }
-                    }
                     _ => {}
                 }
                 operands.clear();

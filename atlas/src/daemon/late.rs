@@ -1972,7 +1972,7 @@ impl<'a> Daemon<'a> {
         let fits = |p: &String| exts.iter().any(|e| p.to_lowercase().ends_with(&format!(".{e}")));
         if !listed.is_empty() {
             let low = said.to_lowercase();
-            let as_open = low.splitn(2, ' ').nth(1).map(|rest| format!("open {rest}")).unwrap_or_default();
+            let as_open = low.split_once(' ').map(|x| x.1).map(|rest| format!("open {rest}")).unwrap_or_default();
             if let Some(i) = crate::findfile::which(&as_open, listed.len()) {
                 if let Some(p) = listed.get(i).filter(|p| fits(p)) {
                     return Some(p.clone());

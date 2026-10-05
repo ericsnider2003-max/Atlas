@@ -225,8 +225,10 @@ pub const MACHINE_RETRY_SECS: u64 = 6 * 3600;
 /// Whose fault a failure was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FailedBecause {
     /// Something in the build. It needs a fix and a new release.
+    #[default]
     TheBuild,
     /// Something on this machine. Put right here, the same build is tried again.
     ThisMachine,
@@ -261,11 +263,6 @@ fn default_cause() -> FailedBecause {
     FailedBecause::TheBuild
 }
 
-impl Default for FailedBecause {
-    fn default() -> Self {
-        FailedBecause::TheBuild
-    }
-}
 
 /// The largest report accepted over a pairing.
 pub const MAX_REPORT_BYTES: usize = 16 * 1024;
@@ -412,7 +409,7 @@ pub fn hold_release(store: &Store, sha256: &str) {
 /// Has a report stopped this build being handed out? Read by the file door
 /// (`update_courier::chunk`), from the state folder it serves.
 pub fn is_halted(state_root: &Path, sha256: &str) -> bool {
-    Store::new(state_root.to_path_buf()).load::<Vec<String>>(HALTED).iter().any(|s| s == sha256)
+    Store::new(state_root).load::<Vec<String>>(HALTED).iter().any(|s| s == sha256)
 }
 
 /// Every failure report the releaser has, newest last.

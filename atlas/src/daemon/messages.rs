@@ -585,7 +585,7 @@ impl<'a> Daemon<'a> {
 
         let (room, label) = if known.len() == 1 {
             let who = &known[0];
-            match self.chats.open(who, space, &[who.clone()], &roster, &pairings) {
+            match self.chats.open(who, space, std::slice::from_ref(who), &roster, &pairings) {
                 Ok(id) => (id, who.clone()),
                 Err(e) => return e.plain(),
             }
@@ -968,7 +968,7 @@ impl<'a> Daemon<'a> {
                 }
             }
         } else {
-            match self.chats.open(&c.from, space, &[c.from.clone()], &roster, &pairings) {
+            match self.chats.open(&c.from, space, std::slice::from_ref(&c.from), &roster, &pairings) {
                 Ok(id) => id,
                 Err(e) => {
                     self.log
@@ -2245,7 +2245,7 @@ impl<'a> Daemon<'a> {
     pub(super) fn peer_upkeep(&mut self, t: u64) {
         const RETRY_SECS: u64 = 300;
         // Tor, kept running while there's anyone to reach or be reached by.
-        if self.signal_listener.is_some() && self.tor.as_mut().map_or(true, |x| x.stopped()) {
+        if self.signal_listener.is_some() && self.tor.as_mut().is_none_or(|x| x.stopped()) {
             let k = "tor:start".to_string();
             if !self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
                 self.peer_tries.insert(k, t);

@@ -103,7 +103,7 @@ pub fn translation_pieces(text: &str) -> Vec<String> {
         let mut start = 0;
         let b = para.as_bytes();
         for (i, &c) in b.iter().enumerate() {
-            let end = matches!(c, b'.' | b'?' | b'!') && b.get(i + 1).map_or(true, |n| n.is_ascii_whitespace());
+            let end = matches!(c, b'.' | b'?' | b'!') && b.get(i + 1).is_none_or(|n| n.is_ascii_whitespace());
             if end || i + 1 == b.len() {
                 let sentence = &para[start..=i];
                 if cur.chars().count() + sentence.chars().count() > MAX_PIECE && !cur.is_empty() {
@@ -222,7 +222,7 @@ impl Translated {
         for i in &self.issues {
             out.push(format!("(Check: {i}.)"));
         }
-        if self.issues.is_empty() && self.back.as_ref().map_or(true, |b| b.0 >= 0.35) {
+        if self.issues.is_empty() && self.back.as_ref().is_none_or(|b| b.0 >= 0.35) {
             out.push(format!("(Into {to}, on this machine.)"));
         }
         out.join("\n")

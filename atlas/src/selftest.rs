@@ -525,7 +525,7 @@ pub fn run_all(
             cfg,
             plat,
             llm.clone(),
-            crate::store::Store::new(store_dir.to_path_buf()),
+            crate::store::Store::new(store_dir),
             crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
         );
         d.rehearsal = true;
@@ -576,14 +576,14 @@ pub fn run_all(
     }
     // What you've corrected before, said again (`regressions`): the row fails
     // if Atlas gives the answer you said was wrong.
-    let cases: Vec<crate::regressions::Case> = crate::store::Store::new(store_dir.to_path_buf()).load(crate::regressions::FILE);
+    let cases: Vec<crate::regressions::Case> = crate::store::Store::new(store_dir).load(crate::regressions::FILE);
     let base = rows.len() as u64;
     for (i, case) in cases.iter().filter(|c| c.source == crate::regressions::Source::Correction).enumerate() {
         let mut d = crate::daemon::Daemon::new(
             cfg,
             plat,
             llm.clone(),
-            crate::store::Store::new(store_dir.to_path_buf()),
+            crate::store::Store::new(store_dir),
             crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
         );
         d.rehearsal = true;

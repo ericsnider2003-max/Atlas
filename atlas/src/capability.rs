@@ -1095,9 +1095,9 @@ pub fn can(id: &str) -> Option<(bool, String)> {
         ),
         State::Untested => (
             false,
-            format!("built, but it has never run on a real machine — so I can't promise it works."),
+            "built, but it has never run on a real machine — so I can't promise it works.".to_string(),
         ),
-        State::Planned => (false, format!("not built yet.")),
+        State::Planned => (false, "not built yet.".to_string()),
     })
 }
 

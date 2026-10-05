@@ -143,8 +143,8 @@ pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::t
     let same_bytes = target.is_file()
         && crate::upgrade::sha256_of(exe).is_some_and(|a| Some(a) == crate::upgrade::sha256_of(&target));
     if !same_place(exe, &target) && !same_bytes {
-        if target.is_file() {
-            if stop_first && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING) {
+        if target.is_file()
+            && stop_first && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING) {
                 // It finishes what it's saving on the way out when asked. One
                 // that doesn't is ended; one that can't be is said, rather
                 // than left running the old version from the file it would be
@@ -158,7 +158,6 @@ pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::t
                     ));
                 }
             }
-        }
         copy_over(exe, &target).map_err(|e| format!("I couldn't copy myself into {}: {e}", home.display()))?;
     }
     // A copy keeps the "downloaded from the internet" mark, which would make

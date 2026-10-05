@@ -507,7 +507,7 @@ pub fn daypart_with_brief(part: Part, b: &crate::brief::Brief) -> Nudge {
     Nudge {
         trigger: Trigger::Daypart,
         subject: None,
-        message: format!("{}. {}", part.greeting(), crate::brief::spoken(&b)),
+        message: format!("{}. {}", part.greeting(), crate::brief::spoken(b)),
         relief: b.drafted.first().map(|i| format!("the reply to {}", i.from)),
         asking_why: false,
         confidence: 0.85,

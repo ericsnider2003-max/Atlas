@@ -425,7 +425,7 @@ impl<'a> Daemon<'a> {
     /// you named), then run Atlas's own checks on what it wrote -- its word
     /// that it works counts for nothing until they agree.
     fn build_with_agent(&mut self, agent: crate::coding_agent::Agent, program: String, desc: &str, lang: crate::craft::Lang, named_dir: Option<std::path::PathBuf>) -> String {
-        let fresh = named_dir.as_ref().map_or(true, |d| std::fs::read_dir(d).map_or(true, |mut r| r.next().is_none()));
+        let fresh = named_dir.as_ref().is_none_or(|d| std::fs::read_dir(d).map_or(true, |mut r| r.next().is_none()));
         let folder = named_dir.unwrap_or_else(|| crate::build_it::build_folder(&crate::roots::data_sub("builds"), desc));
         if let Err(e) = std::fs::create_dir_all(&folder) {
             return format!("I couldn't make {} to build in: {e}.", folder.display());

@@ -476,7 +476,7 @@ pub fn duration_words(secs: u64) -> String {
     match mins {
         0 => "under a minute".into(),
         1..=59 => format!("{mins} min"),
-        _ if mins % 60 == 0 => format!("{} h", mins / 60),
+        _ if mins.is_multiple_of(60) => format!("{} h", mins / 60),
         _ => format!("{} h {} min", mins / 60, mins % 60),
     }
 }

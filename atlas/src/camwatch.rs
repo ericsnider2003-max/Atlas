@@ -200,7 +200,7 @@ pub fn ended(secs: u64, said: usize, why: &str) -> String {
 
 /// Said when a watch starts.
 pub fn started(secs: u64, until_stopped: bool) -> String {
-    let mins = (secs + 59) / 60;
+    let mins = secs.div_ceil(60);
     let how_long = if mins <= 1 { "a minute".to_string() } else { format!("{mins} minutes") };
     if until_stopped {
         format!(

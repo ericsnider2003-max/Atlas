@@ -154,7 +154,7 @@ impl Store {
         let under_profiles = self
             .root
             .parent()
-            .map(|p| ends_with_data_state_profiles(p))
+            .map(ends_with_data_state_profiles)
             .unwrap_or(false);
         if under_profiles {
             return self

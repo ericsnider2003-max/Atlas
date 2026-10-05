@@ -701,7 +701,7 @@ impl<'a> Daemon<'a> {
             .errand_candidates()
             .iter()
             .filter(|c| self.crew.errands().iter().any(|e| e.id == c.id))
-            .map(|c| crate::which_errand::describe(c))
+            .map(crate::which_errand::describe)
             .collect();
         crate::streams::working_on(&self.streams, &errands)
     }

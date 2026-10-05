@@ -505,7 +505,7 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
         // camera and both models ran until you said stop, with the room
         // empty and the laptop's fans going.
         if crate::handweight::time_to_stop(quiet_ms, &setup.hands) {
-            let mins = (setup.hands.stop_after_quiet_secs + 59) / 60;
+            let mins = setup.hands.stop_after_quiet_secs.div_ceil(60);
             let _ = say.send(Said::Trouble(format!(
                 "I've stopped watching your hands -- none in view for {mins} minute{}. \
                  Say \"watch my hands\" to start again.",

@@ -618,11 +618,11 @@ pub fn from_jobs(s: &crate::scheduler::Scheduler, now: u64) -> (Vec<Item>, Vec<C
                 draft: None,
                 conflicts_with: None,
             }),
-            crate::scheduler::JobState::Pending => {
+            crate::scheduler::JobState::Pending
                 // Only today's. A job due in a fortnight is not the shape of
                 // this morning, and a day full of them is the list you stop
                 // reading.
-                if j.due >= now && j.due < now + 86_400 {
+                if j.due >= now && j.due < now + 86_400 => {
                     day.push(Commitment {
                         id: format!("job:{}", j.id),
                         what: j.command.clone(),
@@ -634,7 +634,6 @@ pub fn from_jobs(s: &crate::scheduler::Scheduler, now: u64) -> (Vec<Item>, Vec<C
                         needs_prep: None,
                     });
                 }
-            }
             // Done and Cancelled are counted by `handled`, not listed.
             _ => {}
         }

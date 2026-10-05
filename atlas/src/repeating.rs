@@ -117,7 +117,7 @@ pub fn sentences(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     for (i, &c) in chars.iter().enumerate() {
         cur.push(c);
-        if matches!(c, '.' | '!' | '?' | '…') && chars.get(i + 1).map_or(true, |n| n.is_whitespace()) {
+        if matches!(c, '.' | '!' | '?' | '…') && chars.get(i + 1).is_none_or(|n| n.is_whitespace()) {
             let s = cur.trim().to_string();
             if !s.is_empty() {
                 out.push(s);

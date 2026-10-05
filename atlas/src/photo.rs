@@ -371,11 +371,10 @@ fn degrees_in(l: &str) -> Option<f32> {
         let Ok(n) = t.trim_start_matches('+').parse::<f32>() else { continue };
         let next = words.get(i + 1).copied().unwrap_or("");
         let prev = if i > 0 { words[i - 1] } else { "" };
-        if word.ends_with('°') || next.starts_with("degree") || next.starts_with("deg") || matches!(prev, "by" | "rotate" | "turn") {
-            if n.is_finite() && n.abs() > 0.0 && n.abs() <= 360.0 {
+        if (word.ends_with('°') || next.starts_with("degree") || next.starts_with("deg") || matches!(prev, "by" | "rotate" | "turn"))
+            && n.is_finite() && n.abs() > 0.0 && n.abs() <= 360.0 {
                 return Some(n);
             }
-        }
     }
     None
 }

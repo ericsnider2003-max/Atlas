@@ -141,7 +141,7 @@ impl Route {
     /// the one inside Atlas when its files are installed under `root`, else
     /// a configured encoder program.
     pub fn start(cfg: &crate::meaning::MeaningConfig, vars: &crate::tools::Vars, root: Option<&std::path::Path>, texts: Vec<String>) -> Option<Route> {
-        let enc = root.and_then(|r| Resident::native(r)).or_else(|| Resident::start(cfg, vars))?;
+        let enc = root.and_then(Resident::native).or_else(|| Resident::start(cfg, vars))?;
         let enc = Arc::new(enc);
         let tools: Arc<OnceLock<Vec<Vec<f32>>>> = Arc::new(OnceLock::new());
         let (e, t) = (enc.clone(), tools.clone());

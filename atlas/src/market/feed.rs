@@ -204,7 +204,7 @@ fn find_gaps(bars: &Bars) -> Vec<Note> {
     }
     let mut mins: Vec<f64> = t.windows(2).map(|w| (w[1] - w[0]) as f64 / MS_PER_MIN as f64).collect();
     let mut sorted = mins.clone();
-    sorted.sort_by(|a, b| a.total_cmp(&b));
+    sorted.sort_by(|a, b| a.total_cmp(b));
     let step = sorted[sorted.len() / 2];
     if step <= 0.0 {
         return Vec::new();
@@ -269,7 +269,7 @@ fn find_spikes(bars: &Bars, times: f64) -> Vec<Note> {
     }
     let mut rng: Vec<f64> = (0..h.len()).map(|i| h[i] - l[i]).collect();
     let mut sorted = rng.clone();
-    sorted.sort_by(|a, b| a.total_cmp(&b));
+    sorted.sort_by(|a, b| a.total_cmp(b));
     let typical = sorted[sorted.len() / 2];
     if typical <= 0.0 {
         return Vec::new();

@@ -2404,11 +2404,9 @@ pub fn friends_page(v: &FriendsView) -> String {
             form("link", "", "Make a friend link")
         )),
     }
-    body.push_str(&format!(
-        "<h2>Got a link from someone?</h2><form method=post action=/hub/friends>\
+    body.push_str("<h2>Got a link from someone?</h2><form method=post action=/hub/friends>\
          <input type=hidden name=what value=add><input autocomplete=off name=link style='width:70%' aria-label='Their link, or the whole message' \
-         placeholder='Paste the whole message -- I&#39;ll find the link in it'> <button>Add them</button></form>"
-    ));
+         placeholder='Paste the whole message -- I&#39;ll find the link in it'> <button>Add them</button></form>");
     if !v.requests.is_empty() {
         body.push_str("<h2>Friend requests</h2>");
         for (from, group) in &v.requests {

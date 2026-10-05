@@ -145,7 +145,7 @@ pub const KEEP_OWN_FILES: usize = 3;
 /// including `just_kept`); files passed on for another releaser are pruned
 /// by their own rule (`prune_passed_on`) and left alone here.
 fn prune_own_files(state_root: &std::path::Path, just_kept: &str) {
-    let store = Store::new(state_root.to_path_buf());
+    let store = Store::new(state_root);
     let passed: Vec<PassedOn> = store.load(PASSING_ON);
     let Ok(entries) = std::fs::read_dir(state_root.join(FILES)) else { return };
     let mut own: Vec<(std::time::SystemTime, String, std::path::PathBuf)> = entries
@@ -179,7 +179,7 @@ pub fn chunk(state_root: &std::path::Path, sha: &str, offset: u64) -> Option<(Ve
     }
     // A file this device only passes on (it isn't the releaser's own): not
     // once a newer release has been heard of, and not if it failed here.
-    if !still_passing_on(&Store::new(state_root.to_path_buf()), sha) {
+    if !still_passing_on(&Store::new(state_root), sha) {
         return None;
     }
     let mut f = std::fs::File::open(state_root.join(FILES).join(sha)).ok()?;

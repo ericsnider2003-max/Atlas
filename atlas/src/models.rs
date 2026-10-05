@@ -1937,7 +1937,7 @@ impl ChatStream {
             return None;
         }
         let v: serde_json::Value = serde_json::from_str(data).ok()?;
-        if let Some(t) = v.get("timings").and_then(|t| ServerTimings::from_json(t)) {
+        if let Some(t) = v.get("timings").and_then(ServerTimings::from_json) {
             self.timings = Some(t);
         }
         if let Some(e) = v.get("error") {

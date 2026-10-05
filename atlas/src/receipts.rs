@@ -201,7 +201,7 @@ pub fn read(text: &str) -> Reading {
         } else {
             0
         };
-        if rank > 0 && labelled.map_or(true, |(r, _)| rank >= r) {
+        if rank > 0 && labelled.is_none_or(|(r, _)| rank >= r) {
             labelled = Some((rank, last));
         }
     }
@@ -280,7 +280,7 @@ impl Receipts {
             .iter()
             .filter(|r| {
                 let d = r.day.unwrap_or((r.kept / 86_400) as i64);
-                from.map_or(true, |f| d >= f) && to.map_or(true, |t| d <= t)
+                from.is_none_or(|f| d >= f) && to.is_none_or(|t| d <= t)
             })
             .filter(|r| {
                 let hay = format!("{} {}", r.merchant, r.text).to_lowercase();

@@ -140,7 +140,7 @@ impl<'a> Daemon<'a> {
             let local = zone.to_local(due as i64).max(0) as u64;
             if due.saturating_sub(t) < 3600 {
                 // Rounded up: 9 min 59 s is "in 10 minutes", as a person says it.
-                format!("in {}", say_duration((due.saturating_sub(t) + 59) / 60 * 60))
+                format!("in {}", say_duration(due.saturating_sub(t).div_ceil(60) * 60))
             } else {
                 local_moment(local, lnow)
             }

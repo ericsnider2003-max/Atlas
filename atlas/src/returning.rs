@@ -54,8 +54,10 @@ pub fn empty_hello(greeting: &str, knows_you: bool, offered_before: bool) -> Opt
 
 /// How Atlas addresses you. Yours to choose, including "don't".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Address {
     /// Nothing at all — just get on with it.
+    #[default]
     None,
     /// "Eric".
     Name(String),
@@ -63,13 +65,6 @@ pub enum Address {
     Title(String),
 }
 
-impl Default for Address {
-    fn default() -> Self {
-        // Nothing, until you say otherwise. A system that calls you "sir"
-        // uninvited is doing a bit.
-        Address::None
-    }
-}
 
 impl Address {
     pub fn load(store: &crate::store::Store) -> Address {

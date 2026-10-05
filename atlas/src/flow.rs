@@ -15,9 +15,11 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum OnFail {
     /// Stop the chain. The default: later steps usually assume earlier ones
     /// worked.
+    #[default]
     Stop,
     /// Carry on — this step was optional.
     Continue,
@@ -25,11 +27,6 @@ pub enum OnFail {
     Retry(u32),
 }
 
-impl Default for OnFail {
-    fn default() -> Self {
-        OnFail::Stop
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Step {

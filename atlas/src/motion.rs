@@ -648,7 +648,8 @@ fn size_factor(low: &str) -> Option<(f32, &'static str)> {
 fn scale_times(svg: &str, k: f32) -> String {
     fn scale_tok(tok: &str, k: f32) -> Option<String> {
         let t = tok.trim();
-        let (num, unit) = if let Some(n) = t.strip_suffix("ms") { (n, "ms") } else if let Some(n) = t.strip_suffix('s') { (n, "s") } else { return None };
+        let (num, unit) = if let Some(n) = t.strip_suffix("ms") { (n, "ms") } else {
+            let n = t.strip_suffix('s')?; (n, "s") };
         let v: f32 = num.parse().ok()?;
         let out = v * k;
         Some(format!("{}{unit}", (out * 1000.0).round() / 1000.0))

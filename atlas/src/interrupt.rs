@@ -278,7 +278,7 @@ impl Muted {
     /// rather than claiming to have done something.
     pub fn mute(&mut self, topic: &str) -> bool {
         let t = topic.trim().to_lowercase();
-        if t.is_empty() || self.topics.iter().any(|m| *m == t) {
+        if t.is_empty() || self.topics.contains(&t) {
             return false;
         }
         self.topics.push(t);

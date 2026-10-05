@@ -359,7 +359,7 @@ pub fn b64url_decode(s: &str) -> Option<Vec<u8>> {
     }).collect();
     let t2 = t.trim_end_matches('=').to_string();
     t = t2;
-    while t.len() % 4 != 0 {
+    while !t.len().is_multiple_of(4) {
         t.push('=');
     }
     crate::b64::decode(&t).ok()

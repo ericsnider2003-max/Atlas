@@ -167,7 +167,7 @@ impl Journal {
             }
             self.events.drain(0..drop);
         }
-        let due = self.seal.checkpoints.last().map_or(true, |(at, _)| t >= at + 86_400);
+        let due = self.seal.checkpoints.last().is_none_or(|(at, _)| t >= at + 86_400);
         if due {
             let leaves: Vec<crate::sealedlog::Hash> =
                 self.seal.leaves.iter().filter_map(|h| crate::sealedlog::unhex(h)).collect();

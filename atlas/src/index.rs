@@ -434,7 +434,7 @@ impl Loading {
             // No thread: read it here, as before, rather than not at all.
             Err(_) => {
                 let (tx, rx) = std::sync::mpsc::channel();
-                let _ = tx.send(Index::load(&store));
+                let _ = tx.send(Index::load(store));
                 Loading { rx: Some(rx) }
             }
         }

@@ -3432,7 +3432,7 @@ fn local_moment(at: u64, now: u64) -> String {
 }
 
 fn say_duration(secs: u64) -> String {
-    if secs >= 3600 && secs % 3600 == 0 {
+    if secs >= 3600 && secs.is_multiple_of(3600) {
         let h = secs / 3600;
         format!("{h} hour{}", if h == 1 { "" } else { "s" })
     } else {

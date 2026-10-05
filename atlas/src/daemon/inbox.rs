@@ -419,7 +419,7 @@ impl<'a> Daemon<'a> {
                             }
                             mail_book.add(letters, look_back_days.max(keep_days), fetched);
                         }
-                        for_threads.extend(msgs.iter().map(|m| crate::mailthread::Mail::from_imap(m)));
+                        for_threads.extend(msgs.iter().map(crate::mailthread::Mail::from_imap));
                         for m in &msgs {
                             let t: crate::triage::Message = m.into();
                             let triaged_one = crate::triage::triage(&t);

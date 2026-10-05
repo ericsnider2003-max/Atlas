@@ -33,7 +33,7 @@ fn cluster(embs: &[Vec<f32>], same_voice_at: f32) -> Vec<usize> {
                     }
                 }
                 let avg = total / (groups[a].len() * groups[b].len()) as f32;
-                if best.map_or(true, |x| avg > x.2) {
+                if best.is_none_or(|x| avg > x.2) {
                     best = Some((a, b, avg));
                 }
             }
@@ -433,7 +433,7 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
                 // Too little speech for a full model: ranked last, but still
                 // mergeable so the count is always reached.
                 let d = delta_bic(&pooled(&out, &now[a]), &pooled(&out, &now[b]), 1.0).unwrap_or(f64::MAX / 2.0);
-                if best.map_or(true, |x| d < x.2) {
+                if best.is_none_or(|x| d < x.2) {
                     best = Some((a, b, d));
                 }
             }
@@ -456,7 +456,7 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
             if let Some(v) = fit_voice(&others) {
                 let own: Vec<&F> = per_line[i].iter().collect();
                 let s = fits(&v, &own);
-                if worst.map_or(true, |w| s < w.1) {
+                if worst.is_none_or(|w| s < w.1) {
                     worst = Some((i, s));
                 }
             }
@@ -544,7 +544,7 @@ pub fn merge_same_voices(samples: &[i16], rate: u32, lines: Vec<Line>, lambda: f
         for (x, &a) in groups.iter().enumerate() {
             for &b in &groups[x + 1..] {
                 if let Some(d) = delta_bic(&pooled(a), &pooled(b), lambda) {
-                    if d < 0.0 && best.map_or(true, |(_, _, bd)| d < bd) {
+                    if d < 0.0 && best.is_none_or(|(_, _, bd)| d < bd) {
                         best = Some((a, b, d));
                     }
                 }

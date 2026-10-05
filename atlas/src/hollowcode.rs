@@ -564,13 +564,13 @@ pub fn made_up_dependencies(code: &str, tongue: Tongue, manifest: &str) -> Vec<F
                 .strip_prefix("use ")
                 .or_else(|| line.strip_prefix("pub use "))
                 .or_else(|| line.strip_prefix("extern crate "))
-                .map(|r| r.split(|c: char| c == ':' || c == ';' || c == ' ' || c == '{').next().unwrap_or("").to_string())
+                .map(|r| r.split([':', ';', ' ', '{']).next().unwrap_or("").to_string())
                 .filter(|p| !p.is_empty() && !["std", "core", "alloc", "crate", "self", "super"].contains(&p.as_str())),
             Tongue::Python => {
                 let first = line
                     .strip_prefix("import ")
                     .or_else(|| line.strip_prefix("from "))
-                    .map(|r| r.split(|c: char| c == '.' || c == ' ' || c == ',').next().unwrap_or("").to_string());
+                    .map(|r| r.split(['.', ' ', ',']).next().unwrap_or("").to_string());
                 first.filter(|p| !p.is_empty() && !PYTHON_STDLIB.contains(&p.as_str()))
             }
             Tongue::JavaScript | Tongue::TypeScript => {

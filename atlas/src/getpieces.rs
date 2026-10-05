@@ -57,7 +57,7 @@ impl Piece {
     }
 
     pub fn megabytes(&self) -> u64 {
-        (self.bytes + 999_999) / 1_000_000
+        self.bytes.div_ceil(1_000_000)
     }
 }
 

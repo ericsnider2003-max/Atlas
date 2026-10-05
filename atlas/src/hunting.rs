@@ -640,7 +640,7 @@ pub fn fit_asked(d: &mut Daemon, said: &str) -> Option<String> {
         "am i a good fit for this job", "job fit", "check this job posting", "score this job", "how well do i fit this posting",
         "do i fit this posting", "how well do i match this job",
     ];
-    if !ASKS.iter().any(|a| t == *a) {
+    if !ASKS.contains(&t) {
         return None;
     }
     let posting = d.plat.read_clipboard().ok().flatten().unwrap_or_default();

@@ -77,7 +77,7 @@ pub fn sha3_256(data: &[u8]) -> [u8; 32] {
     let mut st = [0u64; 25];
     let mut padded = data.to_vec();
     padded.push(0x06);
-    while padded.len() % RATE != 0 {
+    while !padded.len().is_multiple_of(RATE) {
         padded.push(0);
     }
     *padded.last_mut().unwrap_or(&mut 0) |= 0x80;
@@ -222,7 +222,7 @@ fn bootstrapped(log: &str) -> u8 {
     log.lines()
         .filter_map(|l| l.split("Bootstrapped ").nth(1))
         .filter_map(|r| r.split('%').next()?.trim().parse().ok())
-        .last()
+        .next_back()
         .unwrap_or(0)
 }
 
@@ -467,7 +467,7 @@ fn tie_to_this_process(child: &std::process::Child) {
 /// Open a connection to `onion` through the Tor running at `socks` (SOCKS5,
 /// RFC 1928, no authentication; Tor resolves the name itself).
 pub fn connect(socks: u16, onion: &str, timeout: Duration) -> std::io::Result<TcpStream> {
-    let bad = |m: &str| std::io::Error::new(std::io::ErrorKind::Other, m.to_string());
+    let bad = |m: &str| std::io::Error::other(m.to_string());
     if !is_onion(onion) {
         return Err(bad("that isn't an onion address"));
     }

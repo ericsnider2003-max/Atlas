@@ -1698,7 +1698,7 @@ pub fn may_move_into(dest: &std::path::Path, from_dir: &std::path::Path) -> Resu
     if (drive_rooted && windows_system.contains(&second)) || (!drive_rooted && unix_system.contains(&first)) {
         return Err(format!("{} is where the system keeps its own files, so nothing of yours goes there", dest.display()));
     }
-    if parts.iter().any(|p| *p == "appdata") {
+    if parts.contains(&"appdata") {
         return Err(format!("{} is inside a program's settings folder, so nothing of yours goes there", dest.display()));
     }
     let from = from_dir.display().to_string().replace('/', "\\").to_lowercase();

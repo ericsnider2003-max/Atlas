@@ -236,7 +236,7 @@ impl<'a> Daemon<'a> {
             // decided what to do with a list of opinions; nothing ever built
             // one, so `tally`, `Verdict` and `spoken` all computed over a list
             // only a test had filled.
-            Intent::AskTheRoom(q) => self.ask_the_room(&q),
+            Intent::AskTheRoom(q) => self.ask_the_room(q),
             // The callers `revise.rs` never had.
             // The whole sentence, not the intent's argument: the parser
             // hands over what came *after* the phrase it matched, so the
@@ -695,7 +695,7 @@ impl<'a> Daemon<'a> {
                         || what.contains("do it")
                         || what.contains("yes")) => self.on_work_on_yourself_go_on(),
 
-            Intent::WorkOnYourself(what) => self.work_on_myself(&what),
+            Intent::WorkOnYourself(what) => self.work_on_myself(what),
 
             Intent::Build(what) => self.build_from_description(what),
 
@@ -1969,10 +1969,8 @@ impl<'a> Daemon<'a> {
                 match crate::enrol::Enrolment::permitted(&domain, &cfg, &money) {
                     // `permitted`'s own wording for this one is terse;
                     // keep the line that tells you where the switch is.
-                    Err(why) if why == "account creation is switched off" => format!(
-                        "Signing up is switched off. Turn on \"Make accounts\" in \
-                         settings if you want me doing that."
-                    ),
+                    Err(why) if why == "account creation is switched off" => "Signing up is switched off. Turn on \"Make accounts\" in \
+                         settings if you want me doing that.".to_string(),
                     Err(why) => why,
                     // Eric, B6: Atlas may make accounts. It
                     // stops for good at payment or ID, and hands

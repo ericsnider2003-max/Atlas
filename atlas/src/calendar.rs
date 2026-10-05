@@ -389,7 +389,7 @@ fn without_length(t: &str) -> String {
                 && w.get(i + 2).map(|u| unit(u)).unwrap_or(false)
             {
                 3
-            } else if n.contains('-') && n.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) && unit(n.split('-').last().unwrap_or("")) {
+            } else if n.contains('-') && n.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) && unit(n.split('-').next_back().unwrap_or("")) {
                 2
             } else {
                 0
@@ -410,7 +410,7 @@ fn number_before(text: &str, unit: &str) -> Option<u32> {
     while let Some(rel) = text[from..].find(unit) {
         let idx = from + rel;
         let digits: String = text[..idx]
-            .trim_end_matches(|c: char| c == ' ' || c == '-')
+            .trim_end_matches([' ', '-'])
             .chars()
             .rev()
             .take_while(|c| c.is_ascii_digit())
@@ -631,7 +631,7 @@ fn clock_minute(t: &str) -> Option<u32> {
     // The clock time `when` finds, whatever day it's on.
     // Any day far from the epoch will do: only the time of day is read.
     let p = crate::when::parse(t, 20_000 * DAY_SECS)?;
-    (!p.all_day).then(|| ((p.start % DAY_SECS) / 60) as u32)
+    (!p.all_day).then_some(((p.start % DAY_SECS) / 60) as u32)
 }
 
 /// Read a run of ASCII digits as a number, returning it and the index after.

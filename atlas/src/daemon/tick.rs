@@ -1339,7 +1339,7 @@ impl<'a> Daemon<'a> {
             let bcfg = self.tools_cfg().brief.clone();
             let dcfg = self.tools_cfg().daily.clone();
             let rolls_at = self.rhythm.rolls_at(&dcfg);
-            let this_hour = crate::localclock::hour_here(t) as u8;
+            let this_hour = crate::localclock::hour_here(t);
             let arrival =
                 crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at, t, rolls_at, &dcfg);
 
@@ -1462,7 +1462,7 @@ impl<'a> Daemon<'a> {
         // Initiative before reaction. A stalled commitment matters more than
         // a folder that filled up, and if both are true you should only hear
         // one of them.
-        let hour = crate::localclock::hour_here(t) as u8;
+        let hour = crate::localclock::hour_here(t);
         // Record that the connections were looked at. Without this the
         // board reports its last answer in the present tense.
         // The heartbeat used to be here, and being here was the bug: two

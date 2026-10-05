@@ -555,7 +555,7 @@ impl<'a> Daemon<'a> {
         // `Intent::Unknown`. The word cap and exact-match lists in
         // `social_reply` are what stop a real instruction being swallowed as a
         // pleasantry.
-        if let Some(reply) = self.persona_now().social(said, crate::localclock::hour_here(t) as u8, t, self.last_turn_failed || self.mid_flow()) {
+        if let Some(reply) = self.persona_now().social(said, crate::localclock::hour_here(t), t, self.last_turn_failed || self.mid_flow()) {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -1586,7 +1586,7 @@ impl<'a> Daemon<'a> {
         let mode_cap = self
             .modes
             .verbosity_if_set()
-            .map(|v| crate::modes::sentences_for(v))
+            .map(crate::modes::sentences_for)
             .unwrap_or(usize::MAX);
         persona.max_spoken_sentences =
             persona.max_spoken_sentences.min(mode_cap).min(register.length()).max(1);
@@ -2187,7 +2187,7 @@ impl<'a> Daemon<'a> {
         persona.max_spoken_sentences = self.this_turn_cap.unwrap_or_else(|| {
             self.modes
                 .verbosity_if_set()
-                .map(|v| crate::modes::sentences_for(v))
+                .map(crate::modes::sentences_for)
                 .unwrap_or(usize::MAX)
                 .min(register.length())
                 .max(1)

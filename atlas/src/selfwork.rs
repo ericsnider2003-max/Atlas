@@ -1340,7 +1340,7 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
     static WALKED: std::sync::Mutex<Option<(String, std::time::Instant, Option<PathBuf>)>> = std::sync::Mutex::new(None);
     if let Ok(w) = WALKED.lock().or_else(crate::crash::unpoison) {
         if let Some((h, at, found)) = w.as_ref() {
-            if *h == home && at.elapsed() < std::time::Duration::from_secs(600) && found.as_ref().map_or(true, |p| is_a_source_checkout(p)) {
+            if *h == home && at.elapsed() < std::time::Duration::from_secs(600) && found.as_ref().is_none_or(|p| is_a_source_checkout(p)) {
                 return found.clone();
             }
         }

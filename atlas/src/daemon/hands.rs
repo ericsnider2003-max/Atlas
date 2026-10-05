@@ -681,7 +681,7 @@ impl<'a> Daemon<'a> {
             if matches!(what, Capture::Camera) {
                 capture_later = Some((tool.clone(), vars.clone()));
             } else if let crate::probe::Target::App(app) = &target {
-                if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
+                if self.plat.input_idle_secs().is_some_and(|s| s < 3) {
                     return format!(
                         "You're in the middle of something, so I won't move your windows to look at {app}. \
                          Ask again when you pause."
@@ -1581,7 +1581,7 @@ impl<'a> Daemon<'a> {
             .plat
             .monitors()
             .ok()
-            .and_then(|m| m.into_iter().find(|m| m.primary).or_else(|| None))
+            .and_then(|m| m.into_iter().find(|m| m.primary).or(None))
             .map(|m| (m.width, m.height))
             .unwrap_or((1920, 1080));
 

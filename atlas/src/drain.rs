@@ -93,7 +93,7 @@ impl Drain {
             let same = t.iter().zip(&toks).filter(|(a, b)| a == b && *a != WILD).count();
             let wild = t.iter().filter(|w| *w == WILD).count();
             let sim = if n == 0 { 1.0 } else { same as f64 / n as f64 };
-            if best.map_or(true, |b| sim > b.1 || (sim == b.1 && wild > b.2)) {
+            if best.is_none_or(|b| sim > b.1 || (sim == b.1 && wild > b.2)) {
                 best = Some((i, sim, wild));
             }
         }

@@ -116,7 +116,7 @@ pub fn after_a_turn(mic: &str, lev: &crate::leveller::Leveller, changes: &mut Ch
     }
     let level = crate::miclevel::read(mic);
     let mut raised_to = None;
-    if let Some(to) = level.and_then(|l| crate::miclevel::raise_to(l)) {
+    if let Some(to) = level.and_then(crate::miclevel::raise_to) {
         if !changes.raised_before(mic) {
             if let Ok(was) = crate::miclevel::set(mic, to) {
                 changes.raised.push((mic.to_string(), was, to, now));

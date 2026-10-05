@@ -590,11 +590,10 @@ impl<'a> Daemon<'a> {
 
             // The wake word, heard on the microphone's own thread: taken
             // here if it has news, never waited for.
-            if self.mic.is_some() {
-                if self.listen_pass(ears, mouth, clock) {
+            if self.mic.is_some()
+                && self.listen_pass(ears, mouth, clock) {
                     continue;
                 }
-            }
 
             match self.tiers.tier {
                 // Done above, on its own thread.
@@ -1581,9 +1580,7 @@ impl<'a> Daemon<'a> {
                 Some(crate::micthread::Heard::FollowUp(..)) => {}
                 // Anything else is for the next pass of the loop.
                 Some(other) => {
-                    if self.mic_heard.is_none() {
-                        self.mic_heard = Some(other);
-                    }
+                    self.mic_heard.get_or_insert(other);
                 }
                 None => {}
             }
@@ -1718,7 +1715,7 @@ impl<'a> Daemon<'a> {
             // Cut by a sound that wasn't words -- a cough, a door, Atlas's own
             // voice coming back -- is no reason to stop: the rest is said
             // (29 Sep 2026: "Paused." and then nothing, over and over).
-            if over_it.as_deref().is_some_and(|w| crate::voice::not_really_said(w)) {
+            if over_it.as_deref().is_some_and(crate::voice::not_really_said) {
                 self.cut_in_by_voice = None;
                 self.unsaid = None;
                 let rest = d.remaining_text();

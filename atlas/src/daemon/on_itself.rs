@@ -782,14 +782,14 @@ impl<'a> Daemon<'a> {
                     // either: the answers are fine and the *proof* is the
                     // wrong one.
                     session.diagnosing.proof = None;
-                    return Some(format!(
+                    Some(format!(
                         "{named} passes already, so it isn't testing this — whatever the fix \
                          turns out to be, that test would stay green through it. What would \
                          fail right now?"
-                    ));
+                    ))
                 }
                 crate::selfwork::ProofToday::CouldNotRun(why) => {
-                    return Some(format!("I couldn't find out whether {named} fails: {why}."));
+                    Some(format!("I couldn't find out whether {named} fails: {why}."))
                 }
                 crate::selfwork::ProofToday::Fails
                 | crate::selfwork::ProofToday::NotWrittenYet => {

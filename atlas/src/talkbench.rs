@@ -112,7 +112,7 @@ pub fn faults_in(reply: &str, max_sentences: usize) -> Vec<String> {
     if low.contains(" am ") && (low.contains("2:5") || low.contains("3 am") || low.contains("this hour") || low.contains("this late")) {
         out.push("remarks on the time unasked".to_string());
     }
-    let sentences = reply.split(['.', '?', '!']).filter(|s| s.trim().split_whitespace().count() >= 2).count();
+    let sentences = reply.split(['.', '?', '!']).filter(|s| s.split_whitespace().count() >= 2).count();
     if sentences > max_sentences {
         out.push(format!("{sentences} sentences (asked for at most {max_sentences})"));
     }
@@ -165,7 +165,7 @@ pub fn run(cfg: &crate::config::Config, llm: std::sync::Arc<dyn crate::brain::Ll
     }]);
     crate::heard!(std::fs::remove_dir_all(store_dir));
     crate::heard!(std::fs::create_dir_all(store_dir));
-    let store = crate::store::Store::new(store_dir.to_path_buf());
+    let store = crate::store::Store::new(store_dir);
     let mut d = crate::daemon::Daemon::new(
         cfg,
         &plat,

@@ -407,7 +407,7 @@ pub fn open(path: &Path) -> Trace {
 /// without a restart keeps it between `KEEP` and twice that. Returns whether
 /// it was cut.
 pub fn keep_bounded(path: &Path, t: &Trace) -> bool {
-    t.dropped > 0 && t.dropped % KEEP as u64 == 0 && compact(path, KEEP).is_ok()
+    t.dropped > 0 && t.dropped.is_multiple_of(KEEP as u64) && compact(path, KEEP).is_ok()
 }
 
 /// The model's name, taken from the request body it is actually sent in.

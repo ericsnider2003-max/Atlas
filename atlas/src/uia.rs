@@ -337,7 +337,7 @@ pub fn button_request(said: &str) -> Option<(String, Option<String>)> {
         None => (rest.to_string(), None),
     };
     let button = button
-        .trim_end_matches(|c: char| c == '.' || c == '!')
+        .trim_end_matches(['.', '!'])
         .trim_end_matches(" button")
         .trim()
         .trim_matches('"')

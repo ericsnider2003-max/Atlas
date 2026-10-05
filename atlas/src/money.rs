@@ -422,6 +422,7 @@ pub fn work_spend(entries: &[Entry]) -> f32 {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct MoneyConfig {
     pub enabled: bool,
     /// Words that mean a transaction is for work, in your terms.
@@ -436,11 +437,6 @@ fn never() -> bool {
     false
 }
 
-impl Default for MoneyConfig {
-    fn default() -> Self {
-        MoneyConfig { enabled: false, work_words: Vec::new(), gives_advice: false }
-    }
-}
 
 /// The line Atlas holds.
 pub const NOT_ADVICE: &str =

@@ -282,10 +282,8 @@ impl Tray {
             return Err("There was nothing in that.".into());
         }
         if what.chars().count() > MAX_LEN {
-            return Err(format!(
-                "That's longer than I take in one go — save it as a file and \
-                 hand me the path instead."
-            ));
+            return Err("That's longer than I take in one go — save it as a file and \
+                 hand me the path instead.".to_string());
         }
         if let Some(existing) = self
             .items

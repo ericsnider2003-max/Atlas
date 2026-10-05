@@ -560,7 +560,7 @@ fn look(
         .or_else(|| {
             lessons.learned_fix(word).map(|b| {
                 // Keep a capital the way `prose` does.
-                if word.chars().next().map_or(false, char::is_uppercase) {
+                if word.chars().next().is_some_and(char::is_uppercase) {
                     let mut c = b.chars();
                     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or(b)
                 } else {

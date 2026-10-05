@@ -530,7 +530,7 @@ pub fn mean_volume(ffmpeg_stderr: &str) -> Option<f32> {
         .lines()
         .find(|l| l.contains("mean_volume:"))
         .and_then(|l| l.split("mean_volume:").nth(1))
-        .and_then(|v| v.trim().split_whitespace().next())
+        .and_then(|v| v.split_whitespace().next())
         .and_then(|v| v.parse::<f32>().ok())
 }
 

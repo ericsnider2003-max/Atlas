@@ -358,7 +358,7 @@ pub fn compact(says: &str) -> String {
     // The first sentence, or the first clause before a qualifier that starts
     // a new thought.
     let first = says
-        .split(|c| c == '.' || c == ';')
+        .split(['.', ';'])
         .next()
         .unwrap_or(says)
         .trim();

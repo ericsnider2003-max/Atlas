@@ -156,12 +156,10 @@ impl Queue {
 /// What Atlas on the phone says when you ask for something it can't do there.
 pub fn handing_off(what: &str, laptop_reachable: bool) -> String {
     if laptop_reachable {
-        format!("That needs the laptop. Sending it over — I'll tell you when it's done.")
+        "That needs the laptop. Sending it over — I'll tell you when it's done.".to_string()
     } else {
-        format!(
-            "That needs the laptop and it's not reachable. I've queued it, and it'll go the \
-             moment we're back in touch."
-        )
+        "That needs the laptop and it's not reachable. I've queued it, and it'll go the \
+             moment we're back in touch.".to_string()
     }
     .replace("That needs", &format!("{what} needs"))
 }

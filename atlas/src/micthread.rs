@@ -569,7 +569,7 @@ impl BargeGate {
         }
         let n = self.playing.len();
         let lately = self.playing[n.saturating_sub(MAX_LAG + 1)..].iter().copied().fold(0f32, f32::max);
-        if self.lag.is_none() && n % 4 == 0 {
+        if self.lag.is_none() && n.is_multiple_of(4) {
             self.find_lag();
         }
         let env = match self.lag {
@@ -1178,7 +1178,7 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 let with_name = work.take_said_with_wake();
                 // A sentence already finished in the clip ("Atlas, can you see
                 // me?") is answered now, not after waiting on a silence.
-                let said = if with_name.as_deref().is_some_and(|w| sentence_finished(w)) {
+                let said = if with_name.as_deref().is_some_and(sentence_finished) {
                     with_wake_word(with_name, Ok(String::new()))
                 } else {
                     with_wake_word(with_name, work.listen().map_err(|e| e.to_string()))
