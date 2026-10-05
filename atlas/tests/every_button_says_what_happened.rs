@@ -167,7 +167,9 @@ fn a_friend_link_never_goes_in_an_address_and_is_shown_once() {
     if r.body == "/hub/friends" {
         // Made: on the page once, then gone.
         let first = follow(&mut d, &r);
-        assert!(first.contains("class=qr") || first.contains("<code"), "the link isn't shown: {first}");
+        // The QR picture needs an encoder this machine may not have (CI didn't);
+        // the link itself is what must be there.
+        assert!(first.contains("class=qr") || first.contains("<code") || first.contains("atlas-friend:"), "the link isn't shown: {first}");
         let again = atlas::hublive::reply(&mut d, Action::Hub(Page::Friends)).body;
         assert_ne!(first, again, "the link is shown again");
     } else {
