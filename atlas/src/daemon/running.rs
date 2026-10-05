@@ -864,11 +864,14 @@ impl<'a> Daemon<'a> {
     /// what was typed, for the next pass to take.
     fn nap_awake(&mut self, keyboard: &Keyboard, mouth: &dyn Mouth, ms: u64) -> Option<crate::input::Utterance> {
         let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
-        while std::time::Instant::now() < until {
+        loop {
+            // Read before looking (`doorbell`): news that lands between the
+            // look and the wait has already moved the count.
+            let seen = crate::doorbell::rung();
             if crate::goodbye::asked_to_stop() {
                 return None;
             }
-            if let Some(u) = keyboard.wait(10) {
+            if let Some(u) = keyboard.poll() {
                 return Some(u);
             }
             // The wake word heard mid-nap ends the nap: it waits for the
@@ -879,9 +882,15 @@ impl<'a> Daemon<'a> {
             if self.mic_heard.is_some() {
                 return None;
             }
-            self.answer_hub(mouth, 40);
+            self.answer_hub(mouth, 0);
+            let left = until.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            // Asleep until a typed line, the microphone, the hub or a stop
+            // rings, not awake 20 times a second to look (audit Q14).
+            crate::doorbell::wait_after(seen, left.as_millis() as u64);
         }
-        None
     }
 
     /// Stop, then start a new copy of Atlas in this one's place (an update

@@ -46,6 +46,7 @@ pub mod measure;
 pub mod cloudsync;
 pub mod clients;
 pub mod crew;
+pub mod doorbell;
 pub mod imap;
 pub mod msoauth;
 pub mod outbox;

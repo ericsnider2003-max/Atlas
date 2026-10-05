@@ -2231,7 +2231,7 @@ pub struct HubDoor {
 /// The hub's end of a `HubDoor`: what a listener, bound now or later, feeds.
 struct Serving {
     server: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<Server>>>,
-    tx: std::sync::mpsc::Sender<Waiting>,
+    tx: crate::doorbell::Sender<Waiting>,
     open: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     per_address: PerAddress,
     port: std::sync::Arc<std::sync::atomic::AtomicU16>,
@@ -2573,7 +2573,7 @@ impl Server {
 
     /// One connection, on its own thread: read and check it, hand an
     /// authenticated action to the daemon, wait for the answer, send it.
-    fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &std::sync::mpsc::Sender<Waiting>, late: &LateTalk) {
+    fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &crate::doorbell::Sender<Waiting>, late: &LateTalk) {
         let Ok(Some(mut asked)) = self.read_asked(stream) else {
             return;
         };
@@ -2641,7 +2641,7 @@ impl Reply {
 impl HubDoor {
     /// A door with nothing listening yet, and its serving end.
     fn waiting() -> (HubDoor, Serving) {
-        let (tx, asks) = std::sync::mpsc::channel::<Waiting>();
+        let (tx, asks) = crate::doorbell::channel::<Waiting>();
         let server = std::sync::Arc::new(std::sync::OnceLock::new());
         let port = std::sync::Arc::new(std::sync::atomic::AtomicU16::new(0));
         let news = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));

@@ -1567,7 +1567,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 478
 // with webpush.
 // 4 Oct 2026: + `oauthlink` (one-click Google and Microsoft sign-in) = 479.
-pub const MODULES_IN_TREE: usize = 479;
+pub const MODULES_IN_TREE: usize = 480;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1585,6 +1585,7 @@ pub const MODULES_IN_TREE: usize = 479;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("doorbell", "the one thing an idle Atlas waits on: typed lines, the microphone, the hub and a stop ring it, so nothing wakes on a timer to look"),
     ("cpuuse", "measures Atlas's own CPU while idle and where the loop's time goes, for the log and for self-repair"),
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
     ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),

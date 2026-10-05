@@ -10,7 +10,8 @@
 //! repeating yourself at a machine that quietly stopped listening.
 
 use crate::error::Result;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use crate::doorbell::Sender;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,7 +292,7 @@ pub struct Keyboard {
 
 impl Keyboard {
     pub fn spawn() -> Keyboard {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = crate::doorbell::channel();
         let tx2 = tx.clone();
         std::thread::spawn(move || {
             use std::io::BufRead;

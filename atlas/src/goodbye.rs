@@ -96,6 +96,20 @@ pub fn please_stop_because(why: Why) {
     please_stop();
 }
 
+/// `please_stop_because` without waking anyone: all a Unix signal handler
+/// may do is touch atomics (the doorbell takes a lock). A nap on Unix looks
+/// at the flag at least every `doorbell::LONGEST_SLEEP_MS` for this reason.
+fn mark_stop(why: Why) {
+    let _ = WHY.compare_exchange(0, why.code(), Ordering::SeqCst, Ordering::SeqCst);
+    mark_asked();
+}
+
+fn mark_asked() {
+    if ASKED.swap(true, Ordering::SeqCst) {
+        TIMES.store(true, Ordering::SeqCst);
+    }
+}
+
 /// Why Atlas is stopping: the first reason given, or `Asked`.
 pub fn why() -> Why {
     Why::from_code(WHY.load(Ordering::SeqCst)).unwrap_or(Why::Asked)
@@ -131,9 +145,9 @@ pub fn asked_to_stop() -> bool {
 /// read as newly wired, and the guard duly reported it as progress. The
 /// collision is the hazard, not the wording, so the new name moves.
 pub fn please_stop() {
-    if ASKED.swap(true, Ordering::SeqCst) {
-        TIMES.store(true, Ordering::SeqCst);
-    }
+    mark_asked();
+    // Whatever is napping wakes to see it (`doorbell`).
+    crate::doorbell::ring();
 }
 
 /// The file Atlas's own window leaves to ask the background Atlas to stop.
@@ -196,7 +210,7 @@ pub fn listen() {
         extern "C" fn handler(sig: i32) {
             // Atomics only, as above: SIGINT is a person at a terminal;
             // SIGTERM is the system (a service manager, a shutdown).
-            please_stop_because(if sig == 2 { Why::YouClosedIt } else { Why::WindowsEnding });
+            mark_stop(if sig == 2 { Why::YouClosedIt } else { Why::WindowsEnding });
         }
         signal(SIGINT, handler);
         signal(SIGTERM, handler);
@@ -242,15 +256,19 @@ pub fn listen() {
 /// forty atomic loads, against a sleep syscall that is already thousands of
 /// times more expensive.
 pub fn nap(total_ms: u64) {
-    const SLICE_MS: u64 = 50;
-    let mut left = total_ms;
-    while left > 0 {
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(total_ms);
+    loop {
+        let seen = crate::doorbell::rung();
         if asked_to_stop() {
             return;
         }
-        let this = left.min(SLICE_MS);
-        std::thread::sleep(std::time::Duration::from_millis(this));
-        left -= this;
+        let left = until.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return;
+        }
+        // `please_stop` rings the doorbell, so this sleeps the whole nap
+        // rather than waking every 50 ms to look (audit Q14).
+        crate::doorbell::wait_after(seen, left.as_millis().max(1) as u64);
     }
 }
 

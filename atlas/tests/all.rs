@@ -515,6 +515,8 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "idle_sleeps.rs"]
+mod idle_sleeps;
 #[path = "errand_pause.rs"]
 mod errand_pause;
 #[path = "personal_atlas_is_its_own.rs"]

@@ -272,6 +272,13 @@ impl Gate {
     pub fn is_talking(&self) -> bool {
         self.hold.is_talking()
     }
+
+    /// Held, and not yet long enough to talk: the only time the timer has
+    /// anything to check. The rest of the time it sleeps (audit Q14: it
+    /// woke 50 times a second, all day, to find the key up).
+    pub fn waiting_for_hold(&self) -> bool {
+        self.down && !self.hold.is_talking()
+    }
 }
 
 /// The running keys: what they did, and whether push-to-talk is held now.
@@ -393,6 +400,8 @@ mod win {
     }
 
     static SHARED: OnceLock<Shared> = OnceLock::new();
+    /// The hold timer's thread, woken by the hook when the key goes down.
+    static TIMER: OnceLock<std::thread::Thread> = OnceLock::new();
 
     fn now_ms(s: &Shared) -> u64 {
         s.started.elapsed().as_millis() as u64
@@ -439,6 +448,9 @@ mod win {
                         let (h, ev) = g.key_down(t);
                         if let Some(e) = ev {
                             let _ = s.tx.send(e);
+                        }
+                        if let Some(timer) = TIMER.get() {
+                            timer.unpark();
                         }
                         if h == Hook::Swallow {
                             return LRESULT(1);
@@ -495,7 +507,14 @@ mod win {
         // Talking starts at `hold_ms`, checked on a timer rather than waiting
         // for the keyboard's own repeat.
         if keys.talk.is_some() {
-            std::thread::spawn(move || loop {
+            let timer = std::thread::spawn(move || loop {
+                // Asleep while the key is up; the hook unparks it on a press.
+                // The five seconds only cover a press before TIMER was set.
+                let waiting = SHARED.get().is_some() && timer_gate.lock().map(|g| g.waiting_for_hold()).unwrap_or(false);
+                if !waiting {
+                    std::thread::park_timeout(std::time::Duration::from_secs(5));
+                    continue;
+                }
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let Some(s) = SHARED.get() else { continue };
                 let t = now_ms(s);
@@ -506,6 +525,7 @@ mod win {
                     }
                 }
             });
+            let _ = TIMER.set(timer.thread().clone());
         }
         ready_rx.recv().map_err(|_| "the key watcher didn't start".to_string())
     }

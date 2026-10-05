@@ -60,6 +60,7 @@ impl Drop for TaskLoop {
     /// Atlas closing, or the loop dropped: the worker stops at its next step.
     fn drop(&mut self) {
         self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        crate::doorbell::ring();
     }
 }
 
@@ -97,13 +98,15 @@ impl crate::taskloop::Watch for WorkerWatch {
     fn stop(&mut self) -> Option<String> {
         use std::sync::atomic::Ordering;
         loop {
+            let seen = crate::doorbell::rung();
             if self.stop.load(Ordering::SeqCst) {
                 return Some("you asked me to stop.".into());
             }
             if !self.paused.load(Ordering::SeqCst) {
                 return None;
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            // Rung by a resume or a stop (audit Q14: this polled 10/s).
+            crate::doorbell::wait_after(seen, 60_000);
         }
     }
 }
@@ -345,6 +348,7 @@ impl<'a> Daemon<'a> {
         match self.task_loop.as_ref() {
             Some(tl) => {
                 tl.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                crate::doorbell::ring();
                 true
             }
             None => false,
@@ -354,7 +358,9 @@ impl<'a> Daemon<'a> {
     /// Hold it between steps, or let it carry on.
     pub(super) fn hold_task_loop(&mut self, hold: bool) {
         if let Some(tl) = self.task_loop.as_ref() {
-            tl.paused.store(hold, std::sync::atomic::Ordering::SeqCst);
+            if tl.paused.swap(hold, std::sync::atomic::Ordering::SeqCst) != hold {
+                crate::doorbell::ring();
+            }
         }
     }
 
@@ -369,7 +375,10 @@ impl<'a> Daemon<'a> {
         let mut out = Vec::new();
         let Some(mut tl) = self.task_loop.take() else { return out };
         // A pause holds it at its next step; a resume lets it go on.
-        tl.paused.store(self.attention.is_paused(), std::sync::atomic::Ordering::SeqCst);
+        let paused = self.attention.is_paused();
+        if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
+            crate::doorbell::ring();
+        }
         let mut finished: Option<crate::taskloop::Run> = None;
         let mut parts_done: Option<(Vec<crate::streams::Stream>, usize, u64)> = None;
         let mut gone = false;
@@ -544,8 +553,12 @@ impl<'a> Daemon<'a> {
                     (None, None) => (Intent::Unknown(p.clone()), false),
                 };
                 // Paused: held here; stopped: the rest isn't done.
-                while w_paused.load(std::sync::atomic::Ordering::SeqCst) && !w_stop.load(std::sync::atomic::Ordering::SeqCst) {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                loop {
+                    let seen = crate::doorbell::rung();
+                    if !w_paused.load(std::sync::atomic::Ordering::SeqCst) || w_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    crate::doorbell::wait_after(seen, 60_000);
                 }
                 let (state, said) = match intent {
                     Intent::Say(s) => (crate::streams::State::Done, crate::backed::without_unbacked_claims(&s, false)),

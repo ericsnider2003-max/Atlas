@@ -60,6 +60,12 @@ impl Gate {
         (e == KeyEvent::StartTalking).then_some(e)
     }
 
+    /// Held, and not yet long enough to talk: the only time the hold timer
+    /// has anything to check (audit Q14: it woke 50 times a second, all day).
+    pub fn waiting_for_hold(&self) -> bool {
+        self.down && !self.hold.is_talking()
+    }
+
     /// The key came up.
     pub fn up(&mut self, now_ms: u64) -> Verdict {
         if !self.down {
@@ -202,6 +208,8 @@ mod platform {
         tx: Sender<KeyEvent>,
     }
     static STATE: Mutex<Option<Shared>> = Mutex::new(None);
+    /// The hold timer's thread, woken by the hook when the key goes down.
+    static TIMER: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
 
     unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 {
@@ -214,7 +222,11 @@ mod platform {
                         if k.vkCode as u16 == s.vk {
                             let m = wparam.0 as u32;
                             let v = if m == WM_KEYDOWN || m == WM_SYSKEYDOWN {
-                                s.gate.down(super::now_ms())
+                                let v = s.gate.down(super::now_ms());
+                                if let Some(timer) = TIMER.get() {
+                                    timer.unpark();
+                                }
+                                v
                             } else if m == WM_KEYUP || m == WM_SYSKEYUP {
                                 s.gate.up(super::now_ms())
                             } else {
@@ -271,7 +283,13 @@ mod platform {
             }
         });
         // The timer: a hold crosses its threshold even with no key repeats.
-        std::thread::spawn(|| loop {
+        // Asleep while the key is up; the hook unparks it on a press.
+        let timer = std::thread::spawn(|| loop {
+            let waiting = STATE.lock().ok().and_then(|g| g.as_ref().map(|s| s.gate.waiting_for_hold())).unwrap_or(false);
+            if !waiting {
+                std::thread::park_timeout(std::time::Duration::from_secs(5));
+                continue;
+            }
             std::thread::sleep(std::time::Duration::from_millis(20));
             if let Ok(mut g) = STATE.lock() {
                 if let Some(s) = g.as_mut() {
@@ -281,6 +299,7 @@ mod platform {
                 }
             }
         });
+        let _ = TIMER.set(timer.thread().clone());
         ok_rx.recv().map_err(|_| "the keyboard thread didn't start".to_string())?
     }
 }
@@ -312,13 +331,32 @@ mod platform {
         }
         let mut opened = 0;
         let gate = std::sync::Arc::new(std::sync::Mutex::new(Gate::new(hold_ms)));
+        // The hold timer, asleep while the key is up: a reader unparks it on
+        // a press (audit Q14: it woke 50 times a second to find the key up).
+        let timer = {
+            let (tx, gate) = (tx.clone(), gate.clone());
+            std::thread::spawn(move || loop {
+                if !gate.lock().map(|g| g.waiting_for_hold()).unwrap_or(false) {
+                    std::thread::park_timeout(std::time::Duration::from_secs(5));
+                    continue;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                if let Ok(mut g) = gate.lock() {
+                    if let Some(e) = g.tick(now_ms()) {
+                        let _ = tx.send(e);
+                    }
+                }
+            })
+            .thread()
+            .clone()
+        };
         for d in devs {
             let mut f = match std::fs::File::open(&d) {
                 Ok(f) => f,
                 Err(_) => continue,
             };
             opened += 1;
-            let (tx, gate) = (tx.clone(), gate.clone());
+            let (tx, gate, timer) = (tx.clone(), gate.clone(), timer.clone());
             std::thread::spawn(move || {
                 let mut buf = [0u8; 24];
                 while f.read_exact(&mut buf).is_ok() {
@@ -331,6 +369,9 @@ mod platform {
                             if let Some(e) = verdict.event {
                                 let _ = tx.send(e);
                             }
+                            if v != 0 {
+                                timer.unpark();
+                            }
                         }
                     }
                 }
@@ -339,14 +380,6 @@ mod platform {
         if opened == 0 {
             return Err("I can see the keyboard but can't read it — add yourself to the `input` group".into());
         }
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            if let Ok(mut g) = gate.lock() {
-                if let Some(e) = g.tick(now_ms()) {
-                    let _ = tx.send(e);
-                }
-            }
-        });
         Ok(())
     }
 }
