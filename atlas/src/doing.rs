@@ -87,6 +87,7 @@ pub fn rescue(said: &str) -> Option<String> {
         one_ask(&w).then(|| find_a_file(&w)).flatten(),
         one_ask(&w).then(|| new_mail(&w)).flatten(),
         one_ask(&w).then(|| how_a_post_did(&w)).flatten(),
+        one_ask(&w).then(|| a_mode(&w)).flatten(),
     ]
         .into_iter()
         .flatten()
@@ -185,6 +186,27 @@ fn machine(w: &[String]) -> Option<String> {
     let acting = has_any(w, &["close", "kill", "speed", "fix", "optimize", "optimise", "clean", "clear", "free"]) && !space;
     let elsewhere = has_any(w, &["website", "site", "internet", "wifi", "connection", "game", "video", "email"]);
     ((slow || memory || space) && about_the_machine && !acting && !elsewhere).then(|| "how's the machine".into())
+}
+
+/// Names a mode usually has.
+const MODE_NAMES: &[&str] = &[
+    "focus", "work", "gaming", "game", "study", "quiet", "call", "meeting", "presentation", "research", "reading",
+    "writing", "night", "deep", "editing", "streaming", "recording", "travel", "public", "cafe",
+];
+
+/// "Go into focus", "switch to focus mode", "focus mode on": a mode, named
+/// with one of the names modes have. "Go into detail" names none, so the
+/// sentence carries on to the model (self-test, 4 Oct 2026: "go into focus"
+/// went to the model, 6 s, to be told there is no focus mode).
+fn a_mode(w: &[String]) -> Option<String> {
+    let lead = match (w.first().map(|s| s.as_str()), w.get(1).map(|s| s.as_str())) {
+        (Some("go"), Some("into")) | (Some("switch"), Some("to")) | (Some("enter"), _) => true,
+        _ => false,
+    };
+    let named = w.iter().find(|x| MODE_NAMES.contains(&x.as_str()))?;
+    let said_mode = has(w, "mode");
+    let short = w.len() <= 4;
+    ((lead || said_mode) && short).then(|| format!("mode {named}"))
 }
 
 /// Kinds of file a person names when looking for one.

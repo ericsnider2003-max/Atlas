@@ -2277,11 +2277,21 @@ fn render_in_blender(scene: &Scene, blender: &std::path::Path, dir: &std::path::
 /// there.
 /// `models` is the folder its model files are found in.
 pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models: Option<&std::path::Path>) -> Result<Scene, String> {
-    let mut reply = llm.complete(SCENE_SYSTEM, idea).map_err(|e| e.to_string())?;
+    // Room to finish the JSON: a cabin with trees is a few hundred lines,
+    // and the model's ordinary reply length cut it off mid-list (self-test,
+    // 3-4 Oct 2026: "EOF while parsing a list at line 58").
+    const SCENE_TOKENS: u32 = 3500;
+    let first = llm.complete_long(SCENE_SYSTEM, idea, SCENE_TOKENS).map_err(|e| e.to_string())?;
+    let (mut reply, mut cut_off) = (first.text, first.cut_off);
     let mut tries = 0;
     let moving = asks_for_motion(idea);
     loop {
-        let problem = match parse_scene(&reply) {
+        let parsed = if cut_off {
+            Err(format!("your reply was cut off before the JSON ended (it ran past {SCENE_TOKENS} tokens) -- write the whole scene again, shorter: at most 12 objects, no comments"))
+        } else {
+            parse_scene(&reply)
+        };
+        let problem = match parsed {
             Ok(mut scene) => {
                 scene.base = models.map(|m| m.to_path_buf());
                 // A still was asked for ("a small cabin in the woods") and
@@ -2310,8 +2320,15 @@ pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models:
             return Err(problem);
         }
         tries += 1;
-        let ask = format!("{idea}\n\nYour last scene had a problem: {problem}. Return the whole corrected JSON.\n\n{reply}");
-        reply = llm.complete(SCENE_SYSTEM, &ask).map_err(|e| e.to_string())?;
+        // A cut-off reply isn't worth sending back: half a scene to correct
+        // is longer than the whole one asked for afresh.
+        let ask = if cut_off {
+            format!("{idea}\n\nYour last scene had a problem: {problem}.")
+        } else {
+            format!("{idea}\n\nYour last scene had a problem: {problem}. Return the whole corrected JSON.\n\n{reply}")
+        };
+        let next = llm.complete_long(SCENE_SYSTEM, &ask, SCENE_TOKENS).map_err(|e| e.to_string())?;
+        (reply, cut_off) = (next.text, next.cut_off);
     }
 }
 
