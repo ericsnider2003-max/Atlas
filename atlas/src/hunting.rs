@@ -34,9 +34,10 @@ pub struct Live {
 
 fn state<'a>(d: &'a mut Daemon<'_>) -> &'a mut HuntState {
     if d.workday.hunt.state.is_none() {
-        d.workday.hunt.state = Some(d.store.load(hunt::FILE));
+        let loaded = d.store.load(hunt::FILE);
+        return d.workday.hunt.state.insert(loaded);
     }
-    d.workday.hunt.state.as_mut().expect("loaded")
+    d.workday.hunt.state.get_or_insert_with(Default::default)
 }
 
 fn keep(d: &mut Daemon) -> Result<(), String> {

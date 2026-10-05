@@ -74,10 +74,11 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // The microphone this machine really has, for the daemon too (29 Sep
     // 2026): everything below reads this one configuration.
     let tc_owned = pick_the_microphone(cfg, plat, tc);
+    // Both read the same values: `cfg` is not changed again below.
     let mut cfg_owned = cfg.clone();
-    cfg_owned.tools = Some(tc_owned);
+    cfg_owned.tools = Some(tc_owned.clone());
     let cfg = &cfg_owned;
-    let tc = cfg.tools.as_ref().expect("just set");
+    let tc = &tc_owned;
     let voice = Voice::new(tc);
     let store = atlas::roots::store();
 
@@ -505,8 +506,8 @@ pub(super) fn voice_loop(
     // views of the configuration, one of them stale. So the clone is made
     // at the `Config` level and both read the same one.
     let mut cfg_owned = cfg.clone();
-    cfg_owned.tools = Some(tc_owned);
-    let tc_live = cfg_owned.tools.as_ref().expect("just set");
+    cfg_owned.tools = Some(tc_owned.clone());
+    let tc_live = &tc_owned;
     let voice = Voice::new(tc_live);
 
     // The same single-instance lock `run_daemon` takes, and for the same

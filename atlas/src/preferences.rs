@@ -169,10 +169,9 @@ fn set_at(root: &mut Value, path: &str, raw: &str) -> bool {
     let mut cur = root;
     for p in parents {
         let key = Value::String((*p).to_string());
-        if !cur.is_mapping() {
+        let Some(map) = cur.as_mapping_mut() else {
             return false;
-        }
-        let map = cur.as_mapping_mut().expect("checked");
+        };
         if !map.contains_key(&key) {
             // The parent section is absent from the shipped file. Refuse
             // rather than invent one: a setting whose section does not exist
@@ -180,7 +179,8 @@ fn set_at(root: &mut Value, path: &str, raw: &str) -> bool {
             // hide that instead of reporting it.
             return false;
         }
-        cur = map.get_mut(&key).expect("checked");
+        let Some(next) = map.get_mut(&key) else { return false };
+        cur = next;
     }
 
     let Some(map) = cur.as_mapping_mut() else { return false };

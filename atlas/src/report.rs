@@ -446,7 +446,8 @@ impl Layout {
             self.room(line_h);
             self.y -= line_h;
             let base = self.y + size * 0.3;
-            let page = self.pages.last_mut().expect("a page");
+            // `room` above always leaves a page to draw on.
+            let Some(page) = self.pages.last_mut() else { continue };
             if i == 0 {
                 if let Some(lead) = lead {
                     page.ops.push_str(&format!("BT /F1 {size} Tf {:.2} {base:.2} Td {} Tj ET\n", left - 18.0, pdf_str(lead)));

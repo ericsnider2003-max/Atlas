@@ -453,6 +453,7 @@ fn safe_file_name(name: &str) -> bool {
 
 /// Build side: sign a manifest into the form that travels over the mesh.
 pub fn seal_manifest(key: &SigningKey, manifest: &Manifest) -> SignedManifest {
+    #[allow(clippy::expect_used, reason = "a plain struct of strings and numbers always serializes to JSON")]
     let text = serde_json::to_string(manifest).expect("a manifest always serializes");
     let signature = sign(key, &domain_bytes(text.as_bytes()));
     SignedManifest { manifest: text, signature: to_hex(&signature) }
@@ -878,6 +879,7 @@ pub struct SignedRotation {
 
 /// Build side: sign a rotation with the current release key or the recovery key.
 pub fn seal_rotation(key: &SigningKey, rotation: &Rotation) -> SignedRotation {
+    #[allow(clippy::expect_used, reason = "a plain struct of strings and numbers always serializes to JSON")]
     let text = serde_json::to_string(rotation).expect("a rotation always serializes");
     let mut msg = ROTATION_DOMAIN.to_vec();
     msg.extend_from_slice(text.as_bytes());

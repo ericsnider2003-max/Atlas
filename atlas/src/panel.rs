@@ -141,7 +141,9 @@ pub fn place(panel: Panel, monitors: &[Monitor], cfg: &PanelConfig) -> Decision 
     // The waking panel is the one moment worth the middle of your main
     // screen — it is the thing you asked for, and it leaves by itself.
     if panel == Panel::Waking {
-        let m = primary(monitors).unwrap();
+        let Some(m) = primary(monitors) else {
+            return Decision::SpeakOnly("there's no screen to show it on".into());
+        };
         let w = 760.min(m.width - 80);
         let h = 460.min(m.height - 80);
         return Decision::Show(Placement {

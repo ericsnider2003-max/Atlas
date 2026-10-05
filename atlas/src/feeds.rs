@@ -236,9 +236,9 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
                 }
             }
         }
-        if name == "item" && cur.is_some() {
-            if let Some(about) = attr(tag, "rdf:about") {
-                cur.as_mut().expect("just set").id = about;
+        if name == "item" {
+            if let (Some(it), Some(about)) = (cur.as_mut(), attr(tag, "rdf:about")) {
+                it.id = about;
             }
         }
         if !self_closing {

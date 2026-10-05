@@ -593,7 +593,7 @@ impl Chats {
         self.clock = self.clock.max(seen) + 1;
         let after = self.clock;
 
-        let room = self.room_mut(room_id).expect("checked above");
+        let Some(room) = self.room_mut(room_id) else { return Err(Refused::NoSuchRoom(room_id.to_string())) };
         let space = room.space.clone();
         let mut to = Vec::new();
         let mut left_out = Vec::new();
@@ -661,7 +661,7 @@ impl Chats {
             return Err(Refused::NotInThatBusiness(msg.from.clone()));
         }
         self.clock = self.clock.max(msg.after) + 1;
-        let room = self.room_mut(room_id).expect("checked above");
+        let Some(room) = self.room_mut(room_id) else { return Err(Refused::NoSuchRoom(room_id.to_string())) };
         if room.messages.iter().any(|m| m.id == msg.id) {
             return Ok(false);
         }

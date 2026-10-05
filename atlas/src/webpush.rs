@@ -126,6 +126,7 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
 // ------------------------------------------------------------------ encryption
 
 fn hmac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+    #[allow(clippy::expect_used, reason = "HMAC accepts a key of any length; new_from_slice cannot fail for it")]
     let mut m = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC takes any key length");
     for p in parts {
         m.update(p);

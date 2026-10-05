@@ -321,10 +321,10 @@ impl Hearing {
         // silently move Atlas to the headset.
         let probably_here = w.at_desk || w.presence_unknown;
 
-        match (probably_here, desk, headset, w.headset_connected) {
+        match (probably_here, desk, headset, w.headset_connected, self.faint_desk()) {
             // At the desk with something that actually hears you: use it, and
             // leave the headset on full-quality playback.
-            (true, Some(d), _, _) => Choice {
+            (true, Some(d), _, _, _) => Choice {
                 ear: Ear::Desk(d.name.clone()),
                 why: if w.headset_connected {
                     format!("{} hears you well, so your headphones keep full sound", short(&d.name))
@@ -334,7 +334,7 @@ impl Hearing {
                 costs_quality: false,
             },
             // Away, wearing the headset. Now the quality cost buys something.
-            (false, _, Some(h), true) => Choice {
+            (false, _, Some(h), true, _) => Choice {
                 ear: Ear::Headset(h.name.clone()),
                 why: "you're away from the desk, so I'm listening through your headphones".into(),
                 costs_quality: true,
@@ -347,8 +347,7 @@ impl Hearing {
             // reply in low, "robot" sound. Quiet speech is turned up before
             // it is transcribed (`audio::check_speech`). A laptop mic under a
             // shut lid isn't offered here at all (`pick_microphone`).
-            (true, None, Some(_), true) if self.faint_desk().is_some() => {
-                let d = self.faint_desk().expect("just checked");
+            (true, None, Some(_), true, Some(d)) => {
                 Choice {
                     ear: Ear::Desk(d.name.clone()),
                     why: format!("{} picks you up, so your headphones keep full sound", short(&d.name)),
@@ -357,13 +356,13 @@ impl Hearing {
             }
             // At the desk but nothing here can hear you — the closed-laptop
             // case. The headset is the only option left.
-            (true, None, Some(h), true) => Choice {
+            (true, None, Some(h), true, _) => Choice {
                 ear: Ear::Headset(h.name.clone()),
                 why: "no desk microphone is picking you up, so I'm using your headset".into(),
                 costs_quality: true,
             },
             // Away with no headset. Say so rather than pretending.
-            (false, _, _, false) => Choice {
+            (false, _, _, false, _) => Choice {
                 ear: Ear::Deaf,
                 why: "you're away and I've no way to hear you — talk to me from your phone".into(),
                 costs_quality: false,
@@ -375,27 +374,26 @@ impl Hearing {
             // -51.6 dB against a -45 floor: every microphone was ruled out
             // and Atlas listened to nothing at all. Only digital silence (a
             // muted or dead device, about -90) means it truly can't hear.
-            (true, None, None, _) if self.faint_desk().is_some() => {
-                let d = self.faint_desk().expect("just checked");
+            (true, None, None, _, Some(d)) => {
                 Choice {
                     ear: Ear::Desk(d.name.clone()),
                     why: format!("{} is the only microphone picking anything up, and only faintly", short(&d.name)),
                     costs_quality: false,
                 }
             }
-            (_, None, None, _) => Choice {
+            (_, None, None, _, _) => Choice {
                 ear: Ear::Deaf,
                 why: "no microphone can hear you".into(),
                 costs_quality: false,
             },
-            (_, None, Some(h), _) => Choice {
+            (_, None, Some(h), _, _) => Choice {
                 ear: Ear::Headset(h.name.clone()),
                 why: "the only microphone that hears you".into(),
                 costs_quality: true,
             },
             // Away, no headset paired, but a desk mic exists. It cannot hear
             // you from another room, so say so rather than pretending.
-            (false, Some(_), None, _) => Choice {
+            (false, Some(_), None, _, _) => Choice {
                 ear: Ear::Deaf,
                 why: "you are away from the desk and only the desk mic is available".into(),
                 costs_quality: false,

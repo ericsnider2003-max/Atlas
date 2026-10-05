@@ -538,16 +538,19 @@ impl<'a> Daemon<'a> {
     /// Open the seeing models, if they are not open already.
     pub(super) fn start_looking(&mut self) -> &mut crate::vision::Looking {
         self.wait_for_the_look();
-        if self.looking.is_none() {
-            let tools = self.tools_cfg();
-            let models = std::path::Path::new(&tools.models.dir).to_path_buf();
-            // ONNX Runtime lives under the install folder that holds
-            // `models/`, the way hand tracking finds it.
-            let looking = crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
-            self.log.info(&format!("seeing: {}", looking.engines()));
-            self.looking = Some(looking);
-        }
-        self.looking.as_mut().expect("just filled in")
+        let looking = match self.looking.take() {
+            Some(l) => l,
+            None => {
+                let tools = self.tools_cfg();
+                let models = std::path::Path::new(&tools.models.dir).to_path_buf();
+                // ONNX Runtime lives under the install folder that holds
+                // `models/`, the way hand tracking finds it.
+                let looking = crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
+                self.log.info(&format!("seeing: {}", looking.engines()));
+                looking
+            }
+        };
+        self.looking.insert(looking)
     }
 
     /// Look, once.
@@ -2260,7 +2263,7 @@ fn look_on_its_own(
             }
         }
     }
-    let cam = done.camera.as_ref().expect("just made sure");
+    let Some(cam) = done.camera.as_ref() else { return done };
     let (w, h) = cam.size();
     let wait = if done.opened_camera { std::time::Duration::from_secs(6) } else { std::time::Duration::from_millis(2500) };
     let Some(frame) = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, wait) else {

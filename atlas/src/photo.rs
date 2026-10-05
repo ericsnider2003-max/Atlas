@@ -817,10 +817,14 @@ pub fn copy_path(original: &Path, format: Format) -> PathBuf {
     if !first.exists() {
         return first;
     }
-    (2..)
-        .map(|n| dir.join(format!("{base}.edited-{n}.{ext}")))
-        .find(|p| !p.exists())
-        .expect("some number is free")
+    let mut n = 2u64;
+    loop {
+        let p = dir.join(format!("{base}.edited-{n}.{ext}"));
+        if !p.exists() {
+            return p;
+        }
+        n += 1;
+    }
 }
 
 fn name_of(p: &Path) -> String {

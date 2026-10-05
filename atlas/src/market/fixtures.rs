@@ -21,6 +21,7 @@
 //! passes for the wrong reason, and every test built on it quietly becomes
 //! decoration. [`walk`] is checked by its own tests for the two properties it
 //! is supposed to have: steps that go both ways, and pivots that actually form.
+#![allow(clippy::unwrap_used, clippy::expect_used, reason = "built from fixed fixture data that is known to be valid; a self-check, not a path for real input")]
 
 use super::bars::{Answer, Bars};
 

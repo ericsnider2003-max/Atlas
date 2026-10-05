@@ -2275,7 +2275,7 @@ impl Serving {
             std::thread::Builder::new()
                 .name("atlas-hub".into())
                 .spawn(move || {
-                    let listener = if which == 0 { &s.listener } else { s.also.as_ref().expect("counted above") };
+                    let Some(listener) = (if which == 0 { Some(&s.listener) } else { s.also.as_ref() }) else { return };
                     me.accept_on(listener, &s);
                 })
                 .map_err(|e| AtlasError::Platform(format!("couldn't start the hub's listener: {e}")))?;

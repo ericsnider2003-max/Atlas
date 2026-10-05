@@ -343,8 +343,8 @@ pub fn read(
     let was_trending = previous.map(|p| p.direction != Direction::Flat).unwrap_or(false);
     let gate = if was_trending { EXIT_TREND } else { ENTER_TREND };
 
-    let direction = if previous.is_some() && held_for < MIN_DWELL {
-        previous.unwrap().direction // too soon to change its mind
+    let direction = if let Some(p) = previous.filter(|_| held_for < MIN_DWELL) {
+        p.direction // too soon to change its mind
     } else if strength >= gate && r2 >= r2_critical(n) {
         if slope > 0.0 { Direction::Up } else { Direction::Down }
     } else {

@@ -134,7 +134,8 @@ fn diff_at(path: &mut Vec<String>, base: &Value, mine: &Value, out: &mut Vec<Cha
     match (base, mine) {
         (Value::Mapping(b), Value::Mapping(m)) if string_keyed(b) && string_keyed(m) => {
             for (k, mv) in m {
-                let key = k.as_str().expect("string keyed").to_string();
+                // `string_keyed` above makes this always Some.
+                let Some(key) = k.as_str().map(str::to_string) else { continue };
                 path.push(key);
                 match b.get(k) {
                     Some(bv) => diff_at(path, bv, mv, out),
@@ -151,7 +152,8 @@ fn diff_at(path: &mut Vec<String>, base: &Value, mine: &Value, out: &mut Vec<Cha
             for (k, bv) in b {
                 if !m.contains_key(k) {
                     let mut p = path.clone();
-                    p.push(k.as_str().expect("string keyed").to_string());
+                    let Some(key) = k.as_str() else { continue };
+                    p.push(key.to_string());
                     out.push(Change { path: p, yours: None, removed: true, was: Some(bv.clone()), unsure: false });
                 }
             }

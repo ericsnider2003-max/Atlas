@@ -224,15 +224,14 @@ fn gaps(
 ) -> Vec<Gap> {
     let mut out = Vec::new();
 
-    if where_.is_none() {
+    let Some(w) = where_ else {
         out.push(Gap {
             what: "there's no envelope".into(),
             why: "everything in the vault goes with you, including the recovery codes".into(),
             urgency: 1.0,
         });
         return out;
-    }
-    let w = where_.unwrap();
+    };
 
     if instructions.is_empty() {
         out.push(Gap {

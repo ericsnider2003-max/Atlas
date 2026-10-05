@@ -1173,12 +1173,16 @@ pub fn says(c: &Capability, p: Platform) -> String {
 
     match runs_on(c, p) {
         How::Never => {
-            let n = blocked_by(c, p).expect("Never means something is walled");
-            let mut s = format!("never on {} — it would have to be {}", p.name(), n.plain());
-            if let Some(why) = portable::because(p, n) {
-                s.push_str(&format!(", and {why}"));
+            match blocked_by(c, p) {
+                Some(n) => {
+                    let mut s = format!("never on {} — it would have to be {}", p.name(), n.plain());
+                    if let Some(why) = portable::because(p, n) {
+                        s.push_str(&format!(", and {why}"));
+                    }
+                    s
+                }
+                None => format!("never on {}", p.name()),
             }
-            s
         }
         How::Awkward => {
             let why = c

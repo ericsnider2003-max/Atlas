@@ -190,7 +190,8 @@ impl Player {
             Ok(c) => c,
             Err(e) => return fail(&mut child, format!("couldn't attach to the browser: {e}")),
         };
-        Ok(Player { child: child.take().expect("started"), cdp, profile: profile.to_path_buf() })
+        let Some(child) = child.take() else { return fail(&mut child, "the browser went away while it was starting".into()) };
+        Ok(Player { child, cdp, profile: profile.to_path_buf() })
     }
 
     fn call(&mut self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {

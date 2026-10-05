@@ -260,14 +260,7 @@ pub fn pictures() -> Vec<Piece> {
             bytes: 34_807_256,
             lands: Lands::Zip { inside: "", dir: "tools/llama", key: "tools/llama/llama-mtmd-cli.exe" },
         },
-        Piece {
-            name: "the language model",
-            for_what: "answering you, and reading screens",
-            url: "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
-            sha256: "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a",
-            bytes: 2_497_281_664,
-            lands: Lands::File("models/Qwen3VL-4B-Instruct-Q4_K_M.gguf"),
-        },
+        faster_talk_model(),
         Piece {
             name: "its picture reader",
             for_what: "reading screens and pictures",
@@ -362,9 +355,17 @@ pub fn helpers_resident_mb(root: &Path) -> u64 {
     bytes * 3 / 2 / (1024 * 1024)
 }
 
-/// The shipped talking model, as `pictures` fetches it.
+/// The shipped talking model, as `pictures` fetches it (one definition, used
+/// by both: it was found in `pictures()` by name with an `expect`, audit Q2).
 pub fn faster_talk_model() -> Piece {
-    pictures().into_iter().find(|p| p.name == "the language model").expect("the pictures set has the language model")
+    Piece {
+        name: "the language model",
+        for_what: "answering you, and reading screens",
+        url: "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+        sha256: "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a",
+        bytes: 2_497_281_664,
+        lands: Lands::File("models/Qwen3VL-4B-Instruct-Q4_K_M.gguf"),
+    }
 }
 
 /// The deep brain (`models.deep`, `deepbrain`): Qwen3.5 9B at IQ4_XS,

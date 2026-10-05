@@ -704,7 +704,10 @@ fn work(inner: Arc<(Mutex<State>, Condvar)>) {
                 st.worker = false;
                 return;
             };
-            let j = st.jobs.front_mut().expect("checked above");
+            let Some(j) = st.jobs.front_mut() else {
+                st.worker = false;
+                return;
+            };
             j.started = true;
             (j.id, j.text.clone(), synth)
         };

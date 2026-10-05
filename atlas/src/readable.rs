@@ -199,7 +199,8 @@ fn parse(html: &str) -> Doc {
                     }
                 }
             }
-            let parent = *stack.last().unwrap();
+            // The root is never popped, so there is always a parent.
+            let Some(&parent) = stack.last() else { continue };
             let class_id = format!("{} {}", attr(inner, "class").unwrap_or_default(), attr(inner, "id").unwrap_or_default())
                 .to_lowercase();
             let id = els.len();
@@ -224,7 +225,7 @@ fn parse(html: &str) -> Doc {
                 text = if in_pre && text.contains('\n') { "\n".into() } else { " ".into() };
             }
             if !text.is_empty() {
-                let parent = *stack.last().unwrap();
+                let Some(&parent) = stack.last() else { continue };
                 let id = els.len();
                 els.push(El { tag: "#text".into(), text, parent: Some(parent), ..Default::default() });
                 els[parent].children.push(id);
