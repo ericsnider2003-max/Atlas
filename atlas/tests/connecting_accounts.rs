@@ -339,6 +339,7 @@ fn every_account_sends_from_its_own_provider_s_server_and_port() {
     use atlas::mail::{smtp_for, Provider};
     // Q1: Outlook only serves 587 with STARTTLS.
     assert_eq!(Provider::Outlook.smtp_port(), 587);
+    assert_eq!((Provider::Outlook.smtp_host(), Provider::Other.smtp_host()), (Some("smtp.office365.com"), None));
     assert_eq!(smtp_for("eric@outlook.com", ""), Some(("smtp.office365.com".into(), 587)));
     // Q10: a Microsoft 365 / Workspace mailbox on its own domain sends where it reads.
     assert_eq!(smtp_for("me@northwind.co", "outlook.office365.com"), Some(("smtp.office365.com".into(), 587)));

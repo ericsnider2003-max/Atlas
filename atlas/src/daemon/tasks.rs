@@ -36,6 +36,13 @@ pub(crate) struct TaskLoop {
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
     started: std::time::Instant,
+    /// Something written by someone else -- a mail, a web page, a document,
+    /// another program's answer -- has been read into this loop. From then
+    /// on the model may still read and answer, but anything that sends,
+    /// posts, presses, changes or reaches out is asked about first: text
+    /// it read can be instructions in disguise (`brain::reads_outside_text`;
+    /// 5 Oct 2026 audit, Q2, the "lethal trifecta").
+    tainted: bool,
 }
 
 impl TaskLoop {
@@ -173,19 +180,33 @@ impl<'a> Daemon<'a> {
     }
 
     /// A tool call from the loop, as the command it names, carried out.
-    pub(super) fn act_on_call(&mut self, call: &brain::ToolCall, said: &str) -> crate::taskloop::Outcome {
+    pub(super) fn act_on_call(&mut self, call: &brain::ToolCall, said: &str, tainted: &mut bool) -> crate::taskloop::Outcome {
         use crate::taskloop::Outcome;
         let Some(intent) = crate::intent::from_tool(&call.name, &call.arguments, said) else {
             return Outcome::Failed(format!("There's no tool called {} that I may use.", call.name));
         };
-        self.act_on(&intent, true)
+        self.act_tainted(&intent, true, tainted)
+    }
+
+    /// One step of a loop, under its taint (Q2): once outside text has been
+    /// read, a step the model chose is asked about unless it only reads or
+    /// answers; and a step that reads outside text taints what follows.
+    fn act_tainted(&mut self, intent: &Intent, from_model: bool, tainted: &mut bool) -> crate::taskloop::Outcome {
+        let force_ask = from_model && *tainted && !brain::safe_after_outside_text(intent);
+        let outcome = self.act_on_asking(intent, from_model, force_ask);
+        if brain::reads_outside_text(intent) {
+            *tainted = true;
+        }
+        outcome
     }
 
     /// Carry out one step. `from_model`: the model chose it (a tool call),
     /// rather than the phrases matching the words -- then a consequential
     /// action is always asked about first (`brain::model_must_ask`), as a
     /// single turn does.
-    pub(super) fn act_on(&mut self, intent: &Intent, from_model: bool) -> crate::taskloop::Outcome {
+    /// ... and, when `force_ask`, asked about first whatever the policy says
+    /// (a loop that has read outside text, Q2).
+    pub(super) fn act_on_asking(&mut self, intent: &Intent, from_model: bool, force_ask: bool) -> crate::taskloop::Outcome {
         use crate::taskloop::Outcome;
         if self.handover().stance.handed_over() {
             if let Some(refusal) = self.handed_over_refusal(intent) {
@@ -193,7 +214,7 @@ impl<'a> Daemon<'a> {
             }
         }
         let call = crate::policy::classify_with_policy(intent, &self.memory, &self.cfg.policy);
-        let call = if from_model && brain::model_must_ask(intent) { Decision::max(call, Decision::RequireApproval) } else { call };
+        let call = if (from_model && brain::model_must_ask(intent)) || force_ask { Decision::max(call, Decision::RequireApproval) } else { call };
         let call = self.mcp_gate(intent, call);
         match call {
             Decision::AutoProceed | Decision::ProceedAndReport => {}
@@ -311,6 +332,7 @@ impl<'a> Daemon<'a> {
             stop,
             paused,
             started: std::time::Instant::now(),
+            tainted: false,
         });
         let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
         let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
@@ -345,7 +367,7 @@ impl<'a> Daemon<'a> {
     /// each step and the answer as they come. Never waits on the worker.
     pub(super) fn take_task_loop_news(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
-        let Some(tl) = self.task_loop.take() else { return out };
+        let Some(mut tl) = self.task_loop.take() else { return out };
         // A pause holds it at its next step; a resume lets it go on.
         tl.paused.store(self.attention.is_paused(), std::sync::atomic::Ordering::SeqCst);
         let mut finished: Option<crate::taskloop::Run> = None;
@@ -357,7 +379,7 @@ impl<'a> Daemon<'a> {
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
                         crate::taskloop::Outcome::Failed("Stopped before this step.".into())
                     } else {
-                        self.act_on_call(&call, &tl.said)
+                        self.act_on_call(&call, &tl.said, &mut tl.tainted)
                     };
                     let _ = tl.reply.send(outcome);
                 }
@@ -365,7 +387,7 @@ impl<'a> Daemon<'a> {
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
                         crate::taskloop::Outcome::Failed("Stopped before this part.".into())
                     } else {
-                        self.act_on(&intent, from_model)
+                        self.act_tainted(&intent, from_model, &mut tl.tainted)
                     };
                     let _ = tl.reply.send(outcome);
                 }
@@ -563,6 +585,7 @@ impl<'a> Daemon<'a> {
             stop,
             paused,
             started: std::time::Instant::now(),
+            tainted: false,
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),

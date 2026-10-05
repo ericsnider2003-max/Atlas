@@ -2417,6 +2417,70 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
     Ok(Decision { intent, say, model: Reached::NotNeeded })
 }
 
+/// Commands whose result is text someone else wrote: a mail, a web page or
+/// search result, a document or file, a feed or social post, a message,
+/// what's on screen, another program's (MCP) answer. Once one of these has
+/// been read into a run of several steps, the run is tainted
+/// (`daemon::tasks`, Q2).
+pub fn reads_outside_text(i: &Intent) -> bool {
+    matches!(
+        i,
+        Intent::Mail(..)
+            | Intent::Research(..)
+            | Intent::ReadDocument(..)
+            | Intent::Pdf(..)
+            | Intent::Unzip(..)
+            | Intent::Files(..)
+            | Intent::FindFile(..)
+            | Intent::Feeds(..)
+            | Intent::Social(..)
+            | Intent::Opportunities(..)
+            | Intent::Messages
+            | Intent::ScreenText(..)
+            | Intent::WhatsThere
+            | Intent::WhatsThis
+            | Intent::ClipHistory(..)
+            | Intent::UseClipboard(..)
+            | Intent::BriefOn(..)
+            | Intent::McpTool(..)
+    )
+}
+
+/// What may still run without asking after outside text has been read:
+/// only things that read what's already here or say something back, never
+/// anything that sends, posts, presses, changes, opens or reaches out. An
+/// allow-list on purpose -- a command added later is asked about until
+/// someone decides it's harmless (Q2).
+pub fn safe_after_outside_text(i: &Intent) -> bool {
+    matches!(
+        i,
+        Intent::Say(..)
+            | Intent::Clock
+            | Intent::Outstanding
+            | Intent::Queued
+            | Intent::Capabilities(..)
+            | Intent::History(..)
+            | Intent::Agenda(..)
+            | Intent::MachineHealth
+            | Intent::Explain(..)
+            | Intent::Why(..)
+            | Intent::Mail(..)
+            | Intent::ReadDocument(..)
+            | Intent::Pdf(..)
+            | Intent::Files(..)
+            | Intent::FindFile(..)
+            | Intent::WhatIHave(..)
+            | Intent::TimeSpent(..)
+            | Intent::WaitingFor(..)
+            | Intent::People(..)
+            | Intent::KnowledgeSize
+            | Intent::HowAmIDoing
+            | Intent::Recap
+            | Intent::WhoIsIn(..)
+            | Intent::Ask(..)
+    )
+}
+
 /// Commands that, chosen by the model rather than matched from your words,
 /// are always asked about before they run: they hand Atlas to someone,
 /// speak or post in your name, change code, press, move or undo things, or
