@@ -160,6 +160,21 @@ impl<'a> Daemon<'a> {
                 failed.push((name, e));
             }
         }
+        // And everything else that failed with nobody waiting for the answer
+        // (`crate::unheard`, audit Q1): a write meant to last is a record not
+        // kept, told like the saves; the rest goes to the log, once each.
+        for u in crate::unheard::take() {
+            match u.cost {
+                crate::unheard::Cost::NotKept => {
+                    let name = crate::store::intern_record_name(u.part());
+                    self.log.warn(&u.line());
+                    if !failed.iter().any(|(w, _)| *w == name) {
+                        failed.push((name, u.error));
+                    }
+                }
+                crate::unheard::Cost::Logged => self.log.warn(&u.line()),
+            }
+        }
 
         // Logged on the way in and the way out, so the log shows a span
         // rather than one line per tick for as long as the disk is unhappy.

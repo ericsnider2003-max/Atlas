@@ -2261,15 +2261,18 @@ fn chat_call_io(
         } else {
             body_bytes.append(&mut pending);
         }
-        // Whole lines.
-        while status == 200 {
-            let Some(nl) = body_bytes.iter().position(|b| *b == b'\n') else { break };
-            let line: Vec<u8> = body_bytes.drain(..=nl).collect();
-            let line = String::from_utf8_lossy(&line).to_string();
-            if let Some(piece) = stream.line(&line) {
-                if !on_text(&piece) {
-                    stopped = true;
-                    break;
+        // Whole lines (an `if` around a `loop`: it was `while status == 200`,
+        // which clippy rightly flags -- `status` never changes in the loop).
+        if status == 200 {
+            loop {
+                let Some(nl) = body_bytes.iter().position(|b| *b == b'\n') else { break };
+                let line: Vec<u8> = body_bytes.drain(..=nl).collect();
+                let line = String::from_utf8_lossy(&line).to_string();
+                if let Some(piece) = stream.line(&line) {
+                    if !on_text(&piece) {
+                        stopped = true;
+                        break;
+                    }
                 }
             }
         }
