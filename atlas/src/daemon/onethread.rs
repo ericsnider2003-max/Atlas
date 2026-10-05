@@ -17,6 +17,14 @@
 //! Only your own devices take any of it: a bundle not sealed with your
 //! household key is never read for these. What arrived by sync isn't sent
 //! back out.
+//!
+//! A reminder rings on ONE device: the one it was set on (4 Oct 2026, Eric:
+//! a reminder set on the phone rang twice -- the phone's own alarm, then the
+//! laptop's push of the copy it had been handed). Your other devices know
+//! it -- "what reminders do I have" lists it, and cancelling it there
+//! cancels it where it lives -- but they hold it as a note of another
+//! device's reminder (`Elsewhere`), never as a job of their own, so it is
+//! never fired, pushed, or handed to iOS a second time.
 
 use super::*;
 
@@ -30,11 +38,39 @@ pub(crate) struct Before {
     thread_len: usize,
     facts: std::collections::HashMap<String, u64>,
     later: Vec<String>,
-    reminders: Vec<u64>,
+    reminders: Vec<(u64, u64)>,
 }
 
-fn reminder_ids(s: &crate::scheduler::Scheduler) -> Vec<u64> {
-    s.active().into_iter().filter(|j| j.command.starts_with("reminder ") && j.every.is_none() && j.on.is_none()).map(|j| j.id).collect()
+/// The one-off reminders this device owns, as (id, due). A repeating one is
+/// this device's alone and isn't carried.
+fn reminder_ids(s: &crate::scheduler::Scheduler) -> Vec<(u64, u64)> {
+    s.active().into_iter().filter(|j| j.command.starts_with("reminder ") && j.every.is_none() && j.on.is_none()).map(|j| (j.id, j.due)).collect()
+}
+
+/// Where the notes of your other devices' reminders are kept.
+pub const ELSEWHERE_KEY: &str = "reminders_on_your_other_devices";
+
+/// A reminder set on another of your devices: known here, rung there.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Elsewhere {
+    /// The sync id, `remind:<device>:<job id>`: whose it is, and which.
+    pub key: String,
+    /// The words, as the job holds them ("Reminder: stretch").
+    pub text: String,
+    pub due: u64,
+}
+
+impl Elsewhere {
+    /// The words as said back ("stretch").
+    pub fn words(&self) -> &str {
+        self.text.trim_start_matches("Reminder:").trim()
+    }
+}
+
+/// The device a reminder's sync id names, and its job number there.
+fn owner_of(key: &str) -> Option<(&str, u64)> {
+    let (device, id) = key.strip_prefix(REMIND_PREFIX)?.rsplit_once(':')?;
+    Some((device, id.parse().ok()?))
 }
 
 impl Daemon<'_> {
@@ -93,12 +129,23 @@ impl Daemon<'_> {
                 events.push(crate::sync::What::Changed { id: format!("{LATER_PREFIX}{w}"), field: "later".into(), to: String::new() });
             }
         }
-        // Reminders set (one-off ones: a repeating job is the laptop's).
+        // Reminders set, moved or cancelled here (one-off ones: a repeating
+        // job is this device's alone). An empty `to` says it's gone.
+        let now_set = reminder_ids(&self.scheduler);
         for j in self.scheduler.active() {
-            if j.command.starts_with("reminder ") && j.every.is_none() && j.on.is_none() && !before.reminders.contains(&j.id) && !self.arrived_by_sync.reminders.contains(&j.id) {
+            if now_set.contains(&(j.id, j.due)) && !before.reminders.contains(&(j.id, j.due)) {
                 let to = serde_json::json!({ "command": j.command, "due": j.due }).to_string();
                 events.push(crate::sync::What::Changed { id: format!("{REMIND_PREFIX}{device}:{}", j.id), field: "reminder".into(), to });
             }
+        }
+        for (id, _) in &before.reminders {
+            if !now_set.iter().any(|(n, _)| n == id) {
+                events.push(crate::sync::What::Changed { id: format!("{REMIND_PREFIX}{device}:{id}"), field: "reminder".into(), to: String::new() });
+            }
+        }
+        // Another device's reminder cancelled here: told to where it lives.
+        for key in std::mem::take(&mut self.reminders_cancelled_elsewhere) {
+            events.push(crate::sync::What::Changed { id: key, field: "reminder".into(), to: String::new() });
         }
         if events.is_empty() {
             return;
@@ -170,25 +217,65 @@ impl Daemon<'_> {
         }
     }
 
-    /// A reminder set on your other device, set here too, once.
+    /// A reminder from your other device: noted here, never rung here (it
+    /// rings where it was set). An empty `to` means it was cancelled -- and
+    /// when it is one of OURS, cancelled from the other device, it is
+    /// cancelled here, where it lives.
     pub(super) fn take_a_reminder(&mut self, id: &str, to: &str, sealed: bool) {
-        if !sealed || !id.starts_with(REMIND_PREFIX) {
+        if !sealed {
+            return;
+        }
+        let Some((device, job)) = owner_of(id) else { return };
+        let mut elsewhere = self.reminders_elsewhere();
+        if to.is_empty() {
+            elsewhere.retain(|e| e.key != id);
+            let _ = self.store.save(ELSEWHERE_KEY, &elsewhere);
+            if device == self.synclog.device && self.scheduler.cancel(job) {
+                let _ = self.scheduler.save(&self.store);
+                self.log.info(&format!("reminder #{job} cancelled from your other device"));
+            }
+            return;
+        }
+        if device == self.synclog.device {
             return;
         }
         let Ok(v) = serde_json::from_str::<serde_json::Value>(to) else { return };
         let (Some(command), Some(due)) = (v.get("command").and_then(|c| c.as_str()), v.get("due").and_then(|d| d.as_u64())) else { return };
-        if !command.starts_with("reminder ") || due <= crate::store::now() {
+        let Some(text) = command.strip_prefix("reminder ") else { return };
+        if due <= crate::store::now() {
             return;
         }
-        let mut taken: Vec<String> = self.store.load("reminders_from_your_devices");
-        if taken.iter().any(|x| x == id) {
-            return;
+        elsewhere.retain(|e| e.key != id);
+        elsewhere.push(Elsewhere { key: id.to_string(), text: text.to_string(), due });
+        elsewhere.sort_by_key(|e| e.due);
+        let _ = self.store.save(ELSEWHERE_KEY, &elsewhere);
+    }
+
+    /// Your other devices' reminders still to come (the ones that have rung
+    /// there are dropped).
+    pub fn reminders_elsewhere(&self) -> Vec<Elsewhere> {
+        let now = crate::store::now();
+        let mut v: Vec<Elsewhere> = self.store.load(ELSEWHERE_KEY);
+        v.retain(|e| e.due > now);
+        v
+    }
+
+    /// One of your other devices' reminders, cancelled from here: gone from
+    /// this list now, and cancelled where it lives on the next sync.
+    pub(super) fn cancel_elsewhere(&mut self, key: &str) {
+        let mut v = self.reminders_elsewhere();
+        v.retain(|e| e.key != key);
+        let _ = self.store.save(ELSEWHERE_KEY, &v);
+        self.reminders_cancelled_elsewhere.push(key.to_string());
+    }
+
+    /// Which device a reminder from elsewhere rings on, as said.
+    pub(super) fn where_it_rings(&self) -> &'static str {
+        if self.plat.device_kind() == crate::sync::Kind::Full {
+            "on your phone"
+        } else {
+            "on your laptop"
         }
-        let job = self.scheduler.at(command, due);
-        self.arrived_by_sync.reminders.insert(job);
-        let _ = self.scheduler.save(&self.store);
-        taken.push(id.to_string());
-        let _ = self.store.save("reminders_from_your_devices", &taken);
     }
 }
 
@@ -198,5 +285,4 @@ pub struct ArrivedBySync {
     pub thread: std::collections::HashSet<(u64, String)>,
     pub facts: std::collections::HashSet<(String, u64)>,
     pub later: std::collections::HashSet<String>,
-    pub reminders: std::collections::HashSet<u64>,
 }

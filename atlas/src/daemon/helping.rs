@@ -148,15 +148,56 @@ impl<'a> Daemon<'a> {
         match ask {
             Ask::ListReminders => {
                 let all = reminders(self);
-                if all.is_empty() {
+                // Your other devices' reminders too: they ring there, not here.
+                let elsewhere = self.reminders_elsewhere();
+                if all.is_empty() && elsewhere.is_empty() {
                     return Some("No reminders or timers set.".into());
                 }
-                let listed: Vec<String> = all.iter().take(8).map(|j| format!("{} {} (#{})", words_of(j), when_of(j.due), j.id)).collect();
-                let more = if all.len() > 8 { format!(", and {} more", all.len() - 8) } else { String::new() };
-                Some(format!("{}: {}{more}.", if all.len() == 1 { "One".to_string() } else { format!("{}", all.len()) }, listed.join("; ")))
+                let there = self.where_it_rings();
+                let mut listed: Vec<(u64, String)> = all.iter().map(|j| (j.due, format!("{} {} (#{})", words_of(j), when_of(j.due), j.id))).collect();
+                listed.extend(elsewhere.iter().map(|e| (e.due, format!("{} {} ({there})", e.words(), when_of(e.due)))));
+                listed.sort_by_key(|(due, _)| *due);
+                let n = listed.len();
+                let listed: Vec<String> = listed.into_iter().take(8).map(|(_, s)| s).collect();
+                let more = if n > 8 { format!(", and {} more", n - 8) } else { String::new() };
+                Some(format!("{}: {}{more}.", if n == 1 { "One".to_string() } else { format!("{n}") }, listed.join("; ")))
             }
             Ask::CancelReminder(which) => {
                 let all = reminders(self);
+                // One of your other devices' reminders, named by its words (or
+                // all of them): cancelled where it lives, on the next sync.
+                let elsewhere = self.reminders_elsewhere();
+                let theirs: Vec<super::onethread::Elsewhere> = match &which {
+                    Which::All => elsewhere.clone(),
+                    Which::About(words) => {
+                        let want: Vec<String> = words.split_whitespace().filter(|w| w.len() > 2).map(str::to_lowercase).collect();
+                        elsewhere.iter().filter(|e| !want.is_empty() && want.iter().all(|w| e.words().to_lowercase().contains(w.as_str()))).cloned().collect()
+                    }
+                    _ => Vec::new(),
+                };
+                let ours_match = match &which {
+                    Which::About(words) => {
+                        let want: Vec<String> = words.split_whitespace().filter(|w| w.len() > 2).map(str::to_lowercase).collect();
+                        all.iter().any(|j| !want.is_empty() && want.iter().all(|w| words_of(j).to_lowercase().contains(w.as_str())))
+                    }
+                    _ => false,
+                };
+                if !theirs.is_empty() && (all.is_empty() || matches!(which, Which::About(_)) && !ours_match) {
+                    let there = self.where_it_rings();
+                    for e in &theirs {
+                        self.cancel_elsewhere(&e.key);
+                    }
+                    return Some(if theirs.len() == 1 {
+                        format!("Cancelled: {} (it was set {there}; it won't ring there).", theirs[0].words())
+                    } else {
+                        format!("Cancelled all {} (set {there}; they won't ring there).", theirs.len())
+                    });
+                }
+                if matches!(which, Which::All) {
+                    for e in &theirs {
+                        self.cancel_elsewhere(&e.key);
+                    }
+                }
                 if all.is_empty() {
                     return Some("There are no reminders or timers set.".into());
                 }
