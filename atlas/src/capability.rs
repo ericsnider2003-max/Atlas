@@ -296,7 +296,7 @@ pub fn all() -> Vec<Capability> {
         // others -- `what_you_asked_for` still says which are closed.
         Capability { id: "telegram", what: "read what's been sent to a chat bot you own, and sort it like the inbox", area: Email, state: Off, needs: None, offline: false, added: 29, runs: &[Needs::Files], modules: &["telegram", "messaging"] },
         Capability { id: "triage", what: "sort an inbox by what it asks of you", area: Email, state: Working, needs: None, offline: true, added: 19, runs: &[Needs::JustThinking], modules: &["triage"] },
-        Capability { id: "mail", what: "reach your mailbox, whoever provides it", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["mail", "imap", "smtp", "mailthread", "ratelimit", "himalaya", "msoauth", "connect", "connecting"] },
+        Capability { id: "mail", what: "reach your mailbox, whoever provides it", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["mail", "imap", "smtp", "mailthread", "ratelimit", "himalaya", "msoauth", "connect", "connecting", "oauthlink"] },
         Capability { id: "unsub", what: "clear out what you never read, safely", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["unsub"] },
 
         Capability { id: "route", what: "find another way when one is closed", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["route"] },
@@ -1566,7 +1566,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // closed, item 15).
 // 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 478
 // with webpush.
-pub const MODULES_IN_TREE: usize = 478;
+// 4 Oct 2026: + `oauthlink` (one-click Google and Microsoft sign-in) = 479.
+pub const MODULES_IN_TREE: usize = 479;
 
 /// Every module no capability claims, and why it is not one.
 ///

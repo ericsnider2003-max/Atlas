@@ -170,7 +170,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | warn about mail from an address made to look like someone you deal with, or that its own server marked as forged — and draft nothing to it | built, never run for real | `lookalike` `imap` | ready | ready | ready | ready | ready | ready |
 | read what's been sent to a chat bot you own, and sort it like the inbox | switched off | `telegram` `messaging` | ready | ready | ready | catch | would | catch |
 | sort an inbox by what it asks of you | working | `triage` | ready | ready | ready | ready | ready | ready |
-| reach your mailbox, whoever provides it | switched off | `mail` `imap` `smtp` `mailthread` `ratelimit` `himalaya` `msoauth` `connect` `connecting` | ready | ready | ready | ready | ready | ready |
+| reach your mailbox, whoever provides it | switched off | `mail` `imap` `smtp` `mailthread` `ratelimit` `himalaya` `msoauth` `connect` `connecting` `oauthlink` | ready | ready | ready | ready | ready | ready |
 | clear out what you never read, safely | switched off | `unsub` | ready | ready | ready | ready | ready | ready |
 | write a text to someone whose number you've given, ready on your phone to send with one tap -- Atlas can't send or read texts itself | built, never run for real | `texting` | ready | ready | ready | catch | would | catch |
 | keep who owes you a reply and what you promised, read from the mail you sent, and learn from what you say was never one | built, never run for real | `waitingfor` `mailbook` | ready | ready | ready | catch | would | catch |
@@ -364,4 +364,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-245 things, across 432 of 478 source files. The other 46 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+245 things, across 433 of 479 source files. The other 46 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
