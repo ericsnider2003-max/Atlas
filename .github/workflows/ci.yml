@@ -1,0 +1,67 @@
+# Tests on every push to main and every pull request (5 Oct 2026 audit, Q17).
+#
+# Until this file, nothing ran the ~6,900 tests when code reached GitHub: the
+# three workflows only build, and only on tags or by hand. Every chat ran the
+# suite in its own workspace, and three pushes on 1-2 Oct arrived with guard
+# tests red that nobody had run (claude/INSTALL-LOCK.md).
+#
+# Linux, because the suite is green there; the Windows-only failures
+# (06_AUDIT_AND_GAPS/TESTING_FINDINGS.md) are their own job and would make
+# this red for reasons that aren't the push's. Clippy runs and reports
+# without failing the build until its existing warnings are worked through.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: atlas
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake clang pkg-config libssl-dev libx11-dev libxtst-dev libxi-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: atlas
+      - name: The whole suite and every guard target
+        # The guard targets are separate binaries `--test all` doesn't run
+        # (claude/INSTALL-LOCK.md). vad_thresholds needs the recorded corpus.
+        run: >
+          cargo test --locked --no-fail-fast
+          --test all --test name_collisions --test one_word_is_not_an_address
+          --test dead_capabilities --test new_capabilities_are_wired
+          --test hub_settings --test atlas_on_a_friends_machine
+          -- --skip vad_thresholds_are_the_measured_best
+      - name: The library's own tests
+        run: cargo test --locked --lib
+      - name: The phone builds compile
+        run: |
+          cargo check --locked --lib --no-default-features
+          cargo check --locked --lib --no-default-features --features phone-llm
+      - name: Tests left nothing in the tree
+        run: test -z "$(git status --porcelain)" || { git status --porcelain; echo "a test wrote into the checkout"; exit 1; }
+      - name: Clippy (reported, not yet enforced)
+        run: cargo clippy --locked --lib --message-format short 2>&1 | tail -n 200
+        continue-on-error: true
