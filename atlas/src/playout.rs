@@ -142,7 +142,7 @@ pub const PICK_KEPT_SECS: u64 = 20;
 /// `PICK_KEPT_SECS` so headphones connecting are picked up within a reply or
 /// two.
 pub fn speaker_now(cfg: &crate::audio::AudioConfig) -> Option<String> {
-    if let Ok(g) = PICKED.lock() {
+    if let Ok(g) = PICKED.lock().or_else(crate::crash::unpoison) {
         if let Some((at, pick)) = g.as_ref() {
             if at.elapsed().as_secs() < PICK_KEPT_SECS {
                 return pick.clone();
@@ -150,7 +150,7 @@ pub fn speaker_now(cfg: &crate::audio::AudioConfig) -> Option<String> {
         }
     }
     let pick = chosen_output(&output_devices(), cfg);
-    if let Ok(mut g) = PICKED.lock() {
+    if let Ok(mut g) = PICKED.lock().or_else(crate::crash::unpoison) {
         *g = Some((std::time::Instant::now(), pick.clone()));
     }
     pick
@@ -258,7 +258,7 @@ static NOTED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 /// Why playing inside Atlas failed, said once per different reason (the
 /// fallback then plays every sentence, and saying so each time is noise).
 pub fn note_once(why: &str) -> Option<String> {
-    let mut g = NOTED.lock().ok()?;
+    let mut g = NOTED.lock().or_else(crate::crash::unpoison).ok()?;
     if g.as_deref() == Some(why) {
         return None;
     }

@@ -50,7 +50,7 @@ fn content_hash(bytes: &[u8]) -> u64 {
 
 fn remember_written(path: &Path, hash: u64) {
     let Ok(m) = std::fs::metadata(path) else { return };
-    if let Ok(mut w) = WRITTEN.lock() {
+    if let Ok(mut w) = WRITTEN.lock().or_else(crate::crash::unpoison) {
         w.insert(path.to_path_buf(), (hash, m.len(), m.modified().ok()));
     }
 }
@@ -70,7 +70,7 @@ static FAILED_SAVES: std::sync::Mutex<Vec<(PathBuf, String, String)>> = std::syn
 const MOST_FAILED_SAVES_KEPT: usize = 64;
 
 fn record_failed_save(root: &Path, name: &str, error: &str) {
-    if let Ok(mut v) = FAILED_SAVES.lock() {
+    if let Ok(mut v) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) {
         v.retain(|(r, n, _)| !(r == root && n == name));
         if v.len() >= MOST_FAILED_SAVES_KEPT {
             v.remove(0);
@@ -82,7 +82,7 @@ fn record_failed_save(root: &Path, name: &str, error: &str) {
 /// The saves into `root` that failed since the last time this was asked, as
 /// (record name, error). Taken, so each is reported once.
 pub fn take_failed_saves(root: &Path) -> Vec<(String, String)> {
-    let Ok(mut v) = FAILED_SAVES.lock() else { return Vec::new() };
+    let Ok(mut v) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) else { return Vec::new() };
     let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *v).into_iter().partition(|(r, _, _)| r == root);
     *v = rest;
     mine.into_iter().map(|(_, n, e)| (n, e)).collect()
@@ -93,7 +93,7 @@ pub fn take_failed_saves(root: &Path) -> Vec<(String, String)> {
 /// once and reused.
 pub fn intern_record_name(name: &str) -> &'static str {
     static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
-    let Ok(mut v) = NAMES.lock() else { return "a record" };
+    let Ok(mut v) = NAMES.lock().or_else(crate::crash::unpoison) else { return "a record" };
     if let Some(n) = v.iter().find(|n| **n == name) {
         return n;
     }

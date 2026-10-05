@@ -217,7 +217,7 @@ mod platform {
             if k.dwExtraInfo != MINE {
                 let mut give_back = None;
                 let mut swallow = false;
-                if let Ok(mut g) = STATE.lock() {
+                if let Ok(mut g) = STATE.lock().or_else(crate::crash::unpoison) {
                     if let Some(s) = g.as_mut() {
                         if k.vkCode as u16 == s.vk {
                             let m = wparam.0 as u32;
@@ -285,13 +285,13 @@ mod platform {
         // The timer: a hold crosses its threshold even with no key repeats.
         // Asleep while the key is up; the hook unparks it on a press.
         let timer = std::thread::spawn(|| loop {
-            let waiting = STATE.lock().ok().and_then(|g| g.as_ref().map(|s| s.gate.waiting_for_hold())).unwrap_or(false);
+            let waiting = STATE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| g.as_ref().map(|s| s.gate.waiting_for_hold())).unwrap_or(false);
             if !waiting {
                 std::thread::park_timeout(std::time::Duration::from_secs(5));
                 continue;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
-            if let Ok(mut g) = STATE.lock() {
+            if let Ok(mut g) = STATE.lock().or_else(crate::crash::unpoison) {
                 if let Some(s) = g.as_mut() {
                     if let Some(e) = s.gate.tick(super::now_ms()) {
                         let _ = s.tx.send(e);
@@ -336,12 +336,12 @@ mod platform {
         let timer = {
             let (tx, gate) = (tx.clone(), gate.clone());
             std::thread::spawn(move || loop {
-                if !gate.lock().map(|g| g.waiting_for_hold()).unwrap_or(false) {
+                if !gate.lock().or_else(crate::crash::unpoison).map(|g| g.waiting_for_hold()).unwrap_or(false) {
                     std::thread::park_timeout(std::time::Duration::from_secs(5));
                     continue;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(20));
-                if let Ok(mut g) = gate.lock() {
+                if let Ok(mut g) = gate.lock().or_else(crate::crash::unpoison) {
                     if let Some(e) = g.tick(now_ms()) {
                         let _ = tx.send(e);
                     }
@@ -364,7 +364,7 @@ mod platform {
                         if c != code {
                             continue;
                         }
-                        if let Ok(mut g) = gate.lock() {
+                        if let Ok(mut g) = gate.lock().or_else(crate::crash::unpoison) {
                             let verdict = if v == 0 { g.up(now_ms()) } else { g.down(now_ms()) };
                             if let Some(e) = verdict.event {
                                 let _ = tx.send(e);

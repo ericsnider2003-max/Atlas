@@ -515,6 +515,8 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "poisoned_locks.rs"]
+mod poisoned_locks;
 #[path = "idle_sleeps.rs"]
 mod idle_sleeps;
 #[path = "errand_pause.rs"]

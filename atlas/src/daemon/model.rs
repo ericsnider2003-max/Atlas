@@ -376,7 +376,7 @@ impl<'a> Daemon<'a> {
             }
             // Ours is the one answering: once it is let go, the next turn
             // asks afresh rather than trusting a minute-old "it's up".
-            if let Ok(mut seen) = self.model_server_seen.lock() {
+            if let Ok(mut seen) = self.model_server_seen.lock().or_else(crate::crash::unpoison) {
                 *seen = None;
             }
             return;
@@ -395,7 +395,7 @@ impl<'a> Daemon<'a> {
         // waits for the answer no more than a moment (28 Sep 2026: every
         // turn scanned the model folder, measured the machine and made an
         // HTTP check of up to ten seconds, on the loop).
-        let up = match self.model_server_seen.lock().ok().and_then(|g| *g) {
+        let up = match self.model_server_seen.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) {
             Some((at, up)) if at.elapsed() < MODEL_SERVER_RECHECK => up,
             _ => match self.probe_model_server(&cfg, &vars, wait) {
                 Some(up) => up,
@@ -484,7 +484,7 @@ impl<'a> Daemon<'a> {
                 (self.model_server_seen.clone(), self.model_probe_busy.clone(), cfg.clone(), vars.clone());
             let spawned = std::thread::Builder::new().name("atlas-model-probe".into()).spawn(move || {
                 let up = crate::models::is_running(&cfg, &crate::models::server_get(), &vars);
-                if let Ok(mut g) = seen.lock() {
+                if let Ok(mut g) = seen.lock().or_else(crate::crash::unpoison) {
                     *g = Some((std::time::Instant::now(), up));
                 }
                 busy.store(false, Ordering::SeqCst);
@@ -496,7 +496,7 @@ impl<'a> Daemon<'a> {
         }
         let until = std::time::Instant::now() + wait;
         while std::time::Instant::now() < until {
-            if let Some((at, up)) = self.model_server_seen.lock().ok().and_then(|g| *g) {
+            if let Some((at, up)) = self.model_server_seen.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) {
                 if at.elapsed() < MODEL_SERVER_RECHECK {
                     return Some(up);
                 }
@@ -565,7 +565,7 @@ impl<'a> Daemon<'a> {
             self.model_running_id = None;
             self.model_started = None;
             self.model_start_tried = None;
-            if let Ok(mut seen) = self.model_server_seen.lock() {
+            if let Ok(mut seen) = self.model_server_seen.lock().or_else(crate::crash::unpoison) {
                 *seen = None;
             }
         }
@@ -1697,7 +1697,7 @@ impl<'a> Daemon<'a> {
         self.model_running_id = None;
         self.model_started = None;
         self.model_start_tried = None;
-        if let Ok(mut seen) = self.model_server_seen.lock() {
+        if let Ok(mut seen) = self.model_server_seen.lock().or_else(crate::crash::unpoison) {
             *seen = None;
         }
         // Built for the new model (its own template), once its server is up.
@@ -1987,7 +1987,7 @@ impl crate::coder::ChatRoom for DaemonRoom<'_> {
         *self.running_id = None;
         *self.started = None;
         *self.start_tried = None;
-        if let Ok(mut s) = self.seen.lock() {
+        if let Ok(mut s) = self.seen.lock().or_else(crate::crash::unpoison) {
             *s = None;
         }
     }
@@ -1996,7 +1996,7 @@ impl crate::coder::ChatRoom for DaemonRoom<'_> {
         // Lazily: it waits for you, as after an idle let-go (`model_rested`).
         *self.rested = !now;
         *self.start_tried = None;
-        if let Ok(mut s) = self.seen.lock() {
+        if let Ok(mut s) = self.seen.lock().or_else(crate::crash::unpoison) {
             *s = None;
         }
     }

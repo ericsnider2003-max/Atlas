@@ -298,14 +298,14 @@ impl Hotkeys {
     /// Push-to-talk is held right now. What a listen checks to know when to
     /// stop.
     pub fn held(&self) -> bool {
-        self.gate.lock().map(|g| g.is_talking()).unwrap_or(false)
+        self.gate.lock().or_else(crate::crash::unpoison).map(|g| g.is_talking()).unwrap_or(false)
     }
 
     /// `held`, to hand to another thread (the microphone's, which records
     /// while the key is down).
     pub fn held_fn(&self) -> std::sync::Arc<dyn Fn() -> bool + Send + Sync> {
         let gate = self.gate.clone();
-        std::sync::Arc::new(move || gate.lock().map(|g| g.is_talking()).unwrap_or(false))
+        std::sync::Arc::new(move || gate.lock().or_else(crate::crash::unpoison).map(|g| g.is_talking()).unwrap_or(false))
     }
 
     /// For tests and for a platform that feeds keys some other way.
@@ -440,7 +440,7 @@ mod win {
                 if k.vkCode == s.vk && !ours {
                     let msg = wparam.0 as u32;
                     let t = now_ms(s);
-                    let mut g = match s.gate.lock() {
+                    let mut g = match s.gate.lock().or_else(crate::crash::unpoison) {
                         Ok(g) => g,
                         Err(_) => return CallNextHookEx(None, code, wparam, lparam),
                     };
@@ -510,7 +510,7 @@ mod win {
             let timer = std::thread::spawn(move || loop {
                 // Asleep while the key is up; the hook unparks it on a press.
                 // The five seconds only cover a press before TIMER was set.
-                let waiting = SHARED.get().is_some() && timer_gate.lock().map(|g| g.waiting_for_hold()).unwrap_or(false);
+                let waiting = SHARED.get().is_some() && timer_gate.lock().or_else(crate::crash::unpoison).map(|g| g.waiting_for_hold()).unwrap_or(false);
                 if !waiting {
                     std::thread::park_timeout(std::time::Duration::from_secs(5));
                     continue;
@@ -518,7 +518,7 @@ mod win {
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let Some(s) = SHARED.get() else { continue };
                 let t = now_ms(s);
-                let ev = timer_gate.lock().ok().and_then(|mut g| g.tick(t));
+                let ev = timer_gate.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.tick(t));
                 if let Some(e) = ev {
                     if timer_tx.send(e).is_err() {
                         break;

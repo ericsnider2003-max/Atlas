@@ -99,6 +99,7 @@ pub fn please_stop_because(why: Why) {
 /// `please_stop_because` without waking anyone: all a Unix signal handler
 /// may do is touch atomics (the doorbell takes a lock). A nap on Unix looks
 /// at the flag at least every `doorbell::LONGEST_SLEEP_MS` for this reason.
+#[cfg(unix)]
 fn mark_stop(why: Why) {
     let _ = WHY.compare_exchange(0, why.code(), Ordering::SeqCst, Ordering::SeqCst);
     mark_asked();

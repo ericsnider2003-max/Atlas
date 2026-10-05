@@ -170,14 +170,14 @@ impl Gate {
 
     fn set(&self, s: State, why: &str) {
         self.state.store(s.as_u8(), Ordering::SeqCst);
-        if let Ok(mut w) = self.why_not.lock() {
+        if let Ok(mut w) = self.why_not.lock().or_else(crate::crash::unpoison) {
             *w = why.to_string();
         }
     }
 
     /// Why the deep model can't run, when it can't.
     pub fn why_not(&self) -> String {
-        self.why_not.lock().map(|w| w.clone()).unwrap_or_default()
+        self.why_not.lock().or_else(crate::crash::unpoison).map(|w| w.clone()).unwrap_or_default()
     }
 
     fn begin(self: &Arc<Gate>) -> Busy {

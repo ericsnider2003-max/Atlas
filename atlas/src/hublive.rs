@@ -1281,7 +1281,7 @@ impl Daemon<'_> {
     /// What the code's server hands over when a phone replies, for a test
     /// that has no phone.
     pub fn phones_heard_for_test(&self, d: crate::phoneadd::Device) {
-        if let Ok(mut h) = self.phones_heard.lock() {
+        if let Ok(mut h) = self.phones_heard.lock().or_else(crate::crash::unpoison) {
             h.push(d);
         }
     }
@@ -1290,7 +1290,7 @@ impl Daemon<'_> {
     /// sends Atlas out. Called from the page and from the tick, so a phone
     /// added while nobody's looking still goes.
     pub(crate) fn take_heard_phones(&mut self, now: u64) -> Vec<String> {
-        let heard: Vec<crate::phoneadd::Device> = match self.phones_heard.lock() {
+        let heard: Vec<crate::phoneadd::Device> = match self.phones_heard.lock().or_else(crate::crash::unpoison) {
             Ok(mut h) => std::mem::take(&mut *h),
             Err(_) => return Vec::new(),
         };
@@ -1419,7 +1419,7 @@ impl Daemon<'_> {
                     let (t, b, s) = (token.clone(), base.clone(), serving.clone());
                     std::thread::spawn(move || {
                         crate::phoneadd::serve_enrol(listener, &t, &b, MINUTES, &s, &move |d| {
-                            if let Ok(mut h) = heard.lock() {
+                            if let Ok(mut h) = heard.lock().or_else(crate::crash::unpoison) {
                                 h.push(d);
                             }
                         })

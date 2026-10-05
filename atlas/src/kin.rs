@@ -1445,7 +1445,7 @@ pub const ONLINE_SECS: u64 = 15 * 60;
 
 impl Reached {
     pub fn note(&self, name: &str, at: u64) {
-        if let Ok(mut m) = self.last.lock() {
+        if let Ok(mut m) = self.last.lock().or_else(crate::crash::unpoison) {
             let e = m.entry(name.to_lowercase()).or_insert(0);
             *e = (*e).max(at);
         }
@@ -1453,7 +1453,7 @@ impl Reached {
 
     /// Last heard from, if ever.
     pub fn last(&self, name: &str) -> Option<u64> {
-        self.last.lock().ok()?.get(&name.to_lowercase()).copied()
+        self.last.lock().or_else(crate::crash::unpoison).ok()?.get(&name.to_lowercase()).copied()
     }
 
     pub fn load(store: &crate::store::Store) -> Reached {
@@ -1462,7 +1462,7 @@ impl Reached {
     }
 
     pub fn save(&self, store: &crate::store::Store) {
-        if let Ok(m) = self.last.lock() {
+        if let Ok(m) = self.last.lock().or_else(crate::crash::unpoison) {
             let _ = store.save(REACHED, &*m);
         }
     }
@@ -1491,13 +1491,13 @@ pub const KEPT_IDLE_SECS: u64 = 240;
 
 impl TorConnections {
     fn take(&self, onion: &str) -> Option<std::net::TcpStream> {
-        let mut open = self.open.lock().ok()?;
+        let mut open = self.open.lock().or_else(crate::crash::unpoison).ok()?;
         let (s, at) = open.remove(onion)?;
         (at.elapsed().as_secs() < KEPT_IDLE_SECS).then_some(s)
     }
 
     fn keep(&self, onion: &str, s: std::net::TcpStream) {
-        if let Ok(mut open) = self.open.lock() {
+        if let Ok(mut open) = self.open.lock().or_else(crate::crash::unpoison) {
             open.retain(|_, (_, at)| at.elapsed().as_secs() < KEPT_IDLE_SECS);
             if open.len() < MAX_KEPT || open.contains_key(onion) {
                 open.insert(onion.to_string(), (s, std::time::Instant::now()));
@@ -1507,12 +1507,12 @@ impl TorConnections {
 
     /// How many are open right now.
     pub fn open_now_for_test(&self) -> usize {
-        self.open.lock().map(|o| o.len()).unwrap_or(0)
+        self.open.lock().or_else(crate::crash::unpoison).map(|o| o.len()).unwrap_or(0)
     }
 
     /// Let every one go: Tor was restarted, and they all died with it.
     pub fn close_all(&self) {
-        if let Ok(mut open) = self.open.lock() {
+        if let Ok(mut open) = self.open.lock().or_else(crate::crash::unpoison) {
             open.clear();
         }
     }

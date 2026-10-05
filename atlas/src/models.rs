@@ -1661,13 +1661,13 @@ pub const CHAT_RETRY_SECS: u64 = 600;
 /// Is this chat address worth trying now?
 pub fn chat_available(url: &str) -> bool {
     let now = crate::store::now();
-    CHAT_OFF.lock().map(|v| !v.iter().any(|(u, until)| u == url && *until > now)).unwrap_or(true)
+    CHAT_OFF.lock().or_else(crate::crash::unpoison).map(|v| !v.iter().any(|(u, until)| u == url && *until > now)).unwrap_or(true)
 }
 
 /// Note that a chat address failed.
 fn chat_failed(url: &str) {
     let until = crate::store::now() + CHAT_RETRY_SECS;
-    if let Ok(mut v) = CHAT_OFF.lock() {
+    if let Ok(mut v) = CHAT_OFF.lock().or_else(crate::crash::unpoison) {
         v.retain(|(u, _)| u != url);
         v.push((url.to_string(), until));
     }
@@ -1916,7 +1916,7 @@ static LAST_TIMINGS: std::sync::Mutex<Option<ServerTimings>> = std::sync::Mutex:
 /// What the last chat call cost, as the server counted it; taken, so the
 /// next turn's line says only its own.
 pub fn take_last_timings() -> Option<ServerTimings> {
-    LAST_TIMINGS.lock().ok().and_then(|mut g| g.take())
+    LAST_TIMINGS.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.take())
 }
 
 impl ChatStream {
@@ -2314,7 +2314,7 @@ fn chat_call_io(
         return Ok(Err(ChatFail::Other("the model server stopped partway through its reply".into())));
     }
     if let Some(t) = stream.timings {
-        if let Ok(mut g) = LAST_TIMINGS.lock() {
+        if let Ok(mut g) = LAST_TIMINGS.lock().or_else(crate::crash::unpoison) {
             *g = Some(t);
         }
     }

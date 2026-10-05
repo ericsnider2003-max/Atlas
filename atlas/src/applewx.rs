@@ -156,13 +156,13 @@ static ON_PHONE: Mutex<Option<WeatherFn>> = Mutex::new(None);
 /// safe to call from any thread.
 #[no_mangle]
 pub unsafe extern "C" fn atlas_mobile_apple_weather(f: Option<WeatherFn>) {
-    if let Ok(mut g) = ON_PHONE.lock() {
+    if let Ok(mut g) = ON_PHONE.lock().or_else(crate::crash::unpoison) {
         *g = f;
     }
 }
 
 fn from_the_phone(p: &Place) -> Option<Reading> {
-    let f = ON_PHONE.lock().ok().and_then(|g| *g)?;
+    let f = ON_PHONE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g)?;
     let req = CString::new(serde_json::json!({ "lat": p.lat, "lon": p.lon }).to_string()).ok()?;
     let mut buf = vec![0u8; 64 * 1024];
     let rc = unsafe { f(req.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };

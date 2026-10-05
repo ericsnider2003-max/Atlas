@@ -72,14 +72,14 @@ static APPLE: Mutex<Option<AppleFn>> = Mutex::new(None);
 /// safe to call from any thread.
 #[no_mangle]
 pub unsafe extern "C" fn atlas_mobile_apple_model(f: Option<AppleFn>) {
-    if let Ok(mut g) = APPLE.lock() {
+    if let Ok(mut g) = APPLE.lock().or_else(crate::crash::unpoison) {
         *g = f;
     }
 }
 
 /// Is Apple's model there to ask?
 pub(crate) fn registered() -> bool {
-    APPLE.lock().map(|g| g.is_some()).unwrap_or(false)
+    APPLE.lock().or_else(crate::crash::unpoison).map(|g| g.is_some()).unwrap_or(false)
 }
 
 /// Why a request went to Atlas's own model rather than Apple's.
@@ -199,7 +199,7 @@ pub fn read_apple_answer(code: i32, out: &str) -> Apple {
 
 /// Ask Apple's model through the shell's function.
 fn ask_apple(req: &ChatRequest) -> Apple {
-    let Some(f) = APPLE.lock().ok().and_then(|g| *g) else { return Apple::Unavailable };
+    let Some(f) = APPLE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) else { return Apple::Unavailable };
     let Ok(body) = CString::new(request_json(req)) else { return Apple::Failed("the request had a NUL in it".into()) };
     let mut buf = vec![0u8; ANSWER_BYTES];
     let rc = unsafe { f(body.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
@@ -221,14 +221,14 @@ impl AppleFirst {
     }
 
     fn answered_by(&self, who: &'static str) {
-        if let Ok(mut g) = self.last.lock() {
+        if let Ok(mut g) = self.last.lock().or_else(crate::crash::unpoison) {
             *g = Some(who);
         }
     }
 
     /// Who answered the last request: "apple" or "atlas".
     pub fn last_answered_by_for_test(&self) -> Option<&'static str> {
-        self.last.lock().ok().and_then(|g| *g)
+        self.last.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g)
     }
 }
 

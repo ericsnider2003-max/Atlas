@@ -425,7 +425,7 @@ impl FallbackLlm {
     fn try_secondary(&self, system: &str, user: &str) -> Option<Result<String>> {
         let s = self.secondary.as_ref()?;
         let now = now_ms();
-        let allowed = self.breaker.lock().map(|mut b| b.allow(now)).unwrap_or(true);
+        let allowed = self.breaker.lock().or_else(crate::crash::unpoison).map(|mut b| b.allow(now)).unwrap_or(true);
         if !allowed {
             return None;
         }
@@ -443,7 +443,7 @@ impl FallbackLlm {
             ));
         }
         let r = s.complete(&system_out, &user_out).map(|reply| scrub.put_back(&reply));
-        if let Ok(mut b) = self.breaker.lock() {
+        if let Ok(mut b) = self.breaker.lock().or_else(crate::crash::unpoison) {
             match &r {
                 Ok(_) => b.success(),
                 Err(_) => b.failure(now_ms()),
@@ -459,11 +459,11 @@ impl FallbackLlm {
     fn try_secondary_long(&self, system: &str, user: &str, max_tokens: u32) -> Option<Result<LongReply>> {
         let s = self.secondary.as_ref()?;
         let now = now_ms();
-        if !self.breaker.lock().map(|mut b| b.allow(now)).unwrap_or(true) {
+        if !self.breaker.lock().or_else(crate::crash::unpoison).map(|mut b| b.allow(now)).unwrap_or(true) {
             return None;
         }
         let r = Scrubbed(s.clone()).complete_long(system, user, max_tokens);
-        if let Ok(mut b) = self.breaker.lock() {
+        if let Ok(mut b) = self.breaker.lock().or_else(crate::crash::unpoison) {
             match &r {
                 Ok(_) => b.success(),
                 Err(_) => b.failure(now_ms()),

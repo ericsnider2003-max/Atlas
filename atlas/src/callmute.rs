@@ -85,7 +85,7 @@ pub fn addressed() {
     if !is_on() || showing(crate::store::now()) {
         return;
     }
-    let Ok(mut held) = MUTED.lock() else { return };
+    let Ok(mut held) = MUTED.lock().or_else(crate::crash::unpoison) else { return };
     if !held.is_empty() {
         return;
     }
@@ -95,7 +95,7 @@ pub fn addressed() {
 /// You're done talking to Atlas: put back what was muted. What you'd muted
 /// yourself was never touched.
 pub fn release() {
-    let taken: Vec<Muted> = match MUTED.lock() {
+    let taken: Vec<Muted> = match MUTED.lock().or_else(crate::crash::unpoison) {
         Ok(mut held) => std::mem::take(&mut *held),
         Err(_) => return,
     };
@@ -106,7 +106,7 @@ pub fn release() {
 
 /// What's muted right now, for the log.
 pub fn muted_now() -> Vec<Muted> {
-    MUTED.lock().map(|m| m.clone()).unwrap_or_default()
+    MUTED.lock().or_else(crate::crash::unpoison).map(|m| m.clone()).unwrap_or_default()
 }
 
 /// What was asked about it.

@@ -362,11 +362,13 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<st
 pub fn may_send(account: &str, now_ms: u64) -> Result<(), String> {
     static LIMIT: std::sync::OnceLock<std::sync::Mutex<crate::ratelimit::Gcra>> = std::sync::OnceLock::new();
     let lim = LIMIT.get_or_init(|| std::sync::Mutex::new(crate::ratelimit::Gcra::new(30, 3_600_000, 5)));
-    match lim.lock() {
+    match lim.lock().or_else(crate::crash::unpoison) {
         Ok(mut g) => g.check(&account.to_lowercase(), now_ms).map_err(|wait| {
             format!("sending paused: more than 5 in a row from {account} — the next can go in {}s", wait.div_ceil(1000))
         }),
-        // A poisoned lock is a panic elsewhere; not sending is the safe side.
+        // Never taken: `unpoison` keeps the limiter (and its counts) after a
+        // panic elsewhere, so the limit still holds rather than sends
+        // stopping for good (audit Q16).
         Err(_) => Err("sending paused: the send limiter is unavailable".into()),
     }
 }

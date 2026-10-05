@@ -59,7 +59,7 @@ impl<'a> Daemon<'a> {
         // the desk was never heard).
         out.append(&mut self.to_say_aloud);
         self.retry_phone(t);
-        if let Some(line) = self.model_warmed.lock().ok().and_then(|mut w| w.take()) {
+        if let Some(line) = self.model_warmed.lock().or_else(crate::crash::unpoison).ok().and_then(|mut w| w.take()) {
             self.log.info(&line);
         }
         // The Talk page's waiting words, one turn each (`talk_queue`). A

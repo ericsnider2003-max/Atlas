@@ -1632,7 +1632,7 @@ impl Server {
     /// Capped at two seconds, so a run of them can't hold the one
     /// connection open for long.
     fn slow_down_a_guess(&self) {
-        let wait = match self.failures.lock() {
+        let wait = match self.failures.lock().or_else(crate::crash::unpoison) {
             Ok(mut f) => {
                 f.failed(crate::store::now());
                 f.delay_ms()
@@ -1647,7 +1647,7 @@ impl Server {
     /// Something to tell you when wrong tokens keep arriving — a run of them
     /// is something other than you trying.
     pub fn guesses_worth_mentioning(&self) -> Option<String> {
-        self.failures.lock().ok().and_then(|f| f.worth_mentioning())
+        self.failures.lock().or_else(crate::crash::unpoison).ok().and_then(|f| f.worth_mentioning())
     }
 
     pub fn port(&self) -> u16 {
@@ -1892,7 +1892,7 @@ impl Server {
         // `route_handoff`, which is the property that keeps a peer token
         // incapable of reaching a hub page.
         let is_peer = match (&self.signals, given.as_deref()) {
-            (Some(door), Some(t)) => door.lock().map(|d| d.knows(t)).unwrap_or(false),
+            (Some(door), Some(t)) => door.lock().or_else(crate::crash::unpoison).map(|d| d.knows(t)).unwrap_or(false),
             _ => false,
         };
         if !is_hub && !is_peer {
@@ -1903,7 +1903,7 @@ impl Server {
             return Ok(None);
         }
         if is_hub {
-            if let Ok(mut f) = self.failures.lock() {
+            if let Ok(mut f) = self.failures.lock().or_else(crate::crash::unpoison) {
                 f.succeeded();
             }
         }
@@ -2134,7 +2134,7 @@ type LateTalk = std::sync::Arc<std::sync::Mutex<Vec<(String, bool)>>>;
 /// A Talk page message given up on, kept rather than dropped.
 fn keep_if_talk(action: &Action, late: &LateTalk) {
     if let Some(talk) = talk_in(action) {
-        if let Ok(mut v) = late.lock() {
+        if let Ok(mut v) = late.lock().or_else(crate::crash::unpoison) {
             v.push(talk);
         }
     }
@@ -2337,7 +2337,7 @@ impl Serving {
     }
 
     fn say(&self, line: String) {
-        if let Ok(mut n) = self.news.lock() {
+        if let Ok(mut n) = self.news.lock().or_else(crate::crash::unpoison) {
             n.push(line);
         }
     }
@@ -2662,7 +2662,7 @@ impl HubDoor {
 
     /// Talk page messages given up on since last asked, oldest first.
     pub fn take_late_talk(&self) -> Vec<(String, bool)> {
-        self.late.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+        self.late.lock().or_else(crate::crash::unpoison).map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
     }
 
     /// Is anything listening yet?
@@ -2673,7 +2673,7 @@ impl HubDoor {
     /// What there is to say about the door since last asked: its port
     /// taken, where it opened instead. For the log.
     pub fn take_news(&self) -> Vec<String> {
-        self.news.lock().map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
+        self.news.lock().or_else(crate::crash::unpoison).map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
     }
 
     /// Answer every request waiting now, without waiting for more.

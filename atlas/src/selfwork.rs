@@ -1336,7 +1336,7 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
     // minutes (2 Oct 2026: asked every tick, it was most of the daemon's
     // idle CPU), and is checked still to be a checkout before it's reused.
     static WALKED: std::sync::Mutex<Option<(String, std::time::Instant, Option<PathBuf>)>> = std::sync::Mutex::new(None);
-    if let Ok(w) = WALKED.lock() {
+    if let Ok(w) = WALKED.lock().or_else(crate::crash::unpoison) {
         if let Some((h, at, found)) = w.as_ref() {
             if *h == home && at.elapsed() < std::time::Duration::from_secs(600) && found.as_ref().map_or(true, |p| is_a_source_checkout(p)) {
                 return found.clone();
@@ -1344,7 +1344,7 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
         }
     }
     let found = walk_home_for_source(&home);
-    if let Ok(mut w) = WALKED.lock() {
+    if let Ok(mut w) = WALKED.lock().or_else(crate::crash::unpoison) {
         *w = Some((home, std::time::Instant::now(), found.clone()));
     }
     found

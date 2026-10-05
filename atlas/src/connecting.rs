@@ -382,7 +382,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
     // Every half minute is plenty for links read every 15; the store isn't
     // read every second for nothing.
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let waiting = READ.lock().map(|r| !r.is_empty()).unwrap_or(false) || SIGNED.lock().map(|r| !r.is_empty()).unwrap_or(false);
+    let waiting = READ.lock().or_else(crate::crash::unpoison).map(|r| !r.is_empty()).unwrap_or(false) || SIGNED.lock().or_else(crate::crash::unpoison).map(|r| !r.is_empty()).unwrap_or(false);
     if !waiting && now.saturating_sub(LAST.load(std::sync::atomic::Ordering::Relaxed)) < 30 {
         return;
     }
@@ -393,7 +393,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
     if links.is_empty() {
         return;
     }
-    let came: Vec<(String, Result<String, String>)> = READ.lock().map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
+    let came: Vec<(String, Result<String, String>)> = READ.lock().or_else(crate::crash::unpoison).map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
     let mut changed = false;
     for (url, got) in came {
         let Some(l) = links.iter_mut().find(|l| l.url == url) else { continue };
@@ -423,7 +423,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
                 let got = token
                     .map_err(|e| format!("its sign-in couldn't be read from the vault ({e})"))
                     .and_then(|t| oauthlink::calendar_ics(&crate::social::apis::Https, p, &t, now));
-                if let Ok(mut q) = READ.lock() {
+                if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                     q.push((url, got));
                 }
             });
@@ -436,7 +436,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
                     crate::http::https_get(&host, &path, std::time::Duration::from_secs(20)).map_err(|e| e.to_string())
                 })
                 .and_then(|r| if r.ok() { Ok(r.body) } else { Err(format!("the calendar's site answered {}", r.status)) });
-            if let Ok(mut q) = READ.lock() {
+            if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                 q.push((url, got));
             }
         });
@@ -525,7 +525,7 @@ fn start_signin(d: &mut Daemon, p: Provider, fields: &[(String, String)]) -> Rep
         let got = wait_for_code(&listeners, p, &state).and_then(|code| {
             oauthlink::exchange(&crate::social::apis::Https, p, &code, &redirect, &verifier)
         });
-        if let Ok(mut q) = SIGNED.lock() {
+        if let Ok(mut q) = SIGNED.lock().or_else(crate::crash::unpoison) {
             q.push(got);
         }
     });
@@ -580,7 +580,7 @@ fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) 
 /// Keep what finished sign-ins brought back: the token in the vault, the
 /// calendar in the list, and (Microsoft) the Outlook mailbox in mail.
 fn keep_signed_in(d: &mut Daemon, now: u64) {
-    let came: Vec<Result<oauthlink::SignedIn, String>> = SIGNED.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    let came: Vec<Result<oauthlink::SignedIn, String>> = SIGNED.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
     for got in came {
         let said = match got {
             Err(e) => format!("Nothing was connected: {e}."),

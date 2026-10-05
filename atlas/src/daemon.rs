@@ -3612,7 +3612,7 @@ impl crate::brain::Llm for CountedLlm<'_> {
     fn complete(&self, system: &str, user: &str) -> crate::error::Result<String> {
         let started = std::time::Instant::now();
         let r = self.inner.complete(system, user);
-        if let Ok(mut c) = self.calls.lock() {
+        if let Ok(mut c) = self.calls.lock().or_else(crate::crash::unpoison) {
             c.push(SeatCall {
                 took_ms: started.elapsed().as_millis() as u64,
                 prompt_chars: system.len() + user.len(),

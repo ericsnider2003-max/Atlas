@@ -381,7 +381,7 @@ fn spotter(root: &Path) -> Option<Loaded> {
 pub fn heard_name(root: &Path, samples: &[i16]) -> Option<bool> {
     let s = spotter(root)?.ok()?;
     let f: Vec<f32> = samples.iter().map(|&v| v as f32 / 32768.0).collect();
-    let g = s.lock().ok()?;
+    let g = s.lock().or_else(crate::crash::unpoison).ok()?;
     Some(g.heard(&f))
 }
 

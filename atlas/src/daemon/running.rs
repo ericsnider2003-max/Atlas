@@ -433,10 +433,10 @@ impl<'a> Daemon<'a> {
             // The typing watcher: which windows Atlas is typing in itself
             // (it keeps out of those), and anything it has to say.
             if self.typing_thread.is_some() {
-                if let Ok(mut b) = self.typing_busy.lock() {
+                if let Ok(mut b) = self.typing_busy.lock().or_else(crate::crash::unpoison) {
                     *b = self.working_for_you.iter().map(|w| w.win.0).collect();
                 }
-                let said: Vec<String> = self.typing_said.lock().map(|mut s| std::mem::take(&mut *s)).unwrap_or_default();
+                let said: Vec<String> = self.typing_said.lock().or_else(crate::crash::unpoison).map(|mut s| std::mem::take(&mut *s)).unwrap_or_default();
                 for line in said {
                     self.say(mouth, &line);
                 }

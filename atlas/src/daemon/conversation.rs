@@ -464,7 +464,7 @@ impl<'a> Daemon<'a> {
                     Ok(_) => format!("timing: the model read the start of the conversation in {}ms", started.elapsed().as_millis()),
                     Err(e) => format!("the model couldn't read ahead: {e}"),
                 };
-                if let Ok(mut s) = said.lock() {
+                if let Ok(mut s) = said.lock().or_else(crate::crash::unpoison) {
                     *s = Some(line);
                 }
             })
@@ -495,7 +495,7 @@ impl<'a> Daemon<'a> {
         let (tx, rx) = std::sync::mpsc::channel();
         let parser = self.parser.clone();
         let partial = self.talk_partial.clone();
-        if let Ok(mut p) = partial.lock() {
+        if let Ok(mut p) = partial.lock().or_else(crate::crash::unpoison) {
             p.clear();
         }
         let by_chat = llm.native_chat();
@@ -511,7 +511,7 @@ impl<'a> Daemon<'a> {
             let d = brain.converse_noting(
                 &turn,
                 &mut |piece| {
-                    if let Ok(mut p) = partial.lock() {
+                    if let Ok(mut p) = partial.lock().or_else(crate::crash::unpoison) {
                         p.push_str(piece);
                     }
                     for s in sentences.push(piece) {
@@ -553,7 +553,7 @@ impl<'a> Daemon<'a> {
     fn start_rephrase(&mut self, p: PendingTurn, ask: RephraseAsk) {
         let (tx, rx) = std::sync::mpsc::channel();
         let partial = self.talk_partial.clone();
-        if let Ok(mut pp) = partial.lock() {
+        if let Ok(mut pp) = partial.lock().or_else(crate::crash::unpoison) {
             pp.clear();
         }
         let found: String = ask.written.chars().take(REPHRASE_INPUT_CHARS).collect();
@@ -571,7 +571,7 @@ impl<'a> Daemon<'a> {
             let _talking = talking;
             let mut sentences = brain::Sentences::default();
             let r = llm.chat(&req, &mut |piece| {
-                if let Ok(mut pp) = partial.lock() {
+                if let Ok(mut pp) = partial.lock().or_else(crate::crash::unpoison) {
                     pp.push_str(piece);
                 }
                 for s in sentences.push(piece) {
@@ -594,7 +594,7 @@ impl<'a> Daemon<'a> {
     /// Finish the rewording of a tool's result: the model's words, or the
     /// tool's own if it had none.
     fn finish_rephrase(&mut self, p: PendingTurn, ask: RephraseAsk, d: brain::Decision) -> String {
-        if let Ok(mut partial) = self.talk_partial.lock() {
+        if let Ok(mut partial) = self.talk_partial.lock().or_else(crate::crash::unpoison) {
             partial.clear();
         }
         // Paused meanwhile: the tool's own words stand (they are already in
@@ -645,7 +645,7 @@ impl<'a> Daemon<'a> {
         if let Some(ask) = p.rephrasing.take() {
             return self.finish_rephrase(p, ask, d);
         }
-        if let Ok(mut partial) = self.talk_partial.lock() {
+        if let Ok(mut partial) = self.talk_partial.lock().or_else(crate::crash::unpoison) {
             partial.clear();
         }
         if !self.attention.allows(crate::attention::hear(&p.said)) {
@@ -664,7 +664,7 @@ impl<'a> Daemon<'a> {
         self.decided_already = None;
         self.decided_in_ms = None;
         self.by_chat = false;
-        if let Ok(mut partial) = self.talk_partial.lock() {
+        if let Ok(mut partial) = self.talk_partial.lock().or_else(crate::crash::unpoison) {
             partial.clear();
         }
         if let Some(ask) = self.rephrase_ask.take() {
@@ -695,7 +695,7 @@ impl<'a> Daemon<'a> {
     /// turn is taken off the queue and says why on the page.
     pub(super) fn drop_pending_turn(&mut self, t: u64, why: &str) -> bool {
         let Some(p) = self.pending_turn.take() else { return false };
-        if let Ok(mut partial) = self.talk_partial.lock() {
+        if let Ok(mut partial) = self.talk_partial.lock().or_else(crate::crash::unpoison) {
             partial.clear();
         }
         if let Some((said, aloud, before)) = p.talk {
@@ -795,7 +795,7 @@ impl<'a> Daemon<'a> {
 
     /// What the model has written so far for the turn in flight.
     pub fn talk_so_far(&self) -> String {
-        self.talk_partial.lock().map(|p| p.clone()).unwrap_or_default()
+        self.talk_partial.lock().or_else(crate::crash::unpoison).map(|p| p.clone()).unwrap_or_default()
     }
 
     /// Every Talk page turn ends with a reply on the page.
