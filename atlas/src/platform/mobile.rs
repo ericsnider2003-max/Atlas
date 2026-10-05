@@ -24,6 +24,10 @@ use crate::error::{AtlasError, Result};
 pub struct MobilePlatform;
 
 impl Platform for MobilePlatform {
+    fn device_kind(&self) -> crate::sync::Kind {
+        crate::sync::Kind::Standalone
+    }
+
     /// A phone app does not own or enumerate the display the way a desktop
     /// window manager does, so there are no monitors to arrange things across.
     /// Empty rather than an error: the orchestration that asks "where are the

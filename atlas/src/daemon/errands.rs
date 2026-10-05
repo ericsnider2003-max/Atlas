@@ -47,17 +47,20 @@ impl<'a> Daemon<'a> {
         // Window jobs hold by themselves while Atlas is paused
         // (`work_for_you`); counted here so the answer is the whole truth.
         let windows = self.working_for_you.iter().filter(|w| !w.held).count();
-        let ids: Vec<u64> = self
+        let held: Vec<(u64, bool)> = self
             .crew_candidates()
             .into_iter()
             .filter(|c| !c.paused && c.can_hold)
-            .map(|c| c.id)
+            .map(|c| (c.id, c.label == "housekeeping"))
             .collect();
-        for id in &ids {
+        for (id, _) in &held {
             self.crew.pause(*id);
         }
-        self.held_by_pause.extend(ids.iter().copied());
-        ids.len() + windows
+        self.held_by_pause.extend(held.iter().map(|(id, _)| *id));
+        // Atlas's own hourly tidy holds too, but it isn't one of yours to
+        // count (2 Oct 2026: "Holding 2 errands" with one asked for, when the
+        // reclaim sweep happened to be mid-survey).
+        held.iter().filter(|(_, own)| !own).count() + windows
     }
 
     /// "Stop", "pause the research", "carry on with the backup", "cancel the

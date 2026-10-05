@@ -197,7 +197,7 @@ pub fn curl_piece() -> Option<Piece> {
 }
 
 /// The curl to use: the fetched one on Windows, the system's elsewhere.
-fn curl(root: &Path) -> PathBuf {
+pub(crate) fn pinned_curl(root: &Path) -> PathBuf {
     let ours = root.join("tools").join("curl").join(if cfg!(windows) { "curl.exe" } else { "curl" });
     if ours.is_file() {
         ours
@@ -298,7 +298,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
 
 fn run_curl(root: &Path, headers: &Path, d: &Device, body: &str) -> Outcome {
     use std::io::Write;
-    let mut child = match crate::tools::command(curl(root))
+    let mut child = match crate::tools::command(pinned_curl(root))
         .args(push_args(headers, d))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

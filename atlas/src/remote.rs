@@ -271,3 +271,103 @@ pub fn asking_before_it_runs(id: u64, what: &str) -> String {
          `confirm_side_effects` if you'd rather I never asked."
     )
 }
+
+// ============ the phone and the laptop, over sync (item 24) ============
+//
+// The phone asks with a sync event in your sealed bundles; the laptop
+// answers the same way. Only your own devices take either: a bundle that
+// isn't sealed with your household key is never read for these.
+
+/// A request from a phone: `ask:<device>:<n>`.
+pub const ASK_PREFIX: &str = "ask:";
+/// Your yes to a held one: `askyes:<device>:<n>`.
+pub const YES_PREFIX: &str = "askyes:";
+/// The laptop's answer: `answer:<device>:<n>`.
+pub const ANSWER_PREFIX: &str = "answer:";
+
+/// The request in "ask the laptop to find the contract", "on my laptop,
+/// check the render finished", "have the laptop look up …". `None` when the
+/// words don't hand anything to the laptop.
+pub fn handed_over(said: &str) -> Option<String> {
+    let s = said.trim().trim_end_matches(['.', '!', '?']).trim();
+    let l = s.to_lowercase();
+    const LEADS: &[&str] = &[
+        "ask the laptop to ", "ask my laptop to ", "ask the computer to ", "ask my computer to ",
+        "have the laptop ", "have my laptop ", "get the laptop to ", "get my laptop to ",
+        "tell the laptop to ", "tell my laptop to ", "on the laptop, ", "on my laptop, ",
+        "on the laptop ", "on my laptop ", "on my computer, ", "on my computer ",
+    ];
+    let lead = LEADS.iter().find(|p| l.starts_with(*p))?;
+    let rest = s[lead.len()..].trim().trim_start_matches(',').trim();
+    // "on my laptop is there…" asks about the laptop, it doesn't hand it work.
+    (rest.split_whitespace().count() >= 2).then(|| rest.to_string())
+}
+
+/// "Go ahead on the laptop", "yes, run it on the laptop".
+pub fn go_ahead_on_the_laptop(said: &str) -> bool {
+    let l = said.trim().trim_end_matches(['.', '!']).to_lowercase();
+    matches!(
+        l.trim_start_matches("yes, ").trim_start_matches("yes ").trim(),
+        "go ahead on the laptop" | "go ahead on my laptop" | "run it on the laptop" | "run it on my laptop" | "do it on the laptop" | "do it on my laptop"
+    )
+}
+
+pub fn ask_to_carry(device: &str, n: u64, what: &str, at: u64) -> (String, String, String) {
+    (format!("{ASK_PREFIX}{device}:{n}"), "ask".into(), serde_json::json!({ "what": what, "at": at }).to_string())
+}
+
+/// `(device, n, what, at)` from an ask event.
+pub fn read_ask(id: &str, to: &str) -> Option<(String, u64, String, u64)> {
+    let (device, n) = id.strip_prefix(ASK_PREFIX)?.rsplit_once(':')?;
+    let v: serde_json::Value = serde_json::from_str(to).ok()?;
+    let what = v.get("what")?.as_str()?.trim();
+    if device.is_empty() || what.is_empty() || what.len() > 2000 {
+        return None;
+    }
+    Some((device.into(), n.parse().ok()?, what.into(), v.get("at").and_then(|a| a.as_u64()).unwrap_or(0)))
+}
+
+pub fn yes_to_carry(device: &str, n: u64) -> (String, String, String) {
+    (format!("{YES_PREFIX}{device}:{n}"), "askyes".into(), "yes".into())
+}
+
+pub fn read_yes(id: &str) -> Option<(String, u64)> {
+    let (device, n) = id.strip_prefix(YES_PREFIX)?.rsplit_once(':')?;
+    Some((device.into(), n.parse().ok()?))
+}
+
+pub fn answer_to_carry(device: &str, n: u64, what: &str, text: &str, done: bool) -> (String, String, String) {
+    (
+        format!("{ANSWER_PREFIX}{device}:{n}"),
+        "answer".into(),
+        serde_json::json!({ "what": what, "text": text, "done": done }).to_string(),
+    )
+}
+
+/// `(device, n, what, text, done)` from an answer event.
+pub fn read_answer(id: &str, to: &str) -> Option<(String, u64, String, String, bool)> {
+    let (device, n) = id.strip_prefix(ANSWER_PREFIX)?.rsplit_once(':')?;
+    let v: serde_json::Value = serde_json::from_str(to).ok()?;
+    Some((
+        device.into(),
+        n.parse().ok()?,
+        v.get("what")?.as_str()?.into(),
+        v.get("text")?.as_str()?.into(),
+        v.get("done").and_then(|d| d.as_bool()).unwrap_or(true),
+    ))
+}
+
+/// Said on the phone straight away.
+pub fn sent_to_the_laptop(what: &str) -> String {
+    format!(
+        "Sent \"{what}\" to your laptop -- I'll tell you when it answers. If it's asleep, it runs when it wakes."
+    )
+}
+
+/// The laptop's answer for something it won't run without you.
+pub fn held_for_your_yes(what: &str) -> String {
+    format!(
+        "\"{what}\" might change something on the laptop, so it's waiting for your yes. Say \"go ahead on the laptop\" \
+         and it runs."
+    )
+}

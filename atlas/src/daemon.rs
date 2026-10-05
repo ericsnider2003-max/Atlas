@@ -76,6 +76,8 @@ mod turn;
 mod tasks;
 mod operating;
 mod learning;
+mod askthelaptop;
+mod onethread;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -929,6 +931,11 @@ pub struct Daemon<'a> {
     pub run: crate::channel::Run,
     /// Typed, linked memory. Kinds decide decay and precedence.
     pub facts: crate::facts::Book,
+    /// What arrived from your other devices, so it isn't carried straight
+    /// back out (`onethread`, item 16).
+    pub(crate) arrived_by_sync: onethread::ArrivedBySync,
+    /// A turn added to the sync log and it isn't written out yet.
+    pub(crate) synclog_unsaved: bool,
     /// Everything Atlas knows, merged rather than accumulated.
     pub known: Vec<crate::consolidate::Claim>,
     /// A line for each thing let go to make room, so "I knew something
@@ -1831,6 +1838,8 @@ impl<'a> Daemon<'a> {
             signals: Vec::new(),
             run: crate::channel::Run::default(),
             facts: crate::facts::Book::load(&store_for_load),
+            arrived_by_sync: Default::default(),
+            synclog_unsaved: false,
             known,
             stones: store_for_load.load("known_stones"),
             vocab: store_for_load.load("vocabulary"),

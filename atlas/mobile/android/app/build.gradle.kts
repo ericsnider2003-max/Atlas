@@ -32,4 +32,11 @@ val shipConfig by tasks.registering(Copy::class) {
 }
 tasks.named("preBuild") { dependsOn(shipConfig) }
 
+dependencies {
+    // UnifiedPush (Apache-2.0): the laptop reaches this phone with Atlas
+    // closed, through whichever distributor the phone has (item 15). It
+    // opens the Web Push messages the laptop seals (RFC 8291).
+    implementation("org.unifiedpush.android:connector:3.3.5")
+}
+
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }

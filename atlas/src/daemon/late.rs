@@ -1869,7 +1869,6 @@ impl<'a> Daemon<'a> {
                         transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
                     }
                 }
-                drop(sound);
             }
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
