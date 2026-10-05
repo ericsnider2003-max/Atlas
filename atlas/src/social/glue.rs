@@ -927,6 +927,14 @@ impl Daemon<'_> {
             }
             "google" => {
                 let (id, secret) = (field("id"), field("secret"));
+                // Atlas's own Google registration (`oauthlink`, published, so
+                // the sign-in doesn't lapse weekly) unless you gave your own.
+                if id.is_empty() && secret.is_empty() {
+                    return match crate::oauthlink::google_secret() {
+                        Some(sec) => self.social_google(crate::oauthlink::GOOGLE_CLIENT_ID, &sec, t),
+                        None => crate::oauthlink::NO_GOOGLE_SECRET.into(),
+                    };
+                }
                 if id.is_empty() || secret.is_empty() {
                     return "Both the client ID and its secret are needed (Google Cloud console, Credentials, a \"Desktop app\" client).".into();
                 }

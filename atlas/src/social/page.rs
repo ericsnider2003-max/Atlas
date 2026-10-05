@@ -147,11 +147,18 @@ pub fn render_social(v: &View) -> String {
         "<label>Which <select name=name><option value=youtube>YouTube API key</option><option value=instagram>Instagram token</option><option value=threads>Threads token</option><option value=facebook>Facebook Page token</option></select></label> <label>Key <input name=secret type=password required autocomplete=off></label>",
         "Keep it",
     ));
+    if crate::oauthlink::google_secret().is_some() {
+        b.push_str(&form("google", "", "Sign in with Google for YouTube Analytics"));
+        b.push_str("<details><summary>Use your own Google app instead</summary>");
+    }
     b.push_str(&form(
         "google",
         "<label>Google client ID <input name=id required size=30></label> <label>Client secret <input name=secret type=password required autocomplete=off></label>",
         "Sign in for YouTube Analytics",
     ));
+    if crate::oauthlink::google_secret().is_some() {
+        b.push_str("</details>");
+    }
     b.push_str(&form(
         "tiktok-start",
         "<label>TikTok client key <input name=key required size=20></label> <label>Client secret <input name=secret type=password required autocomplete=off></label> <label>Redirect address <input name=redirect required size=30 placeholder='https://'></label>",

@@ -776,6 +776,12 @@ mod through_the_daemon {
         let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(Page::Social)).body;
         assert!(html.contains("Mastodon #rustlang (on mastodon.social)") && html.contains("not read yet"), "the watched source is listed");
         assert!(!html.contains("AIza-not-real"), "a key is never shown back");
+        // 5 Oct 2026: YouTube Analytics signs in with Atlas's own Google
+        // registration; a copy built without its key says so.
+        let back = post(&mut d, &[("what", "google")]);
+        if atlas::oauthlink::google_secret().is_none() {
+            assert!(back.contains("built without Google's sign-in key"), "{back}");
+        }
         // Carried only on a private line, like a passphrase.
         assert!(atlas::server::Action::HubPost { path: "/hub/social".into(), fields: vec![("secret".into(), "x".into())] }.carries_a_secret());
         let _ = std::fs::remove_dir_all(dir);
