@@ -297,6 +297,7 @@ pub fn draw_loop(
     };
     let mut rounds = 0;
     loop {
+        svg = put_loose_animations_in_place(&svg);
         let findings = check(&svg);
         let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocking);
         if !has_blocker {
@@ -326,6 +327,82 @@ pub fn draw_loop(
             }
         }
     }
+}
+
+/// Shapes an animation can be moved into.
+const SHAPES: &[&str] = &["circle", "rect", "ellipse", "line", "path", "polygon", "polyline", "text", "image", "use"];
+
+/// An `<animate>` written straight under `<svg>`, right after the shape it
+/// was meant for, animates the `<svg>` itself -- which has no `cy` -- so
+/// nothing moves. The commonest draft the laptop's model gave for "a
+/// bouncing ball" (4 Oct 2026: `<circle .../>` then `<animate
+/// attributeName="cy" .../>`, both children of the svg). Put each such
+/// animation inside the shape just before it. Only at the top level, and
+/// only one that names no `href`: one inside a `<g>` is the group's on
+/// purpose.
+pub fn put_loose_animations_in_place(svg: &str) -> String {
+    // (start of the shape's "/>", end of the last animation after it, shape name)
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
+    // The last self-closed shape directly under <svg>, and where its "/>" is.
+    let mut last_shape: Option<(usize, String)> = None;
+    let mut chain_end: Option<usize> = None;
+    let mut i = 0;
+    while let Some(off) = svg[i..].find('<') {
+        let at = i + off;
+        let Some(close) = svg[at..].find('>') else { break };
+        let end = at + close + 1;
+        let tag = &svg[at..end];
+        let between_is_space = |from: usize| svg[from..at].trim().is_empty();
+        if tag.starts_with("<!") || tag.starts_with("<?") {
+            i = end;
+            continue;
+        }
+        if let Some(rest) = tag.strip_prefix("</") {
+            let name = rest.trim_end_matches('>').trim().to_lowercase();
+            if stack.last() == Some(&name) {
+                stack.pop();
+            }
+            last_shape = None;
+            i = end;
+            continue;
+        }
+        let name: String = tag[1..].chars().take_while(|c| c.is_alphanumeric() || *c == ':' || *c == '-').collect::<String>().to_lowercase();
+        let self_closed = tag.ends_with("/>");
+        let top = stack.len() == 1 && stack[0] == "svg";
+        if top && self_closed && name.starts_with("animate") && !tag.to_lowercase().contains("href") {
+            if let Some((shape_at, shape)) = last_shape.clone() {
+                let after = chain_end.unwrap_or(shape_at + 2);
+                if between_is_space(after) {
+                    match edits.last_mut() {
+                        Some(e) if e.0 == shape_at => e.1 = end,
+                        _ => edits.push((shape_at, end, shape)),
+                    }
+                    chain_end = Some(end);
+                    i = end;
+                    continue;
+                }
+            }
+        }
+        if top && self_closed && SHAPES.contains(&name.as_str()) {
+            last_shape = Some((end - 2, name.clone()));
+            chain_end = None;
+        } else {
+            last_shape = None;
+            chain_end = None;
+        }
+        if !self_closed {
+            stack.push(name);
+        }
+        i = end;
+    }
+    let mut out = svg.to_string();
+    for (slash, to, name) in edits.into_iter().rev() {
+        // "<circle .../>" + animations  ->  "<circle ...>" + animations + "</circle>"
+        let anims = out[slash + 2..to].to_string();
+        out.replace_range(slash..to, &format!(">{anims}</{name}>"));
+    }
+    out
 }
 
 /// First draft from the model. Private: the way in is `draw_loop`.
@@ -908,3 +985,35 @@ fn gif_size(b: &[u8]) -> Option<(u32, u32)> {
     let h = u16::from_le_bytes([b[8], b[9]]) as u32;
     Some((w, h))
 }
+
+#[cfg(test)]
+mod loose_animations {
+    use super::put_loose_animations_in_place as fix;
+
+    #[test]
+    fn an_animation_beside_its_shape_goes_inside_it() {
+        let svg = "<svg width=\"200\" height=\"200\">\n  <title>Ball</title>\n  <circle cx=\"100\" cy=\"100\" r=\"20\" fill=\"blue\" />\n  <animate attributeName=\"cy\" values=\"100;140;100\" dur=\"1s\" repeatCount=\"indefinite\" />\n</svg>";
+        let out = fix(svg);
+        assert!(out.contains("fill=\"blue\" >\n  <animate attributeName=\"cy\""), "{out}");
+        assert!(out.contains("repeatCount=\"indefinite\" /></circle>\n</svg>"), "{out}");
+    }
+
+    #[test]
+    fn two_in_a_row_both_go_in() {
+        let svg = "<svg><rect x=\"0\"/><animate attributeName=\"x\" dur=\"1s\"/><animate attributeName=\"y\" dur=\"1s\"/></svg>";
+        assert_eq!(fix(svg), "<svg><rect x=\"0\"><animate attributeName=\"x\" dur=\"1s\"/><animate attributeName=\"y\" dur=\"1s\"/></rect></svg>");
+    }
+
+    #[test]
+    fn what_is_already_right_is_left_alone() {
+        for svg in [
+            "<svg><circle r=\"5\"><animate attributeName=\"r\" dur=\"1s\"/></circle></svg>",
+            "<svg><g><circle r=\"5\"/><animateTransform attributeName=\"transform\" type=\"rotate\" dur=\"1s\"/></g></svg>",
+            "<svg><circle id=\"b\" r=\"5\"/><animate href=\"#b\" attributeName=\"r\" dur=\"1s\"/></svg>",
+            "<svg><circle r=\"5\"/><text>hi</text><animate attributeName=\"r\" dur=\"1s\"/></svg>",
+        ] {
+            assert_eq!(fix(svg), svg);
+        }
+    }
+}
+

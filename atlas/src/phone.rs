@@ -119,8 +119,9 @@ pub fn configured(cfg: &PhoneConfig) -> std::result::Result<(), NotSet> {
     }
     let h = cfg.host.trim();
     if h.is_empty() {
-        // No push server, but an iPhone Apple can reach: that's a way.
-        if apple_can_reach(cfg) {
+        // No push server, but an iPhone Apple can reach or an Android phone
+        // with a UnifiedPush address: that's a way.
+        if apple_can_reach(cfg) || android_can_reach() {
             return Ok(());
         }
         return Err(NotSet::NoHost);
@@ -199,18 +200,29 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
     // One way to reach your phone, two senders (decision 3): the push server
     // (Android, and anything subscribed to it) and Apple's push service for
     // an iPhone. Delivered if either got it.
+    // An Android phone with Atlas closed goes through its UnifiedPush
+    // address (`webpush`), sealed for that phone alone.
     let by_apple = if apple_can_reach(cfg) { Some(crate::apns::send(note, cfg)) } else { None };
+    let by_android = if android_can_reach() { Some(crate::webpush::send(note, cfg)) } else { None };
+    let direct = [by_apple, by_android];
+    if direct.iter().any(|r| matches!(r, Some(Ok(())))) && cfg.host.trim().is_empty() {
+        return Ok(());
+    }
     if cfg.host.trim().is_empty() {
-        return match by_apple {
-            Some(Ok(())) => Ok(()),
-            Some(Err(why)) => Err(crate::error::AtlasError::Platform(why)),
-            None => Err(crate::error::AtlasError::Platform(NotSet::NoHost.plain())),
-        };
+        return Err(crate::error::AtlasError::Platform(
+            direct.into_iter().flatten().find_map(|r| r.err()).unwrap_or_else(|| NotSet::NoHost.plain()),
+        ));
     }
-    match (send_to_server(note, cfg), by_apple) {
-        (Ok(()), _) | (_, Some(Ok(()))) => Ok(()),
-        (Err(e), _) => Err(e),
+    match send_to_server(note, cfg) {
+        Ok(()) => Ok(()),
+        Err(_) if direct.iter().any(|r| matches!(r, Some(Ok(())))) => Ok(()),
+        Err(e) => Err(e),
     }
+}
+
+/// Has an Android phone given Atlas its UnifiedPush address?
+fn android_can_reach() -> bool {
+    !crate::webpush::Devices::load(&crate::roots::state_dir()).devices.is_empty()
 }
 
 /// Is an iPhone reachable through Apple's push service: the key set up, and

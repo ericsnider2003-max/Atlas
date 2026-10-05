@@ -23,6 +23,8 @@ pub struct MockPlatform {
     monitors: Vec<Monitor>,
     /// What `readings` reports: nothing measured unless a test sets it.
     readings: RefCell<crate::health::Readings>,
+    /// The laptop unless a test makes it a phone.
+    kind: std::cell::Cell<crate::sync::Kind>,
     /// How many find_window polls each app needs before its window "appears".
     appears_after: HashMap<String, u32>,
     polls: RefCell<HashMap<String, u32>>,
@@ -98,6 +100,7 @@ impl MockPlatform {
             launched: RefCell::new(HashSet::new()),
             running: RefCell::new(HashMap::new()),
             readings: RefCell::new(crate::health::Readings::default()),
+            kind: std::cell::Cell::new(crate::sync::Kind::Full),
             log: RefCell::new(Vec::new()),
             active: RefCell::new(None),
             next_id: RefCell::new(1),
@@ -130,6 +133,11 @@ impl MockPlatform {
 
     /// Seed the fake OS clipboard, standing in for the person having copied
     /// something. What `read_clipboard` then hands back.
+    /// This mock machine is a phone (`sync::Kind::Standalone`).
+    pub fn be_a_phone_for_test(&self) {
+        self.kind.set(crate::sync::Kind::Standalone);
+    }
+
     /// The disk, memory and battery this mock machine reports.
     pub fn set_readings_for_test(&self, r: crate::health::Readings) {
         *self.readings.borrow_mut() = r;
@@ -206,6 +214,10 @@ impl Platform for MockPlatform {
     fn cloud_folder(&self) -> Option<std::path::PathBuf> {
         None
     }
+    fn device_kind(&self) -> crate::sync::Kind {
+        self.kind.get()
+    }
+
     /// Nothing is installed on a mock machine.
     fn find_program(&self, _name: &str) -> Option<String> {
         None

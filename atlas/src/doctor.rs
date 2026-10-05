@@ -786,11 +786,12 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     if let Some(t) = tools {
         let set = t.time_zone.trim();
         let now = crate::store::now() as i64;
-        let (ok, detail) = if set.is_empty() || set == "UTC" {
-            let hint = crate::tz::suggest()
-                .map(|z| format!(" This computer says {} — pick it under Settings → Time zone.", z.name))
-                .unwrap_or_default();
-            (true, format!("not set, so every time is UTC.{hint}"))
+        let (ok, detail) = if set.is_empty() || set.eq_ignore_ascii_case("automatic") {
+            // Unset means this computer's own clock (`tz::home`, since 24 Sep
+            // 2026). The doctor still said "UTC" until 4 Oct 2026, which was
+            // wrong: times were already local.
+            let z = crate::tz::machine();
+            (true, format!("automatic: this computer's clock ({}), {} now.", z.name, z.abbreviation_at(now)))
         } else {
             match crate::tz::Zone::named(set) {
                 Some(z) => (true, format!("{} — {} now, {:+.1} hours from UTC.", z.name, z.abbreviation_at(now), z.offset_at(now) as f64 / 3600.0)),

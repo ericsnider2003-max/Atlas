@@ -288,7 +288,7 @@ pub fn motion_findings(frames: &[Rgba]) -> Vec<Finding> {
             severity: Severity::Blocking,
             rule: "moves when played".into(),
             detail: format!(
-                "played in a browser, all {} frames came out the same picture — nothing moved",
+                "played in a browser, all {} frames came out the same picture — nothing moved (an animation the browser rejects does this: calcMode=\"spline\" with no keySplines, begin=\"click\" or \"indefinite\", or keyTimes that don't match the values)",
                 frames.len()
             ),
         }];

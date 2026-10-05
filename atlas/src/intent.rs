@@ -1205,6 +1205,16 @@ fn understood_all_of_it(
         }
     }
 
+    // "Draft a post for linkedin about finishing a project": the channel,
+    // then what it's about (self-test, 4 Oct 2026: refused here, routed by
+    // the model in 12 seconds, and the topic was lost on the way).
+    if intent == "draft_post" {
+        if let Some((channel, about)) = rest.split_once(" about ") {
+            if channel.split_whitespace().count() <= 2 && !about.trim().is_empty() {
+                return true;
+            }
+        }
+    }
     // A name that is really a clause. An app is one or two words with no
     // conjunction in it.
     if name_like {

@@ -896,6 +896,8 @@ mod two_brains;
 mod a_real_model_answers_him;
 #[path = "a_normal_voice_is_heard.rs"]
 mod a_normal_voice_is_heard;
+#[path = "everyday_without_the_model.rs"]
+mod everyday_without_the_model;
 #[path = "atlas_looks_when_you_ask.rs"]
 mod atlas_looks_when_you_ask;
 #[path = "meaning_picks_the_tool.rs"]
@@ -967,6 +969,10 @@ mod apple_first_then_atlas;
 mod reminders_ring_with_the_app_closed;
 #[path = "reaching_the_iphone_with_atlas_closed.rs"]
 mod reaching_the_iphone_with_atlas_closed;
+#[path = "asking_the_laptop_from_the_phone.rs"]
+mod asking_the_laptop_from_the_phone;
+#[path = "reaching_android_with_atlas_closed.rs"]
+mod reaching_android_with_atlas_closed;
 #[path = "apple_weather_first.rs"]
 mod apple_weather_first;
 #[path = "friends_get_nothing_of_erics.rs"]

@@ -306,6 +306,13 @@ pub trait Platform {
         crate::sync::best_folder().map(|(p, _)| p)
     }
 
+    /// What this device can do (`sync::Kind`): the laptop is `Full`, a phone
+    /// `Standalone` -- which decides whether "ask the laptop to …" is sent
+    /// on or just done here (item 24).
+    fn device_kind(&self) -> crate::sync::Kind {
+        crate::sync::Kind::Full
+    }
+
     /// Where a program is on this machine's PATH (`tools::which`): a coding
     /// agent, before Atlas offers to hand it work.
     fn find_program(&self, name: &str) -> Option<String> {

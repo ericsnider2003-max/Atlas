@@ -127,6 +127,20 @@ impl Daemon<'_> {
                 self.carry_push_address(&token, env, crate::store::now());
                 Reply::ok(&serde_json::json!({ "kept": true }).to_string())
             }
+            Action::WebPushEndpoint(body) => {
+                // `{"endpoint": "https://…", "p256dh": "…", "auth": "…"}` from
+                // the Android app's UnifiedPush registration: carried to your
+                // other devices, so the laptop can reach this phone with Atlas
+                // closed (`webpush`).
+                let v: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                let get = |k: &str| v.get(k).and_then(|t| t.as_str()).unwrap_or("").trim().to_string();
+                let (endpoint, p256dh, auth) = (get("endpoint"), get("p256dh"), get("auth"));
+                if !crate::webpush::looks_like_an_address(&endpoint, &p256dh, &auth) {
+                    return Reply { status: 400, body: serde_json::json!({ "error": "That isn't a push address." }).to_string(), ..Reply::default() };
+                }
+                self.carry_web_push_address(&endpoint, &p256dh, &auth, crate::store::now());
+                Reply::ok(&serde_json::json!({ "kept": true }).to_string())
+            }
             Action::PhoneCalendar(body) => {
                 let now = crate::store::now();
                 Reply::ok(&self.phone_calendar(&body, now).to_string())

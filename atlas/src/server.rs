@@ -670,6 +670,8 @@ pub enum Action {
     /// The iPhone app's push address, for its own Atlas to carry to the
     /// laptop (item 15).
     PushToken(String),
+    /// An Android phone's UnifiedPush address and keys (item 15).
+    WebPushEndpoint(String),
     /// A voice's sample, to hear it before downloading it (`voicepick`).
     VoiceSample(String),
     /// The Accounts page's vault forms: set a first passphrase, change it,
@@ -1202,6 +1204,7 @@ pub fn route(r: &Request) -> Option<Action> {
         ("GET", "/hub/changed.json") => Some(Action::Changed(query_field(&r.query, "p").unwrap_or_default())),
         ("POST", "/hub/calendar/phone") => Some(Action::PhoneCalendar(r.body.clone())),
         ("POST", "/hub/push-token") => Some(Action::PushToken(r.body.clone())),
+        ("POST", "/hub/web-push-endpoint") => Some(Action::WebPushEndpoint(r.body.clone())),
         ("GET", "/hub/voice-sample") => Some(Action::VoiceSample(query_field(&r.query, "id")?)),
         ("GET", path) => crate::hub::route(path).map(|p| {
             // Only the pages that read their query get it; everything else

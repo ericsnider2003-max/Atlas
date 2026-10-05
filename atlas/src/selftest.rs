@@ -283,6 +283,32 @@ impl Verdict {
     }
 }
 
+/// `reply` without what it quotes between curly quotes.
+fn unquoted(reply: &str) -> String {
+    let mut out = String::with_capacity(reply.len());
+    let mut depth = 0u32;
+    for c in reply.chars() {
+        match c {
+            // The quote marks stay, so what's around them reads as said.
+            '\u{201c}' => {
+                if depth == 0 {
+                    out.push(c);
+                }
+                depth += 1;
+            }
+            '\u{201d}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    out.push(c);
+                }
+            }
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
 /// The ways a reply is broken, if this one is: what the capability sweep
 /// (`tests/every_ability_answers.rs`) checks, here so the machine checks it too.
 fn reply_fault(reply: &str) -> Option<&'static str> {
@@ -301,7 +327,10 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
             return Some("a slip in the words");
         }
     }
-    if !r.contains('\n') && r.contains("  ") {
+    // Two spaces in Atlas's own words are a slip; in words it quotes (what
+    // you copied, what a page says) they are yours (4 Oct 2026: a clipboard
+    // with "structure.  I need" failed the clipboard command).
+    if !r.contains('\n') && unquoted(r).contains("  ") {
         return Some("a slip in the words");
     }
     for stub in ["not built yet", "isn't built", "not implemented", "todo!", "unimplemented", "coming soon"] {
@@ -317,6 +346,11 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
     }
     None
 }
+
+/// Commands whose answer is written by the model, by design: held to the
+/// model's fifteen seconds, not the three a rule-answered command gets.
+const WRITES_WITH_THE_MODEL: &[&str] =
+    &["explain_code", "use_clipboard", "draft_post", "translate", "research", "brief_on", "meeting_prep", "read_document", "animate", "design_review"];
 
 /// What one reply says about the command, from its words, the time it took,
 /// where it was routed and where it should have gone.
@@ -355,7 +389,7 @@ fn judge_reply(reply: &str, ms: u64, reached: &str, expected: Option<&str>, woul
     }
     // A model answering a sentence takes seconds on a laptop; a command
     // answered without one shouldn't.
-    if ms > 15_000 || (ms > 3_000 && reached != "unknown" && reached != "say" && reached != "ask") {
+    if ms > 15_000 || (ms > 3_000 && reached != "unknown" && reached != "say" && reached != "ask" && !WRITES_WITH_THE_MODEL.contains(&reached)) {
         return Verdict::Slow(ms);
     }
     if would_start {
@@ -729,6 +763,9 @@ mod tests {
         assert_eq!(judge_reply("It's 7:42 PM.", 10, "say", Some("clock"), false), Verdict::WrongTool("say (wanted clock)".into()));
         assert_eq!(judge_reply("Done.", 9_000, "clock", None, false), Verdict::Slow(9_000));
         assert_eq!(judge_reply("[rehearsed] would back up", 5, "back_up", None, false), Verdict::Rehearsed);
+        // Two spaces inside what it quotes are the quoted text's, not a slip.
+        assert_eq!(judge_reply("You copied: \u{201c}one.  Two.\u{201d}", 10, "use_clipboard", None, false), Verdict::Works);
+        assert_eq!(judge_reply("Done.  Twice.", 10, "clock", None, false), Verdict::Broken("a slip in the words".into()));
     }
 
     #[test]

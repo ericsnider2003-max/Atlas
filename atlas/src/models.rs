@@ -56,6 +56,31 @@ impl Model {
         found.into_iter().next()
     }
 
+    /// `inspect`, remembered for as long as the file is unchanged (same
+    /// size, same modified time). Reading a GGUF's header walks its whole
+    /// vocabulary -- a hundred thousand strings or more per model -- and
+    /// "which model" read every model in the folder each time it was asked
+    /// (self-test, 4 Oct 2026: 7.5 seconds on the laptop).
+    fn inspect_kept(path: &Path) -> Result<Model> {
+        type Kept = std::collections::HashMap<PathBuf, (u64, Option<std::time::SystemTime>, Model)>;
+        static KEPT: std::sync::Mutex<Option<Kept>> = std::sync::Mutex::new(None);
+        let meta = std::fs::metadata(path).ok();
+        let stamp = meta.as_ref().map(|m| (m.len(), m.modified().ok()));
+        if let Some((len, when)) = stamp {
+            let kept = KEPT.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some((l, w, m)) = kept.as_ref().and_then(|k| k.get(path)) {
+                if *l == len && *w == when {
+                    return Ok(m.clone());
+                }
+            }
+        }
+        let m = Model::inspect(path)?;
+        if let Some((len, when)) = stamp {
+            KEPT.lock().unwrap_or_else(|p| p.into_inner()).get_or_insert_with(Default::default).insert(path.to_path_buf(), (len, when, m.clone()));
+        }
+        Ok(m)
+    }
+
     fn inspect(path: &Path) -> Result<Model> {
         let g = Gguf::open(path)?;
         Ok(Model {
@@ -393,7 +418,7 @@ impl Registry {
                 for entry in rd.flatten() {
                     let p = entry.path();
                     if p.extension().map(|x| x == "gguf").unwrap_or(false) {
-                        match Model::inspect(&p) {
+                        match Model::inspect_kept(&p) {
                             // A vision projector (`mmproj-…`, architecture
                             // `clip`) is half of a picture model, not a model
                             // that can talk. It was being offered as the
