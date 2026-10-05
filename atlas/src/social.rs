@@ -228,3 +228,16 @@ pub struct Live {
     pub(crate) last_look: u64,
     pub(crate) last_missing: Vec<String>,
 }
+
+/// The sites you sign in to yourself, once, in Atlas's own browser (5 Oct
+/// 2026: Eric accepted the terms-of-service risk). Name, and the domain its
+/// sign-in page is found by (`webrun::login_url`).
+pub const SIGN_IN_SITES: &[(&str, &str)] = &[
+    ("Instagram", "instagram.com"),
+    ("TikTok", "tiktok.com"),
+    ("X", "x.com"),
+    ("Facebook", "facebook.com"),
+    ("LinkedIn", "linkedin.com"),
+    ("Reddit", "reddit.com"),
+    ("YouTube Studio", "youtube.com"),
+];

@@ -146,6 +146,9 @@ impl Browser {
         let (cmd, args) = tool.resolved(&vars);
         crate::tools::command(&cmd)
             .args(&args)
+            // The profile path in tools.yaml is relative: in Atlas's folder,
+            // not wherever the daemon was started from.
+            .current_dir(crate::roots::data_home())
             // Chrome writes a stream of its own diagnostics to stderr;
             // they'd land in Atlas's console as noise.
             .stdout(std::process::Stdio::null())
@@ -299,6 +302,54 @@ impl Browser {
     pub fn close(&mut self) {
         self.cdp.close();
     }
+
+    /// Shut the browser itself down (not just this connection).
+    pub fn quit(mut self) {
+        let _ = self.cdp.call("Browser.close", serde_json::json!({}));
+        self.cdp.close();
+    }
+}
+
+/// The arguments for a window you sign in through yourself: the configured
+/// launch, without `--headless`, opening `url`. Same profile folder, so the
+/// sign-in you make there is the one Atlas's own browser uses afterwards
+/// (5 Oct 2026, Eric: "sign in once yourself" for the social sites).
+pub fn sign_in_window_args(launch_args: &[String], url: &str) -> Vec<String> {
+    let mut args: Vec<String> = launch_args.iter().filter(|a| !a.starts_with("--headless")).cloned().collect();
+    args.push("--new-window".into());
+    args.push(url.to_string());
+    args
+}
+
+/// Open Atlas's own browser as a window on `url`, for you to sign in.
+///
+/// A headless one already running holds the profile, so it's shut first.
+/// Started in the install folder, so the profile path in tools.yaml
+/// (`data/chrome-profile`) lands in Atlas's own data and not wherever the
+/// daemon happened to be started from.
+pub fn open_sign_in_window(cfg: &BrowserConfig, vars: &Vars, url: &str) -> Result<()> {
+    if let Ok(b) = Browser::attach(cfg) {
+        b.quit();
+        let until = std::time::Instant::now() + Duration::from_secs(4);
+        while Browser::attach(cfg).is_ok() && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+    let tool = cfg.launch.as_ref().ok_or_else(|| AtlasError::Config("no browser launch command configured".into()))?;
+    let mut vars = vars.clone();
+    let configured = vars.get("browser").cloned();
+    if let Some(found) = crate::filmstrip::find_browser(configured.as_deref()) {
+        vars.insert("browser".into(), found.display().to_string());
+    }
+    let (cmd, args) = tool.resolved(&vars);
+    crate::tools::command(&cmd)
+        .args(sign_in_window_args(&args, url))
+        .current_dir(crate::roots::data_home())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(crate::unwaited::dont_wait)
+        .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))
 }
 
 /// Steps to post, so the sequence is inspectable and testable without a live

@@ -778,6 +778,13 @@ mod through_the_daemon {
         assert!(!html.contains("AIza-not-real"), "a key is never shown back");
         // 5 Oct 2026: YouTube Analytics signs in with Atlas's own Google
         // registration; a copy built without its key says so.
+        // The sites you sign in to yourself, in Atlas's own browser window.
+        let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(Page::Social)).body;
+        for (name, _) in atlas::social::SIGN_IN_SITES {
+            assert!(html.contains(&format!("Sign in to {name}")), "{name} has no sign-in button");
+        }
+        let back = post(&mut d, &[("what", "browser-signin"), ("site", "evil.example")]);
+        assert!(back.contains("isn't one of the sites listed"), "{back}");
         let back = post(&mut d, &[("what", "google")]);
         if atlas::oauthlink::google_secret().is_none() {
             assert!(back.contains("built without Google's sign-in key"), "{back}");
@@ -1100,4 +1107,14 @@ fn live_public_sources_answer_through_atlass_own_reader() {
         Err(e) => eprintln!("LIVE fail Bluesky own-account reader: {e}"),
     }
     assert!(worked > 0, "nothing answered at all -- no network here?");
+}
+
+#[test]
+fn the_sign_in_window_is_the_same_browser_without_headless() {
+    let launch: Vec<String> = ["--headless=new", "--disable-gpu", "--remote-debugging-port=9222", "--user-data-dir=data/chrome-profile", "--no-first-run"]
+        .iter().map(|s| s.to_string()).collect();
+    let a = atlas::browser::sign_in_window_args(&launch, "https://www.instagram.com/accounts/login/");
+    assert!(!a.iter().any(|x| x.starts_with("--headless")), "{a:?}");
+    assert!(a.contains(&"--user-data-dir=data/chrome-profile".to_string()), "the same profile, so the sign-in is kept: {a:?}");
+    assert_eq!(a.last().map(String::as_str), Some("https://www.instagram.com/accounts/login/"));
 }

@@ -169,6 +169,14 @@ pub fn render_social(v: &View) -> String {
         "<label>The address TikTok sent you to <input name=address required size=48></label>",
         "Finish TikTok sign-in",
     ));
+    b.push_str("<h3>Sign in to your accounts</h3><p class=what>Once each, in Atlas's own browser: the window opens on the \
+                site's sign-in page, you sign in the way you normally do (codes included) and close it. Atlas keeps that \
+                sign-in for reading your pages. The sites don't allow apps to do this, so an account can occasionally be \
+                asked to confirm it's you.</p><div class=signins>");
+    for (name, domain) in super::SIGN_IN_SITES {
+        b.push_str(&form("browser-signin", &format!("<input type=hidden name=site value='{}'>", esc(domain)), &format!("Sign in to {name}")));
+    }
+    b.push_str("</div>");
     b.push_str("<h3>How to set each one up</h3>");
     for (what, steps) in super::SETUP {
         b.push_str(&format!("<details><summary>{}</summary><ol>", esc(what)));

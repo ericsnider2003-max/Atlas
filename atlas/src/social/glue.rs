@@ -879,6 +879,20 @@ impl Daemon<'_> {
         match field("what").as_str() {
             "import" => self.social_import(&field("path"), t),
             "watch" => self.social_watch_add(&format!("watch {}", field("target")), t),
+            "browser-signin" => {
+                let site = field("site");
+                let Some((name, domain)) = super::SIGN_IN_SITES.iter().find(|(_, d)| *d == site) else {
+                    return "That isn't one of the sites listed, so nothing was opened.".into();
+                };
+                let bcfg = self.tools_cfg().browser.clone();
+                let vars = self.tools_cfg().vars.clone();
+                match crate::browser::open_sign_in_window(&bcfg, &vars, &crate::webrun::login_url(domain)) {
+                    Ok(()) => format!(
+                        "{name} is open in Atlas's own browser window. Sign in there the way you normally do, codes included, then close the window. Atlas keeps that sign-in for reading your {name} pages."
+                    ),
+                    Err(e) => format!("Atlas's browser didn't open: {e}"),
+                }
+            }
             "unwatch" => {
                 let gone = self.social_watch().remove(&field("which"));
                 let _ = self.social_keep_watch();
