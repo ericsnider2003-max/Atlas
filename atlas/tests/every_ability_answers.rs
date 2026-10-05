@@ -58,9 +58,18 @@ fn every_command_answers_in_words_without_a_model() {
     let dir = std::env::temp_dir().join(format!("atlas-sweep-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    // Yours, not handed over: a run of the handover tests (their own
-    // processes, the same install folder) can leave it handed over.
+    // An install of its own, in its own process (its own [[test]] target).
+    // "hand over" is one of the commands swept, and the handover is kept in
+    // the install's state: swept inside the shared test binary, every test
+    // running beside it found Atlas handed over and was refused ("Not while
+    // this is handed over"). On the laptop, 4 Oct 2026, that was most of the
+    // 118 Windows failures.
+    let home = std::env::temp_dir().join(format!("atlas-sweep-home-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join("data").join("state")).unwrap();
+    std::env::set_var("ATLAS_HOME", &home);
     atlas::handover::Handover::default().save(&atlas::roots::install_state()).unwrap();
+    assert!(atlas::roots::install_root().starts_with(&home), "the sweep must not touch a shared install");
     let c = Config::load(Path::new("config")).unwrap();
     let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
     let book = atlas::intent::ToolBook::new(&c.commands);
@@ -96,5 +105,6 @@ fn every_command_answers_in_words_without_a_model() {
     }
     atlas::handover::Handover::default().save(&atlas::roots::install_state()).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&home);
     assert!(bad.is_empty(), "{} broken:\n{}", bad.len(), bad.join("\n"));
 }

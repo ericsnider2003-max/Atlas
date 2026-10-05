@@ -1372,7 +1372,7 @@ impl<'a> Daemon<'a> {
             None => Vec::new(),
         };
         let own_path = own_exe.map(|p| p.display().to_string()).unwrap_or_default();
-        let stop_starting = crate::tune::pick_startup_to_stop(&crate::tune::startup_entries(with_tasks), &week, &cfg.keep, &own_path);
+        let stop_starting = crate::tune::pick_startup_to_stop(&crate::tune::startup_entries_kept(with_tasks), &week, &cfg.keep, &own_path);
         crate::tune::Plan { close, stop_starting, temp: None, moves: None }
     }
 

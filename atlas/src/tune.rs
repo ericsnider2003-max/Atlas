@@ -1374,6 +1374,24 @@ pub fn pick_startup_to_stop(entries: &[StartupEntry], used_this_week: &[String],
 /// Everything that starts with Windows on this machine, for you and for
 /// everyone, each marked on or off the way Task Manager shows it. Sign-in
 /// tasks need PowerShell, about a second, so they're read only when asked.
+type KeptStartup = Option<(std::time::Instant, bool, Vec<StartupEntry>)>;
+static KEPT_STARTUP: std::sync::Mutex<KeptStartup> = std::sync::Mutex::new(None);
+
+/// `startup_entries`, kept for half a minute: the health answer reads it
+/// on a thread while it samples the CPU, and the plan then takes it from
+/// here rather than reading every key again (4 Oct 2026: "how's the
+/// machine" took 8 seconds on the laptop, most of it waiting in turn).
+pub fn startup_entries_kept(with_tasks: bool) -> Vec<StartupEntry> {
+    if let Some((at, tasks, v)) = KEPT_STARTUP.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        if at.elapsed() < std::time::Duration::from_secs(30) && *tasks == with_tasks {
+            return v.clone();
+        }
+    }
+    let v = startup_entries(with_tasks);
+    *KEPT_STARTUP.lock().unwrap_or_else(|p| p.into_inner()) = Some((std::time::Instant::now(), with_tasks, v.clone()));
+    v
+}
+
 pub fn startup_entries(with_tasks: bool) -> Vec<StartupEntry> {
     if !cfg!(windows) {
         return Vec::new();
@@ -1427,6 +1445,8 @@ pub fn startup_entries(with_tasks: bool) -> Vec<StartupEntry> {
 /// too. Sign-in task: Task Scheduler's own disable and enable. Machine-wide
 /// entries need an administrator and are refused here, plainly.
 pub fn set_startup(e: &StartupEntry, on: bool) -> Result<(), String> {
+    // What was kept is out of date the moment one is changed.
+    *KEPT_STARTUP.lock().unwrap_or_else(|p| p.into_inner()) = None;
     if !cfg!(windows) {
         return Err("startup programs are only changed on Windows".into());
     }

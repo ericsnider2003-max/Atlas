@@ -260,6 +260,9 @@ path = "tests/guards.rs"
 name = "handed_over"
 path = "tests/handed_over.rs"
 [[test]]
+name = "every_ability_answers"
+path = "tests/every_ability_answers.rs"
+[[test]]
 name = "hub_settings"
 path = "tests/hub_settings.rs"
 [[test]]

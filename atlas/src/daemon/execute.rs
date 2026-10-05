@@ -1334,6 +1334,10 @@ impl<'a> Daemon<'a> {
     }
 
     fn on_machine_health(&mut self) -> String {
+        // Where Windows starts things from is read with reg.exe, a program
+        // per key, a second or two in all: read now, beside the two
+        // seconds the CPU is sampled for below, instead of after them.
+        let startup = std::thread::spawn(|| crate::tune::startup_entries_kept(false));
         let r = self.readings();
         let f = assess_machine(&r, &self.health_cfg());
         let watched = self.watcher.summary();
@@ -1407,6 +1411,7 @@ impl<'a> Daemon<'a> {
             s.push(' ');
             s.push_str(&crate::tune::slowest_words(&sm.load));
         }
+        let _ = startup.join();
         let mut plan = self.tune_plan(sampled.as_ref(), false);
         plan.temp = (temp_mb >= tune_cfg.min_mb).then(|| (temp.clone(), temp_mb));
         if !plan.is_empty() {
