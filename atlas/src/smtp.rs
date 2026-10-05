@@ -37,69 +37,18 @@ impl Reply {
     }
 }
 
-/// The most either mail module will hold from a server before giving up.
-///
-/// 64 MiB: comfortably past a large message with attachments, and far short
-/// of "until the machine stops". See `Session::fill`.
-const MAX_BUFFER: usize = 64 * 1024 * 1024;
-
-/// How long a mail socket may be silent before Atlas gives up on it.
-///
-/// There were no timeouts at all. A server that completes the TCP and TLS
-/// handshakes and then stops talking hung `fill` for ever — and mail runs as
-/// a crew errand, so the effect was a permanently stuck errand and a leaked
-/// thread, once per mail check, accumulating for as long as Atlas ran.
-/// `http.rs` sets both timeouts and has since it was written; these two were
-/// never given the same.
-const QUIET_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+// The buffer cap and the quiet timeout are the IMAP module's: one copy of
+// each for both mail protocols (`imap::MAX_BUFFER`, `imap::QUIET_FOR`).
+use crate::imap::QUIET_FOR;
 
 impl<S: Read + Write> Session<S> {
     pub fn new(stream: S) -> Session<S> {
         Session { stream, inbuf: Vec::new() }
     }
 
-    /// One read into the buffer, with the buffer bounded.
-    ///
-    /// ## The cap, and why it lives here
-    ///
-    /// `fill` is the only place either mail module takes bytes off the wire,
-    /// so it is the one place a bound can cover every reader at once —
-    /// `read_line`, `read_reply` and `read_exact_n` all loop on it and all
-    /// used to loop without limit:
-    ///
-    /// * `read_line` grew the buffer until it saw CRLF. A server that never
-    ///   sends one grows it for ever.
-    /// * `read_reply` pushed every line shorter than four bytes and carried
-    ///   on. A server streaming `"ok\r\n"` grows the line list for ever.
-    /// * `read_exact_n(n)` took `n` straight from the server's own `{N}`
-    ///   literal announcement, with no ceiling. A server announcing
-    ///   `{4294967295}` makes Atlas buffer until the OOM killer arrives —
-    ///   and the process it kills is the one holding the vault and the mail
-    ///   credentials.
-    ///
-    /// None of those needs a hostile server; a broken one does it too. The
-    /// cap is generous for the job — a large message with attachments is
-    /// megabytes, not tens — and it fails with a sentence rather than by
-    /// dying.
+    /// One bounded read into the buffer (`imap::fill_bounded`, shared).
     fn fill(&mut self) -> io::Result<()> {
-        if self.inbuf.len() >= MAX_BUFFER {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "the server has sent {} bytes without finishing what it was \
-                     saying, past the {MAX_BUFFER} I will hold. Stopping rather \
-                     than filling memory.",
-                    self.inbuf.len()
-                ),
-            ));
-        }
-        let mut chunk = [0u8; 4096];
-        let n = self.stream.read(&mut chunk)?;
-        if n == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection"));
-        }
-        self.inbuf.extend_from_slice(&chunk[..n]);
-        Ok(())
+        crate::imap::fill_bounded(&mut self.stream, &mut self.inbuf)
     }
 
     fn read_line(&mut self) -> io::Result<String> {
