@@ -75,7 +75,15 @@ pub fn plan(
         )));
     };
 
-    Ok(post_plan(profile, &post.body, true))
+    if let Some(why) = crate::browser::media_problem(profile, &post.media, |f| std::path::Path::new(f).is_file()) {
+        return Err(Outcome::Blocked(why));
+    }
+    let mut steps = post_plan(profile, &post.body, true);
+    if !post.media.is_empty() {
+        let at = steps.iter().position(|s| *s == PostStep::Submit).unwrap_or(steps.len());
+        steps.insert(at, PostStep::Attach(post.media.clone()));
+    }
+    Ok(steps)
 }
 
 /// Carry out a post. Only ever called with an id the publisher already
@@ -103,6 +111,9 @@ pub fn send(
     };
 
     if let Err(e) = browser.compose(profile, &post.body) {
+        return classify(e);
+    }
+    if let Err(e) = browser.attach_media(profile, &post.media) {
         return classify(e);
     }
 
@@ -145,6 +156,8 @@ pub fn classify(e: AtlasError) -> Outcome {
         || low.contains("connect")
         || low.contains("closed by peer")
         || low.contains("never came up")
+        || low.contains("never finished uploading")
+        || low.contains("stayed greyed out")
     {
         return Outcome::Retry(m);
     }

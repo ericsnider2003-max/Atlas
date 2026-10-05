@@ -119,6 +119,21 @@ impl Cdp {
         }
     }
 
+    /// Choose `files` (absolute paths on this machine) in the file input
+    /// `selector`, as a person does in the picker. Errors name the selector
+    /// when it isn't on the page.
+    pub fn set_files(&mut self, selector: &str, files: &[String]) -> Result<()> {
+        let doc = self.call("DOM.getDocument", json!({ "depth": 0 }))?;
+        let root = doc.pointer("/root/nodeId").and_then(Value::as_u64).unwrap_or(0);
+        let found = self.call("DOM.querySelector", json!({ "nodeId": root, "selector": selector }))?;
+        let node = found.get("nodeId").and_then(Value::as_u64).unwrap_or(0);
+        if node == 0 {
+            return Err(AtlasError::Platform(format!("no file input matches '{selector}'")));
+        }
+        self.call("DOM.setFileInputFiles", set_files_params(node, files))?;
+        Ok(())
+    }
+
     pub fn scroll(&mut self, dy: i32) -> Result<()> {
         self.eval(&format!("window.scrollBy(0, {dy}); true"))?;
         Ok(())
@@ -188,17 +203,49 @@ pub fn click_js(selector: &str) -> String {
 
 /// Sets the value and fires input+change, because frameworks ignore a value
 /// assignment that arrives without events.
+///
+/// A `contenteditable` box -- X's and LinkedIn's compose boxes are -- has no
+/// `value`: setting one did nothing, and the post went out empty or not at
+/// all (5 Oct 2026). Those are typed with `insertText`, which the editors
+/// (Draft.js, Quill, Lexical) take as typing and update their own state from.
 pub fn fill_js(selector: &str, text: &str) -> String {
     format!(
         "(() => {{ const e = document.querySelector('{}');
           if (!e) return false;
-          e.focus(); e.value = '{}';
+          const t = '{}';
+          e.focus();
+          if (e.isContentEditable) {{
+            const r = document.createRange(); r.selectNodeContents(e);
+            const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+            if (!document.execCommand('insertText', false, t)) {{ e.textContent = t; }}
+            e.dispatchEvent(new InputEvent('input', {{bubbles:true, inputType:'insertText', data:t}}));
+            return (e.innerText || '').trim().length > 0 || t.length === 0;
+          }}
+          e.value = t;
           e.dispatchEvent(new Event('input', {{bubbles:true}}));
           e.dispatchEvent(new Event('change', {{bubbles:true}}));
           return true; }})()",
         js_str(selector),
         js_str(text)
     )
+}
+
+/// Is the control there and pressable (not `disabled`, not
+/// `aria-disabled`)? A post button stays greyed out while a picture uploads;
+/// clicking it then does nothing, and the post was marked as sent.
+pub fn enabled_js(selector: &str) -> String {
+    format!(
+        "(() => {{ const e = document.querySelector('{}');
+          return !!e && !e.disabled && e.getAttribute('aria-disabled') !== 'true'; }})()",
+        js_str(selector)
+    )
+}
+
+/// The protocol calls that put `files` into the file input `node_id`:
+/// `DOM.setFileInputFiles`, the same thing a person choosing them in the
+/// picker does. The page's own upload then runs as it would for them.
+pub fn set_files_params(node_id: u64, files: &[String]) -> Value {
+    json!({ "nodeId": node_id, "files": files })
 }
 
 /// Find the debugger websocket URL from Chrome's /json/list endpoint.

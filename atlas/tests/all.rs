@@ -515,6 +515,8 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "posting_with_media.rs"]
+mod posting_with_media;
 #[path = "clock_changes.rs"]
 mod clock_changes;
 #[path = "poisoned_locks.rs"]

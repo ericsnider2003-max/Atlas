@@ -1058,6 +1058,23 @@ impl<'a> Daemon<'a> {
                     }
                     return "I couldn't change that one.".into();
                 }
+                // "Attach C:\...\photo.jpg": a picture or video goes with it,
+                // and the approval is asked again with it named.
+                if let Some(path) = crate::publish::file_to_attach(said) {
+                    if !std::path::Path::new(&path).is_file() {
+                        self.session.ask("Post it?");
+                        self.pending_post_approval = Some(id);
+                        return format!("I can't find {path}. Say the whole path, like attach C:\\Users\\you\\Pictures\\photo.jpg.");
+                    }
+                    self.publisher.attach(id, &path);
+                    if let Some(q) = self.publisher.request_approval(id) {
+                        let _ = self.publisher.save(&self.store);
+                        self.session.ask(&q);
+                        self.pending_post_approval = Some(id);
+                        return q;
+                    }
+                    return "I couldn't add that to it.".into();
+                }
                 if !is_yes(said) {
                     return "Alright — it stays a draft.".into();
                 }
