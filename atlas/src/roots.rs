@@ -176,7 +176,26 @@ pub fn first_run_here() -> bool {
 
 /// `data/` — everything Atlas generates.
 pub fn data_dir() -> PathBuf {
+    if under_the_test_harness() {
+        // The checkout is the install root for its own tests (config is read
+        // from it), but its data folder is not theirs to write: the vault,
+        // logs, builds and handover state landed in `atlas/data/` on every
+        // run, hidden by .gitignore, and the next run read them back
+        // (5 Oct 2026 audit, Q18). One folder per test process instead.
+        return std::env::temp_dir().join(format!("atlas-test-data-{}", std::process::id()));
+    }
     install_root().join("data")
+}
+
+/// A cargo test binary (`target/<profile>/deps/<name>-<hash>`) that found its
+/// install root by climbing out of `target/`. Never true for an installed
+/// Atlas or for `ATLAS_HOME`.
+fn under_the_test_harness() -> bool {
+    how() == Chosen::AboveTheProgram
+        && std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().and_then(|d| d.file_name()).map(|n| n == "deps"))
+            .unwrap_or(false)
 }
 
 /// `data/state` — the store root: notes, the tray, the vault, peer tokens.
