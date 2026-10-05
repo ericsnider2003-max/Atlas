@@ -349,6 +349,7 @@ fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path
         Ok(ch) => ch,
         Err(e) => return Ran::NoStart(e.to_string()),
     };
+    crate::childjob::tie(&child);
     let take = |r: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();

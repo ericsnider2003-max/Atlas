@@ -175,6 +175,16 @@ pub fn classify_within(root: &Path, path: &Path) -> Class {
     if p == "trash" || p.starts_with("trash/") || p == "backups" || p.starts_with("backups/") {
         return Class::NotOurs;
     }
+    // A call's recording is kept for `call_notes.keep_audio_days` and
+    // removed by the call notes themselves (`daemon/hands.rs`). Read here
+    // as a `.wav`, it was scratch with a ten-minute life: the hourly sweep
+    // deleted calls while they were still being recorded or waiting to be
+    // transcribed, and every call's notes failed with whisper's "input file
+    // not found" (Eric's thread, 3 and 4 Oct 2026). Not this sweep's to
+    // judge.
+    if p == "calls" || p.starts_with("calls/") {
+        return Class::NotOurs;
+    }
     classify_relative(&p)
 }
 
@@ -296,7 +306,14 @@ pub fn plan(items: &[Item], cfg: &RetentionConfig, now: u64) -> Vec<Plan> {
         // into the trash or the backups either. If the disk is full, the
         // answer is `Trash::expire` and `prune_backups`, which know what
         // those files are.
-        .filter(|i| matches!(i.class, Class::Scratch | Class::Captures | Class::Logs))
+        // Logs are not candidates either. They bound themselves (`log`
+        // rotates at `logs_mb`, keeping one previous file), so evicting them
+        // frees at most that, and costs the only record of what happened:
+        // on Eric's laptop the rest of the data folder sat over the budget,
+        // the hourly sweep deleted atlas.log every time, and the log never
+        // held more than a few minutes (5 Oct 2026: 600 bytes, nothing from
+        // the failures he was reporting).
+        .filter(|i| matches!(i.class, Class::Scratch | Class::Captures))
         .collect();
     evictable.sort_by_key(|i| (i.class, i.modified));
 
@@ -467,3 +484,29 @@ impl Drop for Recording {
         }
     }
 }
+
+#[cfg(test)]
+mod a_call_is_not_scratch {
+    use super::*;
+
+    #[test]
+    fn a_calls_recording_outlives_the_ten_minute_scratch_limit() {
+        let root = std::path::Path::new("/data");
+        assert_eq!(classify_within(root, &root.join("calls").join("call-1791059092-you.wav")), Class::NotOurs);
+        // A turn's own wav is still scratch.
+        assert_eq!(classify_within(root, &root.join("tmp").join("turn.wav")), Class::Scratch);
+        let cfg = RetentionConfig::default();
+        let item = Item { path: root.join("calls").join("call-1-you.wav"), bytes: 1, modified: 0, class: classify_within(root, &root.join("calls").join("call-1-you.wav")) };
+        assert!(plan(&[item], &cfg, 10 * 3600).is_empty(), "a call recording must not be swept");
+    }
+
+    #[test]
+    fn logs_are_never_evicted_for_space() {
+        let root = std::path::Path::new("/data");
+        let mut cfg = RetentionConfig::default();
+        cfg.total_budget_mb = 0;
+        let log = Item { path: root.join("logs").join("atlas.log"), bytes: 4096, modified: 0, class: Class::Logs };
+        assert!(plan(&[log], &cfg, 1_000).iter().all(|p| !matches!(p, Plan::Delete { .. })), "the log is the only record of what went wrong");
+    }
+}
+

@@ -1563,7 +1563,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 3 Oct 2026 (integration-1003): the two lines above brought together --
 // 471 modules plus the four chat-c-3 adds = 475.
 // 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 477.
-pub const MODULES_IN_TREE: usize = 477;
+pub const MODULES_IN_TREE: usize = 478;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1581,6 +1581,7 @@ pub const MODULES_IN_TREE: usize = 477;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("childjob", "ties every program Atlas starts for its own work to Atlas, so it ends when Atlas ends instead of running on with the fans"),
     ("cpuuse", "measures Atlas's own CPU while idle and where the loop's time goes, for the log and for self-repair"),
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
     ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),

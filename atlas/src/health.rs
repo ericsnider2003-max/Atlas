@@ -196,7 +196,16 @@ pub fn assess(r: &Readings, cfg: &HealthConfig) -> Vec<Finding> {
 pub struct Reporter {
     /// Finding id to when it was last mentioned.
     said: std::collections::BTreeMap<String, u64>,
+    /// Finding id to when it was first seen gone (`reconcile_at`).
+    #[serde(default)]
+    gone_since: std::collections::BTreeMap<String, u64>,
 }
+
+/// How long a finding must stay gone before it counts as fixed. Memory at
+/// 89.9% for one tick between 90s was "fixed" and "back" a minute apart,
+/// and "Memory is at 90 percent." / "91 percent." reached Eric 18 times in
+/// an hour and a half (5 Oct 2026, his held notes).
+pub const FIXED_AFTER_SECS: u64 = 3600;
 
 impl Reporter {
     /// The one thing worth saying now, or nothing.
@@ -232,10 +241,27 @@ impl Reporter {
         self.said.remove(id);
     }
 
-    /// Reconcile against current findings, so fixing something resets it.
-    pub fn reconcile(&mut self, findings: &[Finding]) {
+    /// Reconcile against current findings, so fixing something resets it --
+    /// for a value read every tick: a finding counts as fixed
+    /// only once it has stayed gone for `FIXED_AFTER_SECS`, so a reading
+    /// that wobbles across its threshold is said once, not every wobble.
+    pub fn reconcile_at(&mut self, findings: &[Finding], t: u64) {
         let live: Vec<&String> = findings.iter().map(|f| &f.id).collect();
-        self.said.retain(|k, _| live.contains(&k));
+        let mut fixed = Vec::new();
+        for k in self.said.keys() {
+            if live.contains(&k) {
+                continue;
+            }
+            let since = *self.gone_since.entry(k.clone()).or_insert(t);
+            if t.saturating_sub(since) >= FIXED_AFTER_SECS {
+                fixed.push(k.clone());
+            }
+        }
+        for k in fixed {
+            self.said.remove(&k);
+            self.gone_since.remove(&k);
+        }
+        self.gone_since.retain(|k, _| !live.contains(&k));
     }
 }
 

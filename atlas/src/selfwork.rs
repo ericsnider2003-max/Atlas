@@ -609,6 +609,7 @@ pub fn run_the_proof(
         Ok(c) => c,
         Err(e) => return ProofToday::CouldNotRun(format!("could not start {program}: {e}")),
     };
+    crate::childjob::tie(&child);
     let output = drain(&mut child);
 
     let deadline = std::time::Instant::now()
@@ -1260,6 +1261,7 @@ fn run_bounded(
     cmd.args(parts).current_dir(dir);
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("could not start {program}: {e}"))?;
+    crate::childjob::tie(&child);
     let output = drain(&mut child);
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(budget_secs);

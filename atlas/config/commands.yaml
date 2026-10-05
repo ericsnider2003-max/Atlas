@@ -1026,7 +1026,14 @@ commands:
   - intent: work_on_yourself
     describe: "Have Atlas change its own code to fix or improve itself. arg: what to fix."
     phrases: ["work on yourself", "fix that yourself", "improve yourself",
-              "sort that out yourself", "have a go at fixing"]
+              "sort that out yourself", "have a go at fixing",
+              # Eric, 4 Oct 2026, after a self-test: "Ok correct the issues
+              # found" became a complaint ("You haven't had to correct me
+              # yet") and "Correct the issues found in the self test" ran the
+              # self-test again.
+              "correct the issues", "correct the issues found", "fix the issues", "fix the issues found",
+              "fix the problems you found", "fix what you found", "fix what the self test found",
+              "correct the problems", "fix the problems", "repair yourself", "fix yourself"]
     takes_argument: true
     argument_optional: true
 

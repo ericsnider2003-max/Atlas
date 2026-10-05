@@ -121,6 +121,7 @@ mod platform {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("couldn't start the sleep inhibitor: {e}"))?;
+        crate::childjob::tie(&child);
         // An inhibitor that can't reach the session bus exits at once; one
         // that is holding stays up.
         std::thread::sleep(std::time::Duration::from_millis(300));

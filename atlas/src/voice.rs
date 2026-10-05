@@ -854,6 +854,7 @@ impl<'a> Voice<'a> {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| AtlasError::Platform(format!("could not start '{}' to listen: {e}", self.cfg.record.command)))?;
+        crate::childjob::tie(&child);
         let mut out = child
             .stdout
             .take()
@@ -1428,6 +1429,7 @@ impl Voice<'_> {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| AtlasError::Platform(format!("could not start '{}' to listen: {e}", self.cfg.record.command)))?;
+        crate::childjob::tie(&child);
         let mut out = child.stdout.take().ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
         // Time by the sound itself, not the clock: what's heard is measured in
         // what was recorded, however late it's read.
@@ -1899,6 +1901,7 @@ impl PcmStream {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| AtlasError::Platform(format!("could not start '{command}' to listen: {e}")))?;
+        crate::childjob::tie(&child);
         let out = child.stdout.take().ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
         let said = child.stderr.take().map(|mut e| {
             std::thread::spawn(move || {

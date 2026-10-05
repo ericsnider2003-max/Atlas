@@ -403,6 +403,7 @@ pub mod camwatch;
 pub mod growth;
 pub mod callwatch;
 pub mod callrec;
+pub mod childjob;
 pub mod callnotes;
 pub mod localclock;
 #[cfg(all(windows, target_env = "gnu"))]

@@ -252,6 +252,7 @@ pub(crate) fn send(program: &str, account: &str, message: &str) -> Result<(), St
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start Himalaya ({program}): {e}"))?;
+    crate::childjob::tie(&child);
     if let Some(mut input) = child.stdin.take() {
         input.write_all(message.as_bytes()).map_err(|e| format!("couldn't hand Himalaya the message: {e}"))?;
     }

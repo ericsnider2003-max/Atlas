@@ -792,6 +792,7 @@ pub fn pixels_from(tool: &crate::tools::ExternalTool, vars: &crate::tools::Vars,
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| AtlasError::Platform(format!("couldn't start {cmd}: {e}")))?;
+    crate::childjob::tie(&child);
     let mut bytes = Vec::new();
     if let Some(mut out) = child.stdout.take() {
         out.read_to_end(&mut bytes)

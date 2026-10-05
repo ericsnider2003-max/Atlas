@@ -185,6 +185,7 @@ pub fn ask_until(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("the picture reader wouldn't start: {e}"))?;
+    crate::childjob::tie(&child);
     // Read both pipes as they fill, so a chatty model can't stall on a full
     // pipe while this waits for it to finish.
     // Each pipe is read on its own thread and handed back over a channel,

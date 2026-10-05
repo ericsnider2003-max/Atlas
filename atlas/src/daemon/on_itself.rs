@@ -436,6 +436,24 @@ impl<'a> Daemon<'a> {
             };
         }
 
+        // With a coding agent on this computer and Atlas's own source here,
+        // the agent does the work (5 Oct 2026). The pipeline below asks four
+        // questions, writes a proving test and runs it under cargo with a
+        // two-minute limit; on Eric's laptop a cold `cargo test` build takes
+        // twenty to forty minutes, so every proof check stopped unfinished
+        // ("it was still running after 120 seconds, so I stopped it"), and
+        // the local model was never going to write a fix to a 200,000-line
+        // Rust program. Not mid-diagnosis: a session that asked a question
+        // gets its answer.
+        if !self.mid_self_work() {
+            let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
+            if crate::selfwork::is_a_source_checkout(&root) {
+                if let Some((agent, program)) = self.coding_agent_here() {
+                    return self.repair_with_agent(agent, program, what, root);
+                }
+            }
+        }
+
         // A session part-way through its diagnosis reads this turn as the
         // answer to the question it asked, not as a new goal. Without this
         // the first answer would be taken for a new goal and start the
@@ -1145,5 +1163,92 @@ fn looks_like_a_complaint(said: &str) -> bool {
     ["that's wrong", "thats wrong", "that was wrong", "wrong", "no,", "not that", "that's not", "that is not", "you got it wrong", "that was too", "you should have"]
         .iter()
         .any(|p| t.starts_with(p))
+}
+
+/// What "the issues found" are: the self-test's to-fix table, when the ask
+/// points at them or names nothing.
+fn self_test_findings(asked: &str) -> Option<String> {
+    let low = asked.to_lowercase();
+    let about_them = asked.trim().is_empty()
+        || ["issue", "problem", "self test", "self-test", "selftest", "what you found", "what it found", "failing", "broken"]
+            .iter()
+            .any(|w| low.contains(w));
+    if !about_them {
+        return None;
+    }
+    let report = std::fs::read_to_string(crate::roots::data_sub("selftest").join("latest.md")).ok()?;
+    let start = report.find("## To fix")?;
+    let rest = &report[start..];
+    let end = rest[3..].find("\n## ").map(|i| i + 3).unwrap_or(rest.len());
+    Some(rest[..end].trim().to_string())
+}
+
+/// The instructions an agent gets for a change to Atlas itself.
+fn self_repair_task(asked: &str, findings: Option<&str>, branch: &str) -> String {
+    let mut t = String::new();
+    t.push_str("You are working on Atlas, a Rust desktop assistant; this folder is its source (the crate is in this folder or in ./atlas).\n\n");
+    t.push_str(&format!("What to do: {}\n\n", if asked.trim().is_empty() { "fix the problems below" } else { asked.trim() }));
+    if let Some(f) = findings {
+        t.push_str("The self-test's findings on this computer:\n");
+        t.push_str(f);
+        t.push_str("\n\n");
+    }
+    t.push_str(&format!(
+        "Rules:\n\
+         - First create and switch to a new git branch named {branch}. Never commit to main, never push.\n\
+         - Find the root cause of each problem before changing anything; fix causes, not symptoms.\n\
+         - Add or change a test that fails before your fix and passes after it.\n\
+         - Run `cargo check` and the tests you touched; run `cargo test --test guards` before you finish.\n\
+         - Commit on the branch with a message saying what was wrong and why the change fixes it.\n\
+         - Finish with a short plain summary: what you found, what you changed, what you could not fix and why.\n"
+    ));
+    t
+}
+
+impl<'a> Daemon<'a> {
+    /// Hand a change to Atlas itself to the coding agent on this computer,
+    /// on a branch of its own, and say how it went. Nothing reaches the
+    /// running Atlas: a branch waits for you to look at, build and install.
+    pub(super) fn repair_with_agent(&mut self, agent: crate::coding_agent::Agent, program: String, what: &str, root: std::path::PathBuf) -> String {
+        let t = crate::store::now();
+        let branch = format!("atlas-self-repair-{t}");
+        let findings = self_test_findings(what);
+        if findings.is_none() && what.trim().is_empty() {
+            return "What should I fix? Name it, or run the self-test first and say \"fix the issues it found\".".into();
+        }
+        let task = self_repair_task(what, findings.as_deref(), &branch);
+        let (root2, branch2) = (root.clone(), branch.clone());
+        let work: crate::crew::Work = Box::new(move |_ctl| {
+            let ran = crate::coding_agent::run(agent, &program, &root2, &task, 60 * 60);
+            let log = crate::tools::command("git")
+                .args(["log", "--oneline", "-5", &branch2, "--not", "main"])
+                .current_dir(&root2)
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            let lead = if ran.finished {
+                format!("{} finished working on me.", agent.named())
+            } else {
+                format!("{} didn't finish: {}", agent.named(), crate::sandbox::trim_output(&ran.said, 300))
+            };
+            let commits = if log.is_empty() {
+                "Nothing was committed, so nothing changed.".to_string()
+            } else {
+                format!("On branch {branch2} (not installed, not pushed):\n{log}")
+            };
+            Ok(format!("{lead} {commits}\n\nIt says: {}", crate::sandbox::trim_output(&ran.said, 800)))
+        });
+        let about = if findings.is_some() { "the self-test's findings".to_string() } else { what.trim().to_string() };
+        if self.hand_off("self-repair", t, work, Some(about.clone()), super::SpeakPolicy::Always) {
+            format!(
+                "Handing {about} to {} in my source at {}, on a branch of its own ({branch}). It can take up to an hour; \
+                 nothing changes in the running me until you look at it and install it.",
+                agent.named(),
+                root.display()
+            )
+        } else {
+            "I'm already working on myself -- I'll tell you how it went.".into()
+        }
+    }
 }
 

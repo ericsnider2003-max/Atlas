@@ -29,7 +29,33 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn readings(&self) -> Readings {
-        self.plat.readings()
+        let mut r = self.plat.readings();
+        // The age of the newest backup, from the backups themselves. No
+        // platform filled this in, so it was always "none", and Atlas told
+        // Eric "What I have learned has never been backed up." every few
+        // hours while a backup was being made every day (5 Oct 2026).
+        // Read from the folder's names only (`state-<when>`), at most every
+        // ten minutes: this runs on every tick.
+        if r.days_since_backup.is_none() {
+            static NEWEST: std::sync::Mutex<Option<(u64, std::path::PathBuf, Option<u64>)>> = std::sync::Mutex::new(None);
+            let now = crate::store::now();
+            let dir = std::path::PathBuf::from(&self.backup_cfg().dir);
+            let mut kept = NEWEST.lock().unwrap_or_else(|p| p.into_inner());
+            let newest = match kept.as_ref() {
+                Some((at, d, newest)) if *d == dir && now.saturating_sub(*at) < 600 => *newest,
+                _ => {
+                    let newest = std::fs::read_dir(&dir).ok().and_then(|rd| {
+                        rd.flatten()
+                            .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_prefix("state-")).and_then(|n| n.parse::<u64>().ok()))
+                            .max()
+                    });
+                    *kept = Some((now, dir.clone(), newest));
+                    newest
+                }
+            };
+            r.days_since_backup = newest.map(|at| (now.saturating_sub(at) / 86_400) as u32);
+        }
+        r
     }
 
     pub(super) fn current_work(&self) -> Option<String> {
@@ -545,7 +571,7 @@ impl<'a> Daemon<'a> {
         self.tick_laps.mark("queued work and backlog");
         let hcfg = self.health_cfg();
         let findings = assess_machine(&self.readings(), &hcfg);
-        self.health.reconcile(&findings);
+        self.health.reconcile_at(&findings, t);
         let quiet = signals.idle_secs > 60 && !self.session.is_waiting();
         if let Some(f) = self.health.next(&findings, quiet, &hcfg, t) {
             if self.modes.may_interrupt(f.severity == crate::health::Severity::Urgent) {

@@ -1119,7 +1119,19 @@ impl<'a> Daemon<'a> {
                         j.reported = true;
                     }
                 }
-                SpeakPolicy::ViaWatcher => {}
+                // A chore Atlas started on its own that went fine is not
+                // news, however long it took: "housekeeping finished. Took
+                // 1 minute." and "mutation-sweep finished. Took 40 minutes."
+                // were most of what Eric's conversation held on 3-5 Oct 2026
+                // ("Atlas is repeating itself constantly"). Only a failure
+                // of one is said, through the watcher.
+                SpeakPolicy::ViaWatcher => {
+                    if ok {
+                        if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
+                            j.reported = true;
+                        }
+                    }
+                }
             }
 
             // A quiet, successful "nothing to do" run of something like

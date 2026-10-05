@@ -123,8 +123,32 @@ fn fixing_a_problem_lets_it_be_reported_again_later() {
     let mut r = Reporter::default();
     let f = assess(&Readings { disk_free_gb: 2.0, ..healthy() }, &cfg());
     r.next(&f, true, &cfg(), 100);
-    r.reconcile(&[]); // disk freed up
-    assert!(r.next(&f, true, &cfg(), 200).is_some(), "a recurrence is worth saying again");
+    // Disk freed up, and stayed freed for long enough to count as fixed.
+    r.reconcile_at(&[], 200);
+    r.reconcile_at(&[], 200 + atlas::health::FIXED_AFTER_SECS);
+    assert!(r.next(&f, true, &cfg(), 201 + atlas::health::FIXED_AFTER_SECS).is_some(), "a recurrence is worth saying again");
+}
+
+#[test]
+fn a_reading_that_wobbles_across_its_line_is_said_once() {
+    // 5 Oct 2026: memory at 89-92% said "Memory is at 90 percent" 18 times.
+    let mut r = Reporter::default();
+    let high = assess(&Readings { ram_used_gb: 14.5, ram_total_gb: 16.0, ..healthy() }, &cfg());
+    assert!(high.iter().any(|f| f.id == "ram"));
+    let mut said = 0;
+    for i in 0..60u64 {
+        let t = 1_000 + i * 60;
+        let now = if i % 2 == 0 { high.clone() } else { Vec::new() };
+        r.reconcile_at(&now, t);
+        if r.next(&now, true, &cfg(), t).is_some() {
+            said += 1;
+        }
+    }
+    assert_eq!(said, 1, "said once an hour at most, not on every wobble");
+    // Gone for over an hour, then back: worth saying again.
+    r.reconcile_at(&[], 10_000);
+    r.reconcile_at(&[], 10_000 + atlas::health::FIXED_AFTER_SECS);
+    assert!(r.next(&high, true, &cfg(), 10_000 + atlas::health::FIXED_AFTER_SECS + 1).is_some());
 }
 
 // ================= watching the other machine =================

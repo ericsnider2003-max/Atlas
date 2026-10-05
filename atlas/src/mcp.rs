@@ -197,6 +197,7 @@ impl Client {
         // chatty server can never fill a pipe and stall.
         c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
         let mut child = c.spawn().map_err(|e| format!("couldn't start {cmd}: {e}"))?;
+        crate::childjob::tie(&child);
         let stdin = child.stdin.take().ok_or("no way to write to it")?;
         let stdout = child.stdout.take().ok_or("no way to read from it")?;
         let (tx, rx) = mpsc::channel();

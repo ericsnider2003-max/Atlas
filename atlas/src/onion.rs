@@ -280,7 +280,7 @@ impl Tor {
         // On Windows, also tied to this Atlas by a job object: when Atlas's
         // last handle closes -- however it ended -- Windows ends Tor.
         #[cfg(windows)]
-        tie_to_this_process(&child);
+        crate::childjob::tie(&child);
         Ok(Tor { child, socks, address, dir: dir.to_path_buf(), seen: (0, 0), bridges: None })
     }
 
@@ -425,43 +425,6 @@ pub fn stop_orphan(dir: &Path, binary: &Path) -> Option<u32> {
 fn same_file(a: &Path, b: &Path) -> bool {
     let norm = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).to_string_lossy().to_lowercase();
     norm(a) == norm(b)
-}
-
-/// Put `child` in a job object that ends it when this process ends.
-#[cfg(windows)]
-fn tie_to_this_process(child: &std::process::Child) {
-    use std::os::windows::io::AsRawHandle;
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-    // One job for the life of Atlas: never closed by Atlas, so it closes
-    // when Atlas ends, and everything in it ends with it.
-    static JOB: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
-    let job = JOB.get_or_init(|| {
-        // SAFETY: plain Win32 calls; `info` outlives the call that reads it.
-        unsafe {
-            let job = CreateJobObjectW(None, None).ok()?;
-            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                &info as *const _ as *const std::ffi::c_void,
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            )
-            .ok()?;
-            Some(job.0 as usize)
-        }
-    });
-    if let Some(job) = job {
-        // SAFETY: both handles are valid for the call; the child's is owned
-        // by `child`, which outlives it.
-        unsafe {
-            let _ = AssignProcessToJobObject(HANDLE(*job as *mut std::ffi::c_void), HANDLE(child.as_raw_handle()));
-        }
-    }
 }
 
 /// Open a connection to `onion` through the Tor running at `socks` (SOCKS5,
