@@ -936,6 +936,9 @@ pub struct Daemon<'a> {
     pub(crate) arrived_by_sync: onethread::ArrivedBySync,
     /// A turn added to the sync log and it isn't written out yet.
     pub(crate) synclog_unsaved: bool,
+    /// Other devices' reminders cancelled here, to be told on the next carry
+    /// (`onethread::cancel_elsewhere`).
+    pub(crate) reminders_cancelled_elsewhere: Vec<String>,
     /// Everything Atlas knows, merged rather than accumulated.
     pub known: Vec<crate::consolidate::Claim>,
     /// A line for each thing let go to make room, so "I knew something
@@ -1840,6 +1843,7 @@ impl<'a> Daemon<'a> {
             facts: crate::facts::Book::load(&store_for_load),
             arrived_by_sync: Default::default(),
             synclog_unsaved: false,
+            reminders_cancelled_elsewhere: Vec::new(),
             known,
             stones: store_for_load.load("known_stones"),
             vocab: store_for_load.load("vocabulary"),

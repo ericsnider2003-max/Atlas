@@ -281,6 +281,13 @@ impl<'a> Daemon<'a> {
                 .filter_map(|j| j.command.strip_prefix("reminder ").map(|c| c.trim_start_matches("Reminder:").trim().to_string()))
                 .take(3)
                 .collect();
+            // Your other devices' reminders: known here, rung there.
+            let there = self.where_it_rings();
+            let due: Vec<String> = due
+                .into_iter()
+                .chain(self.reminders_elsewhere().into_iter().filter(|e| e.due < midnight + 86_400).map(|e| format!("{} ({there})", e.words())))
+                .take(3)
+                .collect();
             if !due.is_empty() {
                 now.push_str(&format!("Reminders due today: {}.\n", due.join("; ")));
             }

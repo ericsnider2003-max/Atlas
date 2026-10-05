@@ -212,10 +212,12 @@ fn the_conversation_facts_later_list_and_reminders_are_the_same_on_the_phone() {
     let car = |d: &Daemon| d.facts.facts.iter().find(|f| f.body.to_lowercase().contains("honda")).map(|f| (f.name.clone(), f.as_of));
     assert!(car(&laptop).is_some(), "the laptop didn't keep the fact");
     assert_eq!(car(&phone), car(&laptop), "the fact never reached the phone");
-    // The reminder, with the same due time.
+    // The reminder, known on the phone with the same due time -- but rung
+    // only where it was set (see `a_reminder_rings_on_one_device_only`).
     let due = |d: &Daemon| d.scheduler.active().into_iter().find(|j| j.command.contains("stretch")).map(|j| j.due);
     assert!(due(&laptop).is_some());
-    assert_eq!(due(&phone), due(&laptop), "the reminder never reached the phone at the same time");
+    let known = phone.reminders_elsewhere().into_iter().find(|e| e.words() == "stretch").map(|e| e.due);
+    assert_eq!(known, due(&laptop), "the reminder never reached the phone at the same time");
 
     // And the phone's own turn reaches the laptop, without echoing back.
     phone.turn("remember that the rack needs a ten inch shelf", now + 30);
@@ -226,6 +228,54 @@ fn the_conversation_facts_later_list_and_reminders_are_the_same_on_the_phone() {
     phone.turn("sync", now + 60);
     assert_eq!(count(&phone, "actually, my car is a Honda"), 1, "an exchange came back twice");
     assert_eq!(count(&laptop, "remember that the rack needs a ten inch shelf"), 1);
+}
+
+/// 4 Oct 2026, Eric: a reminder rang twice -- the phone's own alarm, and
+/// the laptop's push of the copy it had been handed. Now it rings on the
+/// device it was set on; the other knows it, lists it, and can cancel it.
+#[test]
+fn a_reminder_rings_on_one_device_only() {
+    let (lc, pc, ls, ps, _) = pair("oneowner");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let now = atlas::store::now();
+    let mut laptop = daemon(&lc, &lp, &ls);
+    let mut phone = daemon(&pc, &pp, &ps);
+
+    // Set on the phone.
+    phone.turn("remind me in 2 hours to call the dentist", now);
+    phone.turn("sync", now + 10);
+    laptop.turn("sync", now + 20);
+    let rings = |d: &Daemon, w: &str| d.scheduler.active().into_iter().filter(|j| j.command.contains(w)).count();
+    assert_eq!(rings(&phone, "dentist"), 1, "the phone, where it was set, doesn't hold it to ring");
+    assert_eq!(rings(&laptop, "dentist"), 0, "the laptop holds the phone's reminder as a job of its own: it would ring (and push) a second time");
+    assert!(atlas::phonealarms::upcoming(&laptop.scheduler, now).is_empty());
+    // But the laptop knows it, and says where it rings.
+    let listed = laptop.turn("what reminders do I have", now + 30);
+    assert!(listed.contains("call the dentist") && listed.contains("on your phone"), "{listed}");
+
+    // Set on the laptop: the phone knows it, and never hands it to iOS.
+    laptop.turn("remind me in 3 hours to stretch", now + 40);
+    laptop.turn("sync", now + 50);
+    phone.turn("sync", now + 60);
+    assert_eq!(rings(&phone, "stretch"), 0);
+    assert!(atlas::phonealarms::upcoming(&phone.scheduler, now + 60).iter().all(|u| !u["text"].as_str().unwrap_or("").contains("stretch")),
+        "the phone would hand the laptop's reminder to iOS and ring it too");
+    let listed = phone.turn("what reminders do I have", now + 70);
+    assert!(listed.contains("stretch") && listed.contains("on your laptop"), "{listed}");
+
+    // Cancelled on the phone: cancelled on the laptop, where it lives.
+    let said = phone.turn("cancel the reminder about stretch", now + 80);
+    assert!(said.contains("Cancelled"), "{said}");
+    phone.turn("sync", now + 90);
+    laptop.turn("sync", now + 100);
+    assert_eq!(rings(&laptop, "stretch"), 0, "cancelled on the phone, it still rings on the laptop");
+
+    // Cancelled where it lives: the other device forgets it.
+    phone.turn("cancel the reminder about the dentist", now + 110);
+    phone.turn("sync", now + 120);
+    laptop.turn("sync", now + 130);
+    assert!(laptop.reminders_elsewhere().is_empty(), "the laptop still lists a reminder the phone cancelled");
 }
 
 #[test]
