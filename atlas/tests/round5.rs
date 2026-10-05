@@ -173,8 +173,11 @@ impl atlas::fixloop::Counsel for Scripted {
     }
 }
 
-fn buggy_project() -> PathBuf {
-    let dir = tmp("fix-project");
+/// Each test its own folder: two tests shared "fix-project" in one process,
+/// and the second one's `tmp` wiped and re-made it while the first was
+/// checking its landed fix (CI, 5 Oct 2026: `t.status.success()` failed).
+fn buggy_project(tag: &str) -> PathBuf {
+    let dir = tmp(tag);
     std::fs::write(dir.join("calc.py"), "def total(items):\n    return sum(i['price'] for i in items)\n").unwrap();
     std::fs::write(
         dir.join("test_calc.py"),
@@ -191,7 +194,7 @@ fn the_hand_off_loop_works_a_failing_test_to_a_pass_in_a_copy() {
     if !std::process::Command::new("python3").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
         return println!("LIVE [fix loop]  no python3 here; skipped");
     }
-    let dir = buggy_project();
+    let dir = buggy_project("fix-project");
     let tc = cfg().tools.unwrap();
     let mut counsel = Scripted(
         vec![
@@ -226,7 +229,7 @@ fn the_hand_off_loop_works_a_failing_test_to_a_pass_in_a_copy() {
     assert!(std::fs::read_to_string(dir.join("calc.py")).unwrap().contains("* i['qty']"));
     assert!(dir.join("calc.py.before").exists(), "the original is kept");
     let t = std::process::Command::new("python3").arg("test_calc.py").current_dir(&dir).output().unwrap();
-    assert!(t.status.success());
+    assert!(t.status.success(), "{}{}", String::from_utf8_lossy(&t.stdout), String::from_utf8_lossy(&t.stderr));
 }
 
 #[test]
@@ -236,7 +239,7 @@ fn when_every_angle_is_spent_it_writes_the_brief_instead() {
     if !std::process::Command::new("python3").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
         return;
     }
-    let dir = buggy_project();
+    let dir = buggy_project("fix-project2");
     let tc = cfg().tools.unwrap();
     // The same wrong answer every time: the identical-error rule stops it.
     let wrong = "calc.py\n```python\ndef total(items):\n    return 0\n```\n";
