@@ -157,7 +157,7 @@ fn write_service(dir: &Path, me: &crate::peerkey::Identity) -> Result<String, St
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        crate::heard!(std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)));
     }
     let mut s = b"== ed25519v1-secret: type0 ==\0\0\0".to_vec();
     s.extend_from_slice(&secret);
@@ -165,7 +165,7 @@ fn write_service(dir: &Path, me: &crate::peerkey::Identity) -> Result<String, St
     p.extend_from_slice(&public);
     let address = address_of(&public);
     // `hostname` is left for Tor to write from the key: its answer, not ours.
-    let _ = std::fs::remove_file(dir.join("hostname"));
+    crate::heard!(std::fs::remove_file(dir.join("hostname")));
     std::fs::write(dir.join("hs_ed25519_secret_key"), s)
         .and_then(|_| std::fs::write(dir.join("hs_ed25519_public_key"), p))
         .map_err(|e| format!("couldn't write the onion keys: {e}"))?;
@@ -251,7 +251,7 @@ impl Tor {
         let address = write_service(&service, me)?;
         let socks = free_port().ok_or("couldn't find a free port for Tor")?;
         std::fs::create_dir_all(dir.join("data")).map_err(|e| e.to_string())?;
-        let _ = std::fs::remove_file(dir.join("tor.log"));
+        crate::heard!(std::fs::remove_file(dir.join("tor.log")));
         let rc = dir.join("torrc");
         std::fs::write(&rc, torrc(dir, &service, socks, door, extra)).map_err(|e| format!("couldn't write Tor's settings: {e}"))?;
         // Absolute (without Windows' \\?\ form, which not every program reads),
@@ -276,7 +276,7 @@ impl Tor {
             crate::errln!("atlas: stopped a Tor (process {pid}) left running by an earlier Atlas");
         }
         let child = cmd.spawn().map_err(|e| format!("couldn't start Tor ({}): {e}", binary.display()))?;
-        let _ = std::fs::write(pid_file(dir), format!("{}\n{}\n", child.id(), binary.display()));
+        crate::kept!(std::fs::write(pid_file(dir), format!("{}\n{}\n", child.id(), binary.display())));
         // On Windows, also tied to this Atlas by a job object: when Atlas's
         // last handle closes -- however it ended -- Windows ends Tor.
         #[cfg(windows)]
@@ -328,7 +328,7 @@ impl Drop for Tor {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let _ = std::fs::remove_file(pid_file(&self.dir));
+        crate::heard!(std::fs::remove_file(pid_file(&self.dir)));
     }
 }
 
@@ -397,7 +397,7 @@ pub fn stop_orphan(dir: &Path, binary: &Path) -> Option<u32> {
     let text = std::fs::read_to_string(pid_file(dir)).ok()?;
     let mut lines = text.lines();
     let pid: u32 = lines.next()?.trim().parse().ok()?;
-    let _ = std::fs::remove_file(pid_file(dir));
+    crate::heard!(std::fs::remove_file(pid_file(dir)));
     if pid == std::process::id() {
         return None;
     }

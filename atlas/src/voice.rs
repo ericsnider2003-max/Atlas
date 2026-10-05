@@ -673,7 +673,7 @@ impl<'a> Voice<'a> {
                     None => return Ok(String::new()),
                     Some(ready) => {
                         if ready != samples {
-                            let _ = std::fs::write(&in_wav, crate::audio::wav_bytes(&ready, rate));
+                            crate::kept!(std::fs::write(&in_wav, crate::audio::wav_bytes(&ready, rate)));
                         }
                     }
                 }
@@ -861,7 +861,7 @@ impl<'a> Voice<'a> {
         let complaint = child.stderr.take().map(|mut e| {
             std::thread::spawn(move || {
                 let mut s = String::new();
-                let _ = e.read_to_string(&mut s);
+                crate::heard!(e.read_to_string(&mut s));
                 s
             })
         });
@@ -1065,7 +1065,7 @@ impl<'a> Voice<'a> {
             if let Some(p) = vars.get("out_wav") {
                 if let Ok(mut w) = std::fs::read(p) {
                     if crate::sound::scale_wav(&mut w, self.cfg.sound.volume) {
-                        let _ = std::fs::write(p, &w);
+                        crate::kept!(std::fs::write(p, &w));
                     }
                 }
             }
@@ -1076,7 +1076,7 @@ impl<'a> Voice<'a> {
         // a line that doesn't move is no reason not to speak.
         let data = crate::roots::data_dir();
         if let Some(wav) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
-            let _ = crate::speaking::begin(&data, text, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS);
+            crate::heard!(crate::speaking::begin(&data, text, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS));
             crate::overlaywin::start_if_gone(&data);
         }
         let t1 = std::time::Instant::now();
@@ -1242,7 +1242,7 @@ impl Voice<'_> {
                 return Kokoro::Done(Err(e.into()));
             }
             // The mark moves with the voice, sentence by sentence.
-            let _ = crate::speaking::begin(&data, s, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS);
+            crate::heard!(crate::speaking::begin(&data, s, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS));
             let t1 = std::time::Instant::now();
             // Ended mid-way when you speak over it or hold the talk key, as
             // piper's is (28 Sep 2026: Kokoro's player couldn't be stopped,
@@ -1903,7 +1903,7 @@ impl PcmStream {
         let said = child.stderr.take().map(|mut e| {
             std::thread::spawn(move || {
                 let mut s = String::new();
-                let _ = e.read_to_string(&mut s);
+                crate::heard!(e.read_to_string(&mut s));
                 s
             })
         });

@@ -359,7 +359,7 @@ impl Browser {
 
     /// Shut the browser itself down (not just this connection).
     pub fn quit(mut self) {
-        let _ = self.cdp.call("Browser.close", serde_json::json!({}));
+        crate::heard!(self.cdp.call("Browser.close", serde_json::json!({})));
         self.cdp.close();
     }
 }

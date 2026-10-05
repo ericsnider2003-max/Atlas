@@ -175,8 +175,8 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     if ok {
         let (_, shown) = run("netsh", &show_args());
         if describes_rule_for(&shown, exe) || shown.contains(RULE_NAME) {
-            let _ = std::fs::create_dir_all(state);
-            let _ = std::fs::write(state.join(ADDED), exe.display().to_string());
+            crate::heard!(std::fs::create_dir_all(state));
+            crate::kept!(std::fs::write(state.join(ADDED), exe.display().to_string()));
             return Standing::Added;
         }
         return Standing::Problem("Windows said yes but the rule isn't there; Windows will ask the first time your phone connects.".into());
@@ -186,8 +186,8 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     // problem to try again next time, not your choice (28 Sep 2026: every
     // failure used to be written down as "you chose no", for good).
     if said_no(&said) {
-        let _ = std::fs::create_dir_all(state);
-        let _ = std::fs::write(state.join(DECLINED), crate::store::now().to_string());
+        crate::heard!(std::fs::create_dir_all(state));
+        crate::kept!(std::fs::write(state.join(DECLINED), crate::store::now().to_string()));
         return Standing::Declined(declined_words());
     }
     let first = said.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("it didn't say why");

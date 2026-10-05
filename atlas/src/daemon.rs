@@ -363,7 +363,7 @@ impl AddonShare {
         ));
         let named = dir.join(&self.file_name);
         if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&named, &self.bytes)) {
-            let _ = std::fs::remove_dir_all(&dir);
+            crate::heard!(std::fs::remove_dir_all(&dir));
             return Err(format!("I couldn't get it ready to send: {e}"));
         }
         for who in &self.people {
@@ -378,7 +378,7 @@ impl AddonShare {
                 Err(_) => missed.push(who.clone()),
             }
         }
-        let _ = std::fs::remove_dir_all(&dir);
+        crate::heard!(std::fs::remove_dir_all(&dir));
         Ok((reached, missed))
     }
 }
@@ -3839,10 +3839,10 @@ fn read_document_off(path: &str, anyway: bool, tools: &crate::voice::ToolsConfig
     // The whole text is kept beside Atlas's other readings, and the start
     // is said. Reading forty pages aloud is not what "read this" means.
     let dir = crate::roots::data_sub("reading");
-    let _ = std::fs::create_dir_all(&dir);
+    crate::heard!(std::fs::create_dir_all(&dir));
     let name = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
     let kept = dir.join(format!("{name}.txt"));
-    let _ = std::fs::write(&kept, &text);
+    crate::kept!(std::fs::write(&kept, &text));
     let words = text.split_whitespace().count();
     let start = crate::research::first_sentences(&text, 4);
     let size = if pages > 0 { format!("{pages} page{}, {words} words", if pages == 1 { "" } else { "s" }) } else { format!("{words} words") };
@@ -3870,7 +3870,7 @@ fn read_pdf_photos_off(pdf: &crate::pdftext::Pdf, tools: &crate::voice::ToolsCon
     }
     let mut reader = crate::words::Reader::open(&models).map_err(|e| format!("I couldn't start the reader: {e}"))?;
     let dir = crate::roots::tmp_dir().join("pdf-pages");
-    let _ = std::fs::create_dir_all(&dir);
+    crate::heard!(std::fs::create_dir_all(&dir));
     let mut out = Vec::new();
     for (i, jpg) in pdf.images.iter().enumerate() {
         let f = dir.join(format!("page-{}.jpg", i + 1));
@@ -3880,7 +3880,7 @@ fn read_pdf_photos_off(pdf: &crate::pdftext::Pdf, tools: &crate::voice::ToolsCon
         if let Ok(read) = crate::words::read_file(&mut reader, &tools.video.ffmpeg, &tools.vars, &f.display().to_string(), &tools.words) {
             out.push(read.text());
         }
-        let _ = std::fs::remove_file(&f);
+        crate::heard!(std::fs::remove_file(&f));
     }
     let text = out.join("\n\n");
     if text.trim().is_empty() {

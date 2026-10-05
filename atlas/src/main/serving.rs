@@ -213,14 +213,14 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
             let had_link: String = atlas::roots::store().load(atlas::phonelink::LINK_KEY);
             if port != configured_port && !had_link.trim().is_empty() {
                 let token = t.clone();
-                let _ = std::thread::Builder::new().name("atlas-phone-link".into()).spawn(move || {
+                atlas::kept!(std::thread::Builder::new().name("atlas-phone-link".into()).spawn(move || {
                     let outcome = atlas::phonelink::publish(port, &token, &atlas::phonelink::tailscale_tool(), &atlas::tools::Vars::new());
                     if let atlas::phonelink::Serve::Published { url } = &outcome {
                         if let Err(e) = atlas::roots::store().save(atlas::phonelink::LINK_KEY, url) {
                             eprintln!("atlas: the phone's link moved to {url}, but I couldn't save it ({e})");
                         }
                     }
-                });
+                }));
             }
         });
         // Its own threads read the connections; the loop answers
@@ -317,6 +317,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         d.run(&voice, &voice, &keyboard, &mut throttle, audio_ok, &atlas::store::now)
     }));
     if ran.is_err() {
+        // unheard-ok: a panic while shutting down; the process is ending either way
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| d.shut_down()));
         drop(_tray);
         if atlas::crash::may_start_again(&atlas::roots::state_dir(), atlas::store::now()) {
@@ -460,7 +461,7 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
             for deaf in hearing.deaf_devices(&tc.hearing) {
                 println!("  ({} can't hear you from here.)", atlas::hearing::short(&deaf.name));
             }
-            let _ = hearing.save_to(&hstore);
+            atlas::kept!(hearing.save_to(&hstore));
         }
         Err(e) => {
             eprintln!("(couldn't list audio devices, using what's in tools.yaml: {e})");
@@ -576,7 +577,7 @@ pub(super) fn voice_loop(
             println!("[heard wake word]");
         } else {
             print!("[enter to listen] ");
-            let _ = io::stdout().flush();
+            atlas::heard!(io::stdout().flush());
             let mut l = String::new();
             // No keyboard at all is the end, not a press of Enter: read as
             // Enter, the loop recorded and acted on clip after clip with

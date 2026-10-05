@@ -503,14 +503,14 @@ fn run(ffmpeg: &str, args: &[String], limit: std::time::Duration) -> Result<std:
     let out_t = std::thread::spawn(move || {
         let mut b = Vec::new();
         if let Some(p) = so.as_mut() {
-            let _ = p.read_to_end(&mut b);
+            crate::heard!(p.read_to_end(&mut b));
         }
         b
     });
     let err_t = std::thread::spawn(move || {
         let mut b = Vec::new();
         if let Some(p) = se.as_mut() {
-            let _ = p.read_to_end(&mut b);
+            crate::heard!(p.read_to_end(&mut b));
         }
         b
     });
@@ -757,7 +757,7 @@ impl Memory {
     }
 
     pub fn save(&self, state: &Path) {
-        let _ = crate::store::Store::new(state).save(MEMORY, self);
+        crate::kept!(crate::store::Store::new(state).save(MEMORY, self));
     }
 }
 
@@ -1086,14 +1086,14 @@ fn edit_inner(setup: &Setup, photo: &Path, wish: &Wish, offer: Option<f32>, batc
             a.push(copy.display().to_string());
             let out = run(ffmpeg, &a, LIMIT)?;
             if !out.status.success() || !copy.is_file() {
-                let _ = std::fs::remove_file(&copy);
+                crate::heard!(std::fs::remove_file(&copy));
                 return Err(format!("ffmpeg stopped: {}", complaint(&out.stderr)));
             }
             let size = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
             match max_bytes {
                 Some(max) if size > max && i + 1 < steps.len() => {
                     // Our own new file, made a moment ago: remade smaller.
-                    let _ = std::fs::remove_file(&copy);
+                    crate::heard!(std::fs::remove_file(&copy));
                 }
                 Some(max) if size > max => {
                     said.push(format!("it's {:.1} MB, over the {} MB a phone can upload -- fine from a computer", size as f64 / 1e6, max / 1_000_000));
@@ -1115,7 +1115,7 @@ fn edit_inner(setup: &Setup, photo: &Path, wish: &Wish, offer: Option<f32>, batc
         })
     })();
     for f in scratch {
-        let _ = std::fs::remove_file(f);
+        crate::heard!(std::fs::remove_file(f));
     }
     result
 }

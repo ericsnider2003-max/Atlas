@@ -369,6 +369,7 @@ impl Llm for Scrubbed {
 /// numbers)? The code builder asks a free online model only when not.
 pub fn holds_something_private(text: &str) -> bool {
     let mut scrub = crate::redact::Scrubber::default();
+    // unheard-ok: returns `String`, not a Result
     let _ = scrub.scrub(text);
     scrub.say().is_some()
 }

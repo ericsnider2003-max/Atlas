@@ -2432,7 +2432,7 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
         std::fs::write(&path, gif).map_err(|e| format!("couldn't save the GIF: {e}"))?;
         made.gif = Some(path);
         let work = dir.join(format!(".{stem}.frames"));
-        let _ = std::fs::remove_dir_all(&work);
+        crate::heard!(std::fs::remove_dir_all(&work));
         std::fs::create_dir_all(&work).map_err(|e| format!("couldn't make a frames folder: {e}"))?;
         for (i, f) in frames.iter().enumerate() {
             std::fs::write(work.join(format!("frame{i:04}.png")), crate::pngcodec::write_png(f)).map_err(|e| format!("couldn't save a frame: {e}"))?;
@@ -2440,7 +2440,7 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
         match crate::tools::which("ffmpeg") {
             Some(ff) => {
                 let mp4 = dir.join(format!("{stem}.mp4"));
-                let _ = std::fs::remove_file(&mp4);
+                crate::heard!(std::fs::remove_file(&mp4));
                 let ok = crate::tools::command(ff)
                     .args(["-hide_banner", "-loglevel", "error", "-y", "-framerate"])
                     .arg(scene.fps.clamp(1, 60).to_string())
@@ -2462,7 +2462,7 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
             }
             None => made.notes.push("no MP4: that needs ffmpeg, and it isn't installed".into()),
         }
-        let _ = std::fs::remove_dir_all(&work);
+        crate::heard!(std::fs::remove_dir_all(&work));
     } else if turn_frames > 1 {
         let frames = turntable(scene, turn_frames);
         let gif_frames: Vec<crate::gifenc::Frame> = frames.iter().map(|f| crate::gifenc::Frame { image: f, delay_cs: 8 }).collect();

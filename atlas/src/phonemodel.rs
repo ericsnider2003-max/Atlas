@@ -137,7 +137,7 @@ fn fetch(
     }
     let got = crate::digest::sha256_file_hex(&part).map_err(|e| e.to_string())?;
     if !got.eq_ignore_ascii_case(m.sha256) {
-        let _ = std::fs::remove_file(&part);
+        crate::heard!(std::fs::remove_file(&part));
         return Err(format!("the {} file that arrived isn't the one it should be, so I threw it away", m.name));
     }
     std::fs::rename(&part, &done).map_err(|e| e.to_string())?;

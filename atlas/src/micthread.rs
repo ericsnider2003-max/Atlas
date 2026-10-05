@@ -1300,6 +1300,7 @@ fn measure_room(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector,
     let mut n = 0;
     while n < ROOM_WINDOWS && !s.stop.load(Ordering::SeqCst) && !s.paused.load(Ordering::SeqCst) {
         let Some(w) = stream.read(WINDOW) else { break };
+        // unheard-ok: returns `Option<f32>`, not a Result
         let _ = det.speech(&w);
         gate.learn_room(crate::audio::level_db(&w));
         n += 1;

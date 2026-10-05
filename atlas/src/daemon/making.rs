@@ -301,6 +301,7 @@ impl<'a> Daemon<'a> {
             let work: crew::Work = Box::new(move |ctl| {
                 let outcome = crate::taste::build_web(&brief, gen_llm.as_ref(), max_rounds, |html| {
                     // Between rounds: a pause holds with the draft so far intact.
+                    // unheard-ok: returns `bool`, not a Result
                     let _ = ctl.checkpoint();
                     crate::taste::review(html, &rules)
                 });
@@ -309,7 +310,7 @@ impl<'a> Daemon<'a> {
                     // A folder of its own (2 Oct 2026: every page was
                     // page.draft.html in the one folder, over the last).
                     let out_dir = named_dir.unwrap_or_else(|| crate::build_it::build_folder(&builds, &brief));
-                    let _ = std::fs::create_dir_all(&out_dir);
+                    crate::heard!(std::fs::create_dir_all(&out_dir));
                     let built = matches!(outcome, crate::taste::Outcome::Built { .. });
                     let name = if built { "page.html" } else { "page.draft.html" };
                     let path = crate::build_it::file_name_for(&out_dir, name.trim_end_matches(".html"), "html");
@@ -349,6 +350,7 @@ impl<'a> Daemon<'a> {
             // without a toolchain; here it is the real compiler.
             let mut check = |code: &str| -> crate::build_it::Check {
                 // Between rounds: a pause holds with the draft so far intact.
+                // unheard-ok: returns `bool`, not a Result
                 let _ = ctl.checkpoint();
                 check_draft_in_sandbox(&mut sandbox, lang, code)
             };
@@ -356,7 +358,7 @@ impl<'a> Daemon<'a> {
             let (outcome, by) = crate::build_it::build_with(&desc, lang, &refs, max_rounds, &mut check);
             // The sandbox has done its job; left behind, one piled up per build.
             drop(check);
-            let _ = sandbox.discard();
+            crate::heard!(sandbox.discard());
             // A build that ran out of tries is kept, so "keep at it" carries
             // on from its best draft (E3).
             let mut offer_more = false;
@@ -369,7 +371,7 @@ impl<'a> Daemon<'a> {
                 };
                 let path = crate::build_it::Struggle::path();
                 if let Some(dir) = path.parent() {
-                    let _ = std::fs::create_dir_all(dir);
+                    crate::heard!(std::fs::create_dir_all(dir));
                 }
                 offer_more = serde_json::to_string(&s).ok().map(|j| std::fs::write(&path, j).is_ok()).unwrap_or(false);
             }
@@ -384,7 +386,7 @@ impl<'a> Daemon<'a> {
                 // does, never over the top of the last one, and said where
                 // (1 Oct 2026: every build overwrote "build.verified.py").
                 let out_dir = named_dir.clone().unwrap_or_else(|| crate::build_it::build_folder(&builds, &desc));
-                let _ = std::fs::create_dir_all(&out_dir);
+                crate::heard!(std::fs::create_dir_all(&out_dir));
                 let ext = if outcome.is_built() { ext_for(lang).to_string() } else { format!("draft.{}", ext_for(lang)) };
                 let path = crate::build_it::file_name_for(&out_dir, &desc, &ext);
                 match std::fs::write(&path, code) {
@@ -449,7 +451,7 @@ impl<'a> Daemon<'a> {
                 match crate::sandbox::Sandbox::create(&base, "agent-build") {
                     Ok(mut sb) => {
                         let c = check_draft_in_sandbox(&mut sb, lang, &code);
-                        let _ = sb.discard();
+                        crate::heard!(sb.discard());
                         c
                     }
                     Err(e) => crate::build_it::Check::Failed(format!("couldn't make a sandbox to check it in: {e}")),
@@ -722,6 +724,7 @@ impl<'a> Daemon<'a> {
             let project_says_nothing = std::cell::Cell::new(false);
             let mut check = |code: &str| -> crate::build_it::Check {
                 // Between rounds: a pause holds with the draft so far intact.
+                // unheard-ok: returns `bool`, not a Result
                 let _ = ctl.checkpoint();
                 if let Some((rel, cmd)) = in_place.as_ref().filter(|_| !project_says_nothing.get()) {
                     match check_in_project(root, rel, cmd, code, &base) {
@@ -750,7 +753,7 @@ impl<'a> Daemon<'a> {
             };
             // The sandbox has done its job; left behind, one piled up per change.
             drop(check);
-            let _ = sandbox.discard();
+            crate::heard!(sandbox.discard());
             if ctl.checkpoint() {
                 return Err("you asked me to stop".into());
             }
@@ -884,7 +887,7 @@ impl<'a> Daemon<'a> {
                 }
             }
             if let Some(parent) = target.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                crate::heard!(std::fs::create_dir_all(parent));
             }
             // No backup, no overwrite: the .before copy is what makes this
             // reversible, and writing over the original after the backup
@@ -1482,7 +1485,7 @@ impl<'a> Daemon<'a> {
             return "I opened it and there's no text in it I can read -- if it's a scan, say \"read\" and the file, and I'll read the pages.".into();
         }
         let dir = crate::roots::data_sub("reading");
-        let _ = std::fs::create_dir_all(&dir);
+        crate::heard!(std::fs::create_dir_all(&dir));
         let name = from.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
         let kept = dir.join(format!("{name}.txt"));
         if let Err(e) = std::fs::write(&kept, text) {
@@ -1512,7 +1515,7 @@ impl<'a> Daemon<'a> {
             if said.is_empty() {
                 return Err("the summary had nothing in it I could check against the document".into());
             }
-            let _ = std::fs::write(&summary_at, format!("# {title}, summarised\n\n{said}\n"));
+            crate::kept!(std::fs::write(&summary_at, format!("# {title}, summarised\n\n{said}\n")));
             Ok(format!("{title}, in short: {said}"))
         });
         if self.hand_off("summary", crate::store::now(), work, None, SpeakPolicy::Always) {
@@ -1660,7 +1663,7 @@ impl<'a> Daemon<'a> {
             }
             found
         });
-        let _ = std::fs::remove_dir_all(&played_in);
+        crate::heard!(std::fs::remove_dir_all(&played_in));
         let (svg, findings, rounds, clean) = match outcome {
             crate::motion::Outcome::NoDraft(why) => {
                 return format!("I tried, but {why}. Ask me to try again.")
@@ -1674,7 +1677,7 @@ impl<'a> Daemon<'a> {
         // Save it either way — even a flawed draft is worth opening — under a
         // name that says whether it passed the checks.
         let dir = crate::roots::data_sub("animations");
-        let _ = std::fs::create_dir_all(&dir);
+        crate::heard!(std::fs::create_dir_all(&dir));
         let name = if clean { "animation" } else { "animation.draft" };
         let path = dir.join(format!("{name}.svg"));
         if let Err(e) = std::fs::write(&path, &svg) {
@@ -2052,7 +2055,7 @@ impl<'a> Daemon<'a> {
             }
         }
         let dir = crate::roots::data_sub("projects");
-        let _ = std::fs::create_dir_all(&dir);
+        crate::heard!(std::fs::create_dir_all(&dir));
         let slug: String =
             p.name.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
         let path = dir.join(format!("{slug}.master.md"));

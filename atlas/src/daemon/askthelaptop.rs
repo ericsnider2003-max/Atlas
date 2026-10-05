@@ -43,6 +43,7 @@ impl Daemon<'_> {
             let (id, field, to) = crate::remote::yes_to_carry(&self.synclog.device.clone(), last.id);
             self.synclog.append(crate::sync::What::Changed { id, field, to }, t);
             let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+            // unheard-ok: returns `String`, not a Result
             let _ = self.carry_to_your_other_devices(t);
             return Some(format!("Told the laptop to go ahead with \"{}\".", last.what));
         }
@@ -59,6 +60,7 @@ impl Daemon<'_> {
         let _ = self.store.save("synclog", &Some(self.synclog.clone()));
         // Carried now where the laptop can be reached; otherwise on the next
         // sync, and the request waits rather than disappearing.
+        // unheard-ok: returns `String`, not a Result
         let _ = self.carry_to_your_other_devices(t);
         Some(crate::remote::sent_to_the_laptop(&what))
     }

@@ -405,6 +405,7 @@ impl<'a> Daemon<'a> {
                 // Told the way `friend_upkeep`'s own news is: kept in the
                 // activity, and a routine note to you.
                 self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
                 let _ = self.reach_you(crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t), t);
             }
             HubAfter::AddonShare { job, name, group } => {

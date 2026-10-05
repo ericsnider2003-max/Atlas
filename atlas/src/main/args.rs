@@ -152,6 +152,6 @@ pub(super) fn ask_line(prompt: &str) -> String {
     print!("{prompt}");
     let _ = std::io::Write::flush(&mut std::io::stdout());
     let mut line = String::new();
-    let _ = std::io::stdin().read_line(&mut line);
+    atlas::heard!(std::io::stdin().read_line(&mut line));
     line.trim().to_string()
 }

@@ -368,6 +368,14 @@ impl Daemon<'_> {
         self.store.save(name, v).err().map(|e| format!(" (I couldn't save that: {e})"))
     }
 
+    /// `keep` for a list loaded on demand (`loaded!`). It is always loaded by
+    /// the time this runs; if it somehow weren't, nothing changed and there
+    /// is nothing to save -- rather than the `expect("loaded")` panic each
+    /// call site used to carry (audit Q2).
+    fn keep_loaded<T: Serialize>(&self, name: &str, v: Option<&T>) -> Option<String> {
+        v.and_then(|v| self.keep(name, v))
+    }
+
     // -- 1. clipboard history ------------------------------------------------
 
     fn clips_on(&mut self) -> bool {
@@ -439,6 +447,7 @@ impl Daemon<'_> {
         let Some(copy) = self.plat.clipboard_copy() else { return };
         let from = self.plat.active_window().ok().flatten().map(|w| w.process).unwrap_or_default();
         let cfg = self.workday_cfg().clipboard_history;
+        // unheard-ok: the clipboard history declines some copies by design (private, too long)
         let _ = self.workday.clips.keep(&cfg, &copy, &from, t);
         self.workday.clips.forget(&cfg, t);
     }
@@ -538,7 +547,7 @@ impl Daemon<'_> {
             } else {
                 taught.wrong(&w);
             }
-            let saved = self.keep(TAUGHT, self.workday.taught.as_ref().expect("loaded"));
+            let saved = self.keep_loaded(TAUGHT, self.workday.taught.as_ref());
             return if right {
                 format!("Closed \"{}\".{}", w.subject, saved.unwrap_or_default())
             } else {
@@ -606,7 +615,9 @@ impl Daemon<'_> {
     fn launch_one(&mut self, c: crate::launcher::Candidate, t: u64) -> String {
         let store = &self.store;
         loaded!(self.workday, store, uses, USES).picked(&c, t);
-        let _ = self.store.save(USES, self.workday.uses.as_ref().expect("loaded"));
+        if let Some(v) = self.workday.uses.as_ref() {
+            let _ = self.store.save(USES, v);
+        }
         match c.kind {
             crate::launcher::Kind::App => self.execute(&Intent::OpenApp(c.target.clone())),
             _ => match self.plat.open_path(&c.target) {
@@ -658,7 +669,7 @@ impl Daemon<'_> {
             if let Some(given) = given {
                 let journal = loaded!(self.workday, self.store, journal, JOURNAL);
                 journal.record(today, when, t, &qs, given);
-                let saved = self.keep(JOURNAL, self.workday.journal.as_ref().expect("loaded"));
+                let saved = self.keep_loaded(JOURNAL, self.workday.journal.as_ref());
                 self.workday.set_follow(None, t);
                 return format!("Noted.{}\n{THE_LINE}", saved.unwrap_or_default());
             }
@@ -772,7 +783,7 @@ impl Daemon<'_> {
             let s = loaded!(self.workday, self.store, snippets, SNIPPETS);
             return match s.save(&trigger, &text) {
                 Ok(()) => {
-                    let saved = self.keep(SNIPPETS, self.workday.snippets.as_ref().expect("loaded"));
+                    let saved = self.keep_loaded(SNIPPETS, self.workday.snippets.as_ref());
                     format!("Saved \"{trigger}\".{}", saved.unwrap_or_default())
                 }
                 Err(crate::snippets::Refused::Secret(kinds)) => format!("That holds what looks like a {} -- keep it in the vault, not a snippet.", kinds.join(" and a ")),
@@ -784,7 +795,9 @@ impl Daemon<'_> {
             if let Some(rest) = low.strip_prefix(lead) {
                 let s = loaded!(self.workday, self.store, snippets, SNIPPETS);
                 return if s.remove(rest) {
-                    let _ = self.store.save(SNIPPETS, self.workday.snippets.as_ref().expect("loaded"));
+                    if let Some(v) = self.workday.snippets.as_ref() {
+                        let _ = self.store.save(SNIPPETS, v);
+                    }
                     format!("Forgot \"{rest}\".")
                 } else {
                     format!("There's no snippet \"{rest}\".")
@@ -992,7 +1005,7 @@ impl Daemon<'_> {
         };
         match done {
             Ok(said) => {
-                let saved = self.keep(PEOPLE, self.workday.people.as_ref().expect("loaded"));
+                let saved = self.keep_loaded(PEOPLE, self.workday.people.as_ref());
                 format!("{said}{}", saved.unwrap_or_default())
             }
             Err(Refused::Which(names)) => format!("Which one -- {}? Say the full name.", names.join(" or ")),
@@ -1023,7 +1036,9 @@ impl Daemon<'_> {
             let item = self.workday.last_feeds[i].clone();
             let feeds = loaded!(self.workday, self.store, feeds, FEEDS);
             feeds.unread.retain(|u| u.link != item.link);
-            let _ = self.store.save(FEEDS, self.workday.feeds.as_ref().expect("loaded"));
+            if let Some(v) = self.workday.feeds.as_ref() {
+                let _ = self.store.save(FEEDS, v);
+            }
             return match verb.as_str() {
                 "skip" => "Skipped.".into(),
                 "save" | "keep" => match self.tray.hand(&item.link, &crate::earned::Space::Personal, "feeds", t) {
@@ -1052,7 +1067,9 @@ impl Daemon<'_> {
                 let feeds = loaded!(self.workday, self.store, feeds, FEEDS);
                 return match feeds.unfollow(rest) {
                     Some(name) => {
-                        let _ = self.store.save(FEEDS, self.workday.feeds.as_ref().expect("loaded"));
+                        if let Some(v) = self.workday.feeds.as_ref() {
+                            let _ = self.store.save(FEEDS, v);
+                        }
                         format!("Stopped following {name}.")
                     }
                     None => format!("I'm not following anything matching \"{}\" -- or more than one thing does.", rest.trim()),
@@ -1084,7 +1101,9 @@ impl Daemon<'_> {
                 Ok(true) => {
                     let i = feeds.feeds.len() - 1;
                     let got = feeds.took(i, parsed, &cfg, t);
-                    let _ = self.store.save(FEEDS, self.workday.feeds.as_ref().expect("loaded"));
+                    if let Some(v) = self.workday.feeds.as_ref() {
+                        let _ = self.store.save(FEEDS, v);
+                    }
                     format!("Following {}. {} to start with; after that, only what's new.", if title.is_empty() { &feed_url } else { &title }, plural(got, "item"))
                 }
                 Ok(false) => "You already follow that.".into(),
@@ -1128,7 +1147,9 @@ impl Daemon<'_> {
                             }
                             Err(e) => feeds.failed(i, &e, &cfg, t),
                         }
-                        let _ = self.store.save(FEEDS, self.workday.feeds.as_ref().expect("loaded"));
+                        if let Some(v) = self.workday.feeds.as_ref() {
+                            let _ = self.store.save(FEEDS, v);
+                        }
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => return,
@@ -1180,7 +1201,9 @@ impl Daemon<'_> {
                 self.workday.set_follow(None, t);
                 let r = loaded!(self.workday, self.store, receipts, RECEIPTS);
                 let kept = r.keep(reading.clone(), total, true, &text, t);
-                let _ = self.store.save(RECEIPTS, self.workday.receipts.as_ref().expect("loaded"));
+                if let Some(v) = self.workday.receipts.as_ref() {
+                    let _ = self.store.save(RECEIPTS, v);
+                }
                 return if kept { format!("Kept: {} {}.", reading.merchant, crate::receipts::money(total, &reading.currency)) } else { "I already have that one.".into() };
             }
         }
@@ -1226,7 +1249,7 @@ impl Daemon<'_> {
                 if !r.keep(reading, total, false, &text, t) {
                     return "I already have that one.".into();
                 }
-                let saved = self.keep(RECEIPTS, self.workday.receipts.as_ref().expect("loaded"));
+                let saved = self.keep_loaded(RECEIPTS, self.workday.receipts.as_ref());
                 format!("{said_back}{}", saved.unwrap_or_default())
             }
             Total::None => said_back,
@@ -1250,8 +1273,13 @@ impl Daemon<'_> {
             let days = low.split_whitespace().find_map(|w| w.parse::<i64>().ok()).filter(|_| low.contains("day"));
             let to = until.or(days.map(|d| today + d - 1)).unwrap_or(today);
             let h = loaded!(self.workday, self.store, habits, HABITS);
-            let _ = h.pause(None, today, to);
-            let _ = self.store.save(HABITS, self.workday.habits.as_ref().expect("loaded"));
+            // All of them, so it can't be refused; it says how many it paused.
+            if h.pause(None, today, to).unwrap_or(0) == 0 {
+                return "You aren't tracking any habits yet, so there's nothing to pause.".into();
+            }
+            if let Some(v) = self.workday.habits.as_ref() {
+                let _ = self.store.save(HABITS, v);
+            }
             return format!("Habits paused through {} -- those days won't count against them.", if to == today { "today".to_string() } else { format!("{} days from now", to - today) });
         }
         let h = loaded!(self.workday, self.store, habits, HABITS);
@@ -1261,9 +1289,10 @@ impl Daemon<'_> {
                 format!("Tracking \"{name}\", {}.{quiet}", if days == 1 { "daily".to_string() } else { format!("{times} in {days} days") })
             }),
             Some(Asked::Did { name }) => h.did(&name, today).map(|n| {
-                let habit = h.habits.iter().find(|x| x.name == n).expect("just done");
-                let streak = habit.streak(today);
-                format!("{n}: done.{}", if habit.days == 1 && streak >= 2 { format!(" {streak} days running.") } else { String::new() })
+                // `did` just found it by this name; if it somehow can't be
+                // found again, the streak is simply left out (audit Q2).
+                let streak = h.habits.iter().find(|x| x.name == n).filter(|x| x.days == 1).map(|x| x.streak(today)).unwrap_or(0);
+                format!("{n}: done.{}", if streak >= 2 { format!(" {streak} days running.") } else { String::new() })
             }),
             Some(Asked::Undo { name }) => h.undo(&name, today).map(|n| format!("{n}: unmarked for today.")),
             Some(Asked::Remove { name }) => h.remove(&name).map(|n| format!("Stopped tracking {n}.")),
@@ -1271,7 +1300,7 @@ impl Daemon<'_> {
         };
         match r {
             Ok(s) => {
-                let saved = self.keep(HABITS, self.workday.habits.as_ref().expect("loaded"));
+                let saved = self.keep_loaded(HABITS, self.workday.habits.as_ref());
                 format!("{s}{}", saved.unwrap_or_default())
             }
             Err(Refused::NotFound) => "I'm not tracking a habit by that name. \"How are my habits\" lists them.".into(),
@@ -1293,7 +1322,7 @@ impl Daemon<'_> {
         if let Some((front, back)) = crate::srs::read_card(said) {
             return match deck.add(&front, &back, "", today) {
                 Ok(()) => {
-                    let saved = self.keep(DECK, self.workday.deck.as_ref().expect("loaded"));
+                    let saved = self.keep_loaded(DECK, self.workday.deck.as_ref());
                     format!("Card made. It comes up in your next \"quiz me\".{}", saved.unwrap_or_default())
                 }
                 Err(crate::srs::Refused::Secret(k)) => format!("That holds what looks like a {} -- not something to put on a flashcard.", k.join(" and a ")),
@@ -1316,7 +1345,7 @@ impl Daemon<'_> {
         if let (true, Some(g)) = (quizzing, crate::srs::Grade::read(said)) {
             let graded = deck.grade(g, today, &cfg);
             let next = deck.next(today, &cfg);
-            let saved = self.keep(DECK, self.workday.deck.as_ref().expect("loaded"));
+            let saved = self.keep_loaded(DECK, self.workday.deck.as_ref());
             let head = match graded {
                 Some((back, days)) => format!("({back}) Back in {}.", plural(days as usize, "day")),
                 None => String::new(),
@@ -1449,11 +1478,11 @@ impl Daemon<'_> {
     /// The capture chord: whatever's selected becomes a note, in one press.
     fn capture_selection(&mut self, t: u64) -> String {
         let before = self.plat.read_clipboard().ok().flatten();
-        let _ = self.plat.write_clipboard("\u{2063}");
-        let _ = self.plat.press("ctrl+c");
+        crate::heard!(self.plat.write_clipboard("\u{2063}"));
+        crate::heard!(self.plat.press("ctrl+c"));
         self.plat.sleep_ms(80);
         let got = self.plat.read_clipboard().ok().flatten().filter(|g| g != "\u{2063}" && !g.trim().is_empty());
-        let _ = self.plat.write_clipboard(before.as_deref().unwrap_or(""));
+        crate::heard!(self.plat.write_clipboard(before.as_deref().unwrap_or("")));
         match got {
             Some(text) => self.execute(&Intent::Capture(text)),
             None => {

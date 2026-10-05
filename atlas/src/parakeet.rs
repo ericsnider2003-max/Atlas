@@ -139,9 +139,9 @@ fn ensure_running(files: &Files, port: u16) -> Result<()> {
 /// waits for the model to load.
 pub fn warm(root: &Path) {
     if let Some(files) = installed(root) {
-        let _ = std::thread::Builder::new().name("atlas-hearing-warm".into()).spawn(move || {
-            let _ = ensure_running(&files, PORT);
-        });
+        crate::heard!(std::thread::Builder::new().name("atlas-hearing-warm".into()).spawn(move || {
+            crate::heard!(ensure_running(&files, PORT));
+        }));
     }
 }
 

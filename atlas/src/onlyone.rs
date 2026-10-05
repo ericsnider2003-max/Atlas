@@ -219,7 +219,7 @@ impl OnlyOne {
             ));
         }
         if let Some(parent) = self.path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            crate::heard!(std::fs::create_dir_all(parent));
         }
 
         // ## The race this closes
@@ -240,7 +240,7 @@ impl OnlyOne {
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&claim) {
             Ok(mut f) => {
                 use std::io::Write;
-                let _ = write!(f, "{now}");
+                crate::kept!(write!(f, "{now}"));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 // A claim that is merely old is a crash, not a competitor: a
@@ -259,8 +259,8 @@ impl OnlyOne {
                         claim.display()
                     ));
                 }
-                let _ = std::fs::remove_file(&claim);
-                let _ = std::fs::write(&claim, format!("{now}"));
+                crate::heard!(std::fs::remove_file(&claim));
+                crate::kept!(std::fs::write(&claim, format!("{now}")));
             }
             Err(e) => {
                 return Err(format!("couldn't claim the lock at {}: {e}", claim.display()));
@@ -271,7 +271,7 @@ impl OnlyOne {
         // was excluded; this is the one whose answer can be acted on.
         let found = self.look(now);
         if !found.can_take() {
-            let _ = std::fs::remove_file(&claim);
+            crate::heard!(std::fs::remove_file(&claim));
             return Err(format!(
                 "{}\n\nSomething took the lock while this one was starting.",
                 found.plain()
@@ -279,7 +279,7 @@ impl OnlyOne {
         }
         let wrote = std::fs::write(&self.path, lock_line(now))
             .map_err(|e| format!("couldn't take the lock at {}: {e}", self.path.display()));
-        let _ = std::fs::remove_file(&claim);
+        crate::heard!(std::fs::remove_file(&claim));
         wrote?;
         Ok(found)
     }
@@ -344,6 +344,7 @@ impl OnlyOne {
     /// that time it was only asleep and this start is refused like any other
     /// second start (`WOKE_GRACE_SECS`). A free or live lock costs no wait.
     pub fn take_patiently(&self, wait: std::time::Duration, now: &dyn Fn() -> u64) -> Result<Found, String> {
+        // unheard-ok: returns `Found`, not a Result
         let _ = self.look_again_after(self.look(now()), wait, now);
         self.take(now())
     }
@@ -354,7 +355,7 @@ impl OnlyOne {
     /// window is for — the lock is correct without a clean shutdown, and a
     /// design that needs one is a design that breaks on the first power cut.
     pub fn release(&self) {
-        let _ = std::fs::remove_file(&self.path);
+        crate::heard!(std::fs::remove_file(&self.path));
     }
 }
 

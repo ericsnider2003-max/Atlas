@@ -294,7 +294,7 @@ impl Daemon<'_> {
         let channel = cfg.youtube_channel.clone();
         let testing = cfg.google_app_in_testing;
         self.social_watch().last_refresh = t;
-        let _ = self.social_keep_watch();
+        crate::heard!(self.social_keep_watch());
         let work: crate::crew::Work = Box::new(move |ctl| {
             let net = Https;
             let mut out = Refreshed { missing, ..Default::default() };
@@ -424,7 +424,7 @@ impl Daemon<'_> {
             w.list[i].next_due = t + every * 60;
             jobs.push((w.list[i].target.clone(), w.list[i].last_modified.clone(), may));
         }
-        let _ = self.social_keep_watch();
+        crate::heard!(self.social_keep_watch());
         let work: crate::crew::Work = Box::new(move |ctl| {
             let net = Https;
             let mut gap = crate::ratelimit::Gcra::new(1, HOST_SPACING_MS, 1);
@@ -568,7 +568,7 @@ impl Daemon<'_> {
                         let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
                         let mut reader = std::io::BufReader::new(&stream);
                         let mut line = String::new();
-                        let _ = reader.read_line(&mut line);
+                        crate::heard!(reader.read_line(&mut line));
                         let code = apis::code_from_redirect(&line, &state);
                         let page = if code.is_ok() { "Signed in. You can close this tab and go back to Atlas." } else { "That didn't work -- go back to Atlas to see why." };
                         let mut w = &stream;
@@ -611,22 +611,22 @@ impl Daemon<'_> {
                 let r: Refreshed = serde_json::from_str(&body).ok()?;
                 if let Some(tok) = &r.new_instagram_token {
                     if self.vault.put(VAULT_INSTAGRAM, crate::vault::Kind::ApiKey, tok, t).is_ok() {
-                        let _ = self.vault.save(&self.vault_home);
+                        crate::kept!(self.vault.save(&self.vault_home));
                         self.social_watch().instagram_token_at = t;
-                        let _ = self.social_keep_watch();
+                        crate::heard!(self.social_keep_watch());
                     }
                 }
                 if let Some(tok) = &r.new_threads_token {
                     if self.vault.put(VAULT_THREADS, crate::vault::Kind::ApiKey, tok, t).is_ok() {
-                        let _ = self.vault.save(&self.vault_home);
+                        crate::kept!(self.vault.save(&self.vault_home));
                         self.social_watch().threads_token_at = t;
-                        let _ = self.social_keep_watch();
+                        crate::heard!(self.social_keep_watch());
                     }
                 }
                 if let Some(tk) = &r.new_tiktok {
                     if let Ok(j) = serde_json::to_string(tk) {
                         if self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &j, t).is_ok() {
-                            let _ = self.vault.save(&self.vault_home);
+                            crate::kept!(self.vault.save(&self.vault_home));
                         }
                     }
                 }
@@ -659,7 +659,7 @@ impl Daemon<'_> {
                         }
                     }
                 }
-                let _ = self.social_keep_watch();
+                crate::heard!(self.social_keep_watch());
                 if !asked {
                     // Once a day, the model sums up what the scans found, for
                     // the morning brief; checked like any other summary.
@@ -667,6 +667,7 @@ impl Daemon<'_> {
                     if stale && self.llm.is_some() {
                         let d = analysis::watch_digest(self.social_watch(), t);
                         if !d.is_empty() {
+                            // unheard-ok: returns `Option<String>`, not a Result
                             let _ = self.social_summarise(t, &d, false);
                         }
                     }
@@ -699,7 +700,7 @@ impl Daemon<'_> {
                     return (!quiet).then(|| "The model's summary brought a figure that isn't in what was read, so I've left it out -- the figures above are the real ones.".into());
                 }
                 self.social_watch().summary = Some((t, sm.text.trim().to_string()));
-                let _ = self.social_keep_watch();
+                crate::heard!(self.social_keep_watch());
                 (!quiet).then(|| sm.text.trim().to_string())
             }
             "social-tiktok" => {
@@ -707,7 +708,7 @@ impl Daemon<'_> {
                 let json = serde_json::to_string(&s).ok()?;
                 Some(match self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t) {
                     Ok(()) => {
-                        let _ = self.vault.save(&self.vault_home);
+                        crate::kept!(self.vault.save(&self.vault_home));
                         let on = if self.social_cfg().tiktok { "" } else { " Turn TikTok on under Your accounts on the Social page so the refresh reads it." };
                         format!("Signed in to TikTok; your videos' numbers come with the next refresh.{on}")
                     }
@@ -720,7 +721,7 @@ impl Daemon<'_> {
                 let json = serde_json::to_string(&s).ok()?;
                 Some(match self.vault.put(VAULT_YOUTUBE_OAUTH, crate::vault::Kind::ApiKey, &json, t) {
                     Ok(()) => {
-                        let _ = self.vault.save(&self.vault_home);
+                        crate::kept!(self.vault.save(&self.vault_home));
                         let lapse = if self.social_cfg().google_app_in_testing {
                             " While your Google app is in Testing, Google ends this sign-in after seven days; publishing the app (unverified is fine for your own use) stops that."
                         } else {
@@ -748,9 +749,11 @@ impl Daemon<'_> {
         }
         self.workday.social.last_look = t;
         if cfg.own_refresh && t.saturating_sub(self.social_watch().last_refresh) >= cfg.refresh_hours.max(6) * 3600 {
+            // unheard-ok: returns `String`, not a Result
             let _ = self.social_refresh(t, false);
         }
         if cfg.scan {
+            // unheard-ok: returns `Option<String>`, not a Result
             let _ = self.social_scan(t, false);
         }
     }
@@ -896,7 +899,7 @@ impl Daemon<'_> {
             }
             "unwatch" => {
                 let gone = self.social_watch().remove(&field("which"));
-                let _ = self.social_keep_watch();
+                crate::heard!(self.social_keep_watch());
                 if gone.is_empty() { "Nothing matched, so nothing changed.".into() } else { format!("Stopped watching {}.", gone.join(", ")) }
             }
             "refresh" => self.social_refresh(t, true),
@@ -928,11 +931,11 @@ impl Daemon<'_> {
                         Ok(()) => {
                             if name == VAULT_INSTAGRAM {
                                 self.social_watch().instagram_token_at = t;
-                                let _ = self.social_keep_watch();
+                                crate::heard!(self.social_keep_watch());
                             }
                             if name == VAULT_THREADS {
                                 self.social_watch().threads_token_at = t;
-                                let _ = self.social_keep_watch();
+                                crate::heard!(self.social_keep_watch());
                             }
                             format!("Kept your {what} in the vault.")
                         }
@@ -1008,7 +1011,7 @@ impl Daemon<'_> {
         if let Err(e) = self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t) {
             return e;
         }
-        let _ = self.vault.save(&self.vault_home);
+        crate::kept!(self.vault.save(&self.vault_home));
         match self.plat.open_path(&apis::tiktok_consent_url(&s)) {
             Ok(()) => "TikTok's sign-in is open in your browser. Say yes, then copy the address TikTok sends you to and paste it in the second box.".into(),
             Err(e) => format!("I couldn't open your browser for TikTok's sign-in: {e}"),

@@ -76,7 +76,7 @@ impl Available {
     pub fn fetch_again(store: &Store) {
         let mut a = Available::load(store);
         if !a.downloaded.is_empty() {
-            let _ = std::fs::remove_file(&a.downloaded);
+            crate::heard!(std::fs::remove_file(&a.downloaded));
         }
         a.downloaded.clear();
         a.save(store);
@@ -87,7 +87,7 @@ impl Available {
     pub fn forget_offer(store: &Store) {
         let a = Available::load(store);
         if !a.downloaded.is_empty() {
-            let _ = std::fs::remove_file(&a.downloaded);
+            crate::heard!(std::fs::remove_file(&a.downloaded));
         }
         let _ = store.save(AVAILABLE, &Available::default());
     }
@@ -161,7 +161,7 @@ fn prune_own_files(state_root: &std::path::Path, just_kept: &str) {
     own.sort();
     let extra = own.len().saturating_sub(KEEP_OWN_FILES.saturating_sub(1));
     for (_, _, path) in own.into_iter().take(extra) {
-        let _ = std::fs::remove_file(path);
+        crate::heard!(std::fs::remove_file(path));
     }
 }
 
@@ -237,7 +237,7 @@ pub fn fetch_step(
         // The size is the notice's, not the sender's: a sender that says
         // otherwise is sending something else.
         if total != a.size || bytes.is_empty() || have + bytes.len() as u64 > a.size {
-            let _ = std::fs::remove_file(&part);
+            crate::heard!(std::fs::remove_file(&part));
             return Fetched::Bad(format!(
                 "The Atlas {} file being sent isn't the size the signed notice gave, so I threw it away.",
                 a.version
@@ -256,7 +256,7 @@ pub fn fetch_step(
     }
     let Ok(all) = std::fs::read(&part) else { return Fetched::Waiting };
     if crate::digest::sha256_hex(&all) != a.sha256 {
-        let _ = std::fs::remove_file(&part);
+        crate::heard!(std::fs::remove_file(&part));
         return Fetched::Bad(format!(
             "The Atlas {} file that arrived doesn't match the signed notice, so I threw it away and will fetch it again.",
             a.version
@@ -320,7 +320,7 @@ fn prune_passed_on(store: &Store) {
     let newest = list.iter().map(|p| p.sequence).max().unwrap_or(0).max(Available::load(store).sequence);
     let (keep, gone): (Vec<PassedOn>, Vec<PassedOn>) = list.into_iter().partition(|p| p.sequence >= newest);
     for g in &gone {
-        let _ = std::fs::remove_file(store.root().join(FILES).join(&g.sha256));
+        crate::heard!(std::fs::remove_file(store.root().join(FILES).join(&g.sha256)));
     }
     if !gone.is_empty() {
         let _ = store.save(PASSING_ON, &keep);

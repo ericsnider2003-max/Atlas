@@ -174,11 +174,11 @@ pub fn unzip(zip: &Path, dest: &Path, cfg: &crate::files::FilesConfig) -> Result
     for (e, rel) in entries.iter().zip(names) {
         let to = dest.join(&rel);
         if e.is_dir() {
-            let _ = std::fs::create_dir_all(&to);
+            crate::heard!(std::fs::create_dir_all(&to));
             continue;
         }
         if let Some(p) = to.parent() {
-            let _ = std::fs::create_dir_all(p);
+            crate::heard!(std::fs::create_dir_all(p));
         }
         let data = read_entry(&bytes, e)?;
         std::fs::write(&to, data).map_err(|err| format!("I couldn't write {}: {err}", rel.display()))?;

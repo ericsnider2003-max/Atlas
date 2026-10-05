@@ -868,6 +868,7 @@ impl<'a> Daemon<'a> {
                             if !sp.poll(self, &mut || None) && sp.busy() {
                                 sp.cut("stop");
                             }
+                            // unheard-ok: returns `Delivery`, not a Result
                             let _ = self.stop_saying(sp, mouth);
                         }
                         return (String::new(), !spoken.is_empty(), None);
@@ -898,6 +899,7 @@ impl<'a> Daemon<'a> {
                         if sp.poll(self, &mut || key_cut_in(talk_key.as_ref(), ears, &cut_in)) {
                             cut_off = true;
                             if let Some(sp) = saying.take() {
+                                // unheard-ok: returns `Delivery`, not a Result
                                 let _ = self.stop_saying(sp, mouth);
                             }
                         }
@@ -915,6 +917,7 @@ impl<'a> Daemon<'a> {
                             if sp.stopped() {
                                 cut_off = true;
                                 if let Some(sp) = saying.take() {
+                                    // unheard-ok: returns `Delivery`, not a Result
                                     let _ = self.stop_saying(sp, mouth);
                                 }
                             }
@@ -943,6 +946,7 @@ impl<'a> Daemon<'a> {
                             if sp.poll(self, &mut || key_cut_in(talk_key.as_ref(), ears, &cut_in)) {
                                 cut_off = true;
                                 if let Some(sp) = saying.take() {
+                                    // unheard-ok: returns `Delivery`, not a Result
                                     let _ = self.stop_saying(sp, mouth);
                                 }
                             }
@@ -955,6 +959,7 @@ impl<'a> Daemon<'a> {
                                 self.drop_pending_turn(clock(), "Set aside -- you said something else.");
                                 self.hotkeys = talk_key;
                                 if let Some(sp) = saying.take() {
+                                    // unheard-ok: returns `Said`, not a Result
                                     let _ = sp.finish();
                                 }
                                 let next = if crate::speech::is_interruption(&words) { None } else { Some(words) };
@@ -965,6 +970,7 @@ impl<'a> Daemon<'a> {
                             if sp.poll(self, &mut || None) {
                                 cut_off = true;
                                 if let Some(sp) = saying.take() {
+                                    // unheard-ok: returns `Delivery`, not a Result
                                     let _ = self.stop_saying(sp, mouth);
                                 }
                             }

@@ -163,8 +163,8 @@ pub fn run(cfg: &crate::config::Config, llm: std::sync::Arc<dyn crate::brain::Ll
         height: 1040,
         primary: true,
     }]);
-    let _ = std::fs::remove_dir_all(store_dir);
-    let _ = std::fs::create_dir_all(store_dir);
+    crate::heard!(std::fs::remove_dir_all(store_dir));
+    crate::heard!(std::fs::create_dir_all(store_dir));
     let store = crate::store::Store::new(store_dir.to_path_buf());
     let mut d = crate::daemon::Daemon::new(
         cfg,

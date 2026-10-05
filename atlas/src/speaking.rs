@@ -130,7 +130,7 @@ pub fn take_first_sound() -> Option<std::time::Instant> {
 
 /// Playback has finished (or failed): the line goes back to rest.
 pub fn end(data_dir: &Path) {
-    let _ = std::fs::remove_file(path(data_dir));
+    crate::heard!(std::fs::remove_file(path(data_dir)));
 }
 
 /// What's being said, if anything.

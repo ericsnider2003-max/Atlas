@@ -584,12 +584,12 @@ pub fn take_invitation(
         // open is not ours to have an opinion about.
         if now.saturating_sub(env.made_at) > env.valid_secs {
             expired = true;
-            let _ = std::fs::remove_file(&path);
+            crate::heard!(std::fs::remove_file(&path));
             continue;
         }
         let inside: Inside =
             serde_json::from_slice(&plain).map_err(|_| "that invitation is damaged".to_string())?;
-        let _ = std::fs::remove_file(&path);
+        crate::heard!(std::fs::remove_file(&path));
         return Ok(inside);
     }
     Err(if expired {

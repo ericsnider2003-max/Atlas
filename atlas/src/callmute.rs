@@ -231,7 +231,7 @@ mod platform {
     pub(super) fn unmute(what: &[Muted]) {
         each_session(|pid, _exe, _active, vol| unsafe {
             if what.iter().any(|m| m.pid == pid) {
-                let _ = vol.SetMute(false, std::ptr::null());
+                crate::heard!(vol.SetMute(false, std::ptr::null()));
             }
         });
     }

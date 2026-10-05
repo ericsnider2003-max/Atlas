@@ -297,13 +297,13 @@ impl Store {
                 .open(self.root.join("preserve-failed.log"))
             {
                 use std::io::Write;
-                let _ = writeln!(
+                crate::kept!(writeln!(
                     f,
                     "{}: could not move {} aside ({why}). The next save will \
                      overwrite it.",
                     now(),
                     from.display()
-                );
+                ));
             }
         }
     }
@@ -448,7 +448,7 @@ impl Store {
         // leaves one behind, but it is named with the pid that made it rather
         // than sitting on the name the next writer wants.
         if let Err(e) = rename_patiently(&tmp, &final_path) {
-            let _ = std::fs::remove_file(&tmp);
+            crate::heard!(std::fs::remove_file(&tmp));
             return Err(e.into());
         }
         remember_written(&final_path, hash);
@@ -570,7 +570,7 @@ pub fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     });
     let done = written.and_then(|_| rename_patiently(&tmp, path));
     if done.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+        crate::heard!(std::fs::remove_file(&tmp));
     }
     done
 }

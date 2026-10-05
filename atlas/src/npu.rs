@@ -279,8 +279,8 @@ pub fn lost_before(model: &Path, shapes: &[(String, Vec<i64>)]) -> bool {
 pub fn remember(model: &Path, shapes: &[(String, Vec<i64>)], npu_won: bool) {
     let mut v = verdicts();
     v.insert(verdict_key(model, shapes), if npu_won { "npu" } else { "processor" }.into());
-    let _ = std::fs::create_dir_all(cache_dir());
-    let _ = std::fs::write(cache_dir().join("verdicts.json"), serde_json::to_vec_pretty(&v).unwrap_or_default());
+    crate::heard!(std::fs::create_dir_all(cache_dir()));
+    crate::kept!(std::fs::write(cache_dir().join("verdicts.json"), serde_json::to_vec_pretty(&v).unwrap_or_default()));
 }
 
 /// Each free dimension's name in `model`'s inputs, with the size `shapes`
@@ -365,7 +365,7 @@ impl Session {
         let mut on = Where::Cpu;
         if want == Where::Npu && e.npu {
             let cache = cache_dir();
-            let _ = std::fs::create_dir_all(&cache);
+            crate::heard!(std::fs::create_dir_all(&cache));
             let opts = vec![
                 (format!("{PROVIDER}.cache_dir"), cache.display().to_string()),
                 (format!("{PROVIDER}.reshape_input"), reshape_value(shapes)),
@@ -464,7 +464,9 @@ pub fn check(root: &Path) -> String {
             // (and fills the cache) and is checked against the processor.
             let t = std::time::Instant::now();
             for text in CHECK_TEXTS {
+                // unheard-ok: returns `Option<Vec<f32>>`, not a Result
                 let _ = enc.embed_on_processor(text);
+                // unheard-ok: returns `Option<Vec<f32>>`, not a Result
                 let _ = enc.embed(text);
             }
             let first = t.elapsed().as_millis();
@@ -499,11 +501,11 @@ pub fn check(root: &Path) -> String {
     let models = root.join("models");
     if crate::speakernet::installed(&models) {
         let samples: Vec<f32> = (0..48_000).map(|i| ((i as f32) * 0.05).sin() * 0.3 + ((i as f32) * 0.013).sin() * 0.2).collect();
-        let _ = crate::speakernet::embed_on_processor(&samples, &models);
+        crate::heard!(crate::speakernet::embed_on_processor(&samples, &models));
         let t = std::time::Instant::now();
         let a = crate::speakernet::embed_on_processor(&samples, &models);
         let cpu = t.elapsed().as_millis();
-        let _ = crate::speakernet::embed(&samples, &models);
+        crate::heard!(crate::speakernet::embed(&samples, &models));
         let t = std::time::Instant::now();
         let b = crate::speakernet::embed(&samples, &models);
         let now = t.elapsed().as_millis();

@@ -538,7 +538,7 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755));
+        crate::heard!(std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755)));
     }
     std::fs::rename(&part, &to).map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
     let _ = store.save(
@@ -856,10 +856,10 @@ pub fn undo_update(store: &Store, install_root: &Path, running: &Path, _yes: Loc
         return Err(format!("The build kept is {previous}, the one already running."));
     }
     let aside = install_root.join(format!("atlas-{current_tag}.undone"));
-    let _ = std::fs::remove_file(&aside);
+    crate::heard!(std::fs::remove_file(&aside));
     std::fs::rename(running, &aside).map_err(|e| format!("I couldn't set {current} aside: {e}"))?;
     if let Err(e) = std::fs::rename(&kept, running) {
-        let _ = std::fs::rename(&aside, running);
+        crate::kept!(std::fs::rename(&aside, running));
         return Err(format!("I couldn't put {previous} back ({e}); still on {current}."));
     }
     upgrade::prune_kept(install_root, ".undone", upgrade::KEEP_BUILDS, Some(&aside));

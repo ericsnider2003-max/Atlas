@@ -228,6 +228,7 @@ impl Session {
         let thought = crate::selfaudit::as_thought(r);
         let mut session = Session::new(&thought.symptom, tests_before);
         for answer in [&thought.cause, &thought.where_, &thought.proof] {
+            // unheard-ok: returns `Option<&str>`, not a Result
             let _ = session.diagnosing.answer(answer);
         }
         session
@@ -634,6 +635,7 @@ pub fn run_the_proof(
                 "it was still running after {PROOF_BUDGET_SECS} seconds, so I stopped it"
             ));
         }
+        // unheard-ok: returns `bool`, not a Result
         let _ = crate::onlyone::OnlyOne::at(&crate::roots::data_dir()).beat(crate::store::now());
         crate::goodbye::nap(200);
     }
@@ -654,7 +656,7 @@ fn drain(child: &mut std::process::Child) -> impl FnOnce() -> String {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
             if let Some(mut r) = r {
-                let _ = r.read_to_end(&mut buf);
+                crate::heard!(r.read_to_end(&mut buf));
             }
             buf
         })
@@ -1077,9 +1079,9 @@ pub fn land(changes: &[crate::sandbox::Change], keep: &std::path::Path) -> crate
     let fail = |applied: &[&crate::sandbox::Change], e: std::io::Error| -> crate::error::Result<usize> {
         for c in applied {
             if c.new_file {
-                let _ = std::fs::remove_file(&c.target);
+                crate::heard!(std::fs::remove_file(&c.target));
             } else if let Some((_, old)) = old_bytes.iter().find(|(t, _)| t == &c.target) {
-                let _ = std::fs::write(&c.target, old);
+                crate::kept!(std::fs::write(&c.target, old));
             }
         }
         Err(e.into())
@@ -1199,7 +1201,7 @@ pub fn prove_in_project(
     // output (huge, and a stale one would poison the run), version control,
     // and dependency caches.
     let dst = base.join(format!("projfix-{}", crate::store::now()));
-    let _ = std::fs::remove_dir_all(&dst);
+    crate::heard!(std::fs::remove_dir_all(&dst));
     copy_project(root, &dst).map_err(|e| format!("couldn't copy the project to work in: {e}"))?;
 
     // Apply the edits in the copy.
@@ -1215,7 +1217,7 @@ pub fn prove_in_project(
 
     // Run the project's own suite in the copy, bounded.
     let output = run_bounded(cmd, &dst, PROJECT_PROOF_BUDGET_SECS)?;
-    let _ = std::fs::remove_dir_all(&dst);
+    crate::heard!(std::fs::remove_dir_all(&dst));
 
     let read = read_a_proof_run(&output);
     let built_and_passed = read == ProofToday::PassesAlready;

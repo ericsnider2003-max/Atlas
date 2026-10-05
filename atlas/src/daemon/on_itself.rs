@@ -77,7 +77,7 @@ impl<'a> Daemon<'a> {
                 crate::knowhow::Knowhow::learn_and_keep(&self.store, &p.id, snag);
                 let note = crate::knowhow::look_back(p, said.trim(), None);
                 let dir = self.notes_dir();
-                let _ = std::fs::create_dir_all(&dir);
+                crate::heard!(std::fs::create_dir_all(&dir));
                 let path = dir.join(format!("look-back-{}-{t}.md", p.id));
                 let filed = std::fs::write(&path, note).is_ok();
                 return format!(
@@ -749,12 +749,13 @@ impl<'a> Daemon<'a> {
                 return Ok("the mutation sweep needs cargo-mutants, which isn't installed".into());
             }
             let out = crate::roots::tmp_dir().join("mutation-sweep");
-            let _ = std::fs::remove_dir_all(&out);
+            crate::heard!(std::fs::remove_dir_all(&out));
             let args: Vec<String> = ["mutants", "-f", file.as_str(), "--no-shuffle", "--jobs", "2", "--timeout", "120", "--output"]
                 .iter()
                 .map(|s| s.to_string())
                 .chain(std::iter::once(out.display().to_string()))
                 .collect();
+            // unheard-ok: returns `(bool, String)`, not a Result
             let _ = crate::sandbox::run_within("cargo", &args, &[], &root, 3 * 3600, 2000);
             let found = crate::mutation::read_survivors(&out);
             let mut kept: Vec<crate::mutation::Survivor> = store.load(crate::mutation::KEPT);
@@ -764,6 +765,7 @@ impl<'a> Daemon<'a> {
             store.save(crate::mutation::KEPT, &kept).map_err(|e| e.to_string())?;
             Ok(format!("mutation sweep of {file}: {n} change{} no test noticed", if n == 1 { "" } else { "s" }))
         });
+        // unheard-ok: returns `bool`, not a Result
         let _ = self.hand_off("mutation-sweep", t, work, None, super::SpeakPolicy::ViaWatcher);
     }
 
@@ -841,7 +843,7 @@ impl<'a> Daemon<'a> {
                     if let Err(why) = s.work.record_build(build) {
                         return Some(format!("The fix built but didn't hold up: {why}."));
                     }
-                    let _ = s.work.record_review(review);
+                    crate::heard!(s.work.record_review(review));
                 }
                 self.persist();
                 if clean {

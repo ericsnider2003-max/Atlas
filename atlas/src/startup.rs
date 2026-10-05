@@ -372,7 +372,7 @@ pub fn turn_on(exe: &Path, mode: Mode) -> Result<String, String> {
             // One way in, not two: an entry left from an earlier fallback
             // would start a second copy at sign-in (which `onlyone` would
             // then turn away, but still).
-            let _ = run(&run_entry_remove());
+            crate::heard!(run(&run_entry_remove()));
             Ok("Atlas will start when you sign in.".into())
         }
         other => {
@@ -419,7 +419,7 @@ pub fn bring_up_to_date(exe: &Path, state_dir: &Path) -> Option<Result<String, S
 pub fn turn_off() -> Result<String, String> {
     let task = run(&remove());
     if cfg!(windows) {
-        let _ = run(&run_entry_remove());
+        crate::heard!(run(&run_entry_remove()));
     }
     match task {
         // "Not there" is the outcome asked for -- checked, not assumed (29 Sep

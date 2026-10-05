@@ -796,6 +796,7 @@ pub fn start(
                 .unwrap_or(0);
             let busy_now = busy.lock().map(|b| b.clone()).unwrap_or_default();
             let before = lessons.clone();
+            // unheard-ok: returns `Polled`, not a Result
             let _ = crate::astype::look_at_the_box(plat.as_ref(), &mut w, &mut lessons, &cfg, &busy_now, now_ms);
             if lessons != before {
                 dirty = true;

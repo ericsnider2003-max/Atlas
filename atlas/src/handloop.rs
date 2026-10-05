@@ -583,9 +583,9 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
             waited += step;
             let at = began.elapsed().as_millis().min(u32::MAX as u128) as u32;
             if let Some((px, py)) = track.where_now(at) {
-                let _ = setup
+                crate::heard!(setup
                     .pointer
-                    .move_cursor((px * w as f32) as i32, (py * h as f32) as i32);
+                    .move_cursor((px * w as f32) as i32, (py * h as f32) as i32));
             }
         }
     }
@@ -595,7 +595,7 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
     if carrying.take().is_some() {
         let _ = say.send(Said::HandsGone);
     }
-    let _ = setup.pointer.draw_overlay(&[]);
+    crate::heard!(setup.pointer.draw_overlay(&[]));
 }
 
 fn apply(
@@ -607,11 +607,11 @@ fn apply(
     use crate::gaze::Move;
     match what {
         Move::Point { x, y } => {
-            let _ = pointer.move_cursor(x, y);
+            crate::heard!(pointer.move_cursor(x, y));
             outline(pointer, x, y, false);
         }
         Move::Grab { x, y } => {
-            let _ = pointer.move_cursor(x, y);
+            crate::heard!(pointer.move_cursor(x, y));
             *carrying = pointer
                 .window_at(x, y)
                 .ok()
@@ -620,9 +620,9 @@ fn apply(
             outline(pointer, x, y, true);
         }
         Move::Drag { x, y } => {
-            let _ = pointer.move_cursor(x, y);
+            crate::heard!(pointer.move_cursor(x, y));
             if let Some((id, from)) = carrying {
-                let _ = pointer.place(
+                crate::heard!(pointer.place(
                     *id,
                     PixelRect {
                         x: x - from.width / 2,
@@ -630,7 +630,7 @@ fn apply(
                         width: from.width,
                         height: from.height,
                     },
-                );
+                ));
             }
         }
         Move::Drop { x, y } => {
@@ -638,8 +638,8 @@ fn apply(
             outline(pointer, x, y, false);
         }
         Move::Tap { x, y } => {
-            let _ = pointer.move_cursor(x, y);
-            let _ = pointer.click(x, y, Button::Left);
+            crate::heard!(pointer.move_cursor(x, y));
+            crate::heard!(pointer.click(x, y, Button::Left));
         }
         Move::Resize { .. } => {}
         Move::Summon => {
@@ -647,7 +647,7 @@ fn apply(
         }
         Move::Done => {
             *carrying = None;
-            let _ = pointer.draw_overlay(&[]);
+            crate::heard!(pointer.draw_overlay(&[]));
             let _ = say.send(Said::HandsGone);
         }
     }
@@ -658,16 +658,16 @@ fn outline(pointer: &dyn Pointer, x: i32, y: i32, holding: bool) {
         Some(id) => match pointer.rect_of(id) {
             Ok(r) => {
                 let e = crate::overlay::around((r.x, r.y, r.width, r.height), holding);
-                let _ = pointer.draw_overlay(&[e]);
+                crate::heard!(pointer.draw_overlay(&[e]));
             }
             Err(_) => {
-                let _ = pointer.draw_overlay(&[]);
+                crate::heard!(pointer.draw_overlay(&[]));
             }
         },
         // Nothing under the hand. Cleared rather than left ringing whatever it
         // was last over, which would be a lie about where you are.
         None => {
-            let _ = pointer.draw_overlay(&[]);
+            crate::heard!(pointer.draw_overlay(&[]));
         }
     }
 }

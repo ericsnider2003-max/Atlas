@@ -395,7 +395,7 @@ fn record_setting_defaults(config_dir: &Path) {
              # Atlas keeps this to tell you when an update changes one of those defaults.\n{}",
             serde_yaml::to_string(&was).unwrap_or_default()
         );
-        let _ = write_yaml_whole(&settings_was_path(config_dir), &text);
+        crate::kept!(write_yaml_whole(&settings_was_path(config_dir), &text));
     }
 }
 
@@ -573,7 +573,7 @@ pub fn keep_hand_edits_with(
         }
     }
     if anything_of_yours && !already {
-        let _ = write_yaml_whole(&told, version);
+        crate::kept!(write_yaml_whole(&told, version));
     }
     kept
 }
@@ -607,7 +607,7 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
     };
     if disk_text == new_text {
         if std::fs::read_to_string(&base_file).ok().as_deref() != Some(new_text) {
-            let _ = write_yaml_whole(&base_file, new_text);
+            crate::kept!(write_yaml_whole(&base_file, new_text));
         }
         return None;
     }
@@ -652,7 +652,7 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
     if let Err(e) = write_yaml_whole(&disk_path, new_text) {
         return Some(format!("I couldn't bring config/{file} up to this version: {e}"));
     }
-    let _ = write_yaml_whole(&base_file, new_text);
+    crate::kept!(write_yaml_whole(&base_file, new_text));
 
     if count == 0 {
         return None;

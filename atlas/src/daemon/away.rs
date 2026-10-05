@@ -379,7 +379,7 @@ impl<'a> Daemon<'a> {
         if std::fs::create_dir_all(&dir).is_ok() {
             use std::io::Write;
             if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("work-sessions.md")) {
-                let _ = writeln!(f, "{}", crate::worksession::note_line(&s, ended, &said, &clock));
+                crate::kept!(writeln!(f, "{}", crate::worksession::note_line(&s, ended, &said, &clock)));
             }
         }
         said

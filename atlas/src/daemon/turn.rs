@@ -275,6 +275,7 @@ impl<'a> Daemon<'a> {
             // arrive through `settle`, reported rather than swallowed.
             Some(Heard::Panic) => {
                 // A job in an app ends where it is.
+                // unheard-ok: returns `Option<String>`, not a Result
                 let _ = self.stop_operating();
                 // A model turn still thinking is stopped too: its answer
                 // would otherwise run its tool when it came back (28 Sep 2026).
@@ -952,9 +953,9 @@ impl<'a> Daemon<'a> {
             // An edited video: keep it, and then the original (G8).
             if let Some((original, copy, result)) = self.pending_media_keep.take() {
                 self.session.pending = Pending::Nothing;
-                let _ = std::fs::remove_file(&copy);
+                crate::heard!(std::fs::remove_file(&copy));
                 if !is_yes(said) {
-                    let _ = std::fs::remove_file(&result);
+                    crate::heard!(std::fs::remove_file(&result));
                     return "Alright — I've thrown the edit away. Your original is untouched.".into();
                 }
                 // Removing an original is the consequential kind of media
@@ -2112,6 +2113,7 @@ impl<'a> Daemon<'a> {
                 // It is now in the reply, so it has been handed over and can
                 // be dropped. This is the only place the outbox is emptied.
                 let cfg = self.notify_cfg();
+                // unheard-ok: returns `Vec<Note>`, not a Result
                 let _ = self.outbox.collect(_t, &cfg);
                 format!("{b} {reply}")
             }

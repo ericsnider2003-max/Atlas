@@ -195,7 +195,7 @@ pub fn ask_until(
         std::thread::spawn(move || {
             let mut s = String::new();
             if let Some(mut p) = p {
-                let _ = p.read_to_string(&mut s);
+                crate::heard!(p.read_to_string(&mut s));
             }
             let _ = tx.send(s);
         });
@@ -337,7 +337,7 @@ pub fn smaller(image: &Path) -> Option<std::path::PathBuf> {
     if ok && small.exists() {
         Some(small)
     } else {
-        let _ = std::fs::remove_file(&small);
+        crate::heard!(std::fs::remove_file(&small));
         None
     }
 }

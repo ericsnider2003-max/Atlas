@@ -531,6 +531,7 @@ pub fn run_all(
         d.rehearsal = true;
         d.here_at(t0 + i as u64 * 60);
         let parsed = crate::session::kind_of(&parser.parse(&said)).to_string();
+        // unheard-ok: returns `Vec<String>`, not a Result
         let _ = plat.take();
         let started = std::time::Instant::now();
         let reply = match crate::crash::caught("a self-test sentence", || d.turn(&said, t0 + i as u64 * 60)) {
@@ -587,6 +588,7 @@ pub fn run_all(
         );
         d.rehearsal = true;
         d.here_at(t0 + (base + i as u64) * 60);
+        // unheard-ok: returns `Vec<String>`, not a Result
         let _ = plat.take();
         let started = std::time::Instant::now();
         let reply = match crate::crash::caught("a corrected sentence", || d.turn(&case.said, t0 + (base + i as u64) * 60)) {
@@ -686,7 +688,7 @@ pub fn summary(rows: &[Row]) -> String {
 /// A scratch copy of the install at `real`, in `scratch`: settings and state
 /// copied, the big read-only folders linked. Returns what couldn't be linked.
 pub fn scratch_copy(real: &Path, scratch: &Path) -> std::io::Result<Vec<String>> {
-    let _ = std::fs::remove_dir_all(scratch);
+    crate::heard!(std::fs::remove_dir_all(scratch));
     std::fs::create_dir_all(scratch.join("data"))?;
     copy_tree(&real.join("config"), &scratch.join("config"))?;
     let state = real.join("data").join("state");

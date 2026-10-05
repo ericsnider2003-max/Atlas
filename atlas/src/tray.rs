@@ -623,14 +623,14 @@ impl Tray {
             // (`owned == false`) is your original, sitting where you keep it,
             // and forgetting the tray item must never reach out and delete it.
             if self.items[pos].owned {
-                let _ = std::fs::remove_file(&path);
+                crate::heard!(std::fs::remove_file(&path));
             }
             // Frames kept from watching a video live beside it. Deleting the
             // video and leaving forty pictures of it behind would be the
             // stored-file problem again, one directory over. These are Atlas's
             // own derived files, so they go even for a referenced original.
             if let Some(dir) = std::path::Path::new(&path).parent() {
-                let _ = std::fs::remove_dir_all(dir.join(format!("frames-{}", self.items[pos].id)));
+                crate::heard!(std::fs::remove_dir_all(dir.join(format!("frames-{}", self.items[pos].id))));
             }
         }
         self.items.remove(pos);

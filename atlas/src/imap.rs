@@ -448,7 +448,7 @@ impl<S: Read + Write> Session<S> {
     }
 
     pub fn logout(&mut self) {
-        let _ = self.command("LOGOUT");
+        crate::heard!(self.command("LOGOUT"));
     }
 
     /// Select a mailbox and fetch every message a search finds, in one

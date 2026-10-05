@@ -170,7 +170,7 @@ pub fn asked_by_file(state_dir: &std::path::Path) -> bool {
     let f = stop_file(state_dir);
     if f.is_file() {
         let said = std::fs::read_to_string(&f).unwrap_or_default();
-        let _ = std::fs::remove_file(&f);
+        crate::heard!(std::fs::remove_file(&f));
         please_stop_because(if said.trim() == UPDATING { Why::Updating } else { Why::YouClosedIt });
         return true;
     }

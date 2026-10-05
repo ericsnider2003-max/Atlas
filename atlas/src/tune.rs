@@ -457,7 +457,7 @@ pub fn move_folder(from: &std::path::Path, to: &std::path::Path, now: u64) -> Re
         to.display(),
         before / 1_000_000
     );
-    let _ = std::fs::write(from.with_extension("MOVED.txt"), note);
+    crate::kept!(std::fs::write(from.with_extension("MOVED.txt"), note));
     Ok(Moved { from: from.display().to_string(), to: to.display().to_string(), mb: before / 1_000_000, at: now })
 }
 
@@ -587,7 +587,7 @@ pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
     // Deepest first, and only the empty ones (`remove_dir` refuses the rest).
     dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
     for d in dirs {
-        let _ = std::fs::remove_dir(&d);
+        crate::heard!(std::fs::remove_dir(&d));
     }
     c.mb /= 1024 * 1024;
     c
@@ -1209,7 +1209,7 @@ pub fn close_loads(loads: &[Load], wait: std::time::Duration) -> Vec<Closed> {
         }
         // A background process refuses a polite request ("can only be
         // terminated forcefully"); that refusal is expected, not a failure.
-        let _ = taskkill(false, l, &pids);
+        crate::heard!(taskkill(false, l, &pids));
     }
     let until = std::time::Instant::now() + wait;
     loop {
@@ -1732,7 +1732,7 @@ fn move_exact(from: &std::path::Path, to: &std::path::Path) -> Result<(), String
     let len = std::fs::metadata(from).map_err(|e| format!("{}: {e}", from.display()))?.len();
     let copied = std::fs::copy(from, to).map_err(|e| format!("{} couldn't be copied: {e}", from.display()))?;
     if copied != len {
-        let _ = std::fs::remove_file(to);
+        crate::heard!(std::fs::remove_file(to));
         return Err(format!("{} didn't copy whole, so the original stays", from.display()));
     }
     std::fs::remove_file(from).map_err(|e| format!("{} was copied but the original couldn't be removed: {e}", from.display()))
@@ -1770,7 +1770,7 @@ pub fn move_back(moves: &[(std::path::PathBuf, std::path::PathBuf)]) -> (usize, 
             continue;
         }
         if let Some(dir) = was.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            crate::heard!(std::fs::create_dir_all(dir));
         }
         match move_exact(is, was) {
             Ok(()) => back += 1,
@@ -1868,7 +1868,7 @@ pub fn undo_tune_change(u: &TuneUndo) -> Result<String, String> {
             let (back, not) = move_back(moves);
             // `remove_dir` only ever removes an empty folder.
             for d in made.iter().rev() {
-                let _ = std::fs::remove_dir(d);
+                crate::heard!(std::fs::remove_dir(d));
             }
             let mut s = format!("Put {back} of {} back where {} were.", moves.len(), if back == 1 { "it" } else { "they" });
             if !not.is_empty() {

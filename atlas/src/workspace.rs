@@ -223,6 +223,7 @@ fn place_one(
         // consecutive failures and tells the person; doing it again from
         // inside a bring-up would be a second voice on the same fact, and
         // there is no `&mut self` here to count on anyway.
+        // unheard-ok: returns `bool`, not a Result
         let _ = crate::onlyone::OnlyOne::at(&crate::roots::data_dir()).beat(crate::store::now());
         plat.sleep_ms(spec.poll_ms);
     };
@@ -377,7 +378,7 @@ pub(crate) fn move_to_screen(cfg: &Config, plat: &dyn Platform, name: Option<&st
         return Ok(format!("{called} is already on that screen."));
     }
     plat.place(win, PixelRect { x: to.x, y: to.y, width: to.width, height: to.height }).map_err(|e| e.to_string())?;
-    let _ = plat.focus(win);
+    crate::heard!(plat.focus(win));
     // Looked at again before saying it's done: a window that refused the
     // move (an elevated program, one that sizes itself) isn't reported moved.
     if let Ok(r) = plat.rect_of(win) {

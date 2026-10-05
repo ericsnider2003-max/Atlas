@@ -145,7 +145,7 @@ impl Route {
         let enc = Arc::new(enc);
         let tools: Arc<OnceLock<Vec<Vec<f32>>>> = Arc::new(OnceLock::new());
         let (e, t) = (enc.clone(), tools.clone());
-        let _ = std::thread::Builder::new().name("meaning-tools".into()).spawn(move || {
+        crate::heard!(std::thread::Builder::new().name("meaning-tools".into()).spawn(move || {
             let mut all = Vec::with_capacity(texts.len());
             for text in &texts {
                 // The first one also waits for the model to load.
@@ -154,6 +154,7 @@ impl Route {
                     None => return, // no encoder after all: words alone
                 }
             }
+            // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
             let _ = t.set(all);
             // Then the reply check's examples, and the check goes live.
             let denials: Option<Vec<(Vec<f32>, &'static str)>> = crate::backed::DENIAL_EXAMPLES
@@ -163,7 +164,7 @@ impl Route {
             if let Some(denials) = denials {
                 crate::backed::install(Box::new(Checks { enc: e.clone(), ex: crate::backed::Examples { denials } }));
             }
-        });
+        }));
         Some(Route { enc, tools })
     }
 

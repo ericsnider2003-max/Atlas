@@ -148,13 +148,13 @@ fn run_with_stdin(program: &str, args: &[String], folder: &Path, input: &str, li
         Err(e) => return Ran { finished: false, said: format!("{program} wouldn't start: {e}") },
     };
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(input.as_bytes());
+        crate::heard!(stdin.write_all(input.as_bytes()));
     }
     let read = |r: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
             if let Some(mut r) = r {
-                let _ = r.read_to_end(&mut buf);
+                crate::heard!(r.read_to_end(&mut buf));
             }
             buf
         })

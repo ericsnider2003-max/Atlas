@@ -299,6 +299,7 @@ mod platform {
                 }
             }
         });
+        // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
         let _ = TIMER.set(timer.thread().clone());
         ok_rx.recv().map_err(|_| "the keyboard thread didn't start".to_string())?
     }

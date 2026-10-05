@@ -533,18 +533,18 @@ impl<'a> Daemon<'a> {
                     outcome = o;
                     said = format!("{said} {why}");
                 } else {
-                    let _ = std::fs::create_dir_all(&out_dir);
+                    crate::heard!(std::fs::create_dir_all(&out_dir));
                     let brief = out_dir.join("ask-for-help.md");
-                    let _ = std::fs::write(&brief, crate::build_it::write_up(&latest, *rounds, &hcfg));
+                    crate::kept!(std::fs::write(&brief, crate::build_it::write_up(&latest, *rounds, &hcfg)));
                     said = format!(
                         "{said} I've written the problem up for a bigger model in {} — once your server's model is set as the stronger one, I'll ask it myself.",
                         brief.display()
                     );
                 }
             }
-            let _ = sandbox.discard();
+            crate::heard!(sandbox.discard());
             if let Some(code) = outcome.code() {
-                let _ = std::fs::create_dir_all(&out_dir);
+                crate::heard!(std::fs::create_dir_all(&out_dir));
                 let ext = if outcome.is_built() { ext_for(lang).to_string() } else { format!("draft.{}", ext_for(lang)) };
                 let path = crate::build_it::file_name_for(&out_dir, &named, &ext);
                 said = match std::fs::write(&path, code) {
@@ -553,7 +553,7 @@ impl<'a> Daemon<'a> {
                 };
             }
             if outcome.is_built() {
-                let _ = std::fs::remove_file(crate::build_it::Struggle::path());
+                crate::heard!(std::fs::remove_file(crate::build_it::Struggle::path()));
             }
             Ok(said)
         });
@@ -1117,7 +1117,7 @@ impl<'a> Daemon<'a> {
         // vault (social step 4); everything else through Atlas's browser.
         let bluesky = self.publisher.get(id).is_some_and(|p| crate::delivery::is_bluesky(&p.channel)).then(|| {
             if self.vault.state() != crate::vault::State::Open {
-                let _ = self.vault.open_unattended(t);
+                crate::heard!(self.vault.open_unattended(t));
             }
             let password = self.vault.get(crate::social::VAULT_BLUESKY, t).unwrap_or_default();
             (self.social_cfg().bluesky_handle, password)
@@ -1650,7 +1650,7 @@ impl<'a> Daemon<'a> {
                 let store = crate::roots::store();
                 let mut hearing = crate::hearing::Hearing::load_from(&store);
                 hearing.choose(&d.name);
-                let _ = hearing.save_to(&store);
+                crate::kept!(hearing.save_to(&store));
                 let line = format!("Listening with {} now, and I'll stay on it until you pick another.", crate::hearing::short(&d.name));
                 self.log.info(&line);
                 line
@@ -1854,7 +1854,7 @@ impl<'a> Daemon<'a> {
                 return Err("ffmpeg couldn't make the cut".into());
             }
             let after: f64 = spans.iter().map(|(a, b)| b - a).sum();
-            let _ = run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg"))));
+            crate::heard!(run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")))));
             let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-")).count()).unwrap_or(0);
             let mut transcript = String::new();
             if let Some(timed) = &timed {
@@ -1878,7 +1878,7 @@ impl<'a> Daemon<'a> {
                     let mut tool = timed.clone();
                     tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
                     if let Ok(srt) = tool.run(&v, None) {
-                        let _ = std::fs::write(folder.join(format!("{stem} - cut.srt")), &srt);
+                        crate::kept!(std::fs::write(folder.join(format!("{stem} - cut.srt")), &srt));
                         transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
                     }
                 }
@@ -1887,7 +1887,7 @@ impl<'a> Daemon<'a> {
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
                 let quoted = crate::untrusted::Read::new("the video", &transcript, crate::store::now()).quoted();
                 if let Some((t, d)) = m.complete(crate::studio::TITLE_PROMPT, &quoted).ok().and_then(|r| crate::studio::title_and_description(&r, &transcript)) {
-                    let _ = std::fs::write(folder.join("title and description.txt"), format!("{t}\n\n{d}\n"));
+                    crate::kept!(std::fs::write(folder.join("title and description.txt"), format!("{t}\n\n{d}\n")));
                     title = Some(t);
                 }
             }
@@ -2311,7 +2311,7 @@ impl<'a> Daemon<'a> {
         let store = crate::roots::store();
         let mut h = crate::hearing::Hearing::load_from(&store);
         h.record_turn(&crate::hearing::Ear::Desk(mic.clone()), understood);
-        let _ = h.save_to(&store);
+        crate::kept!(h.save_to(&store));
         // A voice that only just gets through: said plainly, once a day, and
         // Windows' input level raised once if it's what is low (30 Sep 2026:
         // "I feel like I have to yell").

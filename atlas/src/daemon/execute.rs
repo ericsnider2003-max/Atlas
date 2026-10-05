@@ -1527,19 +1527,19 @@ impl<'a> Daemon<'a> {
         let inner = self.parser.parse(command);
         let reply = match &inner {
             Intent::WorkspaceOn => {
-                let _ = workspace::workspace_on(self.cfg, &mock);
+                crate::heard!(workspace::workspace_on(self.cfg, &mock));
                 String::new()
             }
             Intent::WorkspaceOff => {
-                let _ = workspace::workspace_off(self.cfg, &mock);
+                crate::heard!(workspace::workspace_off(self.cfg, &mock));
                 String::new()
             }
             Intent::OpenApp(a) => {
-                let _ = workspace::open_app(self.cfg, &mock, a);
+                crate::heard!(workspace::open_app(self.cfg, &mock, a));
                 String::new()
             }
             Intent::CloseApp(a) => {
-                let _ = workspace::close_app(self.cfg, &mock, a);
+                crate::heard!(workspace::close_app(self.cfg, &mock, a));
                 String::new()
             }
             other => format!("I don't know how to rehearse {}.", other.plain()),
@@ -1610,7 +1610,7 @@ impl<'a> Daemon<'a> {
                 s.title_hints = vec![w.to_string(), squashed.clone()];
                 self.plat.find_window(&s).ok().flatten()
             }) {
-                let _ = self.plat.focus(win);
+                crate::heard!(self.plat.focus(win));
                 return format!("There's {w}.");
             }
             // Not configured and not open: an app by its Start-menu name, as

@@ -166,6 +166,7 @@ impl Daemon<'_> {
             Action::Pause(on) => {
                 // The same path as saying it, so a paused Atlas from the hub
                 // is exactly as paused as one told out loud.
+                // unheard-ok: returns `String`, not a Result
                 let _ = self.turn(if on { "pause" } else { "carry on" }, crate::store::now());
                 hub::back_with(
                     Page::Now.href(),
@@ -488,7 +489,7 @@ impl Daemon<'_> {
                                             crate::sync::KeptKey::keeping(&phrase, now);
                                         match self.store.save(crate::sync::KEY_FILE, &keeping) {
                                             Ok(()) => {
-                                                let _ = crate::sync::write_card(&phrase);
+                                                crate::heard!(crate::sync::write_card(&phrase));
                                                 said.push_str(
                                                     " The household key came with it, so \
                                                      sealed bundles from the other machine \
@@ -677,6 +678,7 @@ impl Daemon<'_> {
             ),
             Action::Queued => Reply::ok(self.on_queued()),
             Action::Say(text) => {
+                // unheard-ok: returns `Reply`, not a Result
                 let _ = self.hub_post("/hub/talk", &[("text".to_string(), text)]);
                 Reply::ok("heard")
             }
@@ -1221,7 +1223,7 @@ impl Daemon<'_> {
             fetching.push(id.to_string());
             let id = id.to_string();
             std::thread::spawn(move || {
-                let _ = crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {});
+                crate::heard!(crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {}));
                 FETCHING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|f| *f != id);
             });
         }
@@ -1323,6 +1325,7 @@ impl Daemon<'_> {
     fn phone_view(&mut self, kind: Option<crate::phoneadd::Kind>) -> crate::hubpages::PhoneView {
         use crate::phoneadd::{app_file, Kind};
         let now = crate::store::now();
+        // unheard-ok: returns `Vec<String>`, not a Result
         let _ = self.take_heard_phones(now);
         // A code that came up on the crew is shown now, not at the next tick.
         let coming: Vec<_> = self
@@ -1749,6 +1752,7 @@ impl Daemon<'_> {
                 }
             }
             _ => {
+                // unheard-ok: returns `Option<String>`, not a Result
                 let _ = crate::feedback::heard_feedback(&self.store, "you", &serde_json::to_string(&f).unwrap_or_default());
                 "It's on your own list to fix, on your Feedback page.".to_string()
             }
@@ -2400,8 +2404,8 @@ impl Daemon<'_> {
                                 Ok(o) => crate::vadcal::Outcome::say(&o),
                                 Err(e) => e,
                             };
-                            let _ = std::fs::remove_file(&room_path);
-                            let _ = std::fs::remove_file(&you_path);
+                            crate::heard!(std::fs::remove_file(&room_path));
+                            crate::heard!(std::fs::remove_file(&you_path));
                             said
                         }
                         (Ok(_), Err(_)) => "Got the room. Now bring in a recording of you talking somewhere quiet.".into(),
@@ -3348,7 +3352,7 @@ impl Daemon<'_> {
                 return format!("Couldn't save that: {e}");
             }
             if let Some(f) = &got.file {
-                let _ = std::fs::remove_file(self.store.root().join(&f.stored_at));
+                crate::heard!(std::fs::remove_file(self.store.root().join(&f.stored_at)));
             }
             return format!("Binned the one from {}.", got.from);
         }
@@ -3365,7 +3369,7 @@ impl Daemon<'_> {
             Ok(_) => match self.tray.save(&self.store).and_then(|()| inbox.save(&self.store)) {
                 Ok(()) => {
                     if let Some(f) = &got.file {
-                        let _ = std::fs::remove_file(self.store.root().join(&f.stored_at));
+                        crate::heard!(std::fs::remove_file(self.store.root().join(&f.stored_at)));
                     }
                     format!("Kept the one from {}. It's with your documents.", got.from)
                 }

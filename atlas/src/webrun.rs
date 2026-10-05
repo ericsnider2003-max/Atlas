@@ -387,7 +387,7 @@ pub fn enter_code(b: &mut crate::browser::Browser, code: &str) -> Result<SignedI
         Filled::SeveralBoxes(n) => return Err(format!("there are {n} boxes that could be for the code, and I won't guess")),
         Filled::OnlyAPasswordBox => return Err("the only box is a password box, and a code doesn't go there".into()),
     }
-    let _ = b.cdp.eval(&submit_js());
+    crate::heard!(b.cdp.eval(&submit_js()));
     std::thread::sleep(std::time::Duration::from_millis(2500));
     let text = b.cdp.text().unwrap_or_default();
     Ok(if crate::twofactor::asks_for_code(&text) {
@@ -470,7 +470,7 @@ pub fn sign_up(
         if let crate::enrol::Verdict::HandOver(s) | crate::enrol::Verdict::Abandon(s) = enrolment.step(&after, cfg) {
             return SignedUp::Stopped(s);
         }
-        let _ = b.cdp.eval(&submit_js());
+        crate::heard!(b.cdp.eval(&submit_js()));
     }
     SignedUp::Made
 }

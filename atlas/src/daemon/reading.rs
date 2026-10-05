@@ -551,7 +551,7 @@ impl<'a> Daemon<'a> {
         let tools = self.tools_cfg();
         let view = tools.viewing.clone();
         let scratch = std::path::Path::new(&tools.work_dir).join(format!("watch-{}", item.id));
-        let _ = std::fs::create_dir_all(&scratch);
+        crate::heard!(std::fs::create_dir_all(&scratch));
 
         // Two passes, because one is not enough. The first asks ffmpeg where
         // the picture changed; the second pulls frames at those moments *plus*
@@ -582,7 +582,7 @@ impl<'a> Daemon<'a> {
         // something and reporting on it as if it were the whole is the
         // failure this module is most able to cause.
         if let Some(too_long) = crate::viewing::too_long(duration, &view) {
-            let _ = std::fs::remove_dir_all(&scratch);
+            crate::heard!(std::fs::remove_dir_all(&scratch));
             return Err(too_long);
         }
         let times = crate::viewing::where_to_look(&scenes, duration, &view);
@@ -623,7 +623,7 @@ impl<'a> Daemon<'a> {
         // recognition to produce the same answer twice.
         let (frames, times) = crate::viewing::one_per_moment(frames, &got, &times);
         for extra in &times.1 {
-            let _ = std::fs::remove_file(extra);
+            crate::heard!(std::fs::remove_file(extra));
         }
         let times = times.0;
 
@@ -666,9 +666,9 @@ impl<'a> Daemon<'a> {
             // Read, then gone. The full frame never survives either way: this
             // is the line that keeps an hour of video costing about as much
             // disk as a long email.
-            let _ = std::fs::remove_file(frame);
+            crate::heard!(std::fs::remove_file(frame));
         }
-        let _ = std::fs::remove_dir(&scratch);
+        crate::heard!(std::fs::remove_dir(&scratch));
 
         let spoken = self.transcribe_timed(item, path);
         if screens.is_empty() && spoken.is_empty() {
@@ -784,7 +784,7 @@ impl<'a> Daemon<'a> {
         let tools = self.tools_cfg();
         let path = item.stored_at.clone().unwrap_or_else(|| item.what.clone());
         let scratch = std::path::Path::new(&tools.work_dir);
-        let _ = std::fs::create_dir_all(scratch);
+        crate::heard!(std::fs::create_dir_all(scratch));
         let wav = scratch.join(format!("handed-{}.wav", item.id));
         // Removed however this ends. Both of the early returns below —
         // "I couldn't get the sound out of that" and "There was nothing said

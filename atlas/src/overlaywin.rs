@@ -135,7 +135,7 @@ pub struct Folders {
 pub fn run(folders: Folders) -> Result<(), String> {
     let Folders { data: data_dir, config: config_dir } = folders;
     let only = crate::onlyone::OnlyOne::at(&data_dir.join("overlay"));
-    let _ = std::fs::create_dir_all(data_dir.join("overlay"));
+    crate::heard!(std::fs::create_dir_all(data_dir.join("overlay")));
     match only.take(crate::store::now()) {
         Ok(_) => {}
         Err(_) => return Ok(()), // one is already showing; nothing to do

@@ -353,7 +353,7 @@ fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path
         std::thread::spawn(move || {
             let mut buf = Vec::new();
             if let Some(mut r) = r {
-                let _ = r.read_to_end(&mut buf);
+                crate::heard!(r.read_to_end(&mut buf));
             }
             buf
         })
@@ -390,11 +390,11 @@ fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path
 fn stop_tree(child: &mut std::process::Child) {
     #[cfg(windows)]
     {
-        let _ = crate::tools::command("taskkill")
+        crate::heard!(crate::tools::command("taskkill")
             .args(["/T", "/F", "/PID", &child.id().to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .status();
+            .status());
     }
     let _ = child.kill();
     let _ = child.wait();

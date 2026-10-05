@@ -291,7 +291,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
     let key = vapid_key(&state)?;
     let payload = android_payload(note, cfg);
     let tmp = crate::roots::data_dir().join("tmp");
-    let _ = std::fs::create_dir_all(&tmp);
+    crate::heard!(std::fs::create_dir_all(&tmp));
     let now = crate::store::now();
     let (mut delivered, mut why, mut gone) = (0, String::new(), Vec::new());
     for (i, d) in devices.devices.iter().enumerate() {
@@ -317,8 +317,8 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
                 .args(webpush_args(&headers, &body_file, &d.endpoint))
                 .stderr(std::process::Stdio::null())
                 .output();
-            let _ = std::fs::remove_file(&headers);
-            let _ = std::fs::remove_file(&body_file);
+            crate::heard!(std::fs::remove_file(&headers));
+            crate::heard!(std::fs::remove_file(&body_file));
             let out = out.map_err(|e| format!("couldn't start curl: {e}"))?;
             Ok(read_distributor_reply(&String::from_utf8_lossy(&out.stdout)))
         })();
@@ -332,7 +332,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
         for e in &gone {
             devices.forget(e);
         }
-        let _ = devices.save(&state);
+        crate::kept!(devices.save(&state));
     }
     if delivered > 0 {
         Ok(())

@@ -449,6 +449,7 @@ fn read_links(b: &mut crate::browser::Browser, page: &str, timeout_ms: u64) -> R
     // and one that never shows a link is given up on after the browser's own
     // timeout. Links are read either way -- a page that never matched still
     // gets its chance to yield nothing.
+    // unheard-ok: returns `bool`, not a Result
     let _ = b.cdp.wait_for("a[href]", timeout_ms)?;
     b.links()
 }
@@ -1085,7 +1086,7 @@ pub const LAST_RESEARCH: &str = ".last-research";
 pub const LAST_WRITTEN: &str = ".last-written";
 
 pub fn mark_last(dir: &str, which: &str, path: &str) {
-    let _ = std::fs::write(std::path::Path::new(dir).join(which), path);
+    crate::kept!(std::fs::write(std::path::Path::new(dir).join(which), path));
 }
 
 /// The note marked as `which`, if it's still there.

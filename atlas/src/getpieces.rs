@@ -460,7 +460,7 @@ pub fn take_in(p: &Piece, root: &Path, places: &[PathBuf]) -> Result<Option<Path
             .or_else(|_| {
                 let beside = dest.with_extension("incoming");
                 std::fs::copy(&found, &beside).and_then(|_| std::fs::rename(&beside, &dest)).inspect_err(|_| {
-                    let _ = std::fs::remove_file(&beside);
+                    crate::heard!(std::fs::remove_file(&beside));
                 })
             })
             .map_err(|e| format!("I couldn't put {} in place: {e}", p.name))?;
@@ -736,7 +736,7 @@ pub fn have(p: &Piece, root: &Path) -> bool {
                 || work.join(format!("{}.unpacked", slug(p.name))).exists();
             let key_ok = std::fs::metadata(&key).is_ok_and(|m| m.is_file() && m.len() > 0);
             if key_ok && !unfinished {
-                let _ = std::fs::write(&mark, p.sha256);
+                crate::kept!(std::fs::write(&mark, p.sha256));
                 return true;
             }
             false
@@ -843,8 +843,8 @@ pub fn clear_unfinished(pieces: &[Piece], root: &Path) -> u64 {
     for p in pieces {
         let part = work.join(format!("{}.part", slug(p.name)));
         freed += std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-        let _ = std::fs::remove_file(&part);
-        let _ = std::fs::remove_dir_all(work.join(format!("{}.unpacked", slug(p.name))));
+        crate::heard!(std::fs::remove_file(&part));
+        crate::heard!(std::fs::remove_dir_all(work.join(format!("{}.unpacked", slug(p.name)))));
     }
     freed
 }
@@ -898,7 +898,7 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
         // A download that failed for want of room is thrown away: what's
         // there can't be finished, and only makes the disk fuller.
         if why.contains("disk") {
-            let _ = std::fs::remove_file(&part);
+            crate::heard!(std::fs::remove_file(&part));
         }
         return Err(why);
     }
@@ -906,7 +906,7 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
     // Checked before anything is unpacked or moved into place.
     let got = crate::digest::sha256_file_hex(&part).map_err(|e| format!("I couldn't read what I downloaded: {e}"))?;
     if !got.eq_ignore_ascii_case(p.sha256) {
-        let _ = std::fs::remove_file(&part);
+        crate::heard!(std::fs::remove_file(&part));
         return Err(format!(
             "what arrived for {} isn't the file it should be, so I threw it away. Try again; if it \
              keeps happening, the file has changed where it's kept",
@@ -929,22 +929,22 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
                         .and_then(|_| std::fs::rename(&beside, &dest))
                         .and_then(|_| std::fs::remove_file(&part))
                         .inspect_err(|_| {
-                            let _ = std::fs::remove_file(&beside);
+                            crate::heard!(std::fs::remove_file(&beside));
                         })
                 })
                 .map_err(|e| format!("I couldn't put {} in place: {e}", p.name))?;
         }
         Lands::Zip { inside, dir, .. } => {
             let unpack = work.join(format!("{}.unpacked", slug(p.name)));
-            let _ = std::fs::remove_dir_all(&unpack);
+            crate::heard!(std::fs::remove_dir_all(&unpack));
             std::fs::create_dir_all(&unpack).map_err(|e| e.to_string())?;
             if let Err(why) = unzip(&part, &unpack, tools) {
-                let _ = std::fs::remove_dir_all(&unpack);
+                crate::heard!(std::fs::remove_dir_all(&unpack));
                 return Err(why);
             }
             let from = unpack.join(inside);
             if !from.is_dir() {
-                let _ = std::fs::remove_dir_all(&unpack);
+                crate::heard!(std::fs::remove_dir_all(&unpack));
                 return Err(format!("{} didn't unpack the way it should have", p.name));
             }
             // Swapped in whole, not copied over the one there (29 Sep 2026:
@@ -952,12 +952,12 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
             // left the tool half old, half new, and broken).
             let mark = root.join(dir).join(MARKER);
             if let Err(e) = swap_folder(&from, &root.join(dir)) {
-                let _ = std::fs::remove_dir_all(&unpack);
+                crate::heard!(std::fs::remove_dir_all(&unpack));
                 return Err(format!("I couldn't put {} in place: {e}", p.name));
             }
             std::fs::write(&mark, p.sha256).map_err(|e| format!("I couldn't finish putting {} in place: {e}", p.name))?;
-            let _ = std::fs::remove_dir_all(&unpack);
-            let _ = std::fs::remove_file(&part);
+            crate::heard!(std::fs::remove_dir_all(&unpack));
+            crate::heard!(std::fs::remove_file(&part));
         }
     }
     if have(p, root) {
@@ -1037,7 +1037,7 @@ fn download(p: &Piece, part: &Path, tools: &Tools, progress: &dyn Fn(u64, u64)) 
         let mut err = String::new();
         if let Some(e) = stderr.as_mut() {
             use std::io::Read;
-            let _ = e.read_to_string(&mut err);
+            crate::heard!(e.read_to_string(&mut err));
         }
         err
     });
@@ -1147,7 +1147,7 @@ pub fn swap_folder(new: &Path, live: &Path) -> std::result::Result<(), String> {
     }
     let name = live.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let aside = live.with_file_name(format!("{name}.old-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&aside);
+    crate::heard!(std::fs::remove_dir_all(&aside));
     let had = live.exists();
     if had {
         std::fs::rename(live, &aside).map_err(|e| {
@@ -1156,9 +1156,9 @@ pub fn swap_folder(new: &Path, live: &Path) -> std::result::Result<(), String> {
     }
     let moved = std::fs::rename(new, live).or_else(|_| copy_tree(new, live));
     if let Err(e) = moved {
-        let _ = std::fs::remove_dir_all(live);
+        crate::heard!(std::fs::remove_dir_all(live));
         if had {
-            let _ = std::fs::rename(&aside, live);
+            crate::kept!(std::fs::rename(&aside, live));
         }
         return Err(e.to_string());
     }
@@ -1167,11 +1167,11 @@ pub fn swap_folder(new: &Path, live: &Path) -> std::result::Result<(), String> {
             for e in entries.flatten() {
                 let dest = live.join(e.file_name());
                 if e.file_name() != std::ffi::OsStr::new(MARKER) && !dest.exists() {
-                    let _ = std::fs::rename(e.path(), dest);
+                    crate::kept!(std::fs::rename(e.path(), dest));
                 }
             }
         }
-        let _ = std::fs::remove_dir_all(&aside);
+        crate::heard!(std::fs::remove_dir_all(&aside));
     }
     Ok(())
 }

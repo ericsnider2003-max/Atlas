@@ -255,7 +255,7 @@ pub fn file_one(from: &Path, s: &Suggestion, sys: &crate::system::SystemConfig) 
         Ok(()) => Ok(to.clone()),
         Err(e) => {
             if to.exists() && from.exists() {
-                let _ = std::fs::remove_file(to);
+                crate::heard!(std::fs::remove_file(to));
             }
             Err(e.to_string())
         }

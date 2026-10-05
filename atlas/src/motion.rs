@@ -953,7 +953,7 @@ pub fn render(
     });
     let program = parts.next().ok_or("the render command is empty")?;
     let args: Vec<String> = parts.collect();
-    let _ = std::fs::remove_file(out_path);
+    crate::heard!(std::fs::remove_file(out_path));
     let status = crate::tools::command(&program)
         .args(&args)
         .status()

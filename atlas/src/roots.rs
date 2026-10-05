@@ -331,7 +331,7 @@ impl RunScratch {
     pub fn new(prefix: &str) -> RunScratch {
         sweep_run_scratch(&std::env::temp_dir(), prefix, std::process::id(), RUN_SCRATCH_STALE_SECS);
         let path = std::env::temp_dir().join(format!("{prefix}-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&path);
+        crate::heard!(std::fs::create_dir_all(&path));
         RunScratch { path }
     }
 
@@ -342,7 +342,7 @@ impl RunScratch {
 
 impl Drop for RunScratch {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
+        crate::heard!(std::fs::remove_dir_all(&self.path));
     }
 }
 

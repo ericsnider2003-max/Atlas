@@ -337,6 +337,7 @@ static CHECKER: std::sync::OnceLock<Box<dyn MeaningCheck>> = std::sync::OnceLock
 
 /// Install the meaning check. The first one stays.
 pub fn install(c: Box<dyn MeaningCheck>) {
+    // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
     let _ = CHECKER.set(c);
 }
 

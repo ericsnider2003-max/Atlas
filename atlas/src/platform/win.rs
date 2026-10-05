@@ -764,7 +764,7 @@ impl Platform for WindowsPlatform {
             // WM_CLOSE per-window and is deliberately not implemented yet.
             // Through `tools::command` (no console window flashing up from the
             // windowless background Atlas; 28 Sep 2026).
-            let _ = crate::tools::command("taskkill").args(["/IM", p, "/F"]).output();
+            crate::heard!(crate::tools::command("taskkill").args(["/IM", p, "/F"]).output());
         }
         Ok(())
     }
@@ -1302,8 +1302,8 @@ unsafe fn automation() -> Result<windows::Win32::UI::Accessibility::IUIAutomatio
             .map_err(|e| AtlasError::Platform(format!("UI Automation isn't available: {e}")))?,
     };
     if let Ok(ua2) = ua.cast::<IUIAutomation2>() {
-        let _ = ua2.SetConnectionTimeout(2_000);
-        let _ = ua2.SetTransactionTimeout(2_000);
+        crate::heard!(ua2.SetConnectionTimeout(2_000));
+        crate::heard!(ua2.SetTransactionTimeout(2_000));
     }
     Ok(ua)
 }

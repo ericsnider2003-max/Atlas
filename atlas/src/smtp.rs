@@ -221,7 +221,7 @@ impl<S: Read + Write> Session<S> {
     }
 
     pub fn quit(&mut self) {
-        let _ = self.command("QUIT");
+        crate::heard!(self.command("QUIT"));
     }
 }
 

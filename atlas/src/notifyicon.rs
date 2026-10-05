@@ -452,11 +452,13 @@ mod win {
         let mut d = data(hwnd);
         d.uFlags = NIF_TIP;
         fill_tip(&mut d, &words);
+        // unheard-ok: a Win32 tray call; a failure has no remedy
         let _ = Shell_NotifyIconW(NIM_MODIFY, &d);
     }
 
     unsafe fn remove_icon(hwnd: HWND) {
         let d = data(hwnd);
+        // unheard-ok: a Win32 tray call; a failure has no remedy
         let _ = Shell_NotifyIconW(NIM_DELETE, &d);
         ADDED.store(false, Ordering::SeqCst);
     }
@@ -584,6 +586,7 @@ mod win {
             // without calling it hung (`goodbye::stop_and_wait`).
             WM_ENDSESSION if wp.0 != 0 => {
                 let lock = crate::onlyone::OnlyOne::at(&crate::roots::data_dir());
+                // unheard-ok: says whether the other Atlas stopped; the start that follows checks again
                 let _ = crate::goodbye::stop_and_wait(lock.path(), std::time::Duration::from_secs(4));
                 LRESULT(0)
             }

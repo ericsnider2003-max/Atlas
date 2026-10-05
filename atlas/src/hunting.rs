@@ -191,7 +191,7 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
             }
         }
     }
-    let _ = keep(d);
+    crate::heard!(keep(d));
     if plan.is_empty() || !online {
         return;
     }
@@ -317,7 +317,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
                     s.push(' ');
                     s.push_str(hunt::ASK);
                     state(d).asked = true;
-                    let _ = keep(d);
+                    crate::heard!(keep(d));
                 }
                 return s;
             }
@@ -357,7 +357,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
             match state(d).not_interested(&id) {
                 Some(title) => {
                     d.workday.hunt.shown.retain(|x| *x != id);
-                    let _ = keep(d);
+                    crate::heard!(keep(d));
                     format!("Dropped \"{title}\". I'll hold back ones like it.")
                 }
                 None => "That one's gone from the list.".into(),
@@ -417,7 +417,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
                 reply.push(' ');
                 reply.push_str(hunt::ASK);
                 state(d).asked = true;
-                let _ = keep(d);
+                crate::heard!(keep(d));
             }
             reply
         }
@@ -459,7 +459,7 @@ pub fn brief_items(d: &mut Daemon, t: u64) -> Vec<crate::brief::Item> {
     }
     if Interests::from_facts(&d.facts).is_empty() && !state(d).asked {
         state(d).asked = true;
-        let _ = keep(d);
+        crate::heard!(keep(d));
         out.push(item("opportunity:ask".into(), hunt::ASK.into()));
     }
     let top: Vec<hunt::Ranked> = state(d).top(cfg.top_n.max(1) as usize, t).into_iter().cloned().collect();
@@ -590,7 +590,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     let said = match get("what").as_str() {
         "nope" => match state(d).not_interested(&id) {
             Some(t) => {
-                let _ = keep(d);
+                crate::heard!(keep(d));
                 format!("Dropped \"{t}\". I'll hold back ones like it.")
             }
             None => "That one's already gone.".into(),

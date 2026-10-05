@@ -1199,7 +1199,7 @@ pub fn take_handoff(
         return Err("that key is for a different household".into());
     }
     if now.saturating_sub(env.made_at) > env.valid_secs {
-        let _ = std::fs::remove_file(&path);
+        crate::heard!(std::fs::remove_file(&path));
         return Err(
             "the key waiting in that folder has expired -- ask for a fresh pairing code".into()
         );
@@ -1210,7 +1210,7 @@ pub fn take_handoff(
         .map_err(|_| "that pairing code doesn't open the key waiting in the folder".to_string())?;
     let phrase =
         String::from_utf8(opened).map_err(|_| "the key that came across isn't readable".to_string())?;
-    let _ = std::fs::remove_file(&path);
+    crate::heard!(std::fs::remove_file(&path));
     Ok(phrase)
 }
 

@@ -241,7 +241,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                             .iter()
                             .any(|l| l.url == oauthlink::calendar_key(Provider::Microsoft, &id));
                         d.vault.secrets.retain(|s| s.name != connect::vault_name(&id) && (calendar_uses_it || s.name != token));
-                        let _ = d.vault.save(&crate::roots::install_state());
+                        crate::kept!(d.vault.save(&crate::roots::install_state()));
                         back(&format!("Disconnected {id}, and its password is gone from the vault. You can also delete the app password at your provider."))
                     }
                     Ok(false) => back(&format!("{id} is listed in tools.yaml, so it's taken off there.")),
@@ -259,7 +259,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                             .any(|a| a.password_from_vault == oauthlink::vault_name(p, &email));
                         if !mail_uses_it {
                             d.vault.secrets.retain(|s| s.name != oauthlink::vault_name(p, &email));
-                            let _ = d.vault.save(&crate::roots::install_state());
+                            crate::kept!(d.vault.save(&crate::roots::install_state()));
                         }
                     }
                     match d.store.save(connect::CALENDAR_LINKS, &links) {
@@ -553,7 +553,7 @@ fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) 
             let _ = stream.set_nonblocking(false);
             let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
             let mut line = String::new();
-            let _ = std::io::BufReader::new(&stream).read_line(&mut line);
+            crate::heard!(std::io::BufReader::new(&stream).read_line(&mut line));
             let mut w = &stream;
             // A browser also asks for /favicon.ico and the like: not the answer.
             if !line.contains("code=") && !line.contains("error=") {
@@ -601,7 +601,7 @@ pub fn keep_sign_in(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String
 fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     let name = oauthlink::vault_name(s.provider, &s.email);
     if d.vault.state() != crate::vault::State::Open {
-        let _ = d.vault.open_unattended(now);
+        crate::heard!(d.vault.open_unattended(now));
     }
     let kept = d
         .vault

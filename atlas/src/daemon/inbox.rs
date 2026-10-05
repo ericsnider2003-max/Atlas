@@ -192,7 +192,7 @@ impl<'a> Daemon<'a> {
             String::new()
         };
         if !said.is_empty() {
-            let _ = self.vault.save(&self.vault_home);
+            crate::kept!(self.vault.save(&self.vault_home));
         }
         said
     }

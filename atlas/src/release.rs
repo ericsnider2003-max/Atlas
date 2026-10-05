@@ -1068,6 +1068,7 @@ fn look_at_build(path: &std::path::Path, modified: u64) -> Result<FoundBuild, St
     seen.retain(|(p, ..)| p != path);
     // Only a few: a usable build holds the whole program in memory.
     if seen.len() >= 4 {
+        // unheard-ok: returns `(PathBuf, u64, Option<SystemTime>, ...)`, not a Result
         let _ = seen.remove(0);
     }
     seen.push((path.to_path_buf(), len, at, found.clone()));

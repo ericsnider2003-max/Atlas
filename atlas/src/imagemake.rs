@@ -232,7 +232,7 @@ pub fn make(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, se
         std::thread::spawn(move || {
             use std::io::Read;
             let mut s = String::new();
-            let _ = e.read_to_string(&mut s);
+            crate::heard!(e.read_to_string(&mut s));
             s
         })
     });

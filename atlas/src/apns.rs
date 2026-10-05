@@ -260,7 +260,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
     let jwt = provider_token(&pem, &cfg.apns.key_id, &cfg.apns.team_id, crate::store::now())?;
     let body = push_payload(note, cfg);
     let headers = crate::roots::data_dir().join("tmp").join(format!("apns-{}.txt", std::process::id()));
-    let _ = std::fs::create_dir_all(headers.parent().unwrap_or(&state));
+    crate::heard!(std::fs::create_dir_all(headers.parent().unwrap_or(&state)));
     let priority = if note.urgency == crate::notify::Urgency::Urgent { "10" } else { "5" };
     std::fs::write(
         &headers,
@@ -280,12 +280,12 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
             Outcome::Failed(w) => why = w,
         }
     }
-    let _ = std::fs::remove_file(&headers);
+    crate::heard!(std::fs::remove_file(&headers));
     if !gone.is_empty() {
         for t in &gone {
             devices.forget_token(t);
         }
-        let _ = devices.save(&state);
+        crate::kept!(devices.save(&state));
     }
     if delivered > 0 {
         Ok(())
@@ -309,7 +309,7 @@ fn run_curl(root: &Path, headers: &Path, d: &Device, body: &str) -> Outcome {
         Err(e) => return Outcome::Failed(format!("couldn't start curl: {e}")),
     };
     if let Some(mut i) = child.stdin.take() {
-        let _ = i.write_all(body.as_bytes());
+        crate::heard!(i.write_all(body.as_bytes()));
     }
     match child.wait_with_output() {
         Ok(o) => read_outcome(&String::from_utf8_lossy(&o.stdout)),

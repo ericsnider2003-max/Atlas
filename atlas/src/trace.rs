@@ -315,7 +315,7 @@ pub fn log_path(dir: &Path) -> PathBuf {
 pub fn append(path: &Path, c: &Call) -> bool {
     use std::io::Write;
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        crate::heard!(std::fs::create_dir_all(dir));
     }
     let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
         return false;
@@ -380,7 +380,7 @@ pub fn compact(path: &Path, keep: usize) -> std::io::Result<usize> {
         if still.len() < text.len() {
             let tmp = grades.with_extension("jsonl.new");
             if std::fs::write(&tmp, still).is_ok() {
-                let _ = std::fs::rename(&tmp, &grades);
+                crate::kept!(std::fs::rename(&tmp, &grades));
             }
         }
     }
@@ -581,7 +581,7 @@ pub fn keep_example(log: &Path, ex: &Example, max: usize) -> bool {
         let lines: Vec<&str> = text.lines().collect();
         if lines.len() > max.max(1) {
             let kept = lines[lines.len() - max.max(1)..].join("\n") + "\n";
-            let _ = std::fs::write(&path, kept);
+            crate::kept!(std::fs::write(&path, kept));
         }
     }
     ok
