@@ -291,7 +291,12 @@ impl Store {
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         let final_path = self.path(name);
         let env = Envelope { schema: SCHEMA, data: value };
-        let body = serde_json::to_string_pretty(&env).unwrap_or_default();
+        // Never `unwrap_or_default` here: a value that won't serialize wrote
+        // an empty file over the good one, atomically, and returned Ok -- the
+        // next load set the empty file aside and the data was gone (Q3).
+        let body = serde_json::to_string_pretty(&env).map_err(|e| {
+            crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{name} couldn't be written as JSON: {e}")))
+        })?;
 
         // Unchanged content is not written.
         //

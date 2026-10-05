@@ -331,3 +331,56 @@ fn signing_in_keeps_the_token_sealed_and_connects_outlook_mail_and_calendar() {
     let r = atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "oauth"), ("provider", "yahoo")]) });
     assert!(r.body.contains("isn%27t+wired") || r.body.contains("isn't+wired") || r.body.contains("wired"), "{}", r.body);
 }
+
+// ------------------------------------------------------------ the 5 Oct audit (Q1, Q3, Q7, Q10)
+
+#[test]
+fn every_account_sends_from_its_own_provider_s_server_and_port() {
+    use atlas::mail::{smtp_for, Provider};
+    // Q1: Outlook only serves 587 with STARTTLS.
+    assert_eq!(Provider::Outlook.smtp_port(), 587);
+    assert_eq!(smtp_for("eric@outlook.com", ""), Some(("smtp.office365.com".into(), 587)));
+    // Q10: a Microsoft 365 / Workspace mailbox on its own domain sends where it reads.
+    assert_eq!(smtp_for("me@northwind.co", "outlook.office365.com"), Some(("smtp.office365.com".into(), 587)));
+    assert_eq!(smtp_for("me@northwind.co", "imap.gmail.com"), Some(("smtp.gmail.com".into(), 465)));
+    // What Connect an account adds.
+    assert_eq!(smtp_for("me@icloud.com", "imap.mail.me.com"), Some(("smtp.mail.me.com".into(), 587)));
+    assert_eq!(smtp_for("me@aol.com", "imap.aol.com"), Some(("smtp.aol.com".into(), 465)));
+    assert_eq!(smtp_for("me@smallbakery.co", "imap.smallbakery.co"), Some(("smtp.smallbakery.co".into(), 465)));
+    assert_eq!(smtp_for("me@smallbakery.co", ""), None);
+    // The signed-in Outlook account reads where it sends.
+    assert_eq!(smtp_for("me@northwind.co", &oauthlink::outlook_account("me@northwind.co").imap_host), Some(("smtp.office365.com".into(), 587)));
+}
+
+#[test]
+fn a_renewed_microsoft_sign_in_replaces_the_old_one_in_the_vault() {
+    let c = Config::load(Path::new("config")).unwrap();
+    let mut c = c;
+    if let Some(t) = c.tools.as_mut() {
+        t.mail.enabled = true;
+    }
+    let p = plat();
+    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("rotate")), Proactive::new(ProactiveConfig::default()));
+    d.vault.open("a genuinely long passphrase, not a word", 0, &atlas::vault::VaultConfig::default()).unwrap();
+    atlas::connecting::keep_sign_in(&mut d, &oauthlink::SignedIn { provider: Provider::Microsoft, email: "rot@outlook.com".into(), refresh_token: "RT-old-q7".into() }, 1_790_000_000);
+
+    // A refresh (mail check or calendar read) came back with a new one.
+    atlas::msoauth::rotated("RT-old-q7", "RT-new-q7");
+    assert_eq!(atlas::msoauth::current("RT-old-q7"), "RT-new-q7", "this process uses the newer one at once");
+    atlas::msoauth::rotated("RT-old-q7", "RT-new-q7"); // the same answer twice is one rotation
+    atlas::connecting::keep_rotated(&mut d, 1_790_000_100);
+    assert_eq!(d.vault.get("signin microsoft rot@outlook.com", 1_790_000_100).unwrap(), "RT-new-q7");
+}
+
+#[test]
+fn a_value_that_will_not_serialize_never_empties_the_file_it_replaces() {
+    let dir = tmp("q3");
+    let store = Store::new(dir.clone());
+    store.save("thing", &vec!["kept".to_string()]).unwrap();
+    // JSON can't have tuple keys: serializing this fails.
+    let mut bad = std::collections::HashMap::new();
+    bad.insert((1u8, 2u8), 3u8);
+    assert!(store.save("thing", &bad).is_err(), "the failure is said, not swallowed");
+    let back: Vec<String> = Store::new(dir).load("thing");
+    assert_eq!(back, vec!["kept".to_string()], "the good file is untouched");
+}

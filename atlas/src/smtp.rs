@@ -58,6 +58,27 @@ impl<S: Read + Write> Session<S> {
         Session { stream, inbuf: Vec::new() }
     }
 
+    /// The plaintext half of STARTTLS (RFC 3207): EHLO, check the server
+    /// offers it, ask, and hand back the stream ready for the TLS handshake.
+    ///
+    /// Anything the server sent after its 220 is refused rather than carried
+    /// into the encrypted session: bytes read before TLS but answered after it
+    /// are the STARTTLS command-injection hole (CVE-2011-0411 and kin).
+    pub fn starttls(mut self, client_name: &str) -> Result<S, String> {
+        let r = self.ehlo(client_name)?;
+        if !r.lines.iter().any(|l| l.to_ascii_uppercase().starts_with("STARTTLS")) {
+            return Err("the server doesn't offer STARTTLS, so nothing was sent over a plain connection".into());
+        }
+        let r = self.command("STARTTLS").map_err(|e| e.to_string())?;
+        if r.code != 220 {
+            return Err(format!("the server refused STARTTLS: {}", r.text()));
+        }
+        if !self.inbuf.is_empty() {
+            return Err("the server sent data before encryption started; refusing it".into());
+        }
+        Ok(self.stream)
+    }
+
     /// One read into the buffer, with the buffer bounded.
     ///
     /// ## The cap, and why it lives here
@@ -347,9 +368,11 @@ fn escape_dot_stuffing(body: &str) -> String {
         .join("\r\n")
 }
 
-/// A live connection, over real TLS, on SMTP's implicit-TLS port. The one
-/// place this module touches an actual socket — see `imap::connect` for
-/// why this is deliberately the one untested function here.
+/// A live connection over real TLS: implicit TLS on 465, STARTTLS on 587
+/// (Outlook / Microsoft 365, iCloud). The one place this module touches an
+/// actual socket -- see `imap::connect` for why this is deliberately the one
+/// untested function here; the STARTTLS exchange itself is `Session::starttls`,
+/// which is tested. Callers EHLO again after this, as RFC 3207 requires.
 pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<std::net::TcpStream>>, String> {
     let tcp = std::net::TcpStream::connect((host, port))
         .map_err(|e| format!("couldn't reach {host}:{port}: {e}"))?;
@@ -360,13 +383,25 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<st
         .map_err(|e| format!("couldn't set a read timeout on {host}: {e}"))?;
     tcp.set_write_timeout(Some(QUIET_FOR))
         .map_err(|e| format!("couldn't set a write timeout on {host}: {e}"))?;
+    let tcp = if port == 587 {
+        let mut plain = Session::new(tcp);
+        let greeting = plain.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+        if !greeting.ok() {
+            return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+        }
+        plain.starttls("atlas").map_err(|e| format!("{host}: {e}"))?
+    } else {
+        tcp
+    };
     let connector = native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
     let tls =
         connector.connect(host, tcp).map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
     let mut session = Session::new(tls);
-    let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
-    if !greeting.ok() {
-        return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+    if port != 587 {
+        let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+        if !greeting.ok() {
+            return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+        }
     }
     Ok(session)
 }
@@ -551,6 +586,22 @@ mod tests {
         assert!(sent.starts_with("AUTH XOAUTH2 "));
         assert!(sent.contains(&crate::msoauth::xoauth2_string("me@outlook.com", "sometoken")));
     }
+    #[test]
+    fn starttls_upgrades_only_when_offered_and_nothing_is_smuggled() {
+        let s = Session::new(Scripted::new("250-smtp.office365.com\r\n250-SIZE 157286400\r\n250 STARTTLS\r\n220 2.0.0 SMTP server ready\r\n"));
+        let stream = s.starttls("atlas").unwrap();
+        assert_eq!(String::from_utf8(stream.sent).unwrap(), "EHLO atlas\r\nSTARTTLS\r\n");
+
+        let s = Session::new(Scripted::new("250-mx\r\n250 AUTH LOGIN\r\n"));
+        assert!(s.starttls("atlas").err().unwrap_or_default().contains("doesn't offer STARTTLS"));
+
+        let s = Session::new(Scripted::new("250 STARTTLS\r\n454 TLS not available\r\n"));
+        assert!(s.starttls("atlas").err().unwrap_or_default().contains("refused STARTTLS"));
+
+        // A reply pipelined behind the 220 would be read as if it came over TLS.
+        let s = Session::new(Scripted::new("250 STARTTLS\r\n220 go ahead\r\n250 injected\r\n"));
+        assert!(s.starttls("atlas").err().unwrap_or_default().contains("before encryption"));
+    }
 }
 
 #[cfg(test)]
@@ -564,4 +615,5 @@ mod threading {
         let plain = super::message_text("me@y.com", "sam@x.com", "Hello", "Hi.", 1_790_000_000);
         assert!(!plain.contains("In-Reply-To"));
     }
+
 }

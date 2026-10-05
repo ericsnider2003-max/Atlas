@@ -3074,8 +3074,7 @@ fn carry_out_unsubscribes(
     account: &crate::mail::Account,
     password: &str,
 ) -> (usize, Vec<String>) {
-    let provider = crate::mail::Provider::from_address(&account.address);
-    let smtp_host = provider.smtp_host();
+    let smtp = crate::mail::smtp_for(&account.address, &account.imap_host);
     let mut done = 0;
     let mut failures = Vec::new();
     for (name, how) in &cleanup.unsubscribe {
@@ -3094,9 +3093,9 @@ fn carry_out_unsubscribes(
                     let text = crate::smtp::message_text_in(&account.address, to, "unsubscribe", "", crate::store::now(), &Default::default());
                     crate::himalaya::send(&program, &name, &text)
                 }),
-                None => match smtp_host {
-                Some(h) => send_unsubscribe_email(
-                    provider.smtp_port(),
+                None => match &smtp {
+                Some((h, port)) => send_unsubscribe_email(
+                    *port,
                     h,
                     &account.address,
                     password,
@@ -3224,6 +3223,7 @@ fn send_unsubscribe_email(
 fn send_reply_routed(
     route: Option<&(String, String)>,
     pending: &crate::outbox::PendingReply,
+    imap_host: &str,
     from_address: &str,
     from_password: &str,
     oauth_client_id: Option<&str>,
@@ -3235,23 +3235,22 @@ fn send_reply_routed(
             let text = crate::smtp::message_text_in(from_address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
             crate::himalaya::send(program, name, &text)
         }
-        None => send_reply(pending, from_address, from_password, oauth_client_id),
+        None => send_reply(pending, imap_host, from_address, from_password, oauth_client_id),
     }
 }
 
 fn send_reply(
     pending: &crate::outbox::PendingReply,
+    imap_host: &str,
     from_address: &str,
     from_password: &str,
     oauth_client_id: Option<&str>,
 ) -> std::result::Result<(), String> {
     // Before connecting: a refused send costs nothing and opens no socket.
     crate::smtp::may_send(from_address, crate::store::now().saturating_mul(1000))?;
-    let provider = crate::mail::Provider::from_address(from_address);
-    let host = provider
-        .smtp_host()
-        .ok_or_else(|| "no SMTP server known for this provider".to_string())?;
-    let mut session = crate::smtp::connect(host, provider.smtp_port())?;
+    let (host, port) = crate::mail::smtp_for(from_address, imap_host)
+        .ok_or_else(|| "no SMTP server known for this account".to_string())?;
+    let mut session = crate::smtp::connect(&host, port)?;
     session.ehlo("atlas")?;
     authenticate_smtp(&mut session, from_address, from_password, oauth_client_id)?;
     session.send_mail_in(from_address, &pending.to_address, &pending.subject, &pending.body, &pending.thread)?;

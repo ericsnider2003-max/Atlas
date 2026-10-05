@@ -497,6 +497,7 @@ impl<'a> Daemon<'a> {
                                                     match send_reply_routed(
                                                         crate::himalaya::route(&account.imap_host).as_ref(),
                                                         &pending,
+                                                        &account.imap_host,
                                                         &account.address,
                                                         password,
                                                         account.oauth.then_some(account.client_id.as_str()),
@@ -1067,7 +1068,7 @@ impl<'a> Daemon<'a> {
                     let text = crate::smtp::message_text_in(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
                     crate::himalaya::send(program, name, &text)
                 }),
-                None => send_reply(&pending, &account.address, &password, account.oauth.then_some(account.client_id.as_str())),
+                None => send_reply(&pending, &account.imap_host, &account.address, &password, account.oauth.then_some(account.client_id.as_str())),
             };
             sent.map_err(|e| format!("the reply to {} didn't go: {e}. It's still waiting.", pending.to_name))?;
             let mut outbox = crate::outbox::Outbox::load(&store);
@@ -1210,6 +1211,7 @@ impl<'a> Daemon<'a> {
                 match send_reply_routed(
                     himalaya.as_ref(),
                     &pending,
+                    &account.imap_host,
                     &account.address,
                     &password,
                     account.oauth.then_some(account.client_id.as_str()),

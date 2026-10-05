@@ -63,6 +63,9 @@ pub struct DeviceCode {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Tokens {
     pub access_token: String,
+    /// Microsoft rotates it: each refresh may hand back a new one, and the
+    /// old one stops working once the new one has been used (Q7).
+    #[serde(default)]
     pub refresh_token: String,
     pub expires_in: u64,
 }
@@ -113,16 +116,65 @@ pub fn poll_once(client_id: &str, device_code: &str) -> PollOutcome {
 /// good for about an hour, and a cache that's gone stale mid-check is a
 /// worse bug than one extra request.
 pub fn refresh(client_id: &str, refresh_token: &str) -> Result<Tokens, String> {
+    let using = current(refresh_token);
     let body = post_form(
         TOKEN_URL,
         &[
             ("grant_type", "refresh_token"),
             ("client_id", client_id),
-            ("refresh_token", refresh_token),
+            ("refresh_token", &using),
             ("scope", SCOPE),
         ],
     )?;
-    serde_json::from_str(&body).map_err(|e| format!("couldn't read Microsoft's own response: {e}"))
+    let tokens: Tokens = serde_json::from_str(&body).map_err(|_| match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) if v.get("error").and_then(|e| e.as_str()) == Some("invalid_grant") => {
+            "Microsoft no longer accepts Atlas's sign-in for this account (revoked or expired) -- sign in again".to_string()
+        }
+        Ok(v) => format!("Microsoft said {}", v.get("error").and_then(|e| e.as_str()).unwrap_or("something unexpected")),
+        Err(e) => format!("couldn't read Microsoft's own response: {e}"),
+    })?;
+    rotated(refresh_token, &tokens.refresh_token);
+    Ok(tokens)
+}
+
+// ------------------------------------------------------------ rotation (Q7)
+//
+// Microsoft hands back a new refresh token with most refreshes and retires
+// the old one after a while; Atlas kept using the one from the day it signed
+// in, so every Outlook sign-in quietly expired. The new one is kept here at
+// once (so this process keeps working) and queued for the vault, which the
+// tick writes (`connecting::keep_rotated`) -- the mail check runs on a crew
+// thread with no vault in reach.
+
+static LATEST: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+static TO_KEEP: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// The newest refresh token known for one first given as `original`.
+pub fn current(original: &str) -> String {
+    let latest = LATEST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    latest.iter().rev().find(|(o, _)| o == original).map(|(_, n)| n.clone()).unwrap_or_else(|| original.to_string())
+}
+
+/// Note a refresh that came back with a different refresh token.
+pub fn rotated(original: &str, new: &str) {
+    if new.is_empty() || new == original || new == current(original) {
+        return;
+    }
+    let mut latest = LATEST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    latest.retain(|(o, _)| o != original);
+    latest.push((original.to_string(), new.to_string()));
+    drop(latest);
+    TO_KEEP.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((original.to_string(), new.to_string()));
+}
+
+/// Rotations waiting to be written to the vault: (stored, newer).
+pub fn take_rotations() -> Vec<(String, String)> {
+    std::mem::take(&mut *TO_KEEP.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+}
+
+/// Put back what couldn't be kept yet (the vault was locked).
+pub fn keep_later(left: Vec<(String, String)>) {
+    TO_KEEP.lock().unwrap_or_else(std::sync::PoisonError::into_inner).extend(left);
 }
 
 fn parse_poll_response(body: &str) -> PollOutcome {
@@ -155,21 +207,27 @@ pub fn xoauth2_string(user: &str, access_token: &str) -> String {
     crate::b64::encode(raw.as_bytes())
 }
 
+/// A form POST over Atlas's own TLS client. It ran `curl` with the refresh
+/// token on the command line, where any process on the machine can read it,
+/// and found `curl` by searching PATH (Q7, Q9).
 fn post_form(url: &str, fields: &[(&str, &str)]) -> Result<String, String> {
-    let mut args = vec!["-sS".to_string(), "-m".to_string(), "20".to_string()];
-    for (k, v) in fields {
-        args.push("--data-urlencode".to_string());
-        args.push(format!("{k}={v}"));
-    }
-    args.push(url.to_string());
-    let out = crate::tools::command("curl")
-        .args(&args)
-        .output()
-        .map_err(|e| format!("couldn't run curl: {e}"))?;
-    if !out.status.success() {
-        return Err(format!("curl failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    let rest = url.strip_prefix("https://").ok_or("Microsoft's address must be https")?;
+    let (host, path) = rest.split_once('/').map(|(h, p)| (h, format!("/{p}"))).unwrap_or((rest, "/".into()));
+    let form = fields
+        .iter()
+        .map(|(k, v)| format!("{}={}", crate::research::urlencode(k), crate::research::urlencode(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let (resp, _) = crate::http::https_call(
+        "POST",
+        host,
+        &path,
+        &[("User-Agent", "PersonalAtlas/1.0")],
+        Some(("application/x-www-form-urlencoded", &form)),
+        std::time::Duration::from_secs(20),
+    )
+    .map_err(|e| format!("couldn't reach Microsoft: {e}"))?;
+    Ok(resp.body)
 }
 
 #[cfg(test)]

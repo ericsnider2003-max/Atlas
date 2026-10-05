@@ -284,13 +284,17 @@ fn calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Result<St
         ),
         Provider::Microsoft => format!(
             "grant_type=refresh_token&refresh_token={}&client_id={}&scope={}",
-            enc(refresh_token),
+            enc(&crate::msoauth::current(refresh_token)),
             enc(MICROSOFT_CLIENT_ID),
             enc(MS_CALENDAR)
         ),
     };
     let (host, path) = token_endpoint(p);
     let v = json(&net.post_form(host, path, &form)?.body, p.name())?;
+    // Microsoft rotates refresh tokens; the new one is kept (Q7).
+    if let Some(newer) = v.get("refresh_token").and_then(|t| t.as_str()) {
+        crate::msoauth::rotated(refresh_token, newer);
+    }
     v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| format!("{} gave no access token", p.name()))
 }
 

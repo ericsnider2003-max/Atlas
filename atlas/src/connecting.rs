@@ -388,6 +388,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
     }
     LAST.store(now, std::sync::atomic::Ordering::Relaxed);
     keep_signed_in(d, now);
+    keep_rotated(d, now);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     if links.is_empty() {
         return;
@@ -633,5 +634,48 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
             }
         }
         Err(e) => format!("Connected {}'s calendar, but I couldn't add its mail: {e}.", s.email),
+    }
+}
+
+/// Write rotated Microsoft refresh tokens over the ones they replace (Q7).
+/// The vault entries that can hold one: Outlook mailboxes signed in with
+/// Microsoft, and signed-in calendars. A locked vault keeps them queued.
+pub fn keep_rotated(d: &mut Daemon, now: u64) {
+    let waiting = crate::msoauth::take_rotations();
+    if waiting.is_empty() {
+        return;
+    }
+    if d.vault.state() != crate::vault::State::Open && d.vault.open_unattended(now).is_err() {
+        crate::msoauth::keep_later(waiting);
+        return;
+    }
+    let mut names: Vec<String> = d
+        .store
+        .load::<Vec<crate::mail::Account>>(crate::daemon::CONNECTED_ACCOUNTS)
+        .iter()
+        .chain(d.tools_cfg().mail.accounts.iter())
+        .filter(|a| a.oauth)
+        .map(|a| a.password_from_vault.clone())
+        .collect();
+    for l in d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS) {
+        if let Some((p, email)) = oauthlink::parse_calendar_key(&l.url) {
+            names.push(oauthlink::vault_name(p, &email));
+        }
+    }
+    names.sort();
+    names.dedup();
+    let mut changed = false;
+    for (old, new) in &waiting {
+        for name in &names {
+            if d.vault.get(name, now).as_deref() == Ok(old.as_str()) && d.vault.put(name, crate::vault::Kind::Login, new, now).is_ok() {
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        if let Err(e) = d.vault.save(&crate::roots::install_state()) {
+            // Kept in the open vault already; the next vault save writes it.
+            d.log.warn(&format!("a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"));
+        }
     }
 }
