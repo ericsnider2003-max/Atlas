@@ -326,7 +326,7 @@ impl Settings {
     pub fn consequential(&self) -> Vec<&Setting> {
         let mut v: Vec<&Setting> =
             self.items.iter().filter(|s| s.weight.needs_confirming()).collect();
-        v.sort_by(|a, b| b.weight.cmp(&a.weight));
+        v.sort_by_key(|b| std::cmp::Reverse(b.weight));
         v
     }
 

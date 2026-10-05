@@ -184,7 +184,7 @@ pub fn assess(r: &Readings, cfg: &HealthConfig) -> Vec<Finding> {
         });
     }
 
-    out.sort_by(|a, b| b.severity.cmp(&a.severity));
+    out.sort_by_key(|b| std::cmp::Reverse(b.severity));
     out
 }
 

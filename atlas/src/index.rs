@@ -312,7 +312,7 @@ impl Index {
             .values()
             .filter(|e| matches!(e.class, AssetClass::Document | AssetClass::Code) && e.size <= cap)
             .collect();
-        candidates.sort_by(|a, b| b.modified.cmp(&a.modified));
+        candidates.sort_by_key(|b| std::cmp::Reverse(b.modified));
 
         let mut ix = crate::bm25::Index::default();
         // (the file, the passage, and the file inside it when it's an archive)
@@ -375,7 +375,7 @@ impl Index {
 
     pub fn recent(&self, n: usize) -> Vec<&Entry> {
         let mut v: Vec<&Entry> = self.entries.values().collect();
-        v.sort_by(|a, b| b.modified.cmp(&a.modified));
+        v.sort_by_key(|b| std::cmp::Reverse(b.modified));
         v.into_iter().take(n).collect()
     }
 

@@ -546,7 +546,7 @@ pub fn time_on(spans: &[Span], asked: &str, span_name: &str) -> Option<String> {
     if total == 0 {
         return Some(format!("Nothing I recorded {span_name} matches \"{named}\"."));
     }
-    apps.sort_by(|a, b| b.1.cmp(&a.1));
+    apps.sort_by_key(|b| std::cmp::Reverse(b.1));
     let detail: Vec<String> = apps.iter().take(3).map(|(a, d)| format!("{a} {}", duration_words(*d))).collect();
     Some(format!("{} on \"{named}\" {span_name} ({}).", duration_words(total), detail.join(", ")))
 }

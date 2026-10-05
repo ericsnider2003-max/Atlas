@@ -246,7 +246,7 @@ pub fn survey(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
         walk(root, now, 0, &mut found);
     }
     // Biggest first: the decision is usually made on the first two lines.
-    found.sort_by(|a, b| b.size_mb.cmp(&a.size_mb));
+    found.sort_by_key(|b| std::cmp::Reverse(b.size_mb));
     found
 }
 
@@ -396,7 +396,7 @@ pub fn whole_disk(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
     for root in roots {
         look(root, now, 0, &mut found);
     }
-    found.sort_by(|a, b| b.size_mb.cmp(&a.size_mb));
+    found.sort_by_key(|b| std::cmp::Reverse(b.size_mb));
     found
 }
 
@@ -505,7 +505,7 @@ pub fn installed_apps(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
             }
         }
     }
-    out.sort_by(|a, b| b.size_mb.cmp(&a.size_mb));
+    out.sort_by_key(|b| std::cmp::Reverse(b.size_mb));
     out
 }
 

@@ -442,7 +442,7 @@ impl Registry {
             }
         }
 
-        models.sort_by(|a, b| b.parameters.cmp(&a.parameters));
+        models.sort_by_key(|b| std::cmp::Reverse(b.parameters));
         (Registry { models }, trouble)
     }
 

@@ -2885,8 +2885,7 @@ fn spoken_name(raw: &str) -> &str {
 ///
 /// Short on purpose: the timing window lives in memory for the life of the
 /// process, and keeping whole utterances in it would turn a latency measure
-/// into a transcript nobody asked for.
-
+/// into a transcript nobody asked for.///
 /// How long the video is, from what ffmpeg said about it.
 ///
 /// Read from the scan Atlas already ran rather than a second `ffprobe` call.

@@ -235,7 +235,7 @@ pub fn files_in(folder: &Path, lang: crate::craft::Lang) -> Vec<PathBuf> {
             }
         }
     }
-    found.sort_by(|a, b| b.1.cmp(&a.1));
+    found.sort_by_key(|b| std::cmp::Reverse(b.1));
     found.into_iter().map(|(p, _)| p).collect()
 }
 

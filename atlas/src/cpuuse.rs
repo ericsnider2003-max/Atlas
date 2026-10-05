@@ -127,9 +127,9 @@ impl Meter {
         }
         let percent = cpu.saturating_sub(c0) as f32 / (secs as f32 * 10.0);
         let mut parts: Vec<(String, u64)> = self.parts.iter().map(|(n, ms)| (n.to_string(), *ms)).filter(|p| p.1 > 0).collect();
-        parts.sort_by(|a, b| b.1.cmp(&a.1));
+        parts.sort_by_key(|b| std::cmp::Reverse(b.1));
         let mut cpu_parts: Vec<(String, u64)> = self.cpu_parts.iter().map(|(n, us)| (n.to_string(), *us)).filter(|p| p.1 > 0).collect();
-        cpu_parts.sort_by(|a, b| b.1.cmp(&a.1));
+        cpu_parts.sort_by_key(|b| std::cmp::Reverse(b.1));
         let r = Reading { at: t, secs, percent, idle: !self.talked, parts, cpu_parts, process_ms: cpu.saturating_sub(c0) };
         *self = Meter { started: Some((t, cpu)), ..Default::default() };
         Some(r)

@@ -369,7 +369,7 @@ impl Laps {
     /// The slowest `n` parts, slowest first, that took any time at all.
     pub fn slowest(&self, n: usize) -> Vec<(&'static str, u32)> {
         let mut p: Vec<(&'static str, u32)> = self.parts.iter().copied().filter(|(_, ms)| *ms > 0).collect();
-        p.sort_by(|a, b| b.1.cmp(&a.1));
+        p.sort_by_key(|b| std::cmp::Reverse(b.1));
         p.truncate(n);
         p
     }

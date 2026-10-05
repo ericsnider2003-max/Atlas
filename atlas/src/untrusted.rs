@@ -135,7 +135,7 @@ impl Inbox {
     /// Everything that tried to give an order, newest first.
     pub fn attempts(&self) -> Vec<&Read> {
         let mut out: Vec<&Read> = self.read.iter().filter(|r| !r.orders_found().is_empty()).collect();
-        out.sort_by(|a, b| b.at.cmp(&a.at));
+        out.sort_by_key(|b| std::cmp::Reverse(b.at));
         out
     }
 

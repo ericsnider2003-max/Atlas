@@ -1002,7 +1002,7 @@ impl Trash {
             size_on_disk(&p, &mut bytes);
             out.push((p, bytes));
         }
-        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out.sort_by_key(|b| std::cmp::Reverse(b.1));
         out
     }
 }

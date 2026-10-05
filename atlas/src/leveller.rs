@@ -112,7 +112,7 @@ pub fn measure_voice(samples: &[i16], rate: u32) -> Option<Measured> {
 /// without lifting a room at `noise_db` past `NOISE_CEILING_DB` or going over
 /// `MAX_GAIN_DB`. Never below zero: loud speech is left as it is.
 pub fn gain_db(speech_db: f32, noise_db: f32) -> f32 {
-    (TARGET_SPEECH_DB - speech_db).min(NOISE_CEILING_DB - noise_db).min(MAX_GAIN_DB).max(0.0)
+    (TARGET_SPEECH_DB - speech_db).min(NOISE_CEILING_DB - noise_db).clamp(0.0, MAX_GAIN_DB)
 }
 
 /// `samples` turned up by `gain_db`, less if that would take the loudest

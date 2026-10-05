@@ -482,7 +482,7 @@ pub fn parse_tasklist(csv: &str) -> Vec<(String, u64)> {
         *by.entry(name).or_default() += kb / 1024;
     }
     let mut v: Vec<(String, u64)> = by.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v.sort_by_key(|b| std::cmp::Reverse(b.1));
     v
 }
 
@@ -498,7 +498,7 @@ pub fn parse_ps(text: &str) -> Vec<(String, u64)> {
         *by.entry(parts.join(" ")).or_default() += kb / 1024;
     }
     let mut v: Vec<(String, u64)> = by.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v.sort_by_key(|b| std::cmp::Reverse(b.1));
     v
 }
 
@@ -982,7 +982,7 @@ pub fn slowest_words(load: &[Load]) -> String {
         .map(|l| format!("{} {:.0}%", l.name, l.cpu_pct))
         .collect();
     let mut by_mem: Vec<&Load> = load.iter().collect();
-    by_mem.sort_by(|a, b| b.mem_mb.cmp(&a.mem_mb));
+    by_mem.sort_by_key(|b| std::cmp::Reverse(b.mem_mb));
     let heavy: Vec<String> = by_mem.iter().take(4).map(|l| format!("{} {}", l.name, mb_words(l.mem_mb))).collect();
     let total: f32 = load
         .iter()
@@ -1597,7 +1597,7 @@ pub fn look_at_space(downloads: &std::path::Path, temp: &std::path::Path, budget
     let downloads_mb = files.iter().map(|f| f.1).sum::<u64>() / 1_048_576;
     let mut biggest: Vec<(std::path::PathBuf, u64)> =
         files.iter().filter(|f| f.1 >= 50 * 1_048_576).map(|f| (f.0.clone(), f.1 / 1_048_576)).collect();
-    biggest.sort_by(|a, b| b.1.cmp(&a.1));
+    biggest.sort_by_key(|b| std::cmp::Reverse(b.1));
     biggest.truncate(10);
 
     let mut by_size: std::collections::BTreeMap<u64, Vec<usize>> = Default::default();

@@ -2055,7 +2055,7 @@ impl<'a> Daemon<'a> {
             P::Waking => {
                 let mut items = self.brief_items();
                 // The same order the voice says it in (`mind::speak_brief`).
-                items.sort_by(|a, b| b.weight.cmp(&a.weight));
+                items.sort_by_key(|b| std::cmp::Reverse(b.weight));
                 let mut lines: Vec<String> = items.into_iter().map(|i| i.what).collect();
                 if lines.is_empty() {
                     // The waking mark still arrives; it just has nothing under it.

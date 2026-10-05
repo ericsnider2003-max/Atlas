@@ -804,7 +804,7 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
             (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, e.hint)))
         })
         .collect();
-    pages.sort_by(|a, b| b.0.cmp(&a.0));
+    pages.sort_by_key(|b| std::cmp::Reverse(b.0));
     let mut caps: Vec<(usize, String)> = all()
         .iter()
         .filter_map(|c| {
@@ -815,7 +815,7 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
             })
         })
         .collect();
-    caps.sort_by(|a, b| b.0.cmp(&a.0));
+    caps.sort_by_key(|b| std::cmp::Reverse(b.0));
     let mut out = String::from(
         "About Atlas (you): you are Atlas. When asked about yourself, your setup or where something is, answer only \
          from these lines and name the hub page; if the answer isn't here, say you're not sure rather than guess. \
@@ -994,7 +994,7 @@ fn hub_pages_for(said: &str, most: usize) -> Vec<String> {
             (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, crate::router::clip_words(e.hint, 90))))
         })
         .collect();
-    pages.sort_by(|a, b| b.0.cmp(&a.0));
+    pages.sort_by_key(|b| std::cmp::Reverse(b.0));
     let best = pages.first().map(|p| p.0).unwrap_or(0);
     pages.into_iter().filter(|p| p.0 == best).take(most).map(|p| p.1).collect()
 }

@@ -320,7 +320,7 @@ fn first_line(s: &str) -> String {
 /// The whole inbox, sorted by what it needs.
 pub fn sort_all(messages: &[Message]) -> Vec<Triaged> {
     let mut out: Vec<Triaged> = messages.iter().map(triage).collect();
-    out.sort_by(|a, b| b.needs.cmp(&a.needs));
+    out.sort_by_key(|b| std::cmp::Reverse(b.needs));
     out
 }
 

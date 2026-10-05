@@ -232,7 +232,7 @@ impl<'a> Reading<'a> {
     /// Not cached: unlike the plain pinch, several fingers may be asked about
     /// and caching one of them would answer for all.
     fn pinch_with(&mut self, finger: usize) -> f32 {
-        self.hand.thumb_tip().away_from(&self.hand.tip(finger.min(4).max(1))) / self.hand.span()
+        self.hand.thumb_tip().away_from(&self.hand.tip(finger.clamp(1, 4))) / self.hand.span()
     }
 
     /// How far apart the fingertips are — high when the hand is spread.

@@ -516,7 +516,7 @@ impl Feeds {
             f.seen.pop_front();
         }
         // Newest first; undated ones keep their order after the dated.
-        fresh.sort_by(|a, b| b.published.cmp(&a.published));
+        fresh.sort_by_key(|b| std::cmp::Reverse(b.published));
         if first {
             fresh.truncate(3);
         }
@@ -529,7 +529,7 @@ impl Feeds {
             }
             self.unread.push(Unread { feed: url.clone(), title: format!("{} — {}", it.title, name), link: it.link, at: it.published.unwrap_or(now) });
         }
-        self.unread.sort_by(|a, b| b.at.cmp(&a.at));
+        self.unread.sort_by_key(|b| std::cmp::Reverse(b.at));
         self.unread.truncate(MAX_UNREAD);
         n
     }

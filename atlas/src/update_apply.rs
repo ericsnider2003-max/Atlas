@@ -601,17 +601,12 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
             settle(store);
             return UpdateSettled::Nothing;
         };
-        match release::accept(&installed, notice, upgrade::DATA_FORMAT, platform, Direction::Forward) {
-            Ok(acc) => {
-                installed.installed(&acc);
-                if installed.save(store).is_err() {
-                    return UpdateSettled::Waiting;
-                }
-                let _ = store.save(HISTORY, &History { previous: Some(before) });
+        if let Ok(acc) = release::accept(&installed, notice, upgrade::DATA_FORMAT, platform, Direction::Forward) {
+            installed.installed(&acc);
+            if installed.save(store).is_err() {
+                return UpdateSettled::Waiting;
             }
-            // Already recorded (a second call) is fine; anything else leaves
-            // the record alone and says nothing new.
-            Err(_) => {}
+            let _ = store.save(HISTORY, &History { previous: Some(before) });
         }
         settle(store);
         Available::forget_offer(store);

@@ -96,7 +96,7 @@ impl Memory {
     pub fn habits(&self, min_uses: u32) -> Vec<&WorkflowMemo> {
         let mut v: Vec<&WorkflowMemo> =
             self.workflows.iter().filter(|w| w.times_used >= min_uses).collect();
-        v.sort_by(|a, b| b.times_used.cmp(&a.times_used));
+        v.sort_by_key(|b| std::cmp::Reverse(b.times_used));
         v
     }
 

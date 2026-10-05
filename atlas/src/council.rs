@@ -16,8 +16,8 @@
 //!    into a moderate one has destroyed the only thing the council produced.
 //!    Where seats disagree, the disagreement is the output.
 //!  3. **Unanimity is suspicious, not reassuring.** Four seats agreeing on the
-//!    first blind round usually means the brief leaked the answer. It gets
-//!    said out loud rather than reported as high confidence.
+//!     first blind round usually means the brief leaked the answer. It gets
+//!     said out loud rather than reported as high confidence.
 //!
 //! `otherside` argues one case against a decision you have already made. This
 //! is the plural version, for decisions you have not made yet.

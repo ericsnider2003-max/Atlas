@@ -2149,7 +2149,7 @@ impl<'a> Daemon<'a> {
         );
         let found: Vec<crate::daily::Dropped> = if asked.trim().is_empty() {
             let mut all = self.dropped.clone();
-            all.sort_by(|a, b| b.when.cmp(&a.when));
+            all.sort_by_key(|b| std::cmp::Reverse(b.when));
             all.truncate(5);
             all
         } else {

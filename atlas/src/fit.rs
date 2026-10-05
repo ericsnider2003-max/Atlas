@@ -478,7 +478,7 @@ fn installed_here() -> Vec<(String, u64)> {
     for dir in ["models", "tools"] {
         collect_into(std::path::Path::new(dir), &mut out);
     }
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|b| std::cmp::Reverse(b.1));
     out
 }
 

@@ -191,7 +191,7 @@ impl Gate {
             return None;
         }
         let mut held = std::mem::take(&mut self.held);
-        held.sort_by(|a, b| b.weight.cmp(&a.weight));
+        held.sort_by_key(|b| std::cmp::Reverse(b.weight));
         for h in &held {
             self.said.retain(|(a, _)| *a != h.about);
             self.said.push((h.about.clone(), now));
