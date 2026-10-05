@@ -304,7 +304,15 @@ impl ExternalTool {
             Some(t) => {
                 let path = expand(t, vars);
                 std::fs::read_to_string(&path).map(Some).map_err(|e| {
-                    AtlasError::Platform(format!("'{cmd}' produced no output at {path}: {e}"))
+                    // What the program itself said: whisper exits 0 and
+                    // writes nothing when it can't read its input, and says
+                    // why only on stderr (call notes, 4 Oct 2026: the reason
+                    // was thrown away and only "no output" was left).
+                    let said = String::from_utf8_lossy(&out.stderr);
+                    let tail: Vec<&str> = said.lines().filter(|l| !l.trim().is_empty()).rev().take(4).collect();
+                    let tail: Vec<&str> = tail.into_iter().rev().collect();
+                    let why = if tail.is_empty() { String::new() } else { format!(" It said: {}", tail.join(" / ")) };
+                    AtlasError::Platform(format!("'{cmd}' produced no output at {path}: {e}.{why}"))
                 })
             }
             None => Ok(Some(String::from_utf8_lossy(&out.stdout).to_string())),

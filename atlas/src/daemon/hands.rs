@@ -819,6 +819,7 @@ impl<'a> Daemon<'a> {
             // each look runs reg.exe, and a call starting is still caught
             // within seconds (1 Oct 2026: Atlas's own cost, measured).
             self.last_call_look = t;
+            crate::callrec::use_microphone(&crate::voice::microphone_now(&self.tools_cfg()).0);
             let said = self.call_notes.look(t, crate::callwatch::call_now());
             out.extend(self.carry_out(said));
         }
@@ -868,6 +869,7 @@ impl<'a> Daemon<'a> {
     /// "stop taking notes".
     pub(super) fn call_notes_command(&mut self, what: &str) -> String {
         let t = crate::store::now();
+        crate::callrec::use_microphone(&crate::voice::microphone_now(&self.tools_cfg()).0);
         self.call_notes.cfg = self.tools_cfg().call_notes.clone();
         // "Stop" and "are you recording" always work, switched off or not:
         // a way out must never depend on a setting.

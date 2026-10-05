@@ -553,6 +553,18 @@ pub fn write_up(
 ) -> Result<WrittenUp, String> {
     let read = |wav: &Option<PathBuf>| -> Result<Vec<Spoken>, String> {
         let Some(wav) = wav else { return Ok(Vec::new()) };
+        transcribe_side(wav, timed, vars)
+    };
+    let yours = read(&done.yours)?;
+    let theirs = read(&done.theirs)?;
+    write_up_from(done, yours, theirs, llm, notes_dir)
+}
+
+/// One side of a call, written out with timings: the speech-to-text tool
+/// with an `.srt` to read back. Shared by the notes and `atlas call check`,
+/// so the check runs exactly what a call does.
+pub fn transcribe_side(wav: &Path, timed: &crate::tools::ExternalTool, vars: &crate::tools::Vars) -> Result<Vec<Spoken>, String> {
+    {
         let stem = wav.with_extension("");
         let srt = PathBuf::from(format!("{}.srt", stem.display()));
         let mut v = vars.clone();
@@ -570,9 +582,16 @@ pub fn write_up(
         let text = tool.run(&v, None).map_err(|e| format!("transcribing {} failed: {e}", wav.display()));
         let _ = std::fs::remove_file(&srt);
         Ok(crate::viewing::read_timed(&text?))
-    };
-    let yours = read(&done.yours)?;
-    let theirs = read(&done.theirs)?;
+    }
+}
+
+fn write_up_from(
+    done: &Finished,
+    yours: Vec<Spoken>,
+    theirs: Vec<Spoken>,
+    llm: Option<&dyn crate::brain::Llm>,
+    notes_dir: &Path,
+) -> Result<WrittenUp, String> {
     let transcript = who_said_what(&yours, &theirs);
     let mut summary_ms = 0;
     let mut prompt_chars = 0;

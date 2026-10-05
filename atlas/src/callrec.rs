@@ -138,6 +138,41 @@ pub fn silence_due(elapsed: std::time::Duration, written: u64) -> usize {
     }
 }
 
+/// The microphone your side of a call is recorded from: the one Atlas
+/// listens to you through (`voice::microphone_now`), by name.
+///
+/// Until 5 Oct 2026 your side was Windows' default microphone, whatever
+/// Atlas itself was set to hear you through. On a laptop with a webcam
+/// microphone picked for Atlas and the built-in array left as Windows'
+/// default, the call recorded the microphone you weren't talking into
+/// (`atlas call check`: "Your microphone: ... but it was silent").
+static WANT_MIC: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Record your side from the microphone called `name` (as the device names
+/// itself); empty is Windows' default.
+pub fn use_microphone(name: &str) {
+    if let Ok(mut m) = WANT_MIC.write() {
+        *m = Some(name.trim().to_string()).filter(|n| !n.is_empty());
+    }
+}
+
+/// Which of `names` is the microphone asked for: the same name, or, failing
+/// that, one name inside the other ("Microphone (HD Pro Webcam C920)" and
+/// "HD Pro Webcam C920"). `None`: none of them, so the default is used.
+pub fn microphone_named(want: &str, names: &[String]) -> Option<usize> {
+    let w = want.trim().to_lowercase();
+    if w.is_empty() {
+        return None;
+    }
+    names
+        .iter()
+        .position(|n| n.trim().to_lowercase() == w)
+        .or_else(|| names.iter().position(|n| {
+            let n = n.trim().to_lowercase();
+            !n.is_empty() && (n.contains(&w) || w.contains(&n))
+        }))
+}
+
 /// One side of a call being recorded. Stops and closes its file when
 /// `finish` is called or when it's dropped.
 pub struct Recording {
@@ -252,7 +287,18 @@ fn capture(
     let host = cpal::default_host();
     let (device, config) = match side {
         Side::Yours => {
-            let d = host.default_input_device().ok_or("there's no microphone")?;
+            let want = WANT_MIC.read().ok().and_then(|m| m.clone()).unwrap_or_default();
+            let mut inputs: Vec<cpal::Device> = host.input_devices().map(|d| d.collect()).unwrap_or_default();
+            let names: Vec<String> = inputs.iter().map(|d| d.name().unwrap_or_default()).collect();
+            let d = match microphone_named(&want, &names) {
+                Some(i) => inputs.swap_remove(i),
+                None => {
+                    if !want.is_empty() {
+                        crate::errln!("recording: no microphone called \"{want}\" (have: {}); using Windows' default", names.join(", "));
+                    }
+                    host.default_input_device().ok_or("there's no microphone")?
+                }
+            };
             let c = d.default_input_config().map_err(|e| format!("the microphone won't say how it records: {e}"))?;
             (d, c)
         }
@@ -348,4 +394,29 @@ fn capture(
     _held: &std::sync::atomic::AtomicBool,
 ) -> Result<u64, String> {
     Err("recording a call works on Windows only".into())
+}
+
+#[cfg(test)]
+mod picking_the_microphone {
+    use super::microphone_named;
+
+    fn names(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_microphone_atlas_listens_through_is_the_one_recorded() {
+        let have = names(&["Microphone Array (Realtek(R) Audio)", "Microphone (HD Pro Webcam C920)"]);
+        assert_eq!(microphone_named("Microphone (HD Pro Webcam C920)", &have), Some(1));
+        assert_eq!(microphone_named("microphone array (realtek(r) audio)", &have), Some(0));
+        // ffmpeg's name and Windows' can differ by the "Microphone (...)" wrapper.
+        assert_eq!(microphone_named("HD Pro Webcam C920", &have), Some(1));
+    }
+
+    #[test]
+    fn none_named_or_none_found_is_windows_default() {
+        let have = names(&["Microphone Array (Realtek(R) Audio)"]);
+        assert_eq!(microphone_named("", &have), None);
+        assert_eq!(microphone_named("AirPods Pro", &have), None);
+    }
 }
