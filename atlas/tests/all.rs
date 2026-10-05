@@ -896,6 +896,8 @@ mod two_brains;
 mod a_real_model_answers_him;
 #[path = "a_normal_voice_is_heard.rs"]
 mod a_normal_voice_is_heard;
+#[path = "everyday_without_the_model.rs"]
+mod everyday_without_the_model;
 #[path = "atlas_looks_when_you_ask.rs"]
 mod atlas_looks_when_you_ask;
 #[path = "meaning_picks_the_tool.rs"]

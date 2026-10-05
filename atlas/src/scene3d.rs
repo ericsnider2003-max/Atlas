@@ -2284,6 +2284,16 @@ pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models:
         let problem = match parse_scene(&reply) {
             Ok(mut scene) => {
                 scene.base = models.map(|m| m.to_path_buf());
+                // A still was asked for ("a small cabin in the woods") and
+                // the model gave it a length with nothing moving in it: drawn
+                // as the still it is, not sent back as a failure (self-test,
+                // 4 Oct 2026: 41 seconds of fix rounds, then "I tried").
+                let anything_moves = scene.camera.orbit != 0.0
+                    || !scene.camera.animate.is_empty()
+                    || scene.objects.iter().any(|o| !o.animate.is_empty() || o.spin != [0.0; 3]);
+                if !moving && !anything_moves && scene.duration > 0.0 {
+                    scene.duration = 0.0;
+                }
                 let mut blocking: Vec<String> =
                     check_scene(&scene).into_iter().filter(|f| f.severity == Severity::Blocking).map(|f| f.detail).collect();
                 if moving && scene.duration <= 0.0 {

@@ -1194,9 +1194,34 @@ impl<'a> Daemon<'a> {
     }
 
     fn on_draft_post(&mut self, channel: &String) -> String {
-        let ch = channel_named(channel);
-        let id = self.publisher.draft(ch, "");
-        format!("Drafting for {channel}. What should it say? (#{id})")
+        // "linkedin about finishing a project": the channel, and what it's
+        // about when that was said too.
+        let (channel, about) = match channel.split_once(" about ") {
+            Some((c, a)) if !a.trim().is_empty() => (c.trim().to_string(), Some(a.trim().to_string())),
+            _ => (channel.trim().to_string(), None),
+        };
+        let ch = channel_named(&channel);
+        let Some(about) = about else {
+            let id = self.publisher.draft(ch, "");
+            return format!("Drafting for {channel}. What should it say? (#{id})");
+        };
+        // Written by the model when there is one; never posted -- a draft
+        // waits for you (`publish`).
+        let written = self.llm.clone().and_then(|llm| {
+            let prompt = format!("Channel: {channel}\nWhat it's about: {about}");
+            llm.complete(DRAFT_SYSTEM, &prompt).ok().map(|t| t.trim().trim_matches('"').trim().to_string()).filter(|t| !t.is_empty())
+        });
+        match written {
+            Some(text) => {
+                let id = self.publisher.draft(ch, &text);
+                let _ = self.publisher.save(&self.store);
+                format!("A draft for {channel} (#{id}), not posted:\n\n{text}\n\nIt waits in your drafts; nothing goes out until you say so.")
+            }
+            None => {
+                let id = self.publisher.draft(ch, "");
+                format!("Drafting for {channel} about {about}. What should it say? (#{id})")
+            }
+        }
     }
 
     fn on_undo(&mut self) -> String {
@@ -1297,7 +1322,14 @@ impl<'a> Daemon<'a> {
         match self.modes.enter(n, &[]) {
             Some(t) => t.say,
             None if leaving => "You're not in a mode.".into(),
-            None => format!("I don't have a {n} mode."),
+            None => {
+                let have: Vec<&str> = self.modes.modes.iter().map(|m| m.name.as_str()).collect();
+                if have.is_empty() {
+                    format!("I don't have a {n} mode. You haven't made any yet: a mode is kept in modes.json in my data folder -- which apps open, which close, and what's said.")
+                } else {
+                    format!("I don't have a {n} mode. The ones you have: {}.", have.join(", "))
+                }
+            }
         }
     }
 
@@ -2832,3 +2864,8 @@ impl<'a> Daemon<'a> {
         "outlook-connect", "search-check",
     ];
 }
+
+/// How a post is drafted from a channel and a topic.
+const DRAFT_SYSTEM: &str = "Write one short social media post in the user's own voice, first person, for the channel named. \
+Plain and specific, no hashtag walls (two at most), no emoji unless the channel is Instagram, no preamble or quotation marks: \
+only the post itself. LinkedIn: three to five short sentences. X: under 270 characters.";
