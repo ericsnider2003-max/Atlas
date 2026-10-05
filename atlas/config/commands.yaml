@@ -218,7 +218,12 @@ commands:
               "optimize my pc", "optimise my pc", "optimize my laptop", "optimise my laptop",
               "speed up my computer", "speed up my pc", "speed up my laptop", "tune up my computer",
               "what can be cleared", "what's eating the memory", "whats eating the memory",
-              "what's using my memory", "whats using my memory"]
+              "what's using my memory", "whats using my memory",
+              # The self-test, 3 Oct 2026: "how much space have I got left on
+              # this thing" reached the chat model, which answered with a joke.
+              "how much space", "how much disk space", "how much storage", "space left",
+              "storage left", "disk space", "how full is my disk", "how full is my drive",
+              "how much memory am i using", "how much ram"]
 
   # Looking after the machine, more than a reading (Eric, 2 Oct 2026: "for
   # optimization I want Atlas to be able to do more as it is a very tedious
