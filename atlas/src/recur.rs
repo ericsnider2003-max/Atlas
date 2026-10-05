@@ -97,6 +97,13 @@ impl Rule {
                     if r.interval == 0 {
                         return Err("INTERVAL must be at least 1".into());
                     }
+                    // A calendar from anywhere can say INTERVAL=4294967295;
+                    // `period * interval` then overflowed (a panic in a debug
+                    // build, wrong dates in release). Nothing real repeats
+                    // less often than every thousand periods (Q20).
+                    if r.interval > 1000 {
+                        return Err(format!("INTERVAL={v} is too large to be a real repeat"));
+                    }
                 }
                 "COUNT" => r.count = Some(v.parse().map_err(|_| format!("COUNT={v} is not a number"))?),
                 "UNTIL" => r.until = Some(parse_ical_time(v)?),

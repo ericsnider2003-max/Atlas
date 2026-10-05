@@ -471,11 +471,12 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     #[cfg(windows)]
     let program: std::ffi::OsString = {
         let p = program.as_ref();
-        match p.to_str().and_then(|name| {
+        let system_root = std::env::var_os("SystemRoot").map(std::path::PathBuf::from);
+        match p.to_str().and_then(|name| system_root.as_deref().and_then(|r| system_tool(name, r))).or_else(|| p.to_str().and_then(|name| {
             let path = std::env::var_os("PATH")?;
             let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
             resolve_on_path(name, &std::env::split_paths(&path).collect::<Vec<_>>(), &exts)
-        }) {
+        })) {
             Some(found) => found.into_os_string(),
             None => p.to_os_string(),
         }
@@ -488,6 +489,23 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
     cmd
+}
+
+/// Windows' own tools, always from Windows' own folder.
+///
+/// A bare `curl` or `powershell` was found by searching PATH, and Windows
+/// looks in the program's own folder first: a `curl.cmd` dropped beside
+/// atlas.exe or in any writable PATH folder ran instead (5 Oct 2026 audit,
+/// Q9). `None` for anything that isn't one of these, or isn't there.
+pub fn system_tool(name: &str, system_root: &std::path::Path) -> Option<std::path::PathBuf> {
+    let sys = system_root.join("System32");
+    let p = match name.to_ascii_lowercase().as_str() {
+        "powershell" => sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"),
+        n @ ("curl" | "reg" | "schtasks" | "taskkill" | "tasklist" | "cmd" | "where" | "netsh" | "sc" | "icacls" | "shutdown"
+        | "ipconfig" | "ping" | "wmic" | "whoami" | "attrib" | "certutil" | "tar") => sys.join(format!("{n}.exe")),
+        _ => return None,
+    };
+    p.is_file().then_some(p)
 }
 
 /// A bare program name (`npm`) found on `dirs` with the first extension in

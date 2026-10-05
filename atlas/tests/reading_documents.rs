@@ -262,3 +262,25 @@ fn the_zip_reader_s_parts_each_do_their_one_job() {
     assert!(name_inside("../x").is_err());
     assert!(entries_of(b"not a zip").is_err());
 }
+
+#[test]
+fn an_absurd_repeat_interval_is_refused_not_overflowed() {
+    // 5 Oct 2026 audit, Q20: INTERVAL is a u32 from any calendar you import.
+    assert!(atlas::recur::Rule::parse("FREQ=DAILY;INTERVAL=4294967295").is_err());
+    assert!(atlas::recur::Rule::parse("FREQ=WEEKLY;INTERVAL=2").is_ok());
+}
+
+#[test]
+fn windows_own_tools_come_from_windows_own_folder() {
+    // 5 Oct 2026 audit, Q9: never a curl.cmd beside atlas.exe or on PATH.
+    let root = std::env::temp_dir().join(format!("atlas-sysroot-{}", std::process::id()));
+    let sys = root.join("System32");
+    std::fs::create_dir_all(sys.join("WindowsPowerShell").join("v1.0")).unwrap();
+    std::fs::write(sys.join("curl.exe"), b"").unwrap();
+    std::fs::write(sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe"), b"").unwrap();
+    assert_eq!(atlas::tools::system_tool("curl", &root), Some(sys.join("curl.exe")));
+    assert_eq!(atlas::tools::system_tool("PowerShell", &root), Some(sys.join("WindowsPowerShell").join("v1.0").join("powershell.exe")));
+    assert_eq!(atlas::tools::system_tool("reg", &root), None, "not there: left to the old lookup");
+    assert_eq!(atlas::tools::system_tool("npm", &root), None, "not a Windows tool");
+    let _ = std::fs::remove_dir_all(&root);
+}
