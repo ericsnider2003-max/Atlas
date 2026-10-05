@@ -1803,6 +1803,16 @@ pub(super) fn run_call_check(args: &[String]) {
         return;
     }
     let secs: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(5).clamp(1, 60);
+    // The same microphone and the same transcriber a real call uses, so
+    // a pass here means call notes would hear and write the same (5 Oct
+    // 2026: this checked only loudness, while every real call's notes
+    // failed further along).
+    let tools = atlas::config::Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools.map(|t| t.anchored()));
+    if let Some(t) = &tools {
+        let (name, _) = atlas::voice::microphone_now(t);
+        atlas::callrec::use_microphone(&name);
+        println!("Your side is recorded from the microphone I listen to you through: {name}.");
+    }
     let scratch = atlas::roots::RunScratch::new("atlas-call-check");
     let dir = scratch.path().to_path_buf();
     let mine = dir.join("you.wav");
@@ -1827,6 +1837,17 @@ pub(super) fn run_call_check(args: &[String]) {
                         "  {what}: {got:.1} seconds recorded, {}",
                         if peak > 0 { "and there was sound in it." } else { "but it was silent." }
                     );
+                    match tools.as_ref().and_then(|t| t.stt_timed.clone().map(|s| (s, t.vars.clone()))) {
+                        None => println!("    (no transcriber set up, so the words weren't checked)"),
+                        Some((timed, vars)) => match atlas::callnotes::transcribe_side(path, &timed, &vars) {
+                            Err(e) => println!("    Transcribing it failed: {e}"),
+                            Ok(said) if said.is_empty() => println!("    Transcribed: no words."),
+                            Ok(said) => println!(
+                                "    Transcribed: \u{201c}{}\u{201d}",
+                                said.iter().map(|s| s.words.trim()).collect::<Vec<_>>().join(" ")
+                            ),
+                        },
+                    }
                 }
             },
         }
