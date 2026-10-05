@@ -16,7 +16,7 @@ use super::apis::{self, GoogleSignIn, Https, TikTokSignIn};
 use super::onepage;
 use super::snapshots::{Book, Platform, Record};
 use super::watchlist::{self, Seen, Target, Watch};
-use super::{SocialConfig, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH};
+use super::{SocialConfig, VAULT_BLUESKY, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH};
 use crate::daemon::Daemon;
 use serde::{Deserialize, Serialize};
 
@@ -81,7 +81,7 @@ fn has(low: &str, any: &[&str]) -> bool {
 }
 
 impl Daemon<'_> {
-    fn social_cfg(&self) -> SocialConfig {
+    pub(crate) fn social_cfg(&self) -> SocialConfig {
         self.workday_cfg().social
     }
 
@@ -856,6 +856,7 @@ impl Daemon<'_> {
                 ("Threads token".into(), kept(VAULT_THREADS)),
                 ("Facebook Page token".into(), kept(VAULT_FACEBOOK)),
                 ("TikTok sign-in".into(), kept(VAULT_TIKTOK)),
+                ("Bluesky app password (for posting)".into(), kept(VAULT_BLUESKY)),
             ],
             accounts: page::Accounts {
                 youtube_channel: cfg.youtube_channel.clone(),
@@ -915,6 +916,7 @@ impl Daemon<'_> {
                     "instagram" => (VAULT_INSTAGRAM, "Instagram token"),
                     "threads" => (VAULT_THREADS, "Threads token"),
                     "facebook" => (VAULT_FACEBOOK, "Facebook Page token"),
+                    "bluesky" => (VAULT_BLUESKY, "Bluesky app password"),
                     _ => return "That isn't a key I keep.".into(),
                 };
                 let secret = field("secret");

@@ -144,7 +144,7 @@ pub fn render_social(v: &View) -> String {
     b.push_str("</ul>");
     b.push_str(&form(
         "key",
-        "<label>Which <select name=name><option value=youtube>YouTube API key</option><option value=instagram>Instagram token</option><option value=threads>Threads token</option><option value=facebook>Facebook Page token</option></select></label> <label>Key <input name=secret type=password required autocomplete=off></label>",
+        "<label>Which <select name=name><option value=youtube>YouTube API key</option><option value=instagram>Instagram token</option><option value=threads>Threads token</option><option value=facebook>Facebook Page token</option><option value=bluesky>Bluesky app password (for posting)</option></select></label> <label>Key <input name=secret type=password required autocomplete=off></label>",
         "Keep it",
     ));
     if crate::oauthlink::google_secret().is_some() {

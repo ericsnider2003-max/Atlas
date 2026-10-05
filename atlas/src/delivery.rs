@@ -138,6 +138,50 @@ pub fn send(
     }
 }
 
+/// Is this a Bluesky post? Those go through Bluesky's own API
+/// (`send_bluesky`), not a browser.
+pub fn is_bluesky(channel: &crate::publish::Channel) -> bool {
+    matches!(channel, crate::publish::Channel::Other(n) if matches!(n.trim().to_lowercase().as_str(), "bluesky" | "bsky"))
+}
+
+/// Carry out a Bluesky post through its API, with the same gate as a
+/// browser post: only an id the publisher cleared, checked again here.
+pub fn send_bluesky(
+    pub_: &mut Publisher,
+    x: &dyn crate::social::posting::Xrpc,
+    handle: &str,
+    app_password: &str,
+    id: u64,
+    online: bool,
+    now: u64,
+) -> Outcome {
+    let Some(post) = pub_.get(id).cloned() else {
+        return Outcome::Blocked("no such post".into());
+    };
+    match pub_.check(id, online, None) {
+        SendCheck::Go => {}
+        SendCheck::Hold(why) if why == "no connection" => return Outcome::Retry(why),
+        SendCheck::Hold(why) => return Outcome::Blocked(why),
+    }
+    if handle.trim().is_empty() {
+        return Outcome::Blocked("no Bluesky handle -- put yours under Your accounts on the Social page".into());
+    }
+    if app_password.is_empty() {
+        return Outcome::Blocked("no Bluesky app password kept -- make one in Bluesky's settings and keep it on the Social page".into());
+    }
+    match crate::social::post_with_app_password(x, handle, app_password, &post.body, &post.media, now, &|p| std::fs::read(p)) {
+        Ok(_uri) => {
+            pub_.mark_sent(id, "posted", true);
+            Outcome::Sent("posted to Bluesky".into())
+        }
+        Err(e) if e.starts_with("couldn't reach Bluesky") => Outcome::Retry(e),
+        Err(e) => {
+            pub_.mark_sent(id, &e, false);
+            Outcome::Blocked(e)
+        }
+    }
+}
+
 /// Distinguish "try again in a minute" from "this needs you".
 ///
 /// Getting this wrong in either direction is bad: retrying a permanent failure

@@ -31,6 +31,8 @@ pub mod apis;
 pub mod exports;
 mod glue;
 pub mod onepage;
+pub mod posting;
+pub use posting::post_with_app_password;
 pub mod page;
 pub mod snapshots;
 pub mod watchlist;
@@ -123,6 +125,9 @@ pub const VAULT_INSTAGRAM: &str = "instagram token";
 pub const VAULT_THREADS: &str = "threads token";
 pub const VAULT_FACEBOOK: &str = "facebook page token";
 pub const VAULT_TIKTOK: &str = "tiktok sign-in";
+/// The app password Bluesky posts with (`posting`), for the handle in
+/// `bluesky_handle`.
+pub const VAULT_BLUESKY: &str = "bluesky app password";
 
 /// What each route needs from you, step by step, in the words the Social
 /// page shows. Everything else works without any of it: imports need
@@ -164,7 +169,10 @@ pub const SETUP: &[(&str, &[&str])] = &[
         "Paste the client key, client secret and that redirect address below and press Sign in. After you say yes, TikTok sends you to the redirect address: copy that whole address from the browser's address bar and paste it in the second box.",
         "TikTok gives views, likes, comments and shares per video -- never watch time or retention.",
     ]),
-    ("Bluesky", &["Nothing to set up: put your handle under Your accounts. Bluesky has no view counts."]),
+    ("Bluesky", &[
+        "Reading: nothing to set up, put your handle under Your accounts. Bluesky has no view counts.",
+        "Posting: on bsky.app, Settings, Privacy and security, App passwords, add one, and keep it here as \"Bluesky app password\". It can post but can't change your password, and you can revoke it there any time. Every post still waits for your yes.",
+    ]),
     ("X, LinkedIn, and the rest", &[
         "X: Settings, Your account, Download an archive. When the email comes, give me the zip below.",
         "LinkedIn: your profile, Posts & activity (Creator analytics), Export. Give me the .xlsx below.",
