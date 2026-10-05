@@ -112,6 +112,11 @@ pub fn name_inside(name: &str) -> Result<PathBuf, String> {
         match part {
             "" | "." => continue,
             ".." => return Err(format!("{name} tries to climb out of the folder")),
+            // A colon anywhere is a drive (`a/C:x` replaces the whole path when
+            // pushed on Windows) or an NTFS alternate stream (`x:hidden`);
+            // neither is a file in this folder (Q8).
+            s if s.contains(':') => return Err(format!("{name} points outside the folder")),
+            s if windows_reserved(s) => return Err(format!("{name} is a name Windows keeps for devices")),
             s => p.push(s),
         }
     }
@@ -119,6 +124,14 @@ pub fn name_inside(name: &str) -> Result<PathBuf, String> {
         return Err("an entry with no name".into());
     }
     Ok(p)
+}
+
+/// CON, PRN, AUX, NUL, COM1-9 and LPT1-9, with or without an extension or
+/// trailing dots/spaces: Windows opens the device, not a file.
+fn windows_reserved(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or("").trim_end_matches([' ', '.']).to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit() && stem.as_bytes()[3] != b'0')
 }
 
 /// How deep the nesting goes: 1 for a plain zip, 2 when it holds zips.

@@ -384,3 +384,12 @@ fn a_value_that_will_not_serialize_never_empties_the_file_it_replaces() {
     let back: Vec<String> = Store::new(dir).load("thing");
     assert_eq!(back, vec!["kept".to_string()], "the good file is untouched");
 }
+
+#[test]
+fn a_mail_password_only_travels_on_a_private_line() {
+    // Q6: the Connect forms send `password`; it was accepted over plain Wi-Fi.
+    let a = atlas::server::Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "password"), ("password", "app-pass")]) };
+    assert!(a.carries_a_secret());
+    let b = atlas::server::Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "start"), ("address", "a@b.co")]) };
+    assert!(!b.carries_a_secret());
+}

@@ -998,7 +998,11 @@ impl Action {
             // The Updates page's release-key forms take the vault passphrase
             // as an ordinary field.
             // The Social page's key and sign-in forms carry a `secret`.
-            Action::HubPost { fields, .. } => fields.iter().any(|(k, _)| k == "passphrase" || k == "again" || k == "secret"),
+            // Connect an account's forms carry a mail `password` (5 Oct 2026
+            // audit, Q6: it crossed home Wi-Fi in plain HTTP).
+            Action::HubPost { fields, .. } => {
+                fields.iter().any(|(k, _)| k == "passphrase" || k == "again" || k == "secret" || k == "password")
+            }
             _ => false,
         }
     }

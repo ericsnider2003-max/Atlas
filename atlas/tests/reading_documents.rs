@@ -250,6 +250,15 @@ fn the_zip_reader_s_parts_each_do_their_one_job() {
     assert_eq!(notes.len() as u64, entries[0].size, "deflated back to its full size");
     assert_eq!(name_inside("trip\\notes.txt").unwrap(), Path::new("trip").join("notes.txt"));
     assert!(name_inside("C:\\Windows\\evil.dll").is_err());
+    // 5 Oct 2026 audit, Q8: a drive or stream further down, and device names.
+    assert!(name_inside("a/C:evil.txt").is_err());
+    assert!(name_inside("notes.txt:hidden").is_err());
+    for dev in ["CON", "nul.txt", "a/com1.log", "LPT9", "aux "] {
+        assert!(name_inside(dev).is_err(), "{dev}");
+    }
+    for fine in ["console.txt", "com10.txt", "lpt0", "nullish/a.txt"] {
+        assert!(name_inside(fine).is_ok(), "{fine}");
+    }
     assert!(name_inside("../x").is_err());
     assert!(entries_of(b"not a zip").is_err());
 }
