@@ -284,6 +284,12 @@ fn signing_in_keeps_the_token_sealed_and_connects_outlook_mail_and_calendar() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = plat();
     let store = tmp("oauth");
+    // Mail already on: connecting must not write a settings file into the
+    // repo's own config/ (it did once, and settings.yaml got committed).
+    let mut c = c;
+    if let Some(t) = c.tools.as_mut() {
+        t.mail.enabled = true;
+    }
     let mut d = Daemon::new(&c, &p, None, Store::new(store.clone()), Proactive::new(ProactiveConfig::default()));
     d.vault.open("a genuinely long passphrase, not a word", 0, &atlas::vault::VaultConfig::default()).unwrap();
 
@@ -294,8 +300,11 @@ fn signing_in_keeps_the_token_sealed_and_connects_outlook_mail_and_calendar() {
         assert!(page.contains("built without Google's sign-in key"), "a copy without the key says so instead of a dead button");
     }
 
+    let settings = Path::new("config/settings.yaml");
+    let had_settings = settings.exists();
     let said = atlas::connecting::keep_sign_in(&mut d, &oauthlink::SignedIn { provider: Provider::Microsoft, email: "eric@outlook.com".into(), refresh_token: "RT-1".into() }, 1_790_000_000);
     assert!(said.starts_with("Connected eric@outlook.com"), "{said}");
+    assert_eq!(settings.exists(), had_settings, "a test wrote the shipped config's settings file");
 
     assert_eq!(d.vault.get("signin microsoft eric@outlook.com", 1_790_000_000).unwrap(), "RT-1", "sealed in the vault");
     let kept: Vec<atlas::mail::Account> = Store::new(store.clone()).load(atlas::daemon::CONNECTED_ACCOUNTS);
