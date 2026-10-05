@@ -1393,6 +1393,10 @@ impl Daemon<'_> {
         self.feeds_tick(t, online);
         self.social_tick(t, online);
         crate::hunting::tick(self, t, online);
+        // Calendars connected by their link, read again every 15 minutes.
+        if online {
+            crate::connecting::tick(self, t);
+        }
         // The calendar and the market clock are looked at once a minute.
         if t.saturating_sub(self.workday.last_look) < 60 {
             return out;

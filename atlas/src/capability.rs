@@ -296,7 +296,7 @@ pub fn all() -> Vec<Capability> {
         // others -- `what_you_asked_for` still says which are closed.
         Capability { id: "telegram", what: "read what's been sent to a chat bot you own, and sort it like the inbox", area: Email, state: Off, needs: None, offline: false, added: 29, runs: &[Needs::Files], modules: &["telegram", "messaging"] },
         Capability { id: "triage", what: "sort an inbox by what it asks of you", area: Email, state: Working, needs: None, offline: true, added: 19, runs: &[Needs::JustThinking], modules: &["triage"] },
-        Capability { id: "mail", what: "reach your mailbox, whoever provides it", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["mail", "imap", "smtp", "mailthread", "ratelimit", "himalaya", "msoauth"] },
+        Capability { id: "mail", what: "reach your mailbox, whoever provides it", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["mail", "imap", "smtp", "mailthread", "ratelimit", "himalaya", "msoauth", "connect", "connecting"] },
         Capability { id: "unsub", what: "clear out what you never read, safely", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["unsub"] },
 
         Capability { id: "route", what: "find another way when one is closed", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["route"] },
@@ -1564,7 +1564,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 471 modules plus the four chat-c-3 adds = 475.
 // 4 Oct 2026, merge of chat-c-3 (96dccf4): `webpush` (Android with Atlas
 // closed, item 15).
-pub const MODULES_IN_TREE: usize = 476;
+// 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 478
+// with webpush.
+pub const MODULES_IN_TREE: usize = 478;
 
 /// Every module no capability claims, and why it is not one.
 ///

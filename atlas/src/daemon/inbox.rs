@@ -405,6 +405,8 @@ impl<'a> Daemon<'a> {
                     sent_since.as_deref(),
                 ) {
                     Ok((msgs, sent)) => {
+                        // Working, for the connected-accounts list (`connect`).
+                        crate::connect::note_health(&store, &account.address, None);
                         if mail_book_on {
                             let fetched = crate::store::now();
                             let mut letters: Vec<crate::mailbook::Letter> = msgs.iter().map(|m| crate::mailbook::Letter::from_imap(m, false, fetched)).collect();
@@ -521,7 +523,10 @@ impl<'a> Daemon<'a> {
                             triaged.push(t);
                         }
                     }
-                    Err(e) => failures.push(format!("{}: {e}", account.name)),
+                    Err(e) => {
+                        crate::connect::note_health(&store, &account.address, Some(&e.to_string()));
+                        failures.push(format!("{}: {e}", account.name))
+                    }
                 }
             }
             let _ = outbox.save(&store);

@@ -862,7 +862,11 @@ impl Daemon<'_> {
                     self.vault.state() == crate::vault::State::Open,
                     &safety,
                 );
-                self.with_vault_section(page)
+                // Connecting an account leads the page (2 Oct 2026): it's
+                // what "Calendars & accounts" in Settings is opened for.
+                let page = self.with_vault_section(page);
+                let connect = crate::connecting::section(self, None);
+                hub::with_block_after_heading(page, &connect)
             }
             Page::Access => {
                 // Only what is genuinely reachable on this machine. Listing
@@ -2972,6 +2976,16 @@ impl Daemon<'_> {
             }
             Page::Feedback => crate::hubpages::feedback_page(&self.feedback_view(), said.as_deref()),
             Page::Opportunities => crate::hunting::opportunities_page(self, &fields),
+            Page::Accounts => {
+                let page = self.hub_page(Page::Accounts);
+                let asked = field_of(&fields, "connect");
+                let page = match asked.as_deref() {
+                    // The plain page has the section already; this one says the next step too.
+                    Some(a) => page.replacen(&crate::connecting::section(self, None), &crate::connecting::section(self, Some(a)), 1),
+                    None => page,
+                };
+                hub::with_said(page, said.as_deref())
+            }
             // What "Have a go" or "Not worth it" did, said on the page -- the
             // same as every other page (below).
             Page::Social => self.social_page(said.as_deref()),
@@ -3708,6 +3722,7 @@ impl Daemon<'_> {
                 hub::back_with(Page::Trusted.href(), "", &said)
             }
             "/hub/opportunities" => crate::hunting::post(self, f),
+            "/hub/connect" => crate::connecting::post(self, f),
             "/hub/give" => {
                 let text = field_of(f, "text").unwrap_or_default();
                 let asked = field_of(f, "asked").filter(|a| !a.trim().is_empty());

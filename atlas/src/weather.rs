@@ -8,7 +8,7 @@
 //!
 //! Where: the place you set (`weather.place`), or a place named in the
 //! question ("weather in Chicago"), or -- when neither -- the town your
-//! internet address is in (ip-api.com), which is said back ("In Council
+//! internet address is in (ipapi.co, over https), which is said back ("In Council
 //! Bluffs: ...") so a wrong guess is heard and can be corrected by setting
 //! the place. Nothing but the place's name and its coordinates is sent.
 
@@ -169,14 +169,16 @@ pub fn place_from_search(json: &str) -> Option<Place> {
     })
 }
 
-/// A place from ip-api.com's answer.
+/// A place from the address lookup's answer: ipapi.co's names
+/// (`latitude`, `country_code`), or ip-api.com's (`lat`, `countryCode`).
 pub fn place_from_address(json: &str) -> Option<Place> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let num = |a: &str, b: &str| v.get(a).or_else(|| v.get(b)).and_then(|x| x.as_f64());
     Some(Place {
         name: v.get("city")?.as_str()?.to_string(),
-        lat: v.get("lat")?.as_f64()?,
-        lon: v.get("lon")?.as_f64()?,
-        country: v.get("countryCode").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+        lat: num("latitude", "lat")?,
+        lon: num("longitude", "lon")?,
+        country: v.get("country_code").or_else(|| v.get("countryCode")).and_then(|c| c.as_str()).unwrap_or("").to_string(),
     })
 }
 
@@ -207,7 +209,9 @@ fn find_place(name: &str) -> Result<Place, String> {
 
 /// Where this internet address is.
 fn place_here() -> Result<Place, String> {
-    let raw = get("http://ip-api.com/json/?fields=city,lat,lon,countryCode")?;
+    // Over https (2 Oct 2026, the phone app's review audit: ip-api.com's
+    // free lookup is plain http only, so where you are went unencrypted).
+    let raw = get("https://ipapi.co/json/")?;
     place_from_address(&raw).ok_or_else(|| "I couldn't tell where you are -- set your town in Settings, under Weather".into())
 }
 

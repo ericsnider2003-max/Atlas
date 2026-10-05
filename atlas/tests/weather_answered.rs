@@ -52,6 +52,10 @@ fn places_are_read_from_both_services() {
     let a = r#"{"city":"Council Bluffs","lat":41.2619,"lon":-95.8608,"countryCode":"US"}"#;
     let p = place_from_address(a).unwrap();
     assert_eq!((p.name.as_str(), p.country.as_str()), ("Council Bluffs", "US"));
+    // ipapi.co, the https one Atlas asks now.
+    let b = r#"{"ip":"1.2.3.4","city":"Columbus","region":"Ohio","country_code":"US","latitude":39.96,"longitude":-83.0}"#;
+    let q = place_from_address(b).unwrap();
+    assert_eq!((q.name.as_str(), q.country.as_str(), q.lat, q.lon), ("Columbus", "US", 39.96, -83.0));
 }
 
 /// The real services, when asked for (`ATLAS_LIVE_WEATHER`): a test mustn't

@@ -1150,19 +1150,41 @@ impl Daemon<'_> {
     /// Add an account that has just been connected, and use it now. Returns
     /// whether reading mail is switched on.
     fn add_connected_account(&mut self, address: &str, client_id: &str, vault_name: &str) -> std::result::Result<bool, String> {
-        let mut kept: Vec<crate::mail::Account> = self.store.load(CONNECTED_ACCOUNTS);
-        kept.retain(|a| !a.address.eq_ignore_ascii_case(address));
         let name = address.split('@').next().unwrap_or(address).to_string();
-        kept.push(crate::mail::Account {
+        self.keep_connected_account(crate::mail::Account {
             name,
             address: address.to_string(),
             password_from_vault: vault_name.to_string(),
             oauth: true,
             client_id: client_id.to_string(),
             ..Default::default()
-        });
+        })
+    }
+
+    /// Keep an account connected from the hub or by Outlook's sign-in, in
+    /// place of any by the same address, and use it now. Returns whether
+    /// reading mail is switched on.
+    pub(crate) fn keep_connected_account(&mut self, account: crate::mail::Account) -> std::result::Result<bool, String> {
+        let mut kept: Vec<crate::mail::Account> = self.store.load(CONNECTED_ACCOUNTS);
+        kept.retain(|a| !a.address.eq_ignore_ascii_case(&account.address));
+        kept.push(account);
         self.store.save(CONNECTED_ACCOUNTS, &kept).map_err(|e| e.to_string())?;
         self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
         Ok(self.tools_cfg().mail.enabled)
+    }
+
+    /// Take a connected account off (`connecting`): `false` when it wasn't
+    /// one Atlas connected (one listed in tools.yaml stays yours to edit).
+    pub(crate) fn drop_connected_account(&mut self, address: &str) -> std::result::Result<bool, String> {
+        let mut kept: Vec<crate::mail::Account> = self.store.load(CONNECTED_ACCOUNTS);
+        let before = kept.len();
+        kept.retain(|a| !a.address.eq_ignore_ascii_case(address));
+        if kept.len() == before {
+            return Ok(false);
+        }
+        self.store.save(CONNECTED_ACCOUNTS, &kept).map_err(|e| e.to_string())?;
+        // Rebuilt from the file and what's left, so it's gone from what runs now.
+        self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
+        Ok(true)
     }
 }
