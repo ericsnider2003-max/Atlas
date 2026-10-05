@@ -85,7 +85,7 @@ impl<'a> Daemon<'a> {
         // the desk was never heard).
         out.append(&mut self.to_say_aloud);
         self.retry_phone(t);
-        if let Some(line) = self.model_warmed.lock().ok().and_then(|mut w| w.take()) {
+        if let Some(line) = self.model_warmed.lock().or_else(crate::crash::unpoison).ok().and_then(|mut w| w.take()) {
             self.log.info(&line);
         }
         // The Talk page's waiting words, one turn each (`talk_queue`). A
@@ -94,6 +94,10 @@ impl<'a> Daemon<'a> {
         // on the model.
         self.talk_queue_turns(t);
         self.tick_laps.mark("talk queue");
+        // What your phone asked the laptop to do (item 24).
+        self.answer_requests_from_the_phone(t);
+        // What turns added for your other devices (item 16).
+        self.save_the_synclog_if_changed();
         // The deep model: started for background work waiting on it,
         // stopped once idle (`deepbrain`).
         self.keep_deep_brain();
@@ -1959,6 +1963,14 @@ impl<'a> Daemon<'a> {
 
     /// This phone's push address, carried to your other devices as a sync
     /// event so the laptop can reach it with Atlas closed (item 15, `apns`).
+    /// An Android phone's push address and keys, carried to your other
+    /// devices as a sync event (`webpush`).
+    pub(crate) fn carry_web_push_address(&mut self, endpoint: &str, p256dh: &str, auth: &str, now: u64) {
+        let (id, field, to) = crate::webpush::change_to_carry(&self.synclog.device.clone(), endpoint, p256dh, auth);
+        self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+        let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+    }
+
     pub(crate) fn carry_push_address(&mut self, token: &str, env: &str, now: u64) {
         let (id, field, to) = crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
         self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
@@ -1968,6 +1980,16 @@ impl<'a> Daemon<'a> {
     /// Record what changed about your add-ons since your other devices were
     /// last told, as ordinary sync events (`plugins::changes_to_carry`).
     fn note_addon_changes(&mut self, now: u64) {
+        // Apple Weather for your other devices (item 24): a week's token,
+        // renewed with three days left, from the device with the key.
+        let carried: u64 = self.store.load("weatherkit_carried_until");
+        let apns = self.tools_cfg().phone.apns.clone();
+        if let Some(((id, field, to), until)) =
+            crate::applewx::carry_token(&apns, &crate::roots::install_root(), &self.synclog.device.clone(), carried, now)
+        {
+            self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+            let _ = self.store.save("weatherkit_carried_until", &until);
+        }
         for (id, field, to) in crate::plugins::changes_to_carry(&self.store, &self.plugins_dir) {
             self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
         }
@@ -2003,6 +2025,44 @@ impl<'a> Daemon<'a> {
                     let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok();
                     if let Some(s) = crate::groups::take_synced(&self.store, me.as_ref(), id, to, sealed) {
                         said.push(s);
+                    }
+                }
+                // One conversation on every device (item 16): the thread, facts,
+                // the later list and reminders -- your own devices only.
+                crate::sync::What::Said { text, .. } => self.take_an_exchange(text, sealed),
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::FACT_PREFIX) => self.take_a_fact(to, sealed),
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::LATER_PREFIX) => {
+                    self.take_a_later_item(id, to, sealed)
+                }
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::REMIND_PREFIX) => {
+                    self.take_a_reminder(id, to, sealed)
+                }
+                // Asked of the laptop from your phone, a yes to one held, and
+                // the laptop's answer back (item 24) -- your own devices only.
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::remote::ASK_PREFIX) => {
+                    self.take_a_request_from_the_phone(id, to, sealed);
+                }
+                crate::sync::What::Changed { id, .. } if id.starts_with(crate::remote::YES_PREFIX) => {
+                    let now = crate::store::now();
+                    said.extend(self.take_a_yes_from_the_phone(id, sealed, now));
+                }
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::remote::ANSWER_PREFIX) => {
+                    if let Some(s) = self.take_an_answer_from_the_laptop(id, to, sealed) {
+                        said.push(s);
+                    }
+                }
+                // A WeatherKit token from the laptop (item 24), from your own
+                // devices only.
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::applewx::SYNC_PREFIX) => {
+                    if let Some(s) = crate::applewx::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                        self.log.info(&s);
+                    }
+                }
+                // An Android phone's push address and keys (item 15), from your
+                // own devices only.
+                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::webpush::SYNC_PREFIX) => {
+                    if let Some(s) = crate::webpush::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                        self.log.info(&s);
                     }
                 }
                 // An iPhone's push address (item 15), from your own devices only.

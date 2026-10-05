@@ -296,7 +296,7 @@ pub fn all() -> Vec<Capability> {
         // others -- `what_you_asked_for` still says which are closed.
         Capability { id: "telegram", what: "read what's been sent to a chat bot you own, and sort it like the inbox", area: Email, state: Off, needs: None, offline: false, added: 29, runs: &[Needs::Files], modules: &["telegram", "messaging"] },
         Capability { id: "triage", what: "sort an inbox by what it asks of you", area: Email, state: Working, needs: None, offline: true, added: 19, runs: &[Needs::JustThinking], modules: &["triage"] },
-        Capability { id: "mail", what: "reach your mailbox, whoever provides it", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["mail", "imap", "smtp", "mailthread", "ratelimit", "himalaya", "msoauth", "connect", "connecting"] },
+        Capability { id: "mail", what: "reach your mailbox, whoever provides it", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["mail", "imap", "smtp", "mailthread", "ratelimit", "himalaya", "msoauth", "connect", "connecting", "oauthlink"] },
         Capability { id: "unsub", what: "clear out what you never read, safely", area: Email, state: Off, needs: None, offline: false, added: 20, runs: &[Needs::JustThinking], modules: &["unsub"] },
 
         Capability { id: "route", what: "find another way when one is closed", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["route"] },
@@ -1562,8 +1562,13 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `onnxfix` (reaching the iPhone, Apple's weather, the NPU's fixed sizes).
 // 3 Oct 2026 (integration-1003): the two lines above brought together --
 // 471 modules plus the four chat-c-3 adds = 475.
-// 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 477.
-pub const MODULES_IN_TREE: usize = 478;
+// 4 Oct 2026, merge of chat-c-3 (96dccf4): `webpush` (Android with Atlas
+// closed, item 15).
+// 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 478
+// with webpush.
+// 4 Oct 2026: + `oauthlink` (one-click Google and Microsoft sign-in) = 479.
+// 5 Oct 2026: + `childjob` (Chat A, programs end with Atlas) = 481.
+pub const MODULES_IN_TREE: usize = 481;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1582,6 +1587,7 @@ pub const MODULES_IN_TREE: usize = 478;
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
     ("childjob", "ties every program Atlas starts for its own work to Atlas, so it ends when Atlas ends instead of running on with the fans"),
+    ("doorbell", "the one thing an idle Atlas waits on: typed lines, the microphone, the hub and a stop ring it, so nothing wakes on a timer to look"),
     ("cpuuse", "measures Atlas's own CPU while idle and where the loop's time goes, for the log and for self-repair"),
     ("b64", "base64 encoding for pictures and keys handed to other programs"),
     ("winpark", "keeps Atlas's hidden helper windows (the overlay, the typing box) from costing anything while hidden"),
@@ -1604,6 +1610,7 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("voicefirst", "lowers the model server's priority while a reply plays, so the voice keeps up"),
     ("applewx", "Apple's weather for the weather answer: the iPhone's own, or the laptop's Apple key; part of the weather"),
     ("apns", "reaches your iPhone with Atlas closed through Apple's push service, signed with your own key; part of reaching your phone"),
+    ("webpush", "reaches an Android phone with Atlas closed through its UnifiedPush address, sealed for that phone alone; part of reaching your phone"),
     ("phonealarms", "lists the reminders still to come so the iPhone app can hand them to iOS and they ring with the app closed"),
     ("applebrain", "on an iPhone with Apple Intelligence, asks Apple's on-device model first and hands each request it refuses or can't do to Atlas's own model"),
     ("onnxfix", "writes fixed input sizes into a copy of a model, which the NPU needs"),

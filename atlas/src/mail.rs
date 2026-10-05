@@ -83,8 +83,14 @@ impl Provider {
         })
     }
 
+    /// Implicit TLS (465) everywhere it's offered. Outlook / Microsoft 365
+    /// only serves 587 with STARTTLS (`smtp::connect` upgrades on 587): with
+    /// 465 here every Outlook send failed at connect (5 Oct 2026 audit, Q1).
     pub fn smtp_port(&self) -> u16 {
-        465
+        match self {
+            Provider::Outlook => 587,
+            _ => 465,
+        }
     }
 
     /// Gmail has labels, which are not folders — a message can carry several,
@@ -423,4 +429,31 @@ pub fn category_to_delete(said: &str) -> Option<&'static str> {
         return None;
     }
     categories().into_iter().map(|(c, _)| c).find(|c| t.contains(&c.to_lowercase()))
+}
+
+/// Where this account sends from: host and port.
+///
+/// From the IMAP host the account reads from when it has one, not the
+/// address's domain -- a Microsoft 365 or Google Workspace mailbox on its own
+/// domain reads fine but had "no SMTP server known" for every send (Q10).
+/// Providers Connect an account knows are listed; any other `imap.x` sends
+/// from `smtp.x` on 465. `None` only when nothing can be told.
+pub fn smtp_for(address: &str, imap_host: &str) -> Option<(String, u16)> {
+    let host = imap_host.trim().trim_start_matches("imaps://").to_lowercase();
+    let known = |h: &str, port: u16| Some((h.to_string(), port));
+    match host.as_str() {
+        "" => {
+            let p = Provider::from_address(address);
+            p.smtp_host().map(|h| (h.to_string(), p.smtp_port()))
+        }
+        "imap.gmail.com" => known("smtp.gmail.com", 465),
+        "outlook.office365.com" | "imap-mail.outlook.com" => known("smtp.office365.com", 587),
+        "imap.mail.yahoo.com" => known("smtp.mail.yahoo.com", 465),
+        "imap.aol.com" => known("smtp.aol.com", 465),
+        "imap.mail.me.com" => known("smtp.mail.me.com", 587),
+        "imap.fastmail.com" => known("smtp.fastmail.com", 465),
+        "imap.zoho.com" => known("smtp.zoho.com", 465),
+        "imap.gmx.com" | "imap.gmx.net" => known("mail.gmx.com", 587),
+        h => h.strip_prefix("imap.").map(|rest| (format!("smtp.{rest}"), 465)),
+    }
 }

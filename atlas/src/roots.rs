@@ -176,7 +176,33 @@ pub fn first_run_here() -> bool {
 
 /// `data/` — everything Atlas generates.
 pub fn data_dir() -> PathBuf {
-    install_root().join("data")
+    data_home().join("data")
+}
+
+/// Where `data/` lives: the install root, except under the test harness.
+///
+/// The checkout is the install root for its own tests (config is read from
+/// it), but its data folder is not theirs to write: the vault, logs, builds
+/// and handover state landed in `atlas/data/` on every run, hidden by
+/// .gitignore, and the next run read them back (5 Oct 2026 audit, Q18). One
+/// folder per test process instead, shaped like an install (`<it>/data`), so
+/// a `Store`'s own idea of its install root still agrees with this one.
+pub fn data_home() -> PathBuf {
+    if under_the_test_harness() {
+        return std::env::temp_dir().join(format!("atlas-test-{}", std::process::id()));
+    }
+    install_root()
+}
+
+/// A cargo test binary (`target/<profile>/deps/<name>-<hash>`) that found its
+/// install root by climbing out of `target/`. Never true for an installed
+/// Atlas or for `ATLAS_HOME`.
+fn under_the_test_harness() -> bool {
+    how() == Chosen::AboveTheProgram
+        && std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().and_then(|d| d.file_name()).map(|n| n == "deps"))
+            .unwrap_or(false)
 }
 
 /// `data/state` — the store root: notes, the tray, the vault, peer tokens.
@@ -385,15 +411,16 @@ mod tests {
     #[test]
     fn everything_hangs_off_the_one_root() {
         let r = install_root();
-        assert_eq!(data_dir(), r.join("data"));
-        assert_eq!(state_dir(), r.join("data").join("state"));
-        assert_eq!(logs_dir(), r.join("data").join("logs"));
-        assert_eq!(backups_dir(), r.join("data").join("backups"));
+        let d = data_home();
+        assert_eq!(data_dir(), d.join("data"));
+        assert_eq!(state_dir(), d.join("data").join("state"));
+        assert_eq!(logs_dir(), d.join("data").join("logs"));
+        assert_eq!(backups_dir(), d.join("data").join("backups"));
         assert_eq!(models_dir(), r.join("models"));
-        assert_eq!(notes_dir(), r.join("data").join("notes"));
-        assert_eq!(trash_dir(), r.join("data").join("trash"));
-        assert_eq!(tmp_dir(), r.join("data").join("tmp"));
-        assert_eq!(data_sub("finance"), r.join("data").join("finance"));
+        assert_eq!(notes_dir(), d.join("data").join("notes"));
+        assert_eq!(trash_dir(), d.join("data").join("trash"));
+        assert_eq!(tmp_dir(), d.join("data").join("tmp"));
+        assert_eq!(data_sub("finance"), d.join("data").join("finance"));
     }
 
     #[test]
@@ -416,7 +443,9 @@ mod tests {
         // `data/backups`.
         let s = store();
         assert_eq!(s.root(), state_dir().as_path());
-        assert_eq!(s.install_root(), install_root());
+        assert_eq!(s.install_root(), data_home());
+        // Outside the test harness these are the same folder.
+        assert!(data_home() == install_root() || under_the_test_harness());
     }
 
     #[test]

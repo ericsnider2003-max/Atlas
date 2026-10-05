@@ -129,7 +129,7 @@ pub struct Message {
 ///
 /// 64 MiB: comfortably past a large message with attachments, and far short
 /// of "until the machine stops". See `Session::fill`.
-const MAX_BUFFER: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_BUFFER: usize = 64 * 1024 * 1024;
 
 /// How long a mail socket may be silent before Atlas gives up on it.
 ///
@@ -139,7 +139,32 @@ const MAX_BUFFER: usize = 64 * 1024 * 1024;
 /// thread, once per mail check, accumulating for as long as Atlas ran.
 /// `http.rs` sets both timeouts and has since it was written; these two were
 /// never given the same.
-const QUIET_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const QUIET_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// One bounded read off a mail socket into `inbuf` -- the one place either
+/// mail module (this and `smtp`) takes bytes off the wire (see `Session::fill`
+/// for why the cap lives here). Shared, so the two can't drift apart again:
+/// until 5 Oct 2026 each module carried its own copy of this, word for word.
+pub(crate) fn fill_bounded<S: Read>(stream: &mut S, inbuf: &mut Vec<u8>) -> io::Result<()> {
+    if inbuf.len() >= MAX_BUFFER {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "the server has sent {} bytes without finishing what it was \
+                 saying, past the {MAX_BUFFER} I will hold. Stopping rather \
+                 than filling memory.",
+                inbuf.len()
+            ),
+        ));
+    }
+    let mut chunk = [0u8; 4096];
+    let n = stream.read(&mut chunk)?;
+    if n == 0 {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection"));
+    }
+    inbuf.extend_from_slice(&chunk[..n]);
+    Ok(())
+}
 
 impl<S: Read + Write> Session<S> {
     pub fn new(stream: S) -> Session<S> {
@@ -170,24 +195,7 @@ impl<S: Read + Write> Session<S> {
     /// megabytes, not tens — and it fails with a sentence rather than by
     /// dying.
     fn fill(&mut self) -> io::Result<()> {
-        if self.inbuf.len() >= MAX_BUFFER {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "the server has sent {} bytes without finishing what it was \
-                     saying, past the {MAX_BUFFER} I will hold. Stopping rather \
-                     than filling memory.",
-                    self.inbuf.len()
-                ),
-            ));
-        }
-        let mut chunk = [0u8; 4096];
-        let n = self.stream.read(&mut chunk)?;
-        if n == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection"));
-        }
-        self.inbuf.extend_from_slice(&chunk[..n]);
-        Ok(())
+        fill_bounded(&mut self.stream, &mut self.inbuf)
     }
 
     /// One CRLF-terminated line, the CRLF itself dropped.

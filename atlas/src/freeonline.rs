@@ -117,7 +117,7 @@ impl FreeOnline {
 
     fn rest(&self, name: &'static str, secs: u64) {
         let until = crate::store::now() + secs;
-        if let Ok(mut r) = self.resting.lock() {
+        if let Ok(mut r) = self.resting.lock().or_else(crate::crash::unpoison) {
             r.retain(|(n, _)| *n != name);
             r.push((name, until));
         }
@@ -125,7 +125,7 @@ impl FreeOnline {
 
     fn is_resting(&self, name: &str) -> bool {
         let now = crate::store::now();
-        self.resting.lock().map(|r| r.iter().any(|(n, until)| *n == name && *until > now)).unwrap_or(false)
+        self.resting.lock().or_else(crate::crash::unpoison).map(|r| r.iter().any(|(n, until)| *n == name && *until > now)).unwrap_or(false)
     }
 
     /// Ask each service that isn't resting, in order, until one answers.
@@ -158,7 +158,7 @@ impl FreeOnline {
             }
             match (self.send)(p.url, &body(p, &system, &user, max_tokens)).map(|raw| (reply_from(&raw), cut_off_in(&raw))) {
                 Ok((Ok(text), cut)) => {
-                    if let Ok(mut l) = self.last_answered_by.lock() {
+                    if let Ok(mut l) = self.last_answered_by.lock().or_else(crate::crash::unpoison) {
                         *l = Some(p.name);
                     }
                     return Ok((scrub.put_back(&text), cut));

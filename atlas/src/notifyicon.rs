@@ -128,26 +128,26 @@ static TAKEN_AWAY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsi
 
 /// Where "Open the hub in my browser" goes, now.
 pub fn tray_hub_address(url: &str) {
-    if let Ok(mut h) = HUB.lock() {
+    if let Ok(mut h) = HUB.lock().or_else(crate::crash::unpoison) {
         *h = url.to_string();
     }
 }
 
 /// What the icon's "Open the hub" would open now (empty: no hub yet).
 pub fn tray_hub_now() -> String {
-    HUB.lock().map(|h| h.clone()).unwrap_or_default()
+    HUB.lock().or_else(crate::crash::unpoison).map(|h| h.clone()).unwrap_or_default()
 }
 
 /// Say something about the hub on the icon's words, or nothing (`None`).
 pub fn tray_hub_note(note: Option<String>) {
-    if let Ok(mut n) = HUB_NOTE.lock() {
+    if let Ok(mut n) = HUB_NOTE.lock().or_else(crate::crash::unpoison) {
         *n = note;
     }
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
 fn hub_note_now() -> Option<String> {
-    HUB_NOTE.lock().ok().and_then(|n| n.clone())
+    HUB_NOTE.lock().or_else(crate::crash::unpoison).ok().and_then(|n| n.clone())
 }
 
 /// The words the icon should show now.
@@ -198,14 +198,14 @@ pub fn icon_taken_away_count_for_test() -> usize {
 
 /// Ask the run loop to do something only it may do (pause, resume).
 pub fn tray_ask(a: TrayAction) {
-    if let Ok(mut q) = ASKS.lock() {
+    if let Ok(mut q) = ASKS.lock().or_else(crate::crash::unpoison) {
         q.push(a);
     }
 }
 
 /// What the icon has asked for since the last pass. Emptied as it is read.
 pub fn tray_asks() -> Vec<TrayAction> {
-    ASKS.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+    ASKS.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
 }
 
 /// The run loop saying whether Atlas is paused, for the icon's words.
@@ -426,7 +426,7 @@ mod win {
             return false;
         }
         let words = tray_tip_now();
-        if let Ok(mut t) = SHOWN_TIP.lock() {
+        if let Ok(mut t) = SHOWN_TIP.lock().or_else(crate::crash::unpoison) {
             *t = words.clone();
         }
         let mut d = data(hwnd);
@@ -445,7 +445,7 @@ mod win {
             return;
         }
         let words = tray_tip_now();
-        match SHOWN_TIP.lock() {
+        match SHOWN_TIP.lock().or_else(crate::crash::unpoison) {
             Ok(mut t) if *t != words => *t = words.clone(),
             _ => return,
         }

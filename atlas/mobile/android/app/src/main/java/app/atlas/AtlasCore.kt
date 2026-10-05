@@ -106,6 +106,22 @@ object AtlasCore {
     /** The home-screen widget's glance: /hub/glance.json (glance.rs). */
     fun glance(): JSONObject? = get("/hub/glance.json")
 
+    /** POST a JSON body to the hub; true when it was taken (2xx). */
+    fun post(path: String, body: JSONObject): Boolean {
+        val u = at(path) ?: return false
+        val t = token ?: return false
+        return runCatching {
+            val c = URL(u).openConnection() as HttpURLConnection
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setRequestProperty("Authorization", "Bearer $t")
+            c.setRequestProperty("Content-Type", "application/json")
+            c.connectTimeout = 2000; c.readTimeout = 4000
+            c.outputStream.use { it.write(body.toString().toByteArray()) }
+            c.responseCode in 200..299
+        }.getOrDefault(false)
+    }
+
     private fun get(path: String): JSONObject? {
         val u = at(path) ?: return null
         val t = token ?: return null

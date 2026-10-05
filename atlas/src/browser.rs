@@ -57,6 +57,14 @@ pub struct SiteProfile {
     /// Present only when signed in. Absent means: stop, do not type.
     #[serde(default)]
     pub signed_in: Vec<String>,
+    /// Candidate selectors for the compose page's file input, for a picture
+    /// or video. Empty: this site can't be given media yet, and a post with
+    /// some is held rather than sent without it.
+    #[serde(default)]
+    pub media_input: Vec<String>,
+    /// Present once an attached picture or video has finished uploading.
+    #[serde(default)]
+    pub media_ready: Vec<String>,
 }
 
 pub fn default_sites() -> Vec<SiteProfile> {
@@ -75,6 +83,11 @@ pub fn default_sites() -> Vec<SiteProfile> {
             ],
             ready: vec!["div[role='textbox']".into()],
             signed_in: vec!["a[data-testid='AppTabBar_Profile_Link']".into()],
+            media_input: vec!["input[data-testid='fileInput']".into(), "input[type='file']".into()],
+            media_ready: vec![
+                "div[data-testid='attachments'] img".into(),
+                "div[data-testid='attachments'] video".into(),
+            ],
         },
         SiteProfile {
             name: "linkedin".into(),
@@ -87,6 +100,9 @@ pub fn default_sites() -> Vec<SiteProfile> {
             submit: vec!["button.share-actions__primary-action".into()],
             ready: vec!["main".into()],
             signed_in: vec!["img.global-nav__me-photo".into()],
+            // LinkedIn opens its media picker in a dialog of its own; not yet.
+            media_input: Vec::new(),
+            media_ready: Vec::new(),
         },
     ]
 }
@@ -146,6 +162,9 @@ impl Browser {
         let (cmd, args) = tool.resolved(&vars);
         crate::tools::command(&cmd)
             .args(&args)
+            // The profile path in tools.yaml is relative: in Atlas's folder,
+            // not wherever the daemon was started from.
+            .current_dir(crate::roots::data_home())
             // Chrome writes a stream of its own diagnostics to stderr;
             // they'd land in Atlas's console as noise.
             .stdout(std::process::Stdio::null())
@@ -238,9 +257,47 @@ impl Browser {
         self.cdp.fill(&box_sel, text)
     }
 
+    /// Attach the pictures or video to the post being composed, and wait for
+    /// the site to finish uploading them. Nothing is sent here.
+    pub fn attach_media(&mut self, p: &SiteProfile, files: &[String]) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        media_problem(p, files, |f| std::path::Path::new(f).is_file()).map_or(Ok(()), |why| Err(AtlasError::Platform(why)))?;
+        let input = self.first_present(&p.media_input)?;
+        self.cdp.set_files(&input, files)?;
+        if p.media_ready.is_empty() {
+            return Ok(());
+        }
+        // A video takes a while; a minute or so at the configured pace.
+        let ms = self.timeout.as_millis() as u64 * 6;
+        let deadline = std::time::Instant::now() + Duration::from_millis(ms);
+        loop {
+            for c in &p.media_ready {
+                if self.cdp.wait_for(c, 200).unwrap_or(false) {
+                    return Ok(());
+                }
+            }
+            if std::time::Instant::now() > deadline {
+                return Err(AtlasError::Platform(format!("the picture or video never finished uploading to {}", p.name)));
+            }
+        }
+    }
+
     /// Click the publish button. Only ever called after an approval upstream.
+    ///
+    /// Waits for it to be pressable first: while a picture uploads the
+    /// button is greyed out, a click does nothing, and the post used to be
+    /// marked as sent anyway.
     pub fn publish(&mut self, p: &SiteProfile) -> Result<()> {
         let btn = self.first_present(&p.submit)?;
+        let deadline = std::time::Instant::now() + self.timeout;
+        while self.cdp.eval(&crate::cdp::enabled_js(&btn))?.as_bool() != Some(true) {
+            if std::time::Instant::now() > deadline {
+                return Err(AtlasError::Platform(format!("the post button on {} stayed greyed out", p.name)));
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
         self.cdp.click(&btn)
     }
 
@@ -299,6 +356,54 @@ impl Browser {
     pub fn close(&mut self) {
         self.cdp.close();
     }
+
+    /// Shut the browser itself down (not just this connection).
+    pub fn quit(mut self) {
+        let _ = self.cdp.call("Browser.close", serde_json::json!({}));
+        self.cdp.close();
+    }
+}
+
+/// The arguments for a window you sign in through yourself: the configured
+/// launch, without `--headless`, opening `url`. Same profile folder, so the
+/// sign-in you make there is the one Atlas's own browser uses afterwards
+/// (5 Oct 2026, Eric: "sign in once yourself" for the social sites).
+pub fn sign_in_window_args(launch_args: &[String], url: &str) -> Vec<String> {
+    let mut args: Vec<String> = launch_args.iter().filter(|a| !a.starts_with("--headless")).cloned().collect();
+    args.push("--new-window".into());
+    args.push(url.to_string());
+    args
+}
+
+/// Open Atlas's own browser as a window on `url`, for you to sign in.
+///
+/// A headless one already running holds the profile, so it's shut first.
+/// Started in the install folder, so the profile path in tools.yaml
+/// (`data/chrome-profile`) lands in Atlas's own data and not wherever the
+/// daemon happened to be started from.
+pub fn open_sign_in_window(cfg: &BrowserConfig, vars: &Vars, url: &str) -> Result<()> {
+    if let Ok(b) = Browser::attach(cfg) {
+        b.quit();
+        let until = std::time::Instant::now() + Duration::from_secs(4);
+        while Browser::attach(cfg).is_ok() && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+    let tool = cfg.launch.as_ref().ok_or_else(|| AtlasError::Config("no browser launch command configured".into()))?;
+    let mut vars = vars.clone();
+    let configured = vars.get("browser").cloned();
+    if let Some(found) = crate::filmstrip::find_browser(configured.as_deref()) {
+        vars.insert("browser".into(), found.display().to_string());
+    }
+    let (cmd, args) = tool.resolved(&vars);
+    crate::tools::command(&cmd)
+        .args(sign_in_window_args(&args, url))
+        .current_dir(crate::roots::data_home())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(crate::unwaited::dont_wait)
+        .map_err(|e| AtlasError::Platform(format!("could not start {cmd}: {e}")))
 }
 
 /// Steps to post, so the sequence is inspectable and testable without a live
@@ -309,8 +414,26 @@ pub enum PostStep {
     WaitReady,
     CheckSignedIn,
     Fill(String),
+    /// The pictures or video, by path, after the text.
+    Attach(Vec<String>),
     /// Only present when the caller has an approval in hand.
     Submit,
+}
+
+/// Why `files` can't be attached on this site, if they can't: the site has
+/// no way in for media yet, or a file isn't there (a picture moved since you
+/// approved the post). `exists` is the file check, handed in for the tests.
+pub fn media_problem(p: &SiteProfile, files: &[String], exists: impl Fn(&str) -> bool) -> Option<String> {
+    if files.is_empty() {
+        return None;
+    }
+    if p.media_input.is_empty() {
+        return Some(format!("I can't attach pictures or video on {} yet", p.name));
+    }
+    files
+        .iter()
+        .find(|f| !std::path::Path::new(f.as_str()).is_absolute() || !exists(f))
+        .map(|f| format!("the file to attach isn't there any more: {f}"))
 }
 
 pub fn post_plan(p: &SiteProfile, text: &str, approved: bool) -> Vec<PostStep> {

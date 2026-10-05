@@ -57,6 +57,9 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun show(hub: Uri) {
         startForegroundService(Intent(this, AtlasService::class.java))
+        // Ask for a push address each time the app opens (item 15); the
+        // distributor hands back the same one unless it changed.
+        PushReceiver.register(this)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true

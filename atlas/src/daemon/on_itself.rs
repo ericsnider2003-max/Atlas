@@ -520,13 +520,13 @@ impl<'a> Daemon<'a> {
             // on briefly, so a quick answer still comes back in this reply;
             // a slow one is said when it lands (`finish_proof_check`).
             let slot = self.proof_check_done.clone();
-            if let Ok(mut s) = slot.lock() {
+            if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
                 *s = None;
             }
             let (n2, scfg2, root2, slot2) = (named.clone(), scfg.clone(), root.clone(), slot.clone());
             let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
                 let outcome = crate::selfwork::run_the_proof(&n2, &scfg2, &root2);
-                if let Ok(mut s) = slot2.lock() {
+                if let Ok(mut s) = slot2.lock().or_else(crate::crash::unpoison) {
                     *s = Some((n2, outcome));
                 }
                 Ok(String::new())
@@ -702,7 +702,7 @@ impl<'a> Daemon<'a> {
                 }
             }
             let ok = proved.is_ok();
-            if let Ok(mut s) = slot.lock() {
+            if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
                 *s = Some(SelfFixDone { thought, current, candidate, proved });
             }
             if ok { Ok("the fix is proven".into()) } else { Ok("the draft didn't hold".into()) }
@@ -788,7 +788,7 @@ impl<'a> Daemon<'a> {
     /// The proving test's run came back: what it means for the diagnosis,
     /// said. `None` while it's still running (or already said).
     pub(super) fn finish_proof_check(&mut self) -> Option<String> {
-        let (named, outcome) = self.proof_check_done.lock().ok()?.take()?;
+        let (named, outcome) = self.proof_check_done.lock().or_else(crate::crash::unpoison).ok()?.take()?;
             let Some(session) = self.selfwork.as_mut() else {
                 return Some("Nothing to work on.".into());
             };
@@ -830,7 +830,7 @@ impl<'a> Daemon<'a> {
 
     /// A self-fix errand ended: take in what it found, and say it.
     pub(super) fn finish_own_fix(&mut self) -> Option<String> {
-        let done = self.self_fix_done.lock().ok()?.take()?;
+        let done = self.self_fix_done.lock().or_else(crate::crash::unpoison).ok()?.take()?;
         let scfg = self.tools_cfg().self_work.clone();
         let SelfFixDone { thought, current, candidate, proved } = done;
         Some(match proved {

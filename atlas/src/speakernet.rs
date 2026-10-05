@@ -234,7 +234,7 @@ fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>
                     npu_took.as_millis(),
                     t.elapsed().as_millis()
                 );
-                if let Ok(mut g) = ON_NPU.lock() {
+                if let Ok(mut g) = ON_NPU.lock().or_else(crate::crash::unpoison) {
                     *g = Some(None);
                 }
                 return Ok(cpu);
@@ -296,7 +296,7 @@ fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
     if !crate::npu::npu_ready(root) {
         return None;
     }
-    let mut g = ON_NPU.lock().ok()?;
+    let mut g = ON_NPU.lock().or_else(crate::crash::unpoison).ok()?;
     if g.is_none() {
         let model = models_dir.join(FILE);
         let opened = crate::npu::Session::input_names(root, &model).ok().and_then(|names| {

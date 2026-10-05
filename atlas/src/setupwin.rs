@@ -237,7 +237,7 @@ pub fn for_you_to_look_at(findings: &[crate::doctor::Finding], pieces_missing: b
 /// Walk the steps. Runs on its own thread; the window only reads `progress`.
 pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &getpieces::Tools) {
     let set = |i: usize, s: StepState| {
-        if let Ok(mut p) = progress.lock() {
+        if let Ok(mut p) = progress.lock().or_else(crate::crash::unpoison) {
             if let Some(step) = p.steps.get_mut(i) {
                 step.state = s;
             }
@@ -340,7 +340,7 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
                 said.insert(0, words);
             }
             let n = said.len();
-            if let Ok(mut p) = progress.lock() {
+            if let Ok(mut p) = progress.lock().or_else(crate::crash::unpoison) {
                 p.to_look_at = said;
             }
             set(
@@ -357,7 +357,7 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
 
     // 5. The phone.
     let phone = phone_section(place);
-    if let Ok(mut p) = progress.lock() {
+    if let Ok(mut p) = progress.lock().or_else(crate::crash::unpoison) {
         p.phone = phone;
     }
 
@@ -365,12 +365,12 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
     // that failed was marked done anyway, so Atlas never tried again and
     // fell back to push-to-talk for good). A step that had a problem is
     // tried again the next time Atlas is opened.
-    let problems = progress.lock().map(|p| p.problems()).unwrap_or(0);
+    let problems = progress.lock().or_else(crate::crash::unpoison).map(|p| p.problems()).unwrap_or(0);
     if problems == 0 {
         let _ = firstlaunch::mark_set_up(&place.root);
     }
     let after = after_setup(place, settings_ok, first_time);
-    if let Ok(mut p) = progress.lock() {
+    if let Ok(mut p) = progress.lock().or_else(crate::crash::unpoison) {
         p.after = after;
         p.finished = true;
     }
@@ -551,7 +551,7 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
 }
 
 fn start_work(place: &Place, progress: &Arc<Mutex<Progress>>) {
-    if let Ok(mut p) = progress.lock() {
+    if let Ok(mut p) = progress.lock().or_else(crate::crash::unpoison) {
         *p = Progress::new();
     }
     let place = place.clone();
@@ -612,7 +612,7 @@ impl eframe::App for App {
         // thirty frames a second on every page, the hub page included).
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
         let t = self.opened.elapsed().as_secs_f32();
-        let snapshot = self.progress.lock().map(|p| p.clone()).unwrap_or_default();
+        let snapshot = self.progress.lock().or_else(crate::crash::unpoison).map(|p| p.clone()).unwrap_or_default();
 
         // Is Atlas answering? Asked every couple of seconds, not every frame.
         if self.last_poll.map(|p| p.elapsed().as_secs_f32() > 2.0).unwrap_or(true) {
@@ -676,7 +676,7 @@ impl eframe::App for App {
                 }
             });
             ui.add_space(6.0);
-            let restart_note = self.restarting.lock().ok().and_then(|n| n.clone());
+            let restart_note = self.restarting.lock().or_else(crate::crash::unpoison).ok().and_then(|n| n.clone());
             if let Some(n) = &restart_note {
                 ui.label(RichText::new(n).font(FontId::proportional(13.0)).color(crate::look_paint::colourway().signal_text));
             }
@@ -989,7 +989,7 @@ fn restart(place: &Place, note: &Arc<Mutex<Option<String>>>) {
     let place = place.clone();
     let note = Arc::clone(note);
     let say = move |s: &str| {
-        if let Ok(mut n) = note.lock() {
+        if let Ok(mut n) = note.lock().or_else(crate::crash::unpoison) {
             *n = Some(s.to_string());
         }
     };

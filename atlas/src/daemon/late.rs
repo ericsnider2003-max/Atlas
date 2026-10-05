@@ -1063,10 +1063,9 @@ impl<'a> Daemon<'a> {
         if at <= t {
             format!("Posting {what} now.")
         } else {
-            let off = crate::localclock::offset_secs();
             format!(
                 "Scheduled {what} for {} — I'll check it again just before it goes, and \"cancel the post\" stops it any time until then.",
-                crate::localclock::hhmm(at, off)
+                crate::localclock::hhmm_here(at)
             )
         }
     }
@@ -1114,14 +1113,28 @@ impl<'a> Daemon<'a> {
         let bcfg = self.browser_cfg();
         let vars = self.tools_cfg().vars.clone();
         let mut publisher = self.publisher.clone();
+        // Bluesky goes through its own API with the app password from the
+        // vault (social step 4); everything else through Atlas's browser.
+        let bluesky = self.publisher.get(id).is_some_and(|p| crate::delivery::is_bluesky(&p.channel)).then(|| {
+            if self.vault.state() != crate::vault::State::Open {
+                let _ = self.vault.open_unattended(t);
+            }
+            let password = self.vault.get(crate::social::VAULT_BLUESKY, t).unwrap_or_default();
+            (self.social_cfg().bluesky_handle, password)
+        });
         let work: crew::Work = Box::new(move |_ctl| {
-            let outcome = match crate::browser::Browser::start(&bcfg, &vars) {
-                Ok(mut b) => {
-                    let o = crate::delivery::send(&mut publisher, &mut b, &bcfg, id, online);
-                    b.close();
-                    o
+            let outcome = match &bluesky {
+                Some((handle, password)) => {
+                    crate::delivery::send_bluesky(&mut publisher, &crate::social::posting::Live, handle, password, id, online, crate::store::now())
                 }
-                Err(e) => crate::delivery::classify(e),
+                None => match crate::browser::Browser::start(&bcfg, &vars) {
+                    Ok(mut b) => {
+                        let o = crate::delivery::send(&mut publisher, &mut b, &bcfg, id, online);
+                        b.close();
+                        o
+                    }
+                    Err(e) => crate::delivery::classify(e),
+                },
             };
             let (kind, msg) = match &outcome {
                 crate::delivery::Outcome::Sent(m) => ("sent", m.clone()),
@@ -1869,7 +1882,6 @@ impl<'a> Daemon<'a> {
                         transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
                     }
                 }
-                drop(sound);
             }
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {

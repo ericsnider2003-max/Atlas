@@ -148,7 +148,7 @@ pub fn warm(root: &Path) {
 
 /// Stop the server Atlas started (Atlas closing).
 pub fn stop() {
-    if let Ok(mut g) = SERVER.lock() {
+    if let Ok(mut g) = SERVER.lock().or_else(crate::crash::unpoison) {
         if let Some(mut c) = g.take() {
             let _ = c.kill();
             let _ = c.wait();

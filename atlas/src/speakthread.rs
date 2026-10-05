@@ -152,7 +152,7 @@ impl Player {
                             Ok(Err(e)) => e.to_string(),
                             _ => "the voice stopped unexpectedly".to_string(),
                         };
-                        if let Ok(mut g) = LAST_FAILURE.lock() {
+                        if let Ok(mut g) = LAST_FAILURE.lock().or_else(crate::crash::unpoison) {
                             *g = Some(why);
                         }
                         Outcome::Failed
@@ -411,7 +411,7 @@ impl<'m> Saying<'m> {
                             }
                         }
                         Outcome::Failed => {
-                            if let Some(why) = LAST_FAILURE.lock().ok().and_then(|mut g| g.take()) {
+                            if let Some(why) = LAST_FAILURE.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.take()) {
                                 host.trouble(&why);
                             }
                             if self.stop.is_none() {

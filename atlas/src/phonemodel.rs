@@ -285,7 +285,7 @@ static DOWNLOAD: std::sync::Mutex<Option<Download>> = std::sync::Mutex::new(None
 
 /// The download as it stands, if one has been started.
 pub fn download_state() -> Option<Download> {
-    DOWNLOAD.lock().ok().and_then(|d| d.clone())
+    DOWNLOAD.lock().or_else(crate::crash::unpoison).ok().and_then(|d| d.clone())
 }
 
 /// Whether the phone should start fetching its own model now, by itself
@@ -332,13 +332,13 @@ pub fn start_download(models_dir: PathBuf, then: impl FnOnce(PathBuf) + Send + '
         }
     }
     let m = *choose(device_ram());
-    if let Ok(mut d) = DOWNLOAD.lock() {
+    if let Ok(mut d) = DOWNLOAD.lock().or_else(crate::crash::unpoison) {
         *d = Some(Download { name: m.name.into(), have: 0, of: m.bytes, finished: None });
     }
     std::thread::spawn(move || {
         let mut get = |url: &str, from: u64, w: &mut dyn FnMut(&[u8]) -> std::io::Result<()>| https_range(url, from, w);
         let mut progress = |have: u64, of: u64| {
-            if let Ok(mut d) = DOWNLOAD.lock() {
+            if let Ok(mut d) = DOWNLOAD.lock().or_else(crate::crash::unpoison) {
                 if let Some(d) = d.as_mut() {
                     d.have = have;
                     d.of = of;
@@ -346,7 +346,7 @@ pub fn start_download(models_dir: PathBuf, then: impl FnOnce(PathBuf) + Send + '
             }
         };
         let got = fetch(&models_dir, &m, &mut get, &mut progress);
-        if let Ok(mut d) = DOWNLOAD.lock() {
+        if let Ok(mut d) = DOWNLOAD.lock().or_else(crate::crash::unpoison) {
             if let Some(d) = d.as_mut() {
                 d.finished = Some(got.as_ref().map(|_| ()).map_err(|e| e.clone()));
             }
@@ -591,7 +591,7 @@ mod engine {
     /// Load `path` as this phone's model (in the calling thread). The chat
     /// template comes from the file itself, as on the laptop.
     pub fn attach(path: &Path) -> Result<(), String> {
-        if let Ok(mut h) = HELD.lock() {
+        if let Ok(mut h) = HELD.lock().or_else(crate::crash::unpoison) {
             *h = Some(Held::Loading);
         }
         let template = path
@@ -602,7 +602,7 @@ mod engine {
         let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         let got = Engine::load(path);
         let result = got.as_ref().map(|_| ()).map_err(|e| e.clone());
-        if let Ok(mut h) = HELD.lock() {
+        if let Ok(mut h) = HELD.lock().or_else(crate::crash::unpoison) {
             *h = Some(match got {
                 Ok(e) => Held::Ready(Arc::new(e), template, name),
                 Err(why) => Held::Failed(why),
@@ -613,7 +613,7 @@ mod engine {
 
     /// The name of the model in use, once it's loaded.
     pub fn attached() -> Option<String> {
-        match HELD.lock().ok()?.as_ref()? {
+        match HELD.lock().or_else(crate::crash::unpoison).ok()?.as_ref()? {
             Held::Ready(_, _, n) => Some(n.clone()),
             _ => None,
         }

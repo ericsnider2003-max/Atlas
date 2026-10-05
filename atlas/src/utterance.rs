@@ -419,7 +419,7 @@ pub fn pumped(mut inner: Box<dyn MicStream>) -> Pumped {
                     }
                 }
                 None => {
-                    if let Ok(mut y) = why2.lock() {
+                    if let Ok(mut y) = why2.lock().or_else(crate::crash::unpoison) {
                         *y = inner.why_stopped();
                     }
                     break;
@@ -428,7 +428,7 @@ pub fn pumped(mut inner: Box<dyn MicStream>) -> Pumped {
         }
     });
     if spawned.is_err() {
-        if let Ok(mut y) = why.lock() {
+        if let Ok(mut y) = why.lock().or_else(crate::crash::unpoison) {
             *y = Some("couldn't start reading the microphone".into());
         }
     }
@@ -447,7 +447,7 @@ impl MicStream for Pumped {
                 Err(RecvTimeoutError::Timeout) => {
                     waited += Duration::from_millis(250);
                     if waited >= STALLED {
-                        if let Ok(mut y) = self.why.lock() {
+                        if let Ok(mut y) = self.why.lock().or_else(crate::crash::unpoison) {
                             y.get_or_insert_with(|| "the microphone stopped sending sound".into());
                         }
                         return None;
@@ -459,7 +459,7 @@ impl MicStream for Pumped {
         Some(self.left.drain(..n).collect())
     }
     fn why_stopped(&mut self) -> Option<String> {
-        self.why.lock().ok().and_then(|y| y.clone())
+        self.why.lock().or_else(crate::crash::unpoison).ok().and_then(|y| y.clone())
     }
 }
 

@@ -544,7 +544,7 @@ impl Platform for WindowsPlatform {
     fn input_idle_secs(&self) -> Option<u64> {
         let last = last_input_tick()?;
         let now = unsafe { windows::Win32::System::SystemInformation::GetTickCount() };
-        let own = OWN_INPUT.lock().ok().and_then(|o| *o);
+        let own = OWN_INPUT.lock().or_else(crate::crash::unpoison).ok().and_then(|o| *o);
         Some(crate::platform::idle::idle_of_yours(last, own, now))
     }
 
@@ -1208,7 +1208,7 @@ fn send_groups(groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>
         *own = Some(crate::platform::idle::own_input_starts(last, *own, now()));
     }
     let sent = send_groups_now(groups);
-    if let Ok(mut own) = OWN_INPUT.lock() {
+    if let Ok(mut own) = OWN_INPUT.lock().or_else(crate::crash::unpoison) {
         if let Some(o) = own.as_mut() {
             o.to = now();
         }

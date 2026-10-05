@@ -29,39 +29,8 @@
 
 const FFT: usize = 256;
 
-fn fft(re: &mut [f64], im: &mut [f64]) {
-    let n = re.len();
-    let mut j = 0;
-    for i in 1..n {
-        let mut bit = n >> 1;
-        while j & bit != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j |= bit;
-        if i < j {
-            re.swap(i, j);
-            im.swap(i, j);
-        }
-    }
-    let mut len = 2;
-    while len <= n {
-        let ang = -2.0 * std::f64::consts::PI / len as f64;
-        for start in (0..n).step_by(len) {
-            for k in 0..len / 2 {
-                let (wr, wi) = ((ang * k as f64).cos(), (ang * k as f64).sin());
-                let (a, b) = (start + k, start + k + len / 2);
-                let tr = re[b] * wr - im[b] * wi;
-                let ti = re[b] * wi + im[b] * wr;
-                re[b] = re[a] - tr;
-                im[b] = im[a] - ti;
-                re[a] += tr;
-                im[a] += ti;
-            }
-        }
-        len <<= 1;
-    }
-}
+// The FFT is `mfcc::fft_in_place` -- one copy for both.
+use crate::mfcc::fft_in_place as fft;
 
 /// (energy dB, dominant frequency Hz, spectral flatness dB) of one frame.
 fn features(frame: &[i16], rate: u32) -> (f64, f64, f64) {

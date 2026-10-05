@@ -96,7 +96,7 @@ impl Devices {
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(state_dir)?;
-        std::fs::write(state_dir.join(FILE), serde_json::to_vec_pretty(self).unwrap_or_default())
+        crate::store::write_whole(&state_dir.join(FILE), &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
     }
 
     /// One address per device: a new one replaces the old (iOS changes it
@@ -197,7 +197,7 @@ pub fn curl_piece() -> Option<Piece> {
 }
 
 /// The curl to use: the fetched one on Windows, the system's elsewhere.
-fn curl(root: &Path) -> PathBuf {
+pub(crate) fn pinned_curl(root: &Path) -> PathBuf {
     let ours = root.join("tools").join("curl").join(if cfg!(windows) { "curl.exe" } else { "curl" });
     if ours.is_file() {
         ours
@@ -298,7 +298,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
 
 fn run_curl(root: &Path, headers: &Path, d: &Device, body: &str) -> Outcome {
     use std::io::Write;
-    let mut child = match crate::tools::command(curl(root))
+    let mut child = match crate::tools::command(pinned_curl(root))
         .args(push_args(headers, d))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

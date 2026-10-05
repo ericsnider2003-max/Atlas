@@ -98,12 +98,17 @@ impl Control {
     /// parked, with everything it has built so far intact — until it is
     /// resumed or stopped. Returns `true` when the errand should stop.
     ///
-    /// Polls rather than using a condvar: a paused errand is waiting on a
-    /// person, and a tenth of a second is nothing against that.
+    /// Sleeps on the doorbell, which a resume or a stop rings: it polled
+    /// ten times a second before (audit Q14), for as long as a person took
+    /// to come back to it. The minute is only a backstop.
     pub fn checkpoint(&self) -> bool {
-        while self.pause.load(Ordering::SeqCst) && !self.stop.load(Ordering::SeqCst) {
+        loop {
+            let seen = crate::doorbell::rung();
+            if !self.pause.load(Ordering::SeqCst) || self.stop.load(Ordering::SeqCst) {
+                break;
+            }
             self.holding.store(true, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(100));
+            crate::doorbell::wait_after(seen, 60_000);
         }
         self.holding.store(false, Ordering::SeqCst);
         self.stop.load(Ordering::SeqCst)
@@ -518,6 +523,7 @@ impl Crew {
     pub fn ask_to_stop(&mut self, id: u64) {
         if let Some(h) = self.hands.iter_mut().find(|h| h.id == id) {
             h.ctl.stop.store(true, Ordering::SeqCst);
+            crate::doorbell::ring();
             if h.stop_requested_at.is_none() {
                 h.stop_requested_at = Some(Instant::now());
             }
@@ -545,6 +551,7 @@ impl Crew {
     pub fn ask_everyone_to_stop(&mut self) -> usize {
         for h in self.hands.iter_mut() {
             h.ctl.stop.store(true, Ordering::SeqCst);
+            crate::doorbell::ring();
             // Set here as well as in `ask_to_stop`, so a hand that outlives
             // the deadline is reported as `WontStop` by the next `settle`
             // rather than looking as though nobody ever asked it.
@@ -731,6 +738,7 @@ impl Crew {
     pub fn pause(&mut self, id: u64) -> bool {
         if let Some(h) = self.hands.iter().find(|h| h.id == id) {
             h.ctl.pause.store(true, Ordering::SeqCst);
+            crate::doorbell::ring();
             return true;
         }
         if let Some(p) = self.waiting.iter_mut().find(|p| p.id == id) {
@@ -744,7 +752,9 @@ impl Crew {
     /// no such errand or it wasn't paused.
     pub fn resume(&mut self, id: u64) -> bool {
         if let Some(h) = self.hands.iter().find(|h| h.id == id) {
-            return h.ctl.pause.swap(false, Ordering::SeqCst);
+            let was = h.ctl.pause.swap(false, Ordering::SeqCst);
+            crate::doorbell::ring();
+            return was;
         }
         if let Some(p) = self.waiting.iter_mut().find(|p| p.id == id) {
             let was = p.paused;

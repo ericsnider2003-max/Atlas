@@ -5,6 +5,7 @@
 //! Free functions taking the daemon, so every call site names this module.
 
 use crate::connect::{self, CalendarLink, Way};
+use crate::oauthlink::{self, Provider};
 use crate::daemon::Daemon;
 use crate::hub::{self, esc, Page};
 use crate::server::Reply;
@@ -16,6 +17,17 @@ const LOOKED_UP: &str = "connect_looked_up";
 
 /// Calendar links read on their own thread, waiting to be taken in.
 static READ: Mutex<Vec<(String, Result<String, String>)>> = Mutex::new(Vec::new());
+
+/// Finished one-click sign-ins, waiting for the tick to keep them.
+static SIGNED: Mutex<Vec<Result<oauthlink::SignedIn, String>>> = Mutex::new(Vec::new());
+
+/// What the last one-click sign-in came to, shown at the top of the section
+/// until the next one (the sign-in finishes in the browser, after the page
+/// that started it has gone).
+const SIGNIN_SAID: &str = "connect_signin_said";
+
+/// How long a sign-in waits for the browser to come back.
+const SIGNIN_WAIT_SECS: u64 = 300;
 
 fn field(fields: &[(String, String)], name: &str) -> String {
     fields.iter().find(|(k, _)| k == name).map(|(_, v)| v.trim().to_string()).unwrap_or_default()
@@ -30,9 +42,16 @@ fn back(said: &str) -> Reply {
 pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
     let mut out = String::from(
         "<section id=connect aria-labelledby=connect-h><h2 id=connect-h>Connect an account</h2>\
-         <p class=what>Type your email address and I'll work out the rest: mail first, and the same address \
-         is how Outlook and Google calendars connect once their sign-in is ready.</p>\
-         <form method=post action='/hub/connect' class=inline><input type=hidden name=what value=start>\
+         <p class=what>Sign in with Google or Microsoft in one click, or type any email address and I'll \
+         work out the rest.</p>",
+    );
+    let said: String = d.store.load(SIGNIN_SAID);
+    if !said.is_empty() {
+        out.push_str(&format!("<p class=said role=status>{}</p>", esc(&said)));
+    }
+    out.push_str(&one_click(d));
+    out.push_str(
+        "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=start>\
          <label>Email address <input name=address type=email autocomplete=email required></label>\
          <button>Next</button></form>",
     );
@@ -42,9 +61,8 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
     out.push_str(&calendar_form());
     out.push_str(&connected_list(d));
     out.push_str(
-        "<p class=note>Bluesky, YouTube and the other networks Atlas can read connect on the \
-         <a href='/hub/social'>Social page</a>. Instagram, TikTok, X and Reddit can't be: they've closed \
-         their doors to apps like Atlas, or charge for every read.</p></section>",
+        "<p class=note>YouTube, Bluesky and the other networks connect on the <a href='/hub/social'>Social \
+         page</a>.</p></section>",
     );
     out
 }
@@ -85,13 +103,20 @@ fn step_for(d: &mut Daemon, address: &str) -> String {
             out.push_str(&vault_field(d));
             out.push_str("<button class=primary>Connect</button></form>");
             out.push_str("<p class=note>I try it against the mail server before keeping it. It's kept sealed in your vault, never in a settings file.</p>");
+            if m.provider == "Gmail" {
+                out.push_str(
+                    "<p class=note>Why a password for Gmail and not the Google button: Google only lets apps read \
+                     Gmail after a paid security audit. Your Google Calendar connects with the button above.</p>",
+                );
+            }
         }
-        Way::MicrosoftSignIn => out.push_str(
-            "<p><b>Outlook / Hotmail.</b> Microsoft switched passwords off for these in 2024, so they connect \
-             through Microsoft's own sign-in. That button isn't here yet: it needs Atlas registered with \
-             Microsoft once, which is being set up. Until then it can be connected by saying \
-             \"connect my outlook account\" with the address and an app registration's client ID.</p>",
-        ),
+        Way::MicrosoftSignIn => {
+            out.push_str(
+                "<p><b>Outlook / Hotmail.</b> Microsoft switched passwords off for these in 2024, so they connect \
+                 through Microsoft's own sign-in -- one click, and it brings your Outlook calendar too.</p>",
+            );
+            out.push_str(&signin_button(d, Provider::Microsoft));
+        }
         Way::LookItUp { domain } => out.push_str(&format!(
             "<p>I couldn't find the mail settings for {} by myself. If you know your mail server's address \
              (your provider's help pages call it the IMAP server), put it here with your password.</p>\
@@ -199,13 +224,23 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
             hub::back_with(&format!("{}#connect-next", Page::Accounts.href()), &format!("connect={}", crate::research::urlencode(&address)), "")
         }
         "password" => connect_mailbox(d, fields),
+        "oauth" => match Provider::from_key(&field(fields, "provider")) {
+            Some(p) => start_signin(d, p, fields),
+            None => back("That button isn't wired to anything, so nothing changed."),
+        },
         "calendar" => add_calendar(d, &field(fields, "url")),
         "disconnect" => {
             let id = field(fields, "id");
             match field(fields, "kind").as_str() {
                 "mail" => match d.drop_connected_account(&id) {
                     Ok(true) => {
-                        d.vault.secrets.retain(|s| s.name != connect::vault_name(&id));
+                        let token = oauthlink::vault_name(Provider::Microsoft, &id);
+                        let calendar_uses_it = d
+                            .store
+                            .load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS)
+                            .iter()
+                            .any(|l| l.url == oauthlink::calendar_key(Provider::Microsoft, &id));
+                        d.vault.secrets.retain(|s| s.name != connect::vault_name(&id) && (calendar_uses_it || s.name != token));
                         let _ = d.vault.save(&crate::roots::install_state());
                         back(&format!("Disconnected {id}, and its password is gone from the vault. You can also delete the app password at your provider."))
                     }
@@ -215,6 +250,18 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                 "calendar" => {
                     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
                     links.retain(|l| l.url != id);
+                    // A sign-in's token goes with its calendar, unless Outlook mail still uses it.
+                    if let Some((p, email)) = oauthlink::parse_calendar_key(&id) {
+                        let mail_uses_it = d
+                            .store
+                            .load::<Vec<crate::mail::Account>>(crate::daemon::CONNECTED_ACCOUNTS)
+                            .iter()
+                            .any(|a| a.password_from_vault == oauthlink::vault_name(p, &email));
+                        if !mail_uses_it {
+                            d.vault.secrets.retain(|s| s.name != oauthlink::vault_name(p, &email));
+                            let _ = d.vault.save(&crate::roots::install_state());
+                        }
+                    }
                     match d.store.save(connect::CALENDAR_LINKS, &links) {
                         Ok(()) => back("That calendar won't be read again. Its events already here stay until you remove them."),
                         Err(e) => back(&format!("I couldn't keep that: {e}")),
@@ -335,16 +382,18 @@ pub fn tick(d: &mut Daemon, now: u64) {
     // Every half minute is plenty for links read every 15; the store isn't
     // read every second for nothing.
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let waiting = READ.lock().map(|r| !r.is_empty()).unwrap_or(false);
+    let waiting = READ.lock().or_else(crate::crash::unpoison).map(|r| !r.is_empty()).unwrap_or(false) || SIGNED.lock().or_else(crate::crash::unpoison).map(|r| !r.is_empty()).unwrap_or(false);
     if !waiting && now.saturating_sub(LAST.load(std::sync::atomic::Ordering::Relaxed)) < 30 {
         return;
     }
     LAST.store(now, std::sync::atomic::Ordering::Relaxed);
+    keep_signed_in(d, now);
+    keep_rotated(d, now);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     if links.is_empty() {
         return;
     }
-    let came: Vec<(String, Result<String, String>)> = READ.lock().map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
+    let came: Vec<(String, Result<String, String>)> = READ.lock().or_else(crate::crash::unpoison).map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
     let mut changed = false;
     for (url, got) in came {
         let Some(l) = links.iter_mut().find(|l| l.url == url) else { continue };
@@ -367,6 +416,19 @@ pub fn tick(d: &mut Daemon, now: u64) {
         l.last_read = now;
         changed = true;
         let url = l.url.clone();
+        if let Some((p, email)) = oauthlink::parse_calendar_key(&url) {
+            // Signed in: the token from the vault, read on its own thread.
+            let token = d.vault.get(&oauthlink::vault_name(p, &email), now);
+            std::thread::spawn(move || {
+                let got = token
+                    .map_err(|e| format!("its sign-in couldn't be read from the vault ({e})"))
+                    .and_then(|t| oauthlink::calendar_ics(&crate::social::apis::Https, p, &t, now));
+                if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
+                    q.push((url, got));
+                }
+            });
+            continue;
+        }
         std::thread::spawn(move || {
             let got = connect::host_and_path(&url)
                 .ok_or_else(|| "not an https link".to_string())
@@ -374,12 +436,246 @@ pub fn tick(d: &mut Daemon, now: u64) {
                     crate::http::https_get(&host, &path, std::time::Duration::from_secs(20)).map_err(|e| e.to_string())
                 })
                 .and_then(|r| if r.ok() { Ok(r.body) } else { Err(format!("the calendar's site answered {}", r.status)) });
-            if let Ok(mut q) = READ.lock() {
+            if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                 q.push((url, got));
             }
         });
     }
     if changed {
         let _ = d.store.save(connect::CALENDAR_LINKS, &links);
+    }
+}
+
+// ------------------------------------------------------------ one click
+
+/// The sign-in buttons: one each, saying what it connects.
+fn one_click(d: &Daemon) -> String {
+    let mut out = String::from("<div class=oneclick>");
+    out.push_str(&signin_button(d, Provider::Google));
+    out.push_str(&signin_button(d, Provider::Microsoft));
+    out.push_str(
+        "<p class=note>You sign in on Google's or Microsoft's own page, in your browser on this computer. \
+         Atlas never sees your password: it's given read access you can take back any time, from your \
+         account or with Disconnect below.</p></div>",
+    );
+    out
+}
+
+fn signin_button(d: &Daemon, p: Provider) -> String {
+    if p == Provider::Google && oauthlink::google_secret().is_none() {
+        return "<p class=note>Google's button isn't in this copy of Atlas (it was built without Google's \
+                sign-in key). Your Google calendar can still connect by its private link below.</p>"
+            .into();
+    }
+    format!(
+        "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=oauth>\
+         <input type=hidden name=provider value={}>{}<button class=primary>Sign in with {}</button> \
+         <span class=note>for {}</span></form>",
+        p.key(),
+        vault_field(d),
+        p.name(),
+        p.connects()
+    )
+}
+
+/// Open the vault if it's shut (the token is kept there), then open the
+/// provider's page in the browser and wait on this machine for it to come back.
+fn start_signin(d: &mut Daemon, p: Provider, fields: &[(String, String)]) -> Reply {
+    if p == Provider::Google && oauthlink::google_secret().is_none() {
+        return back(oauthlink::NO_GOOGLE_SECRET);
+    }
+    let now = crate::store::now();
+    if d.vault.state() != crate::vault::State::Open {
+        let opened = if d.vault.sealed_to_this_login() {
+            d.vault.open_unattended(now)
+        } else {
+            let phrase = field(fields, "passphrase");
+            if phrase.is_empty() {
+                Err("your vault is locked -- type its passphrase too".to_string())
+            } else {
+                let cfg = d.tools_cfg().vault.clone();
+                d.vault.open(&phrase, now, &cfg)
+            }
+        };
+        if let Err(e) = opened {
+            return back(&format!("Nothing was started: {e}."));
+        }
+    }
+    let first = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(l) => l,
+        Err(e) => return back(&format!("I couldn't open a port for {} to come back to: {e}", p.name())),
+    };
+    let port = first.local_addr().map(|a| a.port()).unwrap_or(0);
+    let mut listeners = vec![first];
+    // `localhost` may be IPv6 to the browser: listen there on the same port too.
+    if p == Provider::Microsoft {
+        if let Ok(l) = std::net::TcpListener::bind(("::1", port)) {
+            listeners.push(l);
+        }
+    }
+    let redirect = p.redirect(port);
+    let verifier = crate::vault::short_code(64);
+    let state = crate::vault::short_code(24);
+    let url = oauthlink::consent_url(p, &redirect, &state, &oauthlink::challenge(&verifier));
+    if let Err(e) = d.plat.open_path(&url) {
+        return back(&format!("I couldn't open your browser for {}'s sign-in: {e}", p.name()));
+    }
+    let _ = d.store.save(SIGNIN_SAID, &format!("Waiting for {}'s sign-in in your browser...", p.name()));
+    std::thread::spawn(move || {
+        let got = wait_for_code(&listeners, p, &state).and_then(|code| {
+            oauthlink::exchange(&crate::social::apis::Https, p, &code, &redirect, &verifier)
+        });
+        if let Ok(mut q) = SIGNED.lock().or_else(crate::crash::unpoison) {
+            q.push(got);
+        }
+    });
+    back(&format!(
+        "{}'s sign-in is open in your browser on this computer. Sign in there and allow access; this page shows \
+         the result when you come back.",
+        p.name()
+    ))
+}
+
+/// Answer the browser's redirect, and give back the code in it.
+fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) -> Result<String, String> {
+    use std::io::{BufRead, Write};
+    for l in listeners {
+        let _ = l.set_nonblocking(true);
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(SIGNIN_WAIT_SECS);
+    while std::time::Instant::now() < deadline {
+        for l in listeners {
+            let stream = match l.accept() {
+                Ok((s, _)) => s,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(format!("the sign-in's port failed: {e}")),
+            };
+            let _ = stream.set_nonblocking(false);
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+            let mut line = String::new();
+            let _ = std::io::BufReader::new(&stream).read_line(&mut line);
+            let mut w = &stream;
+            // A browser also asks for /favicon.ico and the like: not the answer.
+            if !line.contains("code=") && !line.contains("error=") {
+                let _ = write!(w, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                continue;
+            }
+            let code = oauthlink::code_from(p, &line, state);
+            let page = match &code {
+                Ok(_) => "Signed in. You can close this tab and go back to Atlas.".to_string(),
+                Err(e) => format!("That didn't work: {e}. Go back to Atlas to try again."),
+            };
+            let _ = write!(
+                w,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{page}",
+                page.len()
+            );
+            return code;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err(format!("the {} sign-in wasn't finished within five minutes", p.name()))
+}
+
+/// Keep what finished sign-ins brought back: the token in the vault, the
+/// calendar in the list, and (Microsoft) the Outlook mailbox in mail.
+fn keep_signed_in(d: &mut Daemon, now: u64) {
+    let came: Vec<Result<oauthlink::SignedIn, String>> = SIGNED.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    for got in came {
+        let said = match got {
+            Err(e) => format!("Nothing was connected: {e}."),
+            Ok(s) => keep_sign_in(d, &s, now),
+        };
+        let _ = d.store.save(SIGNIN_SAID, &said);
+    }
+}
+
+/// Keep one finished sign-in, and say what it came to (also shown at the top
+/// of the section).
+pub fn keep_sign_in(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
+    let said = keep_inner(d, s, now);
+    let _ = d.store.save(SIGNIN_SAID, &said);
+    said
+}
+
+fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
+    let name = oauthlink::vault_name(s.provider, &s.email);
+    if d.vault.state() != crate::vault::State::Open {
+        let _ = d.vault.open_unattended(now);
+    }
+    let kept = d
+        .vault
+        .put(&name, crate::vault::Kind::Login, &s.refresh_token, now)
+        .and_then(|()| d.vault.save(&crate::roots::install_state()).map_err(|e| e.to_string()));
+    if let Err(e) = kept {
+        return format!("{} let me in as {}, but I couldn't seal the sign-in in the vault, so nothing was kept: {e}.", s.provider.name(), s.email);
+    }
+    let key = oauthlink::calendar_key(s.provider, &s.email);
+    let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
+    links.retain(|l| l.url != key);
+    let label = match s.provider {
+        Provider::Google => format!("Google Calendar ({})", s.email),
+        Provider::Microsoft => format!("Outlook Calendar ({})", s.email),
+    };
+    links.push(CalendarLink { name: label, url: key, ..Default::default() });
+    let _ = d.store.save(connect::CALENDAR_LINKS, &links);
+    if s.provider == Provider::Google {
+        return format!("Connected {}'s Google Calendar. Its events appear on your calendar within a minute.", s.email);
+    }
+    match d.keep_connected_account(oauthlink::outlook_account(&s.email)) {
+        Ok(true) => format!("Connected {}: Outlook mail and calendar. I'll read both from now on.", s.email),
+        Ok(false) => {
+            let dir = crate::roots::config_dir();
+            let mut prefs = crate::preferences::Preferences::load(&dir);
+            prefs.set("mail.enabled", "true");
+            match prefs.save(&dir) {
+                Ok(()) => format!("Connected {}: Outlook mail and calendar, and reading mail is now on.", s.email),
+                Err(e) => format!("Connected {}'s calendar; turn on Email in Settings for its mail ({e}).", s.email),
+            }
+        }
+        Err(e) => format!("Connected {}'s calendar, but I couldn't add its mail: {e}.", s.email),
+    }
+}
+
+/// Write rotated Microsoft refresh tokens over the ones they replace (Q7).
+/// The vault entries that can hold one: Outlook mailboxes signed in with
+/// Microsoft, and signed-in calendars. A locked vault keeps them queued.
+pub fn keep_rotated(d: &mut Daemon, now: u64) {
+    let waiting = crate::msoauth::take_rotations();
+    if waiting.is_empty() {
+        return;
+    }
+    if d.vault.state() != crate::vault::State::Open && d.vault.open_unattended(now).is_err() {
+        crate::msoauth::keep_later(waiting);
+        return;
+    }
+    let mut names: Vec<String> = d
+        .store
+        .load::<Vec<crate::mail::Account>>(crate::daemon::CONNECTED_ACCOUNTS)
+        .iter()
+        .chain(d.tools_cfg().mail.accounts.iter())
+        .filter(|a| a.oauth)
+        .map(|a| a.password_from_vault.clone())
+        .collect();
+    for l in d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS) {
+        if let Some((p, email)) = oauthlink::parse_calendar_key(&l.url) {
+            names.push(oauthlink::vault_name(p, &email));
+        }
+    }
+    names.sort();
+    names.dedup();
+    let mut changed = false;
+    for (old, new) in &waiting {
+        for name in &names {
+            if d.vault.get(name, now).as_deref() == Ok(old.as_str()) && d.vault.put(name, crate::vault::Kind::Login, new, now).is_ok() {
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        if let Err(e) = d.vault.save(&crate::roots::install_state()) {
+            // Kept in the open vault already; the next vault save writes it.
+            d.log.warn(&format!("a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"));
+        }
     }
 }

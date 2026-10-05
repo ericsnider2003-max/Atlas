@@ -500,23 +500,14 @@ fn without_test_blocks(body: &str) -> String {
     let mut in_test = false;
     let mut opened = false;
     let mut depth: i32 = 0;
-    let mut opened = false;
     for line in body.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             in_test = true;
             opened = false;
             depth = 0;
-            opened = false;
             continue;
         }
         if in_test {
-            // Ended when the braces it opened close again -- on any line, not
-            // only one that also opens a brace (2 Oct 2026: a test module
-            // whose last line is a lone `}`, in daemon/making.rs, swallowed
-            // every daemon file after it and hid all their calls).
-            if line.contains('{') {
-                opened = true;
-            }
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
             opened |= line.contains('{');

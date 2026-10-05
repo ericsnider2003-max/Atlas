@@ -117,30 +117,84 @@ impl FirstAddr for (&str, u16) {
     }
 }
 
+/// How long a connecting peer has to send its whole frame. Read on the
+/// listener's own thread, so a slow peer costs that thread this long and the
+/// tick nothing.
+const ARRIVE_WITHIN: Duration = Duration::from_secs(10);
+
+/// One peer whose frame has arrived, waiting for the daemon's answer.
+struct Arrived {
+    peer: std::net::IpAddr,
+    bytes: Vec<u8>,
+    stream: TcpStream,
+}
+
+/// Read one frame with a deadline for the whole of it, not each read: a
+/// peer trickling a byte every so often used to hold the read for ever.
+fn read_frame_within(stream: &mut TcpStream, total: Duration) -> std::io::Result<Vec<u8>> {
+    struct ByDeadline<'a> {
+        s: &'a mut TcpStream,
+        until: std::time::Instant,
+    }
+    impl Read for ByDeadline<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let left = self.until.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the other side took too long to send its bundle"));
+            }
+            self.s.set_read_timeout(Some(left))?;
+            self.s.read(buf)
+        }
+    }
+    read_frame(&mut ByDeadline { s: stream, until: std::time::Instant::now() + total })
+}
+
 /// The receiving side: a bound listener the daemon polls once a tick.
+///
+/// Connections are accepted and read on the listener's own thread; the tick
+/// only answers frames that have already arrived whole (5 Oct 2026 audit,
+/// Q5). Before, `poll` read on the tick with a per-read timeout, so anyone on
+/// the same Wi-Fi sending one byte every 45 ms held the whole daemon -- the
+/// hub included -- for as long as they liked, before the peer was even
+/// checked.
 pub struct Server {
-    listener: TcpListener,
+    addr: std::net::SocketAddr,
+    arrived: std::sync::Mutex<std::sync::mpsc::Receiver<Arrived>>,
 }
 
 impl Server {
-    /// Bind on every interface so a peer on the LAN can reach it. Non-blocking,
-    /// so `poll` never waits on `accept`.
+    /// Bind on every interface so a peer on the LAN can reach it.
     pub fn bind(port: u16) -> std::io::Result<Server> {
-        let listener = TcpListener::bind(("0.0.0.0", port))?;
-        listener.set_nonblocking(true)?;
-        Ok(Server { listener })
+        Self::serve(TcpListener::bind(("0.0.0.0", port))?)
     }
 
     /// Bind to loopback on an OS-chosen port — for tests, and for a device that
     /// only wants to be reachable from itself.
     pub fn bind_local_ephemeral() -> std::io::Result<Server> {
-        let listener = TcpListener::bind(("127.0.0.1", 0))?;
-        listener.set_nonblocking(true)?;
-        Ok(Server { listener })
+        Self::serve(TcpListener::bind(("127.0.0.1", 0))?)
+    }
+
+    fn serve(listener: TcpListener) -> std::io::Result<Server> {
+        let addr = listener.local_addr()?;
+        // Room for a few whole frames; past that the listener waits, and a
+        // flood of peers queues in the OS, not in memory.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Arrived>(4);
+        std::thread::Builder::new().name("atlas-sync-listen".into()).spawn(move || {
+            for conn in listener.incoming() {
+                let Ok(mut stream) = conn else { continue };
+                let Ok(peer) = stream.peer_addr() else { continue };
+                let _ = stream.set_write_timeout(Some(ARRIVE_WITHIN));
+                let Ok(bytes) = read_frame_within(&mut stream, ARRIVE_WITHIN) else { continue };
+                if tx.send(Arrived { peer: peer.ip(), bytes, stream }).is_err() {
+                    return; // the Server is gone
+                }
+            }
+        })?;
+        Ok(Server { addr, arrived: std::sync::Mutex::new(rx) })
     }
 
     pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
-        self.listener.local_addr()
+        Ok(self.addr)
     }
 
     /// Serve at most one waiting peer, without blocking. Returns `Ok(true)` if
@@ -162,25 +216,23 @@ impl Server {
     /// As `poll`, but `handle` is told who connected and may answer nothing
     /// at all (`None`): the connection is closed with no bundle sent. That is
     /// how a stranger on the same Wi-Fi is turned away (1 Oct 2026 security
-    /// pass: anyone who connected used to get your notes back).
+    /// pass: anyone who connected used to get your notes back). `timeout`
+    /// bounds writing the answer.
     pub fn poll_from(
         &self,
         timeout: Duration,
         handle: impl FnOnce(std::net::IpAddr, Vec<u8>) -> Option<Vec<u8>>,
     ) -> std::io::Result<bool> {
-        match self.listener.accept() {
-            Ok((mut stream, peer)) => {
-                stream.set_nonblocking(false)?;
-                stream.set_read_timeout(Some(timeout))?;
+        let next = self.arrived.lock().unwrap_or_else(std::sync::PoisonError::into_inner).try_recv();
+        match next {
+            Ok(Arrived { peer, bytes, mut stream }) => {
                 stream.set_write_timeout(Some(timeout))?;
-                let incoming = read_frame(&mut stream)?;
-                if let Some(reply) = handle(peer.ip(), incoming) {
+                if let Some(reply) = handle(peer, bytes) {
                     write_frame(&mut stream, &reply)?;
                 }
                 Ok(true)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
-            Err(e) => Err(e),
+            Err(_) => Ok(false),
         }
     }
 }
@@ -290,5 +342,27 @@ mod tests {
         let m_phone = merge(&phone.events, &laptop_side.events, 400);
         assert_eq!(m_phone.clean, 2, "phone's own event plus the laptop's, none clashing");
         assert!(laptop_side.events.iter().any(|e| e.what == (What::Captured { id: "l1".into(), text: "rack parts list".into() })));
+    }
+
+    #[test]
+    fn a_peer_that_trickles_bytes_never_holds_the_caller() {
+        // Q5: one byte at a time used to hold `poll` (and the tick) for ever.
+        let server = Server::bind_local_ephemeral().unwrap();
+        let addr = server.local_addr().unwrap();
+        let slow = std::thread::spawn(move || {
+            let mut s = TcpStream::connect(addr).unwrap();
+            for b in b"ATL1\0\0\0\x10" {
+                let _ = s.write_all(&[*b]);
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        });
+        let started = std::time::Instant::now();
+        for _ in 0..20 {
+            assert!(!server.poll(Duration::from_millis(50), |b| b).unwrap(), "a frame that never finished was served");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(started.elapsed() < Duration::from_secs(2), "polling waited on the slow peer: {:?}", started.elapsed());
+        slow.join().unwrap();
     }
 }

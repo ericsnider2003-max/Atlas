@@ -38,3 +38,6 @@ atlas/mobile/ios/*.xcodeproj/
 *.keystore
 *.mobileprovision
 *.pass
+
+# Written by Atlas on each machine (Settings page); never shipped.
+atlas/config/settings.yaml

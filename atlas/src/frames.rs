@@ -200,7 +200,7 @@ impl Latest {
             .spawn(move || {
                 let mut buf = vec![0u8; len];
                 while out.read_exact(&mut buf).is_ok() {
-                    if let Ok(mut g) = s2.lock() {
+                    if let Ok(mut g) = s2.lock().or_else(crate::crash::unpoison) {
                         *g = Some((buf.clone(), std::time::Instant::now()));
                     }
                 }
@@ -225,7 +225,7 @@ impl Latest {
     pub fn frame(&self, settle: std::time::Duration, fresh: std::time::Duration, wait: std::time::Duration) -> Option<Vec<u8>> {
         let until = std::time::Instant::now() + wait;
         loop {
-            if let Ok(g) = self.shared.lock() {
+            if let Ok(g) = self.shared.lock().or_else(crate::crash::unpoison) {
                 if let Some((f, at)) = g.as_ref() {
                     if at.duration_since(self.opened) >= settle && at.elapsed() <= fresh {
                         return Some(f.clone());

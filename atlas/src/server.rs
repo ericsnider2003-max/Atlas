@@ -670,6 +670,8 @@ pub enum Action {
     /// The iPhone app's push address, for its own Atlas to carry to the
     /// laptop (item 15).
     PushToken(String),
+    /// An Android phone's UnifiedPush address and keys (item 15).
+    WebPushEndpoint(String),
     /// A voice's sample, to hear it before downloading it (`voicepick`).
     VoiceSample(String),
     /// The Accounts page's vault forms: set a first passphrase, change it,
@@ -996,7 +998,11 @@ impl Action {
             // The Updates page's release-key forms take the vault passphrase
             // as an ordinary field.
             // The Social page's key and sign-in forms carry a `secret`.
-            Action::HubPost { fields, .. } => fields.iter().any(|(k, _)| k == "passphrase" || k == "again" || k == "secret"),
+            // Connect an account's forms carry a mail `password` (5 Oct 2026
+            // audit, Q6: it crossed home Wi-Fi in plain HTTP).
+            Action::HubPost { fields, .. } => {
+                fields.iter().any(|(k, _)| k == "passphrase" || k == "again" || k == "secret" || k == "password")
+            }
             _ => false,
         }
     }
@@ -1202,6 +1208,7 @@ pub fn route(r: &Request) -> Option<Action> {
         ("GET", "/hub/changed.json") => Some(Action::Changed(query_field(&r.query, "p").unwrap_or_default())),
         ("POST", "/hub/calendar/phone") => Some(Action::PhoneCalendar(r.body.clone())),
         ("POST", "/hub/push-token") => Some(Action::PushToken(r.body.clone())),
+        ("POST", "/hub/web-push-endpoint") => Some(Action::WebPushEndpoint(r.body.clone())),
         ("GET", "/hub/voice-sample") => Some(Action::VoiceSample(query_field(&r.query, "id")?)),
         ("GET", path) => crate::hub::route(path).map(|p| {
             // Only the pages that read their query get it; everything else
@@ -1625,7 +1632,7 @@ impl Server {
     /// Capped at two seconds, so a run of them can't hold the one
     /// connection open for long.
     fn slow_down_a_guess(&self) {
-        let wait = match self.failures.lock() {
+        let wait = match self.failures.lock().or_else(crate::crash::unpoison) {
             Ok(mut f) => {
                 f.failed(crate::store::now());
                 f.delay_ms()
@@ -1640,7 +1647,7 @@ impl Server {
     /// Something to tell you when wrong tokens keep arriving — a run of them
     /// is something other than you trying.
     pub fn guesses_worth_mentioning(&self) -> Option<String> {
-        self.failures.lock().ok().and_then(|f| f.worth_mentioning())
+        self.failures.lock().or_else(crate::crash::unpoison).ok().and_then(|f| f.worth_mentioning())
     }
 
     pub fn port(&self) -> u16 {
@@ -1885,7 +1892,7 @@ impl Server {
         // `route_handoff`, which is the property that keeps a peer token
         // incapable of reaching a hub page.
         let is_peer = match (&self.signals, given.as_deref()) {
-            (Some(door), Some(t)) => door.lock().map(|d| d.knows(t)).unwrap_or(false),
+            (Some(door), Some(t)) => door.lock().or_else(crate::crash::unpoison).map(|d| d.knows(t)).unwrap_or(false),
             _ => false,
         };
         if !is_hub && !is_peer {
@@ -1896,7 +1903,7 @@ impl Server {
             return Ok(None);
         }
         if is_hub {
-            if let Ok(mut f) = self.failures.lock() {
+            if let Ok(mut f) = self.failures.lock().or_else(crate::crash::unpoison) {
                 f.succeeded();
             }
         }
@@ -2127,7 +2134,7 @@ type LateTalk = std::sync::Arc<std::sync::Mutex<Vec<(String, bool)>>>;
 /// A Talk page message given up on, kept rather than dropped.
 fn keep_if_talk(action: &Action, late: &LateTalk) {
     if let Some(talk) = talk_in(action) {
-        if let Ok(mut v) = late.lock() {
+        if let Ok(mut v) = late.lock().or_else(crate::crash::unpoison) {
             v.push(talk);
         }
     }
@@ -2224,7 +2231,7 @@ pub struct HubDoor {
 /// The hub's end of a `HubDoor`: what a listener, bound now or later, feeds.
 struct Serving {
     server: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<Server>>>,
-    tx: std::sync::mpsc::Sender<Waiting>,
+    tx: crate::doorbell::Sender<Waiting>,
     open: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     per_address: PerAddress,
     port: std::sync::Arc<std::sync::atomic::AtomicU16>,
@@ -2330,7 +2337,7 @@ impl Serving {
     }
 
     fn say(&self, line: String) {
-        if let Ok(mut n) = self.news.lock() {
+        if let Ok(mut n) = self.news.lock().or_else(crate::crash::unpoison) {
             n.push(line);
         }
     }
@@ -2566,7 +2573,7 @@ impl Server {
 
     /// One connection, on its own thread: read and check it, hand an
     /// authenticated action to the daemon, wait for the answer, send it.
-    fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &std::sync::mpsc::Sender<Waiting>, late: &LateTalk) {
+    fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &crate::doorbell::Sender<Waiting>, late: &LateTalk) {
         let Ok(Some(mut asked)) = self.read_asked(stream) else {
             return;
         };
@@ -2634,7 +2641,7 @@ impl Reply {
 impl HubDoor {
     /// A door with nothing listening yet, and its serving end.
     fn waiting() -> (HubDoor, Serving) {
-        let (tx, asks) = std::sync::mpsc::channel::<Waiting>();
+        let (tx, asks) = crate::doorbell::channel::<Waiting>();
         let server = std::sync::Arc::new(std::sync::OnceLock::new());
         let port = std::sync::Arc::new(std::sync::atomic::AtomicU16::new(0));
         let news = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -2655,7 +2662,7 @@ impl HubDoor {
 
     /// Talk page messages given up on since last asked, oldest first.
     pub fn take_late_talk(&self) -> Vec<(String, bool)> {
-        self.late.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+        self.late.lock().or_else(crate::crash::unpoison).map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
     }
 
     /// Is anything listening yet?
@@ -2666,7 +2673,7 @@ impl HubDoor {
     /// What there is to say about the door since last asked: its port
     /// taken, where it opened instead. For the log.
     pub fn take_news(&self) -> Vec<String> {
-        self.news.lock().map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
+        self.news.lock().or_else(crate::crash::unpoison).map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
     }
 
     /// Answer every request waiting now, without waiting for more.
@@ -2747,7 +2754,7 @@ pub fn record_door(state_dir: &std::path::Path, door: &Door) -> std::io::Result<
     let text = serde_json::to_string(door).map_err(|e| std::io::Error::other(e.to_string()))?;
     let tmp = state_dir.join(format!("{DOOR_FILE}.new"));
     std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, state_dir.join(DOOR_FILE))
+    crate::store::rename_patiently(&tmp, &state_dir.join(DOOR_FILE))
 }
 
 /// What `record_door` last wrote, if anything.

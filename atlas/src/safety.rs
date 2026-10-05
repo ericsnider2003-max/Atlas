@@ -252,7 +252,7 @@ fn copy_state_into_skipping(
             }
             Err(e) => return Err(e.into()),
         }
-        std::fs::rename(&tmp, to.join(&name))?;
+        crate::store::rename_patiently(&tmp, &to.join(&name))?;
         *files += 1;
         *bytes += meta.len();
     }
@@ -808,7 +808,7 @@ impl Trash {
         // half-written ledger where a whole one used to be.
         let tmp = self.ledger_path().with_extension("json.writing");
         std::fs::write(&tmp, text)?;
-        std::fs::rename(&tmp, self.ledger_path())?;
+        crate::store::rename_patiently(&tmp, &self.ledger_path())?;
         Ok(())
     }
 

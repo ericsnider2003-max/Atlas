@@ -171,13 +171,13 @@ pub struct Downloads(Mutex<BTreeMap<String, Getting>>);
 
 impl Downloads {
     pub fn state(&self, id: &str) -> Option<Getting> {
-        self.0.lock().ok()?.get(id).cloned()
+        self.0.lock().or_else(crate::crash::unpoison).ok()?.get(id).cloned()
     }
 
     /// Mark `id` as starting. False when it's already going, so a second
     /// press doesn't start a second download of the same 60 MB.
     pub fn begin(&self, id: &str, of: u64) -> bool {
-        let Ok(mut m) = self.0.lock() else { return false };
+        let Ok(mut m) = self.0.lock().or_else(crate::crash::unpoison) else { return false };
         if matches!(m.get(id), Some(Getting::Going(..))) {
             return false;
         }
@@ -186,13 +186,13 @@ impl Downloads {
     }
 
     pub fn progress(&self, id: &str, got: u64, of: u64) {
-        if let Ok(mut m) = self.0.lock() {
+        if let Ok(mut m) = self.0.lock().or_else(crate::crash::unpoison) {
             m.insert(id.to_string(), Getting::Going(got, of));
         }
     }
 
     pub fn finish(&self, id: &str, result: Result<(), String>) {
-        if let Ok(mut m) = self.0.lock() {
+        if let Ok(mut m) = self.0.lock().or_else(crate::crash::unpoison) {
             match result {
                 Ok(()) => m.remove(id),
                 Err(why) => m.insert(id.to_string(), Getting::Failed(why)),

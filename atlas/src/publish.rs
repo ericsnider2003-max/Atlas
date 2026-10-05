@@ -133,6 +133,21 @@ pub enum SendCheck {
     Hold(String),
 }
 
+/// The file in "attach C:\\...\\photo.jpg" / "add the video ~/clip.mp4",
+/// quotes taken off. Only a path: something with a folder separator and an
+/// extension, so "attach a nice picture" isn't read as a file.
+pub fn file_to_attach(said: &str) -> Option<String> {
+    let l = said.trim().to_lowercase();
+    let rest = ["attach the picture ", "attach the photo ", "attach the video ", "attach ", "add the picture ", "add the photo ", "add the video ", "with the picture ", "with the video "]
+        .iter()
+        .find_map(|p| l.starts_with(p).then(|| said.trim()[p.len()..].trim()))?;
+    let path = rest.trim_matches(['"', '\'']);
+    // A sentence's full stop isn't part of the name.
+    let path = path.strip_suffix('.').unwrap_or(path).trim_matches(['"', '\'']).trim();
+    let p = std::path::Path::new(path);
+    (path.contains(['/', '\\']) && p.extension().is_some()).then(|| path.to_string())
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Publisher {
     pub posts: Vec<Post>,
@@ -192,7 +207,18 @@ impl Publisher {
     pub fn request_approval(&mut self, id: u64) -> Option<String> {
         let p = self.posts.iter_mut().find(|p| p.id == id)?;
         p.state = PostState::AwaitingApproval;
-        Some(format!("Post this to {}?\n\n{}", p.channel.name(), p.body))
+        // What goes with it is part of what you approve, so it's named.
+        let with = if p.media.is_empty() {
+            String::new()
+        } else {
+            let names: Vec<String> = p
+                .media
+                .iter()
+                .map(|m| std::path::Path::new(m).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| m.clone()))
+                .collect();
+            format!("\n\nWith: {}", names.join(", "))
+        };
+        Some(format!("Post this to {}?\n\n{}{with}", p.channel.name(), p.body))
     }
 
     /// Approve this exact text.

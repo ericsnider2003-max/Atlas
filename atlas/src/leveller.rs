@@ -255,7 +255,7 @@ static LEVELS: std::sync::Mutex<Option<Leveller>> = std::sync::Mutex::new(None);
 /// `for_speech_to_text` with the running Atlas's remembered levels.
 pub fn prepare(samples: &[i16], rate: u32, mic: &str) -> Option<Vec<i16>> {
     let store = crate::roots::store();
-    let Ok(mut guard) = LEVELS.lock() else {
+    let Ok(mut guard) = LEVELS.lock().or_else(crate::crash::unpoison) else {
         return for_speech_to_text(samples, rate, mic, &mut Leveller::default());
     };
     let lev = guard.get_or_insert_with(|| store.load(Leveller::RECORD));

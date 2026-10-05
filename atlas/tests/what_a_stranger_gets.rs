@@ -247,7 +247,9 @@ fn the_daemons_own_turn_checks_before_anything_can_say_yes_for_it() {
     // `record_approval` first and reports the opposite of the truth. This
     // tree has a standing caution about guards that match their own
     // explanation; here is one, caught by watching it fail.
-    let parked = code_only(function_body(&src, "pub fn turn_from("));
+    // The turn's body is `turn_unwatched` since 2 Oct 2026 (learning how you
+    // talk wraps it in `turn_from`, which only watches).
+    let parked = code_only(function_body(&src, "fn turn_unwatched("));
     let parked = parked.as_str();
     let asked = parked
         .find("handed_over_refusal(&intent)")

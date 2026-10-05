@@ -144,14 +144,21 @@ pub fn render_social(v: &View) -> String {
     b.push_str("</ul>");
     b.push_str(&form(
         "key",
-        "<label>Which <select name=name><option value=youtube>YouTube API key</option><option value=instagram>Instagram token</option><option value=threads>Threads token</option><option value=facebook>Facebook Page token</option></select></label> <label>Key <input name=secret type=password required autocomplete=off></label>",
+        "<label>Which <select name=name><option value=youtube>YouTube API key</option><option value=instagram>Instagram token</option><option value=threads>Threads token</option><option value=facebook>Facebook Page token</option><option value=bluesky>Bluesky app password (for posting)</option></select></label> <label>Key <input name=secret type=password required autocomplete=off></label>",
         "Keep it",
     ));
+    if crate::oauthlink::google_secret().is_some() {
+        b.push_str(&form("google", "", "Sign in with Google for YouTube Analytics"));
+        b.push_str("<details><summary>Use your own Google app instead</summary>");
+    }
     b.push_str(&form(
         "google",
         "<label>Google client ID <input name=id required size=30></label> <label>Client secret <input name=secret type=password required autocomplete=off></label>",
         "Sign in for YouTube Analytics",
     ));
+    if crate::oauthlink::google_secret().is_some() {
+        b.push_str("</details>");
+    }
     b.push_str(&form(
         "tiktok-start",
         "<label>TikTok client key <input name=key required size=20></label> <label>Client secret <input name=secret type=password required autocomplete=off></label> <label>Redirect address <input name=redirect required size=30 placeholder='https://'></label>",
@@ -162,6 +169,14 @@ pub fn render_social(v: &View) -> String {
         "<label>The address TikTok sent you to <input name=address required size=48></label>",
         "Finish TikTok sign-in",
     ));
+    b.push_str("<h3>Sign in to your accounts</h3><p class=what>Once each, in Atlas's own browser: the window opens on the \
+                site's sign-in page, you sign in the way you normally do (codes included) and close it. Atlas keeps that \
+                sign-in for reading your pages. The sites don't allow apps to do this, so an account can occasionally be \
+                asked to confirm it's you.</p><div class=signins>");
+    for (name, domain) in super::SIGN_IN_SITES {
+        b.push_str(&form("browser-signin", &format!("<input type=hidden name=site value='{}'>", esc(domain)), &format!("Sign in to {name}")));
+    }
+    b.push_str("</div>");
     b.push_str("<h3>How to set each one up</h3>");
     for (what, steps) in super::SETUP {
         b.push_str(&format!("<details><summary>{}</summary><ol>", esc(what)));

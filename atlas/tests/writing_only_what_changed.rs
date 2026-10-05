@@ -135,9 +135,11 @@ fn the_write_that_does_happen_is_still_atomic() {
     let body = &rest[..end];
 
     assert!(body.contains("json.tmp"), "the temp file is gone");
-    assert!(body.contains("std::fs::rename"), "the rename is gone — saves are no longer atomic");
+    // `rename_patiently` is `fs::rename`, tried again while Windows reports a
+    // passing lock (5 Oct 2026, audit Q11).
+    assert!(body.contains("rename_patiently(&tmp"), "the rename is gone — saves are no longer atomic");
     assert!(
-        body.find("json.tmp").unwrap() < body.find("std::fs::rename").unwrap(),
+        body.find("json.tmp").unwrap() < body.find("rename_patiently(&tmp").unwrap(),
         "the temp file is written after the rename"
     );
 

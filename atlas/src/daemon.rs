@@ -76,6 +76,8 @@ mod turn;
 mod tasks;
 mod operating;
 mod learning;
+mod askthelaptop;
+mod onethread;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -929,6 +931,14 @@ pub struct Daemon<'a> {
     pub run: crate::channel::Run,
     /// Typed, linked memory. Kinds decide decay and precedence.
     pub facts: crate::facts::Book,
+    /// What arrived from your other devices, so it isn't carried straight
+    /// back out (`onethread`, item 16).
+    pub(crate) arrived_by_sync: onethread::ArrivedBySync,
+    /// A turn added to the sync log and it isn't written out yet.
+    pub(crate) synclog_unsaved: bool,
+    /// Other devices' reminders cancelled here, to be told on the next carry
+    /// (`onethread::cancel_elsewhere`).
+    pub(crate) reminders_cancelled_elsewhere: Vec<String>,
     /// Everything Atlas knows, merged rather than accumulated.
     pub known: Vec<crate::consolidate::Claim>,
     /// A line for each thing let go to make room, so "I knew something
@@ -1831,6 +1841,9 @@ impl<'a> Daemon<'a> {
             signals: Vec::new(),
             run: crate::channel::Run::default(),
             facts: crate::facts::Book::load(&store_for_load),
+            arrived_by_sync: Default::default(),
+            synclog_unsaved: false,
+            reminders_cancelled_elsewhere: Vec::new(),
             known,
             stones: store_for_load.load("known_stones"),
             vocab: store_for_load.load("vocabulary"),
@@ -3061,8 +3074,7 @@ fn carry_out_unsubscribes(
     account: &crate::mail::Account,
     password: &str,
 ) -> (usize, Vec<String>) {
-    let provider = crate::mail::Provider::from_address(&account.address);
-    let smtp_host = provider.smtp_host();
+    let smtp = crate::mail::smtp_for(&account.address, &account.imap_host);
     let mut done = 0;
     let mut failures = Vec::new();
     for (name, how) in &cleanup.unsubscribe {
@@ -3081,9 +3093,9 @@ fn carry_out_unsubscribes(
                     let text = crate::smtp::message_text_in(&account.address, to, "unsubscribe", "", crate::store::now(), &Default::default());
                     crate::himalaya::send(&program, &name, &text)
                 }),
-                None => match smtp_host {
-                Some(h) => send_unsubscribe_email(
-                    provider.smtp_port(),
+                None => match &smtp {
+                Some((h, port)) => send_unsubscribe_email(
+                    *port,
                     h,
                     &account.address,
                     password,
@@ -3211,6 +3223,7 @@ fn send_unsubscribe_email(
 fn send_reply_routed(
     route: Option<&(String, String)>,
     pending: &crate::outbox::PendingReply,
+    imap_host: &str,
     from_address: &str,
     from_password: &str,
     oauth_client_id: Option<&str>,
@@ -3222,23 +3235,22 @@ fn send_reply_routed(
             let text = crate::smtp::message_text_in(from_address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
             crate::himalaya::send(program, name, &text)
         }
-        None => send_reply(pending, from_address, from_password, oauth_client_id),
+        None => send_reply(pending, imap_host, from_address, from_password, oauth_client_id),
     }
 }
 
 fn send_reply(
     pending: &crate::outbox::PendingReply,
+    imap_host: &str,
     from_address: &str,
     from_password: &str,
     oauth_client_id: Option<&str>,
 ) -> std::result::Result<(), String> {
     // Before connecting: a refused send costs nothing and opens no socket.
     crate::smtp::may_send(from_address, crate::store::now().saturating_mul(1000))?;
-    let provider = crate::mail::Provider::from_address(from_address);
-    let host = provider
-        .smtp_host()
-        .ok_or_else(|| "no SMTP server known for this provider".to_string())?;
-    let mut session = crate::smtp::connect(host, provider.smtp_port())?;
+    let (host, port) = crate::mail::smtp_for(from_address, imap_host)
+        .ok_or_else(|| "no SMTP server known for this account".to_string())?;
+    let mut session = crate::smtp::connect(&host, port)?;
     session.ehlo("atlas")?;
     authenticate_smtp(&mut session, from_address, from_password, oauth_client_id)?;
     session.send_mail_in(from_address, &pending.to_address, &pending.subject, &pending.body, &pending.thread)?;
@@ -3600,7 +3612,7 @@ impl crate::brain::Llm for CountedLlm<'_> {
     fn complete(&self, system: &str, user: &str) -> crate::error::Result<String> {
         let started = std::time::Instant::now();
         let r = self.inner.complete(system, user);
-        if let Ok(mut c) = self.calls.lock() {
+        if let Ok(mut c) = self.calls.lock().or_else(crate::crash::unpoison) {
             c.push(SeatCall {
                 took_ms: started.elapsed().as_millis() as u64,
                 prompt_chars: system.len() + user.len(),

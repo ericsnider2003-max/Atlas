@@ -196,6 +196,45 @@ pub fn day_here(t: u64) -> i64 {
     day(t, offset_at(t))
 }
 
+/// `14:02` for any moment, on the clock in force then (5 Oct 2026, audit
+/// Q15: a time next week read with today's offset is an hour out once the
+/// clocks change in between).
+pub fn hhmm_here(t: u64) -> String {
+    hhmm(t, offset_at(t))
+}
+
+/// The real moment of the local midnight that starts the day `t` falls on,
+/// on your clock (`midnight_in`).
+pub fn midnight_here(t: u64) -> u64 {
+    midnight_in(t, &zone())
+}
+
+/// The real moment of the next local midnight after `t`'s: the end of its
+/// day, which is 23 or 25 hours after the start on the days the clocks change.
+pub fn next_midnight_here(t: u64) -> u64 {
+    let z = zone();
+    utc_of_wall_in(day(t, z.offset_at(t as i64)) + 1, 0, &z)
+}
+
+/// `secs` past local midnight on wall-clock day `day`, as a real moment, on
+/// your clock (`utc_of_wall_in`).
+pub fn utc_of_wall(day: i64, secs: i64) -> u64 {
+    utc_of_wall_in(day, secs, &zone())
+}
+
+/// The local midnight that starts `t`'s day in `z`, with the offset in force
+/// at that midnight -- which on the day the clocks change is not the one at
+/// `t`.
+pub fn midnight_in(t: u64, z: &crate::tz::Zone) -> u64 {
+    utc_of_wall_in(day(t, z.offset_at(t as i64)), 0, z)
+}
+
+/// "5 pm on the 12th" in `z` as a moment: `secs` past midnight on wall-clock
+/// day `day`, on the zone's rules for that day.
+pub fn utc_of_wall_in(day: i64, secs: i64, z: &crate::tz::Zone) -> u64 {
+    z.to_utc(day * 86_400 + secs).max(0) as u64
+}
+
 /// The real moment (UTC seconds) of the local midnight that starts the day
 /// `t` falls on.
 pub fn midnight(t: u64, offset: i64) -> u64 {

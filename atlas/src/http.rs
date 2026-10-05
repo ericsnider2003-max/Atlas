@@ -277,6 +277,19 @@ pub fn https_call(
     body: Option<(&str, &str)>,
     timeout: Duration,
 ) -> Result<(Response, Vec<(String, String)>)> {
+    https_call_bytes(method, host, path, headers, body.map(|(kind, text)| (kind, text.as_bytes())), timeout)
+}
+
+/// `https_call` with a body of any bytes: a picture uploaded as itself
+/// (Bluesky's `uploadBlob`), not as text.
+pub fn https_call_bytes(
+    method: &str,
+    host: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<(&str, &[u8])>,
+    timeout: Duration,
+) -> Result<(Response, Vec<(String, String)>)> {
     use std::net::ToSocketAddrs;
     let addr = format!("{host}:443")
         .to_socket_addrs()
@@ -301,11 +314,20 @@ pub fn https_call(
         }
         req.push_str(&format!("{k}: {v}\r\n"));
     }
-    match body {
-        Some((kind, text)) => req.push_str(&format!("Content-Type: {kind}\r\nContent-Length: {}\r\n\r\n{text}", text.len())),
-        None => req.push_str("\r\n"),
+    if let Some((kind, _)) = body {
+        if kind.contains(['\r', '\n']) {
+            return Err(AtlasError::Platform("a header with a line break in it".into()));
+        }
     }
-    s.write_all(req.as_bytes())?;
+    let mut wire = req.into_bytes();
+    match body {
+        Some((kind, bytes)) => {
+            wire.extend_from_slice(format!("Content-Type: {kind}\r\nContent-Length: {}\r\n\r\n", bytes.len()).as_bytes());
+            wire.extend_from_slice(bytes);
+        }
+        None => wire.extend_from_slice(b"\r\n"),
+    }
+    s.write_all(&wire)?;
     let raw = read_bounded(&mut s, MAX_RESPONSE)?;
     let head_end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap_or(raw.len());
     let head = String::from_utf8_lossy(&raw[..head_end]).into_owned();

@@ -37,69 +37,39 @@ impl Reply {
     }
 }
 
-/// The most either mail module will hold from a server before giving up.
-///
-/// 64 MiB: comfortably past a large message with attachments, and far short
-/// of "until the machine stops". See `Session::fill`.
-const MAX_BUFFER: usize = 64 * 1024 * 1024;
-
-/// How long a mail socket may be silent before Atlas gives up on it.
-///
-/// There were no timeouts at all. A server that completes the TCP and TLS
-/// handshakes and then stops talking hung `fill` for ever — and mail runs as
-/// a crew errand, so the effect was a permanently stuck errand and a leaked
-/// thread, once per mail check, accumulating for as long as Atlas ran.
-/// `http.rs` sets both timeouts and has since it was written; these two were
-/// never given the same.
-const QUIET_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+// The buffer cap and the quiet timeout are the IMAP module's: one copy of
+// each for both mail protocols (`imap::MAX_BUFFER`, `imap::QUIET_FOR`).
+use crate::imap::QUIET_FOR;
 
 impl<S: Read + Write> Session<S> {
     pub fn new(stream: S) -> Session<S> {
         Session { stream, inbuf: Vec::new() }
     }
 
-    /// One read into the buffer, with the buffer bounded.
+    /// The plaintext half of STARTTLS (RFC 3207): EHLO, check the server
+    /// offers it, ask, and hand back the stream ready for the TLS handshake.
     ///
-    /// ## The cap, and why it lives here
-    ///
-    /// `fill` is the only place either mail module takes bytes off the wire,
-    /// so it is the one place a bound can cover every reader at once —
-    /// `read_line`, `read_reply` and `read_exact_n` all loop on it and all
-    /// used to loop without limit:
-    ///
-    /// * `read_line` grew the buffer until it saw CRLF. A server that never
-    ///   sends one grows it for ever.
-    /// * `read_reply` pushed every line shorter than four bytes and carried
-    ///   on. A server streaming `"ok\r\n"` grows the line list for ever.
-    /// * `read_exact_n(n)` took `n` straight from the server's own `{N}`
-    ///   literal announcement, with no ceiling. A server announcing
-    ///   `{4294967295}` makes Atlas buffer until the OOM killer arrives —
-    ///   and the process it kills is the one holding the vault and the mail
-    ///   credentials.
-    ///
-    /// None of those needs a hostile server; a broken one does it too. The
-    /// cap is generous for the job — a large message with attachments is
-    /// megabytes, not tens — and it fails with a sentence rather than by
-    /// dying.
+    /// Anything the server sent after its 220 is refused rather than carried
+    /// into the encrypted session: bytes read before TLS but answered after it
+    /// are the STARTTLS command-injection hole (CVE-2011-0411 and kin).
+    pub fn starttls(mut self, client_name: &str) -> Result<S, String> {
+        let r = self.ehlo(client_name)?;
+        if !r.lines.iter().any(|l| l.to_ascii_uppercase().starts_with("STARTTLS")) {
+            return Err("the server doesn't offer STARTTLS, so nothing was sent over a plain connection".into());
+        }
+        let r = self.command("STARTTLS").map_err(|e| e.to_string())?;
+        if r.code != 220 {
+            return Err(format!("the server refused STARTTLS: {}", r.text()));
+        }
+        if !self.inbuf.is_empty() {
+            return Err("the server sent data before encryption started; refusing it".into());
+        }
+        Ok(self.stream)
+    }
+
+    /// One bounded read into the buffer (`imap::fill_bounded`, shared).
     fn fill(&mut self) -> io::Result<()> {
-        if self.inbuf.len() >= MAX_BUFFER {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "the server has sent {} bytes without finishing what it was \
-                     saying, past the {MAX_BUFFER} I will hold. Stopping rather \
-                     than filling memory.",
-                    self.inbuf.len()
-                ),
-            ));
-        }
-        let mut chunk = [0u8; 4096];
-        let n = self.stream.read(&mut chunk)?;
-        if n == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection"));
-        }
-        self.inbuf.extend_from_slice(&chunk[..n]);
-        Ok(())
+        crate::imap::fill_bounded(&mut self.stream, &mut self.inbuf)
     }
 
     fn read_line(&mut self) -> io::Result<String> {
@@ -347,9 +317,11 @@ fn escape_dot_stuffing(body: &str) -> String {
         .join("\r\n")
 }
 
-/// A live connection, over real TLS, on SMTP's implicit-TLS port. The one
-/// place this module touches an actual socket — see `imap::connect` for
-/// why this is deliberately the one untested function here.
+/// A live connection over real TLS: implicit TLS on 465, STARTTLS on 587
+/// (Outlook / Microsoft 365, iCloud). The one place this module touches an
+/// actual socket -- see `imap::connect` for why this is deliberately the one
+/// untested function here; the STARTTLS exchange itself is `Session::starttls`,
+/// which is tested. Callers EHLO again after this, as RFC 3207 requires.
 pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<std::net::TcpStream>>, String> {
     let tcp = std::net::TcpStream::connect((host, port))
         .map_err(|e| format!("couldn't reach {host}:{port}: {e}"))?;
@@ -360,13 +332,25 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<st
         .map_err(|e| format!("couldn't set a read timeout on {host}: {e}"))?;
     tcp.set_write_timeout(Some(QUIET_FOR))
         .map_err(|e| format!("couldn't set a write timeout on {host}: {e}"))?;
+    let tcp = if port == 587 {
+        let mut plain = Session::new(tcp);
+        let greeting = plain.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+        if !greeting.ok() {
+            return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+        }
+        plain.starttls("atlas").map_err(|e| format!("{host}: {e}"))?
+    } else {
+        tcp
+    };
     let connector = native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
     let tls =
         connector.connect(host, tcp).map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
     let mut session = Session::new(tls);
-    let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
-    if !greeting.ok() {
-        return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+    if port != 587 {
+        let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+        if !greeting.ok() {
+            return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+        }
     }
     Ok(session)
 }
@@ -378,11 +362,13 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<st
 pub fn may_send(account: &str, now_ms: u64) -> Result<(), String> {
     static LIMIT: std::sync::OnceLock<std::sync::Mutex<crate::ratelimit::Gcra>> = std::sync::OnceLock::new();
     let lim = LIMIT.get_or_init(|| std::sync::Mutex::new(crate::ratelimit::Gcra::new(30, 3_600_000, 5)));
-    match lim.lock() {
+    match lim.lock().or_else(crate::crash::unpoison) {
         Ok(mut g) => g.check(&account.to_lowercase(), now_ms).map_err(|wait| {
             format!("sending paused: more than 5 in a row from {account} — the next can go in {}s", wait.div_ceil(1000))
         }),
-        // A poisoned lock is a panic elsewhere; not sending is the safe side.
+        // Never taken: `unpoison` keeps the limiter (and its counts) after a
+        // panic elsewhere, so the limit still holds rather than sends
+        // stopping for good (audit Q16).
         Err(_) => Err("sending paused: the send limiter is unavailable".into()),
     }
 }
@@ -551,6 +537,22 @@ mod tests {
         assert!(sent.starts_with("AUTH XOAUTH2 "));
         assert!(sent.contains(&crate::msoauth::xoauth2_string("me@outlook.com", "sometoken")));
     }
+    #[test]
+    fn starttls_upgrades_only_when_offered_and_nothing_is_smuggled() {
+        let s = Session::new(Scripted::new("250-smtp.office365.com\r\n250-SIZE 157286400\r\n250 STARTTLS\r\n220 2.0.0 SMTP server ready\r\n"));
+        let stream = s.starttls("atlas").unwrap();
+        assert_eq!(String::from_utf8(stream.sent).unwrap(), "EHLO atlas\r\nSTARTTLS\r\n");
+
+        let s = Session::new(Scripted::new("250-mx\r\n250 AUTH LOGIN\r\n"));
+        assert!(s.starttls("atlas").err().unwrap_or_default().contains("doesn't offer STARTTLS"));
+
+        let s = Session::new(Scripted::new("250 STARTTLS\r\n454 TLS not available\r\n"));
+        assert!(s.starttls("atlas").err().unwrap_or_default().contains("refused STARTTLS"));
+
+        // A reply pipelined behind the 220 would be read as if it came over TLS.
+        let s = Session::new(Scripted::new("250 STARTTLS\r\n220 go ahead\r\n250 injected\r\n"));
+        assert!(s.starttls("atlas").err().unwrap_or_default().contains("before encryption"));
+    }
 }
 
 #[cfg(test)]
@@ -564,4 +566,5 @@ mod threading {
         let plain = super::message_text("me@y.com", "sam@x.com", "Hello", "Hi.", 1_790_000_000);
         assert!(!plain.contains("In-Reply-To"));
     }
+
 }

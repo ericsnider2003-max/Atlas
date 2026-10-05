@@ -16,7 +16,7 @@ use super::apis::{self, GoogleSignIn, Https, TikTokSignIn};
 use super::onepage;
 use super::snapshots::{Book, Platform, Record};
 use super::watchlist::{self, Seen, Target, Watch};
-use super::{SocialConfig, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH};
+use super::{SocialConfig, VAULT_BLUESKY, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH};
 use crate::daemon::Daemon;
 use serde::{Deserialize, Serialize};
 
@@ -81,7 +81,7 @@ fn has(low: &str, any: &[&str]) -> bool {
 }
 
 impl Daemon<'_> {
-    fn social_cfg(&self) -> SocialConfig {
+    pub(crate) fn social_cfg(&self) -> SocialConfig {
         self.workday_cfg().social
     }
 
@@ -856,6 +856,7 @@ impl Daemon<'_> {
                 ("Threads token".into(), kept(VAULT_THREADS)),
                 ("Facebook Page token".into(), kept(VAULT_FACEBOOK)),
                 ("TikTok sign-in".into(), kept(VAULT_TIKTOK)),
+                ("Bluesky app password (for posting)".into(), kept(VAULT_BLUESKY)),
             ],
             accounts: page::Accounts {
                 youtube_channel: cfg.youtube_channel.clone(),
@@ -879,6 +880,20 @@ impl Daemon<'_> {
         match field("what").as_str() {
             "import" => self.social_import(&field("path"), t),
             "watch" => self.social_watch_add(&format!("watch {}", field("target")), t),
+            "browser-signin" => {
+                let site = field("site");
+                let Some((name, domain)) = super::SIGN_IN_SITES.iter().find(|(_, d)| *d == site) else {
+                    return "That isn't one of the sites listed, so nothing was opened.".into();
+                };
+                let bcfg = self.tools_cfg().browser.clone();
+                let vars = self.tools_cfg().vars.clone();
+                match crate::browser::open_sign_in_window(&bcfg, &vars, &crate::webrun::login_url(domain)) {
+                    Ok(()) => format!(
+                        "{name} is open in Atlas's own browser window. Sign in there the way you normally do, codes included, then close the window. Atlas keeps that sign-in for reading your {name} pages."
+                    ),
+                    Err(e) => format!("Atlas's browser didn't open: {e}"),
+                }
+            }
             "unwatch" => {
                 let gone = self.social_watch().remove(&field("which"));
                 let _ = self.social_keep_watch();
@@ -901,6 +916,7 @@ impl Daemon<'_> {
                     "instagram" => (VAULT_INSTAGRAM, "Instagram token"),
                     "threads" => (VAULT_THREADS, "Threads token"),
                     "facebook" => (VAULT_FACEBOOK, "Facebook Page token"),
+                    "bluesky" => (VAULT_BLUESKY, "Bluesky app password"),
                     _ => return "That isn't a key I keep.".into(),
                 };
                 let secret = field("secret");
@@ -927,6 +943,14 @@ impl Daemon<'_> {
             }
             "google" => {
                 let (id, secret) = (field("id"), field("secret"));
+                // Atlas's own Google registration (`oauthlink`, published, so
+                // the sign-in doesn't lapse weekly) unless you gave your own.
+                if id.is_empty() && secret.is_empty() {
+                    return match crate::oauthlink::google_secret() {
+                        Some(sec) => self.social_google(crate::oauthlink::GOOGLE_CLIENT_ID, &sec, t),
+                        None => crate::oauthlink::NO_GOOGLE_SECRET.into(),
+                    };
+                }
                 if id.is_empty() || secret.is_empty() {
                     return "Both the client ID and its secret are needed (Google Cloud console, Credentials, a \"Desktop app\" client).".into();
                 }

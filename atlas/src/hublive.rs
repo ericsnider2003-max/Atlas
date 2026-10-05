@@ -127,6 +127,20 @@ impl Daemon<'_> {
                 self.carry_push_address(&token, env, crate::store::now());
                 Reply::ok(&serde_json::json!({ "kept": true }).to_string())
             }
+            Action::WebPushEndpoint(body) => {
+                // `{"endpoint": "https://…", "p256dh": "…", "auth": "…"}` from
+                // the Android app's UnifiedPush registration: carried to your
+                // other devices, so the laptop can reach this phone with Atlas
+                // closed (`webpush`).
+                let v: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                let get = |k: &str| v.get(k).and_then(|t| t.as_str()).unwrap_or("").trim().to_string();
+                let (endpoint, p256dh, auth) = (get("endpoint"), get("p256dh"), get("auth"));
+                if !crate::webpush::looks_like_an_address(&endpoint, &p256dh, &auth) {
+                    return Reply { status: 400, body: serde_json::json!({ "error": "That isn't a push address." }).to_string(), ..Reply::default() };
+                }
+                self.carry_web_push_address(&endpoint, &p256dh, &auth, crate::store::now());
+                Reply::ok(&serde_json::json!({ "kept": true }).to_string())
+            }
             Action::PhoneCalendar(body) => {
                 let now = crate::store::now();
                 Reply::ok(&self.phone_calendar(&body, now).to_string())
@@ -1018,7 +1032,6 @@ impl Daemon<'_> {
     /// What I did without being asked: the last day of Atlas's own work,
     /// newest first, each with the time on your clock.
     fn card_activity(&self, now: u64) -> String {
-        let off = crate::localclock::offset_secs();
         let since = now.saturating_sub(24 * 3600);
         let rows: Vec<(hub::Dot, String, String)> = self
             .journal
@@ -1027,7 +1040,7 @@ impl Daemon<'_> {
             .rev()
             .filter(|e| e.kind != crate::activity::Kind::Upkeep)
             .take(5)
-            .map(|e| (hub::Dot::Record, e.what.clone(), crate::localclock::hhmm(e.at, off)))
+            .map(|e| (hub::Dot::Record, e.what.clone(), crate::localclock::hhmm_here(e.at)))
             .collect();
         if rows.is_empty() {
             return hub::nothing("I haven't done anything on my own today.");
@@ -1267,7 +1280,7 @@ impl Daemon<'_> {
     /// What the code's server hands over when a phone replies, for a test
     /// that has no phone.
     pub fn phones_heard_for_test(&self, d: crate::phoneadd::Device) {
-        if let Ok(mut h) = self.phones_heard.lock() {
+        if let Ok(mut h) = self.phones_heard.lock().or_else(crate::crash::unpoison) {
             h.push(d);
         }
     }
@@ -1276,7 +1289,7 @@ impl Daemon<'_> {
     /// sends Atlas out. Called from the page and from the tick, so a phone
     /// added while nobody's looking still goes.
     pub(crate) fn take_heard_phones(&mut self, now: u64) -> Vec<String> {
-        let heard: Vec<crate::phoneadd::Device> = match self.phones_heard.lock() {
+        let heard: Vec<crate::phoneadd::Device> = match self.phones_heard.lock().or_else(crate::crash::unpoison) {
             Ok(mut h) => std::mem::take(&mut *h),
             Err(_) => return Vec::new(),
         };
@@ -1405,7 +1418,7 @@ impl Daemon<'_> {
                     let (t, b, s) = (token.clone(), base.clone(), serving.clone());
                     std::thread::spawn(move || {
                         crate::phoneadd::serve_enrol(listener, &t, &b, MINUTES, &s, &move |d| {
-                            if let Ok(mut h) = heard.lock() {
+                            if let Ok(mut h) = heard.lock().or_else(crate::crash::unpoison) {
                                 h.push(d);
                             }
                         })
@@ -2189,7 +2202,6 @@ impl Daemon<'_> {
     fn now_view(&self) -> hub::NowView {
         use crate::mind::Stage;
         let now = crate::store::now();
-        let off = crate::localclock::offset_secs();
         let paused = self.attention.is_paused();
         let background: Vec<String> = self.mind.background().iter().map(|w| sentence(&w.asked)).collect();
         let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
@@ -2246,7 +2258,7 @@ impl Daemon<'_> {
         };
         hub::NowView {
             title: sentence(&w.asked),
-            since: format!("Started {} · {}", crate::localclock::hhmm(w.started, off), w.stage.label()),
+            since: format!("Started {} · {}", crate::localclock::hhmm_here(w.started), w.stage.label()),
             steps,
             plain_from,
             spent: Some(if mins == 0 { "under a minute".into() } else { format!("{mins} min") }),
@@ -2532,11 +2544,11 @@ impl Daemon<'_> {
         let fields = hub::form_fields(q);
         let said = field_of(&fields, "said");
         let when = |t: u64| {
-            let today = crate::localclock::day(now, off);
-            if crate::localclock::day(t, off) == today {
-                crate::localclock::hhmm(t, off)
+            let today = crate::localclock::day_here(now);
+            if crate::localclock::day_here(t) == today {
+                crate::localclock::hhmm_here(t)
             } else {
-                let (_, m, d) = crate::hubpages::ymd(crate::localclock::day(t, off) as i64);
+                let (_, m, d) = crate::hubpages::ymd(crate::localclock::day_here(t) as i64);
                 format!("{} {d}", crate::hubpages::MONTHS[(m - 1) as usize])
             }
         };
@@ -2691,7 +2703,7 @@ impl Daemon<'_> {
                 let mut rows = Vec::new();
                 for b in &businesses {
                     for t in tasks.for_space(&crate::earned::Space::Business(b.clone())) {
-                        let due_day = t.due.map(|d| crate::localclock::day(d, off) as i64);
+                        let due_day = t.due.map(|d| crate::localclock::day_here(d) as i64);
                         rows.push(crate::hubpages::TaskRow {
                             id: t.id,
                             what: t.description.clone(),
@@ -3486,7 +3498,6 @@ impl Daemon<'_> {
 
     /// Each business on the roster, for its Overview.
     fn business_views(&self, now: u64) -> Vec<crate::hubpages::BusinessView> {
-        let off = crate::localclock::offset_secs();
         let roster = crate::roster::Roster::load(&self.store);
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
         let tasks = crate::shared_task::Tasks::load(&self.store);
@@ -3504,7 +3515,7 @@ impl Daemon<'_> {
                         let due = t
                             .due
                             .map(|d| {
-                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day(d, off) as i64);
+                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day_here(d) as i64);
                                 format!("{} {dd}", crate::hubpages::MONTHS[(m - 1) as usize])
                             })
                             .unwrap_or_else(|| "No date".into());
@@ -3625,7 +3636,7 @@ impl Daemon<'_> {
                     } else {
                         let due = field_of(f, "due")
                             .and_then(|d| crate::hubpages::days_of(&d))
-                            .map(|d| (d * 86_400 + 17 * 3600 - crate::localclock::offset_secs()).max(0) as u64);
+                            .map(|d| crate::localclock::utc_of_wall(d, 17 * 3600));
                         tasks.add(crate::earned::Space::Business(b.clone()), text.trim(), due, now);
                         format!("Added to {b}.")
                     }

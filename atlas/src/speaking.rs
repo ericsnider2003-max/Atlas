@@ -91,8 +91,8 @@ pub fn begin(data_dir: &Path, text: &str, wav: &[u8], now_ms: u64) -> std::io::R
     std::fs::create_dir_all(data_dir)?;
     // Written whole and renamed into place, so a reader never sees half.
     let tmp = data_dir.join("speaking.json.part");
-    std::fs::write(&tmp, serde_json::to_vec(&s).unwrap_or_default())?;
-    std::fs::rename(tmp, path(data_dir))
+    std::fs::write(&tmp, serde_json::to_vec(&s).map_err(std::io::Error::other)?)?;
+    crate::store::rename_patiently(&tmp, &path(data_dir))
 }
 
 /// The first sound of the turn being timed (Phase 0.2): set by the first
@@ -103,7 +103,7 @@ static FIRST_SOUND: std::sync::Mutex<(bool, Option<std::time::Instant>)> = std::
 
 /// Start watching for the turn's first sound.
 pub fn listen_for_first_sound() {
-    if let Ok(mut g) = FIRST_SOUND.lock() {
+    if let Ok(mut g) = FIRST_SOUND.lock().or_else(crate::crash::unpoison) {
         *g = (true, None);
     }
 }
@@ -112,7 +112,7 @@ pub fn listen_for_first_sound() {
 /// that moment is kept. Both voices call this through `begin`; a test or a
 /// voice with nothing to draw can call it directly.
 pub fn heard_now() {
-    if let Ok(mut g) = FIRST_SOUND.lock() {
+    if let Ok(mut g) = FIRST_SOUND.lock().or_else(crate::crash::unpoison) {
         if g.0 && g.1.is_none() {
             g.1 = Some(std::time::Instant::now());
         }
@@ -121,7 +121,7 @@ pub fn heard_now() {
 
 /// When the turn's first sound began, once; watching stops.
 pub fn take_first_sound() -> Option<std::time::Instant> {
-    FIRST_SOUND.lock().ok().and_then(|mut g| {
+    FIRST_SOUND.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| {
         let at = g.1.take();
         g.0 = false;
         at

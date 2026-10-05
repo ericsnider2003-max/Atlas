@@ -205,3 +205,44 @@ fn two_parts_that_each_need_an_ok_are_asked_one_at_a_time_and_both_can_be_approv
 }
 
 
+
+/// 5 Oct 2026 audit, Q2: once a step has read something someone else wrote
+/// (a mail), the model's next step that acts on the world is asked about first,
+/// even one that's normally done without asking. Text it read may be
+/// instructions in disguise.
+#[test]
+fn after_reading_mail_a_step_that_acts_is_asked_about_first() {
+    use atlas::brain::{reads_outside_text, safe_after_outside_text};
+    assert!(reads_outside_text(&Intent::Mail(String::new())));
+    assert!(!safe_after_outside_text(&Intent::OpenApp("notepad".into())));
+    assert!(safe_after_outside_text(&Intent::Mail(String::new())), "reading more mail stays allowed");
+    assert!(!safe_after_outside_text(&Intent::Message("Maya: hi".into())));
+
+    let (c, p) = (cfg(), plat());
+    let llm = Arc::new(Rules(
+        vec![
+            // Step 2: what the model does after the mail came back.
+            ("Tool mail", calls("open_app", "notepad")),
+            ("check my mail", calls("mail", "")),
+        ],
+        Mutex::new(vec![]),
+    ));
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("taint")), Proactive::new(ProactiveConfig::default()));
+    // "it" leans on what the first step found: one loop the model drives.
+    let first = d.turn("check my mail, then open the app it mentions", 1_790_740_000);
+    let mut said = vec![first.clone()];
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut t = 1_790_740_000;
+    while d.working_through_steps() && Instant::now() < until {
+        t += 1;
+        said.extend(d.tick(t));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let asked: Vec<String> = llm.1.lock().unwrap().iter().map(|r| r.messages.last().map(|m| m.content.clone()).unwrap_or_default()).collect();
+    if asked.iter().any(|a| a.contains("Tool mail")) {
+        assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "opening an app after reading mail went ahead unasked: {said:?}");
+        assert!(!done_kinds(&d).contains(&"open_app".to_string()), "{said:?}");
+    } else {
+        panic!("the loop never reached the step after the mail: {said:?} / {asked:?}");
+    }
+}

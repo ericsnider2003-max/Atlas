@@ -557,7 +557,7 @@ pub fn note_once(why: &str) -> Option<String> {
 
 /// Why Atlas last fell back, if it has, for the Sound page.
 pub fn last_note() -> Option<String> {
-    NOTED.lock().ok().and_then(|n| n.clone())
+    NOTED.lock().or_else(crate::crash::unpoison).ok().and_then(|n| n.clone())
 }
 
 // ---------------------------------------------------------------- one sentence ahead
@@ -806,7 +806,7 @@ pub fn prepare_stock(synth: Synth, made_for: String) {
                     }
                 }
             }
-            if let Ok(mut g) = STOCK.lock() {
+            if let Ok(mut g) = STOCK.lock().or_else(crate::crash::unpoison) {
                 *g = Some((made_for, made));
             }
         })
@@ -815,7 +815,7 @@ pub fn prepare_stock(synth: Synth, made_for: String) {
 
 /// A stock sentence already made with these settings, if it is one.
 pub fn stock(sentence: &str, made_for: &str) -> Option<Vec<u8>> {
-    let g = STOCK.lock().ok()?;
+    let g = STOCK.lock().or_else(crate::crash::unpoison).ok()?;
     let (with, made) = g.as_ref()?;
     (with == made_for).then(|| made.get(&stock_key(sentence)).cloned()).flatten()
 }

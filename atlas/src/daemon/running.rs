@@ -150,6 +150,16 @@ impl<'a> Daemon<'a> {
         note(&mut failed, "sync_seen", self.store.save("sync_seen", &self.seen_up_to));
         // What's been learned about which backend can read which app.
         note(&mut failed, "backends", self.backends.save(&self.store));
+        // And every other save into this store that failed since the last
+        // persist -- the ones made with `let _ = ...` all over the daemon
+        // (`store::take_failed_saves`). Its own records above are already
+        // counted, so they aren't listed twice.
+        for (name, e) in crate::store::take_failed_saves(self.store.root()) {
+            let name = crate::store::intern_record_name(&name);
+            if !failed.iter().any(|(w, _)| *w == name) {
+                failed.push((name, e));
+            }
+        }
 
         // Logged on the way in and the way out, so the log shows a span
         // rather than one line per tick for as long as the disk is unhappy.
@@ -423,10 +433,10 @@ impl<'a> Daemon<'a> {
             // The typing watcher: which windows Atlas is typing in itself
             // (it keeps out of those), and anything it has to say.
             if self.typing_thread.is_some() {
-                if let Ok(mut b) = self.typing_busy.lock() {
+                if let Ok(mut b) = self.typing_busy.lock().or_else(crate::crash::unpoison) {
                     *b = self.working_for_you.iter().map(|w| w.win.0).collect();
                 }
-                let said: Vec<String> = self.typing_said.lock().map(|mut s| std::mem::take(&mut *s)).unwrap_or_default();
+                let said: Vec<String> = self.typing_said.lock().or_else(crate::crash::unpoison).map(|mut s| std::mem::take(&mut *s)).unwrap_or_default();
                 for line in said {
                     self.say(mouth, &line);
                 }
@@ -854,11 +864,14 @@ impl<'a> Daemon<'a> {
     /// what was typed, for the next pass to take.
     fn nap_awake(&mut self, keyboard: &Keyboard, mouth: &dyn Mouth, ms: u64) -> Option<crate::input::Utterance> {
         let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
-        while std::time::Instant::now() < until {
+        loop {
+            // Read before looking (`doorbell`): news that lands between the
+            // look and the wait has already moved the count.
+            let seen = crate::doorbell::rung();
             if crate::goodbye::asked_to_stop() {
                 return None;
             }
-            if let Some(u) = keyboard.wait(10) {
+            if let Some(u) = keyboard.poll() {
                 return Some(u);
             }
             // The wake word heard mid-nap ends the nap: it waits for the
@@ -869,9 +882,15 @@ impl<'a> Daemon<'a> {
             if self.mic_heard.is_some() {
                 return None;
             }
-            self.answer_hub(mouth, 40);
+            self.answer_hub(mouth, 0);
+            let left = until.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            // Asleep until a typed line, the microphone, the hub or a stop
+            // rings, not awake 20 times a second to look (audit Q14).
+            crate::doorbell::wait_after(seen, left.as_millis() as u64);
         }
-        None
     }
 
     /// Stop, then start a new copy of Atlas in this one's place (an update

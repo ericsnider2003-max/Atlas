@@ -320,7 +320,7 @@ pub fn day_of(at: u64, cfg: &DailyConfig) -> u64 {
 /// UTC's. Returns the real moment of the local midnight that starts that day.
 pub fn day_of_with(at: u64, rolls_at_hour: u32) -> u64 {
     let shifted = at.saturating_sub(rolls_at_hour as u64 * 3600);
-    crate::localclock::midnight(shifted, crate::localclock::offset_secs())
+    crate::localclock::midnight_here(shifted)
 }
 
 /// Has the day turned since this was last looked at?

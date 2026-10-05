@@ -50,7 +50,8 @@ use crate::error::Result;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use crate::doorbell::{channel, Sender};
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -783,10 +784,10 @@ impl Shared {
         self.stop.load(Ordering::SeqCst)
             || self.paused.load(Ordering::SeqCst)
             || !self.watching.load(Ordering::SeqCst)
-            || !self.barge.lock().map(|b| b.enabled).unwrap_or(false)
+            || !self.barge.lock().or_else(crate::crash::unpoison).map(|b| b.enabled).unwrap_or(false)
     }
     fn note(&self, line: String) {
-        if let Ok(mut n) = self.notes.lock() {
+        if let Ok(mut n) = self.notes.lock().or_else(crate::crash::unpoison) {
             n.push(line);
         }
     }
@@ -839,7 +840,7 @@ impl MicThread {
     }
     /// Cutting in by voice, as the settings say now.
     pub fn set_barge(&self, cfg: &BargeInConfig) {
-        if let Ok(mut b) = self.shared.barge.lock() {
+        if let Ok(mut b) = self.shared.barge.lock().or_else(crate::crash::unpoison) {
             if *b != *cfg {
                 *b = cfg.clone();
             }
@@ -865,7 +866,7 @@ impl MicThread {
     }
     /// Lines worth a place in the log (which detector, why not Silero).
     pub fn take_notes(&self) -> Vec<String> {
-        self.shared.notes.lock().map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
+        self.shared.notes.lock().or_else(crate::crash::unpoison).map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
     }
     /// Stop the thread and wait for it — briefly. Every recording it starts
     /// is stopped by the same flag, so this takes a few tens of
@@ -893,7 +894,7 @@ impl MicThread {
     pub fn follow_up(&self, secs: u32) -> u64 {
         let id = self.shared.follow_seq.fetch_add(1, Ordering::SeqCst) + 1;
         self.shared.follow_cancel.store(false, Ordering::SeqCst);
-        if let Ok(mut f) = self.shared.follow.lock() {
+        if let Ok(mut f) = self.shared.follow.lock().or_else(crate::crash::unpoison) {
             *f = Some((id, secs));
         }
         id
@@ -901,14 +902,14 @@ impl MicThread {
     /// The talk key went down: record on this thread while `held` says so,
     /// and hand back `Heard::Talk`. The wake word gives way at once.
     pub fn talk(&self, held: Arc<dyn Fn() -> bool + Send + Sync>) {
-        if let Ok(mut t) = self.shared.talk.lock() {
+        if let Ok(mut t) = self.shared.talk.lock().or_else(crate::crash::unpoison) {
             *t = Some(held);
         }
         self.shared.busy.store(true, Ordering::SeqCst);
     }
     /// The loop has stopped waiting: stop the recording now.
     pub fn cancel_follow_up(&self) {
-        if let Ok(mut f) = self.shared.follow.lock() {
+        if let Ok(mut f) = self.shared.follow.lock().or_else(crate::crash::unpoison) {
             *f = None;
         }
         self.shared.follow_cancel.store(true, Ordering::SeqCst);
@@ -916,14 +917,14 @@ impl MicThread {
     /// Start from what an earlier run learned about the speakers and the
     /// microphone.
     pub fn seed(&self, l: Learned) {
-        if let Ok(mut s) = self.shared.seed.lock() {
+        if let Ok(mut s) = self.shared.seed.lock().or_else(crate::crash::unpoison) {
             *s = Some(l);
         }
     }
     /// What has been learned about them since the last look, if it has
     /// changed: for the loop to keep in Atlas's state.
     pub fn take_new_learned(&self) -> Option<Learned> {
-        self.shared.learned.lock().ok().and_then(|mut l| l.take())
+        self.shared.learned.lock().or_else(crate::crash::unpoison).ok().and_then(|mut l| l.take())
     }
     /// How many recordings have given sound since the thread started. Goes
     /// up while the microphone works; stays put while it doesn't.
@@ -951,7 +952,7 @@ impl MicLink {
     pub fn watch(&self, on: bool) {
         if on {
             self.0.cut_pending.store(false, Ordering::SeqCst);
-            if let Ok(mut w) = self.0.cut_words.lock() {
+            if let Ok(mut w) = self.0.cut_words.lock().or_else(crate::crash::unpoison) {
                 *w = None;
             }
         }
@@ -959,7 +960,7 @@ impl MicLink {
     }
     /// Is cutting in by voice on?
     pub fn barge_on(&self) -> bool {
-        self.0.barge.lock().map(|b| b.enabled).unwrap_or(false)
+        self.0.barge.lock().or_else(crate::crash::unpoison).map(|b| b.enabled).unwrap_or(false)
     }
     /// What you said over Atlas, if you did, without waiting: your voice
     /// heard and the words still being made out is `Waiting`; `Said("")`
@@ -969,7 +970,7 @@ impl MicLink {
         if !self.0.cut_pending.load(Ordering::SeqCst) {
             return CutIn::No;
         }
-        if let Some(w) = self.0.cut_words.lock().ok().and_then(|mut w| w.take()) {
+        if let Some(w) = self.0.cut_words.lock().or_else(crate::crash::unpoison).ok().and_then(|mut w| w.take()) {
             self.0.cut_pending.store(false, Ordering::SeqCst);
             return CutIn::Said(w);
         }
@@ -1006,7 +1007,7 @@ fn idle(ms: u64) {
 /// The detector, loaded the first time it's wanted and kept.
 fn detector<'a>(s: &Shared, work: &dyn MicWork, slot: &'a mut Option<Box<dyn VoiceDetector>>) -> &'a mut Box<dyn VoiceDetector> {
     slot.get_or_insert_with(|| {
-        let model = s.barge.lock().map(|b| b.model.clone()).unwrap_or_default();
+        let model = s.barge.lock().or_else(crate::crash::unpoison).map(|b| b.model.clone()).unwrap_or_default();
         let path = (!model.trim().is_empty()).then(|| work.models_dir().join(model.trim()));
         let (d, why) = detector_for(path.as_deref());
         match why {
@@ -1036,11 +1037,11 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             idle(30);
             continue;
         }
-        if let Some(l) = s.seed.lock().ok().and_then(|mut l| l.take()) {
+        if let Some(l) = s.seed.lock().or_else(crate::crash::unpoison).ok().and_then(|mut l| l.take()) {
             gate.seed(&l);
         }
         // The talk key first: you're holding it now.
-        if let Some(held) = s.talk.lock().ok().and_then(|mut t| t.take()) {
+        if let Some(held) = s.talk.lock().or_else(crate::crash::unpoison).ok().and_then(|mut t| t.take()) {
             let started = Instant::now();
             let stop_s = s.clone();
             let still = move || held() && !stop_s.stop.load(Ordering::SeqCst);
@@ -1058,7 +1059,7 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             continue;
         }
         // The open floor after a reply comes first: the loop is waiting on it.
-        if let Some((id, secs)) = s.follow.lock().ok().and_then(|mut f| f.take()) {
+        if let Some((id, secs)) = s.follow.lock().or_else(crate::crash::unpoison).ok().and_then(|mut f| f.take()) {
             let stop_s = s.clone();
             let stop = move || stop_s.follow_should_stop();
             s.recording.store(true, Ordering::SeqCst);
@@ -1072,7 +1073,7 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             }
             continue;
         }
-        let barge = s.barge.lock().map(|b| b.enabled).unwrap_or(false);
+        let barge = s.barge.lock().or_else(crate::crash::unpoison).map(|b| b.enabled).unwrap_or(false);
         // The room, measured while nothing is going on -- once at the start,
         // and again now and then while the wake word has the microphone
         // anyway -- so no reply spends its first moments measuring it.
@@ -1096,7 +1097,7 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
                 let before = gate.learned();
                 watch(&s, &mut *work, &mut **det, &mut gate);
                 if let Some(l) = gate.learned().filter(|l| Some(*l) != before) {
-                    if let Ok(mut k) = s.learned.lock() {
+                    if let Ok(mut k) = s.learned.lock().or_else(crate::crash::unpoison) {
                         *k = Some(l);
                     }
                 }
@@ -1313,7 +1314,7 @@ fn measure_room(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector,
 /// While Atlas speaks: read the microphone a window at a time until you
 /// speak over it (then take your words) or the reply ends.
 fn watch(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: &mut BargeGate) {
-    let cfg = s.barge.lock().map(|b| b.clone()).unwrap_or_default();
+    let cfg = s.barge.lock().or_else(crate::crash::unpoison).map(|b| b.clone()).unwrap_or_default();
     let Some(mut stream) = work.open_stream() else {
         s.note("cutting in by voice: the microphone can't be streamed here (no microphone named for it)".into());
         return;
@@ -1378,7 +1379,7 @@ fn watch(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: 
         }
     };
     s.recording.store(false, Ordering::SeqCst);
-    if let Ok(mut slot) = s.cut_words.lock() {
+    if let Ok(mut slot) = s.cut_words.lock().or_else(crate::crash::unpoison) {
         *slot = Some(words);
     }
 }

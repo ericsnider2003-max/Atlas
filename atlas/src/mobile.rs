@@ -53,14 +53,14 @@ static PHASE: Mutex<Phase> = Mutex::new(Phase::Stopped);
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn phase_now() -> Phase {
-    PHASE.lock().map(|p| p.clone()).unwrap_or(Phase::Stopped)
+    PHASE.lock().or_else(crate::crash::unpoison).map(|p| p.clone()).unwrap_or(Phase::Stopped)
 }
 
 fn set_phase(generation: u64, p: Phase) {
     if GENERATION.load(Ordering::SeqCst) != generation {
         return;
     }
-    if let Ok(mut now) = PHASE.lock() {
+    if let Ok(mut now) = PHASE.lock().or_else(crate::crash::unpoison) {
         *now = p;
     }
 }
@@ -94,7 +94,7 @@ pub enum Started {
 /// start is still on its way never starts a second Atlas.
 pub fn start_once(home: std::path::PathBuf, port: u16, wait: std::time::Duration) -> Started {
     let generation = {
-        let Ok(mut p) = PHASE.lock() else { return Started::Failed("Atlas's own state couldn't be read".into()) };
+        let Ok(mut p) = PHASE.lock().or_else(crate::crash::unpoison) else { return Started::Failed("Atlas's own state couldn't be read".into()) };
         match &*p {
             Phase::Running(url) if !stopping() => return Started::AlreadyRunning(url.clone()),
             Phase::Starting => return Started::Starting,
@@ -105,7 +105,7 @@ pub fn start_once(home: std::path::PathBuf, port: u16, wait: std::time::Duration
     };
     // A fresh flag for this Atlas: one being stopped keeps its own.
     let stop = Arc::new(AtomicBool::new(false));
-    if let Some(slot) = STOP_NOW.lock().ok().as_mut() {
+    if let Some(slot) = STOP_NOW.lock().or_else(crate::crash::unpoison).ok().as_mut() {
         **slot = Some(stop.clone());
     }
     std::thread::spawn(move || {
@@ -135,7 +135,7 @@ static STOP_NOW: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
 /// Ask the phone's Atlas to stop. It finishes the turn it's on.
 pub fn stop_now() {
-    if let Ok(s) = STOP_NOW.lock() {
+    if let Ok(s) = STOP_NOW.lock().or_else(crate::crash::unpoison) {
         if let Some(f) = s.as_ref() {
             f.store(true, Ordering::SeqCst);
         }
@@ -144,7 +144,7 @@ pub fn stop_now() {
 
 /// Has the Atlas started last been asked to stop (and not finished yet)?
 fn stopping() -> bool {
-    STOP_NOW.lock().ok().and_then(|s| s.as_ref().map(|f| f.load(Ordering::SeqCst))).unwrap_or(false)
+    STOP_NOW.lock().or_else(crate::crash::unpoison).ok().and_then(|s| s.as_ref().map(|f| f.load(Ordering::SeqCst))).unwrap_or(false)
 }
 /// Whether the phone is on wifi (or another network that isn't metered), as
 /// the app last said through `atlas_mobile_network`.

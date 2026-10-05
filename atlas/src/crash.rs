@@ -132,14 +132,14 @@ static DOING: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 // see, which is what that guard is counting. Narrowing it is the fix; raising
 // the ceiling would have been the mistake.
 fn doing(what: &str) {
-    if let Ok(mut g) = DOING.lock() {
+    if let Ok(mut g) = DOING.lock().or_else(crate::crash::unpoison) {
         g.clear();
         g.push_str(what);
     }
 }
 
 fn current_doing() -> String {
-    DOING.lock().map(|g| g.clone()).unwrap_or_default()
+    DOING.lock().or_else(crate::crash::unpoison).map(|g| g.clone()).unwrap_or_default()
 }
 
 /// Install the panic hook. Call once, at startup, before anything else.
@@ -210,6 +210,18 @@ pub fn take(store: &Store) -> Option<Note> {
     n
 }
 
+/// A lock whose holder panicked, taken anyway (5 Oct 2026 audit, Q16).
+///
+/// `lock()` fails once a thread panicked while holding it, and about 170
+/// places answered that with `if let Ok(..)` or `.ok()`: the work behind the
+/// lock was skipped, silently, for the rest of the run. The panic itself is
+/// already caught and said (`caught`, the panic hook); what it leaves behind
+/// is ordinary data, and carrying on with it beats a part of Atlas going
+/// quietly dead. Used as `m.lock().or_else(crate::crash::unpoison)`, which
+/// keeps each call site's shape and is never an `Err`.
+pub fn unpoison<G>(p: std::sync::PoisonError<G>) -> std::result::Result<G, std::sync::PoisonError<G>> {
+    Ok(p.into_inner())
+}
 /// Run something, and turn a panic inside it into an error.
 ///
 /// This is what stops one bad intent ending the session. `AssertUnwindSafe`

@@ -41,7 +41,7 @@ impl Phases {
         }
         let Ok(text) = serde_json::to_string(result) else { return false };
         let tmp = self.dir.join(format!("{phase}.json.part"));
-        std::fs::write(&tmp, text).is_ok() && std::fs::rename(&tmp, self.dir.join(format!("{phase}.json"))).is_ok()
+        std::fs::write(&tmp, text).is_ok() && crate::store::rename_patiently(&tmp, &self.dir.join(format!("{phase}.json"))).is_ok()
     }
 
     /// Which phases are written down, for "what's queued".

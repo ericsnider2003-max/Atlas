@@ -515,6 +515,16 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "posting_to_bluesky.rs"]
+mod posting_to_bluesky;
+#[path = "posting_with_media.rs"]
+mod posting_with_media;
+#[path = "clock_changes.rs"]
+mod clock_changes;
+#[path = "poisoned_locks.rs"]
+mod poisoned_locks;
+#[path = "idle_sleeps.rs"]
+mod idle_sleeps;
 #[path = "errand_pause.rs"]
 mod errand_pause;
 #[path = "personal_atlas_is_its_own.rs"]
@@ -967,6 +977,10 @@ mod apple_first_then_atlas;
 mod reminders_ring_with_the_app_closed;
 #[path = "reaching_the_iphone_with_atlas_closed.rs"]
 mod reaching_the_iphone_with_atlas_closed;
+#[path = "asking_the_laptop_from_the_phone.rs"]
+mod asking_the_laptop_from_the_phone;
+#[path = "reaching_android_with_atlas_closed.rs"]
+mod reaching_android_with_atlas_closed;
 #[path = "apple_weather_first.rs"]
 mod apple_weather_first;
 #[path = "friends_get_nothing_of_erics.rs"]

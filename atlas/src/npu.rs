@@ -251,7 +251,7 @@ fn fixed_copy(model: &Path, shapes: &[(String, Vec<i64>)]) -> Option<PathBuf> {
     std::fs::create_dir_all(cache_dir()).ok()?;
     let tmp = out.with_extension("part");
     std::fs::write(&tmp, fixed).ok()?;
-    std::fs::rename(&tmp, &out).ok()?;
+    crate::store::rename_patiently(&tmp, &out).ok()?;
     Some(out)
 }
 

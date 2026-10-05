@@ -184,8 +184,8 @@ fn the_guard_is_what_the_transcription_paths_actually_use() {
     let live = program.as_str();
     let uses = live.matches("retention::Recording::new(").count();
     assert!(
-        uses >= 3,
-        "only {uses} of the three audio paths (two recordings and the video studio's scratch sound) use the guard; the other is back to a \
+        uses >= 2,
+        "only {uses} of the two audio paths use the guard; the other is back to a \
          `remove_file` on the happy path, which leaks on every early return"
     );
     assert!(

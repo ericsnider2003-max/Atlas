@@ -360,7 +360,7 @@ pub fn compact(path: &Path, keep: usize) -> std::io::Result<usize> {
     let body: String = kept.iter().map(|c| format!("{}\n", to_line(c))).collect();
     let tmp = path.with_extension("jsonl.new");
     std::fs::write(&tmp, body)?;
-    std::fs::rename(&tmp, path)?;
+    crate::store::rename_patiently(&tmp, path)?;
     // The grades beside it go with the calls they're about: the grades file
     // is append-only too, and grades of calls no longer kept grade nothing
     // (28 Sep 2026: it only grew).

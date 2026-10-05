@@ -82,8 +82,8 @@ impl Runs {
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(state_dir)?;
         let tmp = state_dir.join(format!("{FILE}.part"));
-        std::fs::write(&tmp, serde_json::to_vec_pretty(self).unwrap_or_default())?;
-        std::fs::rename(tmp, Self::path(state_dir))
+        std::fs::write(&tmp, serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)?;
+        crate::store::rename_patiently(&tmp, &Self::path(state_dir))
     }
 
     /// A new run begins at `now`. The one before, if it never said goodbye,

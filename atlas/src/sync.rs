@@ -1134,14 +1134,7 @@ pub struct KeyHandoff {
 /// (`.writing`, which no reader's extension matches) and renamed into place,
 /// the name only ever holds a whole file.
 pub fn write_whole(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
-    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
-    name.push(".writing");
-    let tmp = path.with_file_name(name);
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        e.to_string()
-    })
+    crate::store::write_whole(path, bytes).map_err(|e| e.to_string())
 }
 
 pub const HANDOFF_VERSION: u32 = 1;

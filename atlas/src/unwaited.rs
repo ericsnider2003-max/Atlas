@@ -93,9 +93,9 @@ static LOOSE: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 /// Reaps before pushing, so a process that runs entirely inside a CLI
 /// invocation — where no tick ever comes — still does not accumulate.
 pub fn dont_wait(child: Child) {
-    let Ok(mut loose) = LOOSE.lock() else {
-        // Poisoned: a thread panicked holding it. Losing one exit status is
-        // not worth propagating a panic out of a notification.
+    let Ok(mut loose) = LOOSE.lock().or_else(crate::crash::unpoison) else {
+        // Never taken: a lock a panic poisoned is taken anyway (`unpoison`,
+        // audit Q16), so the child is still waited for.
         return;
     };
     collect(&mut loose);
@@ -107,7 +107,7 @@ pub fn dont_wait(child: Child) {
 /// Returns how many were collected, so the caller can log a number that
 /// ought to be small.
 pub fn reap() -> usize {
-    let Ok(mut loose) = LOOSE.lock() else {
+    let Ok(mut loose) = LOOSE.lock().or_else(crate::crash::unpoison) else {
         return 0;
     };
     collect(&mut loose)
@@ -120,7 +120,7 @@ pub fn reap() -> usize {
 /// person's own windows and Atlas does not close them — but it should say
 /// they are there, because it started them and nothing else will mention it.
 pub fn still_running() -> usize {
-    LOOSE.lock().map(|l| l.len()).unwrap_or(0)
+    LOOSE.lock().or_else(crate::crash::unpoison).map(|l| l.len()).unwrap_or(0)
 }
 
 /// `try_wait` on each, dropping the ones that have ended.

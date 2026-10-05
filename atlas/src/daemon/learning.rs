@@ -176,6 +176,7 @@ impl<'a> Daemon<'a> {
                     // request said better (2 Oct 2026, merge: "email Sam
                     // saying I'll be late" was learned as "Sam's email is").
                     && !asked_you_for_something(&p.reply)
+                    && !did_as_it_was_told(&p.reply, said)
             }
             _ => false,
         };
@@ -628,4 +629,20 @@ fn asked_you_for_something(reply: &str) -> bool {
 fn worked_badly(reply: &str) -> bool {
     let l = reply.to_lowercase();
     l.starts_with("error") || l.contains("couldn't") || l.contains("could not") || l.contains("failed") || l.contains("can't find") || l.contains("not found")
+}
+
+/// Whether `said` is what the reply before told them to say ("Tell me
+/// \"Sam's email is\" and the address"): answering Atlas's own question,
+/// not saying the missed thing another way. 2 Oct 2026: "email Sam saying
+/// I'll be late" was learned as meaning "Sam's email is ...", and every
+/// email after it was taken as a new address.
+fn did_as_it_was_told(reply: &str, said: &str) -> bool {
+    let said = said.trim().to_lowercase().replace('\u{2019}', "'");
+    reply
+        .replace(['\u{201c}', '\u{201d}'], "\"")
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(|q| q.trim().to_lowercase().replace('\u{2019}', "'"))
+        .any(|q| q.chars().count() >= 3 && said.starts_with(&q))
 }
