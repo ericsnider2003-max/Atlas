@@ -1638,9 +1638,29 @@ impl<'a> Daemon<'a> {
         // decides, up to the shared fix-round budget. Nothing here judges
         // whether it looks good; that's what opening the file is for.
         let rounds_budget = self.tools_cfg().build.max_fix_rounds;
+        // The check plays it too, when there's a browser: an SVG can read as
+        // moving and still sit still when played -- an `<animate>` the
+        // browser rejects (a spline with no keySplines, say). Self-test,
+        // 3-4 Oct 2026: "It renders and moves" beside a GIF whose frames
+        // were all one picture. Caught here, it goes back for a fix like any
+        // other finding, rather than being reported after the fact.
+        let player = {
+            let tc = self.tools_cfg();
+            crate::filmstrip::find_browser(tc.vars.get("browser").map(|s| s.as_str()))
+        };
+        let played_in = std::env::temp_dir().join(format!("atlas-anim-check-{}", std::process::id()));
         let outcome = crate::motion::draw_loop(&spec, llm.as_ref(), rounds_budget, |s| {
-            crate::motion::check(s, &spec)
+            let mut found = crate::motion::check(s, &spec);
+            if let (true, Some(browser)) = (crate::motion::blocking(&found).is_empty(), player.as_ref()) {
+                let mut plan = crate::filmstrip::Plan::for_svg(s, &spec, 4);
+                plan.seconds = plan.seconds.min(3.0);
+                if let Ok(frames) = crate::filmstrip::play_frames(s, &plan, browser, &played_in) {
+                    found.extend(crate::filmstrip::motion_findings(&frames));
+                }
+            }
+            found
         });
+        let _ = std::fs::remove_dir_all(&played_in);
         let (svg, findings, rounds, clean) = match outcome {
             crate::motion::Outcome::NoDraft(why) => {
                 return format!("I tried, but {why}. Ask me to try again.")

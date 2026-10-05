@@ -76,7 +76,18 @@ pub fn rescue(said: &str) -> Option<String> {
     if w.is_empty() {
         return None;
     }
-    let found: Vec<String> = [wit(&w), desktop(&w), screen(&w), self_check(&w), setup_left(&w), microphone(&w)]
+    let found: Vec<String> = [
+        wit(&w),
+        desktop(&w),
+        screen(&w),
+        self_check(&w),
+        setup_left(&w),
+        microphone(&w),
+        one_ask(&w).then(|| machine(&w)).flatten(),
+        one_ask(&w).then(|| find_a_file(&w)).flatten(),
+        one_ask(&w).then(|| new_mail(&w)).flatten(),
+        one_ask(&w).then(|| how_a_post_did(&w)).flatten(),
+    ]
         .into_iter()
         .flatten()
         .collect();
@@ -150,6 +161,85 @@ fn setup_left(w: &[String]) -> Option<String> {
     // "Set up a meeting", "set up my printer": something else being set up.
     let other = has_any(w, &["meeting", "call", "printer", "reminder", "account", "email", "phone", "appointment"]);
     (set_up && left && !other).then(|| "what's left to set up".into())
+}
+
+/// One thing asked, not several: "find the tax pdf and read me what it says"
+/// is steps, worked through one by one (`taskloop`), not a file search.
+fn one_ask(w: &[String]) -> bool {
+    !has_any(w, &["and", "then"])
+}
+
+/// "My laptop is running slow, what's eating the memory", "how much space
+/// have I got left on this thing". The self-test's everyday sentences (4 Oct
+/// 2026): each went to the model to be routed, ten to sixteen seconds on the
+/// laptop, for a reading the rules can name.
+fn machine(w: &[String]) -> Option<String> {
+    let slow = has_phrase(w, "running slow") || has_phrase(w, "so slow") || has_phrase(w, "really slow") || has_phrase(w, "is slow");
+    let memory = has_any(w, &["memory", "ram"]) && has_any(w, &["eating", "using", "hogging", "taking", "full"]);
+    let space = ["how much space", "how much storage", "how much disk", "space left", "storage left", "space have i", "space do i", "free space", "disk space", "how full is"]
+        .iter()
+        .any(|p| has_phrase(w, p));
+    let about_the_machine = has_any(w, &["laptop", "computer", "pc", "machine", "thing", "disk", "drive", "memory", "ram", "space", "storage", "this"]);
+    // "Speed it up" / "close what isn't needed" is the tune-up (`pc_tune`);
+    // a slow app or website is about that app.
+    let acting = has_any(w, &["close", "kill", "speed", "fix", "optimize", "optimise", "clean", "clear", "free"]) && !space;
+    let elsewhere = has_any(w, &["website", "site", "internet", "wifi", "connection", "game", "video", "email"]);
+    ((slow || memory || space) && about_the_machine && !acting && !elsewhere).then(|| "how's the machine".into())
+}
+
+/// Kinds of file a person names when looking for one.
+const FILE_KINDS: &[&str] = &[
+    "pdf", "pdfs", "file", "files", "document", "documents", "doc", "docx", "spreadsheet", "spreadsheets", "xlsx", "csv",
+    "photo", "photos", "picture", "pictures", "presentation", "slides", "receipt", "receipts", "invoice", "invoices",
+    "contract", "lease", "statement", "screenshot", "screenshots", "folder",
+];
+
+/// "Find the tax pdf from last year", "where's that invoice from March",
+/// "locate my lease": a file, said without "find the file".
+fn find_a_file(w: &[String]) -> Option<String> {
+    let start = match w.first().map(|s| s.as_str()) {
+        Some("find") | Some("locate") => 1,
+        Some("wheres") => 1,
+        Some("where") if w.get(1).is_some_and(|x| x == "is" || x == "are") => 2,
+        _ => return None,
+    };
+    if !w.iter().any(|x| FILE_KINDS.contains(&x.as_str())) {
+        return None;
+    }
+    // "Find me a flight", "find out", "find a gig": not a file.
+    if has_any(w, &["out", "flight", "flights", "gig", "gigs", "job", "jobs", "restaurant", "hotel", "song"]) {
+        return None;
+    }
+    let what: Vec<&str> = w[start..]
+        .iter()
+        .map(|s| s.as_str())
+        .skip_while(|x| ["the", "my", "that", "a", "me"].contains(x))
+        .collect();
+    (!what.is_empty()).then(|| format!("find the file {}", what.join(" ")))
+}
+
+/// "Anything new come in by email", "any mail today", "did I get an email".
+fn new_mail(w: &[String]) -> Option<String> {
+    let mail = has_any(w, &["email", "emails", "mail", "inbox", "gmail", "outlook"]);
+    let asking = w.first().is_some_and(|x| ["any", "anything", "did", "is", "has", "have", "check", "whats"].contains(&x.as_str()));
+    let new = has_any(w, &["new", "received", "unread"]) || has_phrase(w, "come in") || (asking && has_any(w, &["any", "anything", "check", "inbox"]));
+    let writing = has_any(w, &["send", "write", "draft", "reply", "forward", "unsubscribe", "address", "account", "set", "add"]);
+    (mail && new && !writing).then(|| "check my email".into())
+}
+
+/// "How did my last YouTube video do", "how's my latest TikTok doing".
+fn how_a_post_did(w: &[String]) -> Option<String> {
+    let last = has_any(w, &["last", "latest", "newest", "recent"]);
+    let post = has_any(w, &["video", "post", "reel", "short", "tiktok", "upload"]);
+    let how = has(w, "how") || has_any(w, &["views", "performing", "perform", "stats", "numbers"]);
+    if !(last && post && how) {
+        return None;
+    }
+    let on = ["youtube", "tiktok", "instagram", "linkedin", "bluesky"].into_iter().find(|p| has(w, p));
+    Some(match on {
+        Some(p) => format!("how did my last video do on {p}"),
+        None => "how did my last video do".into(),
+    })
 }
 
 /// Words a microphone is known by, for "use my webcam mic".

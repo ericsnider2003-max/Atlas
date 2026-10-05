@@ -168,7 +168,13 @@ impl Daemon<'_> {
             return self.social_refresh(t, true);
         }
         let book = self.social_book().clone();
-        if has(&low, &["last video", "latest video", "last post", "latest post", "last reel", "last short", "last tiktok"]) {
+        // "my last YouTube video" names the platform between "last" and
+        // "video"; read without it so it still lands here (selftest, 3 Oct
+        // 2026: it fell through to the overview).
+        let bare = ["youtube ", "instagram ", "tiktok ", "linkedin ", "bluesky ", "x ", "twitter "]
+            .iter()
+            .fold(low.clone(), |s, p| s.replace(&format!("last {p}"), "last ").replace(&format!("latest {p}"), "latest "));
+        if has(&bare, &["last video", "latest video", "last post", "latest post", "last reel", "last short", "last tiktok"]) {
             return analysis::last_video(&book, only, t);
         }
         if has(&low, &["time", "when should i post", "when to post", "what day"]) {
