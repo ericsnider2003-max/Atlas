@@ -350,7 +350,7 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
 /// Commands whose answer is written by the model, by design: held to the
 /// model's fifteen seconds, not the three a rule-answered command gets.
 const WRITES_WITH_THE_MODEL: &[&str] =
-    &["explain_code", "draft_post", "translate", "research", "brief_on", "meeting_prep", "read_document", "animate", "design_review"];
+    &["explain_code", "use_clipboard", "draft_post", "translate", "research", "brief_on", "meeting_prep", "read_document", "animate", "design_review"];
 
 /// What one reply says about the command, from its words, the time it took,
 /// where it was routed and where it should have gone.

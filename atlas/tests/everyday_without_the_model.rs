@@ -29,6 +29,7 @@ fn everyday_sentences_reach_their_command_without_the_model() {
         ("anything new come in by email", "mail"),
         ("any new mail today", "mail"),
         ("how did my last youtube video do", "social"),
+        ("go into focus", "set_mode"),
     ] {
         assert_eq!(reached(&p, s).as_deref(), Some(want), "{s}");
     }
@@ -43,6 +44,8 @@ fn a_shared_word_is_not_enough() {
         ("find out what time the game starts", "find_file"),
         ("the website is running slow", "machine_health"),
         ("there's not much space in the car", "machine_health"),
+        ("go into detail about the plan", "set_mode"),
+        ("start the meeting notes", "set_mode"),
     ] {
         assert_ne!(reached(&p, s).as_deref(), Some(not), "{s}");
     }
