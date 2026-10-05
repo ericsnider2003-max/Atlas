@@ -150,6 +150,16 @@ impl<'a> Daemon<'a> {
         note(&mut failed, "sync_seen", self.store.save("sync_seen", &self.seen_up_to));
         // What's been learned about which backend can read which app.
         note(&mut failed, "backends", self.backends.save(&self.store));
+        // And every other save into this store that failed since the last
+        // persist -- the ones made with `let _ = ...` all over the daemon
+        // (`store::take_failed_saves`). Its own records above are already
+        // counted, so they aren't listed twice.
+        for (name, e) in crate::store::take_failed_saves(self.store.root()) {
+            let name = crate::store::intern_record_name(&name);
+            if !failed.iter().any(|(w, _)| *w == name) {
+                failed.push((name, e));
+            }
+        }
 
         // Logged on the way in and the way out, so the log shows a span
         // rather than one line per tick for as long as the disk is unhappy.

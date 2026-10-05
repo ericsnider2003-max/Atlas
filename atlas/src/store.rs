@@ -55,6 +55,56 @@ fn remember_written(path: &Path, hash: u64) {
     }
 }
 
+/// Saves that failed, whoever made them and whether or not they looked at the
+/// result (5 Oct 2026).
+///
+/// `persist` checks the sixteen records it saves itself, but 287 other call
+/// sites save with `let _ = store.save(..)` -- the vault, connected accounts,
+/// calendar links, the outbox of feedback -- and a full disk or a locked file
+/// made every one of them fail without a word. Recording the failure here,
+/// inside the one function they all go through, means no call site can make
+/// it silent: `Daemon::persist` drains what belongs to its own store into
+/// `persist_failures`, and the person is told once, as for its own records.
+/// Bounded, so a disk that stays full can't grow it without limit.
+static FAILED_SAVES: std::sync::Mutex<Vec<(PathBuf, String, String)>> = std::sync::Mutex::new(Vec::new());
+const MOST_FAILED_SAVES_KEPT: usize = 64;
+
+fn record_failed_save(root: &Path, name: &str, error: &str) {
+    if let Ok(mut v) = FAILED_SAVES.lock() {
+        v.retain(|(r, n, _)| !(r == root && n == name));
+        if v.len() >= MOST_FAILED_SAVES_KEPT {
+            v.remove(0);
+        }
+        v.push((root.to_path_buf(), name.to_string(), error.to_string()));
+    }
+}
+
+/// The saves into `root` that failed since the last time this was asked, as
+/// (record name, error). Taken, so each is reported once.
+pub fn take_failed_saves(root: &Path) -> Vec<(String, String)> {
+    let Ok(mut v) = FAILED_SAVES.lock() else { return Vec::new() };
+    let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *v).into_iter().partition(|(r, _, _)| r == root);
+    *v = rest;
+    mine.into_iter().map(|(_, n, e)| (n, e)).collect()
+}
+
+/// A record name as a `&'static str`, for `Daemon::persist_failures`. The
+/// names are a fixed, small set (one per kind of record), so each is leaked
+/// once and reused.
+pub fn intern_record_name(name: &str) -> &'static str {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let Ok(mut v) = NAMES.lock() else { return "a record" };
+    if let Some(n) = v.iter().find(|n| **n == name) {
+        return n;
+    }
+    if v.len() >= 512 {
+        return "a record";
+    }
+    let n: &'static str = Box::leak(name.to_string().into_boxed_str());
+    v.push(n);
+    n
+}
+
 #[derive(Debug, Clone)]
 pub struct Store {
     root: PathBuf,
@@ -289,6 +339,14 @@ impl Store {
     }
 
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
+        let r = self.save_unrecorded(name, value);
+        if let Err(e) = &r {
+            record_failed_save(&self.root, name, &e.to_string());
+        }
+        r
+    }
+
+    fn save_unrecorded<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         let final_path = self.path(name);
         let env = Envelope { schema: SCHEMA, data: value };
         // Never `unwrap_or_default` here: a value that won't serialize wrote
