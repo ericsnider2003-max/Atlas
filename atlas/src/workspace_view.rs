@@ -334,8 +334,8 @@ pub fn apply<'a>(items: &'a [Item], view: &View, now: u64) -> Vec<&'a Item> {
             None => true,
             Some(day) => {
                 // Your day, on your clock.
-                let start = crate::localclock::midnight(day, crate::localclock::offset_secs());
-                let end = start + 86_400;
+                let start = crate::localclock::midnight_here(day);
+                let end = crate::localclock::next_midnight_here(day);
                 i.at < end && i.closed_at.map(|c| c >= start).unwrap_or(true)
             }
         })
@@ -404,8 +404,8 @@ pub struct Day {
 }
 
 pub fn day_of(items: &[Item], day_secs: u64) -> Day {
-    let start = crate::localclock::midnight(day_secs, crate::localclock::offset_secs());
-    let end = start + 86_400;
+    let start = crate::localclock::midnight_here(day_secs);
+    let end = crate::localclock::next_midnight_here(day_secs);
     let mut thoughts: Vec<(String, Thought)> = Vec::new();
     for i in items {
         for t in &i.thinking {

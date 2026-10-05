@@ -1192,7 +1192,7 @@ impl<'a> Daemon<'a> {
 
             let mut outbox = crate::outbox::Outbox::load(&store);
             let targets = crate::outreach::OutreachTargets::load(&store);
-            let today_start = crate::localclock::midnight(created, crate::localclock::offset_secs());
+            let today_start = crate::localclock::midnight_here(created);
             let sent_today = outbox.cold_outreach_sent_since(today_start);
 
             let said = if !may_email_brands {

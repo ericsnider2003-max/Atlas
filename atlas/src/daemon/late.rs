@@ -1063,10 +1063,9 @@ impl<'a> Daemon<'a> {
         if at <= t {
             format!("Posting {what} now.")
         } else {
-            let off = crate::localclock::offset_secs();
             format!(
                 "Scheduled {what} for {} — I'll check it again just before it goes, and \"cancel the post\" stops it any time until then.",
-                crate::localclock::hhmm(at, off)
+                crate::localclock::hhmm_here(at)
             )
         }
     }

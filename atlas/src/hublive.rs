@@ -1032,7 +1032,6 @@ impl Daemon<'_> {
     /// What I did without being asked: the last day of Atlas's own work,
     /// newest first, each with the time on your clock.
     fn card_activity(&self, now: u64) -> String {
-        let off = crate::localclock::offset_secs();
         let since = now.saturating_sub(24 * 3600);
         let rows: Vec<(hub::Dot, String, String)> = self
             .journal
@@ -1041,7 +1040,7 @@ impl Daemon<'_> {
             .rev()
             .filter(|e| e.kind != crate::activity::Kind::Upkeep)
             .take(5)
-            .map(|e| (hub::Dot::Record, e.what.clone(), crate::localclock::hhmm(e.at, off)))
+            .map(|e| (hub::Dot::Record, e.what.clone(), crate::localclock::hhmm_here(e.at)))
             .collect();
         if rows.is_empty() {
             return hub::nothing("I haven't done anything on my own today.");
@@ -2203,7 +2202,6 @@ impl Daemon<'_> {
     fn now_view(&self) -> hub::NowView {
         use crate::mind::Stage;
         let now = crate::store::now();
-        let off = crate::localclock::offset_secs();
         let paused = self.attention.is_paused();
         let background: Vec<String> = self.mind.background().iter().map(|w| sentence(&w.asked)).collect();
         let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
@@ -2260,7 +2258,7 @@ impl Daemon<'_> {
         };
         hub::NowView {
             title: sentence(&w.asked),
-            since: format!("Started {} · {}", crate::localclock::hhmm(w.started, off), w.stage.label()),
+            since: format!("Started {} · {}", crate::localclock::hhmm_here(w.started), w.stage.label()),
             steps,
             plain_from,
             spent: Some(if mins == 0 { "under a minute".into() } else { format!("{mins} min") }),
@@ -2546,11 +2544,11 @@ impl Daemon<'_> {
         let fields = hub::form_fields(q);
         let said = field_of(&fields, "said");
         let when = |t: u64| {
-            let today = crate::localclock::day(now, off);
-            if crate::localclock::day(t, off) == today {
-                crate::localclock::hhmm(t, off)
+            let today = crate::localclock::day_here(now);
+            if crate::localclock::day_here(t) == today {
+                crate::localclock::hhmm_here(t)
             } else {
-                let (_, m, d) = crate::hubpages::ymd(crate::localclock::day(t, off) as i64);
+                let (_, m, d) = crate::hubpages::ymd(crate::localclock::day_here(t) as i64);
                 format!("{} {d}", crate::hubpages::MONTHS[(m - 1) as usize])
             }
         };
@@ -2705,7 +2703,7 @@ impl Daemon<'_> {
                 let mut rows = Vec::new();
                 for b in &businesses {
                     for t in tasks.for_space(&crate::earned::Space::Business(b.clone())) {
-                        let due_day = t.due.map(|d| crate::localclock::day(d, off) as i64);
+                        let due_day = t.due.map(|d| crate::localclock::day_here(d) as i64);
                         rows.push(crate::hubpages::TaskRow {
                             id: t.id,
                             what: t.description.clone(),
@@ -3500,7 +3498,6 @@ impl Daemon<'_> {
 
     /// Each business on the roster, for its Overview.
     fn business_views(&self, now: u64) -> Vec<crate::hubpages::BusinessView> {
-        let off = crate::localclock::offset_secs();
         let roster = crate::roster::Roster::load(&self.store);
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
         let tasks = crate::shared_task::Tasks::load(&self.store);
@@ -3518,7 +3515,7 @@ impl Daemon<'_> {
                         let due = t
                             .due
                             .map(|d| {
-                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day(d, off) as i64);
+                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day_here(d) as i64);
                                 format!("{} {dd}", crate::hubpages::MONTHS[(m - 1) as usize])
                             })
                             .unwrap_or_else(|| "No date".into());
@@ -3639,7 +3636,7 @@ impl Daemon<'_> {
                     } else {
                         let due = field_of(f, "due")
                             .and_then(|d| crate::hubpages::days_of(&d))
-                            .map(|d| (d * 86_400 + 17 * 3600 - crate::localclock::offset_secs()).max(0) as u64);
+                            .map(|d| crate::localclock::utc_of_wall(d, 17 * 3600));
                         tasks.add(crate::earned::Space::Business(b.clone()), text.trim(), due, now);
                         format!("Added to {b}.")
                     }

@@ -306,7 +306,7 @@ impl<'a> Daemon<'a> {
             let spans = self.worklog.between(monday, t);
             let mut per_day: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::new();
             for s in &spans {
-                *per_day.entry(crate::localclock::midnight(s.start, off)).or_default() += s.secs();
+                *per_day.entry(crate::localclock::midnight_here(s.start)).or_default() += s.secs();
             }
             let w = crate::worklog::summarise(&spans);
             crate::daily::Week {
