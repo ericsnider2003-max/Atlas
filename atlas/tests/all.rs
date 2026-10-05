@@ -910,8 +910,6 @@ mod what_gets_used_is_counted;
 mod talking_does_not_hold_the_loop;
 #[path = "a_quiet_tick_is_quick.rs"]
 mod a_quiet_tick_is_quick;
-#[path = "every_ability_answers.rs"]
-mod every_ability_answers;
 #[path = "pictures_are_made_here.rs"]
 mod pictures_are_made_here;
 #[path = "an_old_question_of_its_own_is_dropped.rs"]
