@@ -214,9 +214,10 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
             ) && d.store.load::<bool>(crate::phonemode::MODEL_ASKED_FOR)
             {
                 last_try = now;
-                crate::heard!(crate::phonemodel::start_download(models_dir.clone(), |path| {
+                // unheard-ok: the reply is a sentence about the download; its progress is reported as it runs
+                let _ = crate::phonemodel::start_download(models_dir.clone(), |path| {
                     crate::heard!(crate::phonemodel::attach(&path));
-                }));
+                });
             }
         }
     }
