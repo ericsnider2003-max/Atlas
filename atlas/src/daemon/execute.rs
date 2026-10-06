@@ -1338,6 +1338,9 @@ impl<'a> Daemon<'a> {
         // per key, a second or two in all: read now, beside the two
         // seconds the CPU is sampled for below, instead of after them.
         let startup = std::thread::spawn(|| crate::tune::startup_entries_kept(false));
+        // tasklist the same way (6 Oct 2026): run after the CPU sample it
+        // made the answer 3.2 s on a busy laptop; beside it, it costs nothing.
+        let by_app = std::thread::spawn(crate::tune::memory_by_app);
         let r = self.readings();
         let f = assess_machine(&r, &self.health_cfg());
         let watched = self.watcher.summary();
@@ -1363,7 +1366,9 @@ impl<'a> Daemon<'a> {
             let a = app.to_lowercase();
             used.iter().any(|u| u.contains(&a) || a.contains(u.as_str()))
         };
-        let memory_by_app: Vec<(String, u64, bool)> = crate::tune::memory_by_app()
+        let memory_by_app: Vec<(String, u64, bool)> = by_app
+            .join()
+            .unwrap_or_default()
             .into_iter()
             .take(15)
             .filter(|(app, _)| !app.to_lowercase().starts_with("atlas") && !app.to_lowercase().starts_with("llama-server"))

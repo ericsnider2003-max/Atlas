@@ -2934,7 +2934,7 @@ impl SignalListener {
                 // don't, and there a port held on IPv4 by something else
                 // left the door "open" on IPv6 only, with IPv4 visitors
                 // reaching the other program.
-                Err(e) if listeners.is_empty() || listeners.first().and_then(|l| l.only_v6().ok()).unwrap_or(true) => {
+                Err(e) if listeners.is_empty() || listeners.first().map(v6_only).unwrap_or(true) => {
                     return Err(AtlasError::Platform(format!("could not open the signal door on {v4_port}: {e}")))
                 }
                 Err(_) => {}
@@ -3248,4 +3248,13 @@ fn inner_request(inner: &crate::wire::Inner) -> Request {
         token_from_url: false,
         body: inner.body.clone(),
     }
+}
+
+/// Whether a bound IPv6 listener refuses IPv4 too (Windows' default; Linux
+/// is usually dual-stack). Asked of the socket rather than assumed.
+/// `only_v6` is deprecated because *setting* it after bind does nothing;
+/// reading it back is exactly right.
+#[allow(deprecated)]
+fn v6_only(l: &std::net::TcpListener) -> bool {
+    l.only_v6().unwrap_or(true)
 }
