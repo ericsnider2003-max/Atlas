@@ -116,8 +116,13 @@ fn fetch(
     }
     let part = models_dir.join(format!("{}.part", m.file));
     let have = std::fs::metadata(&part).map(|md| md.len()).unwrap_or(0).min(m.bytes);
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&part).map_err(|e| e.to_string())?;
+    // Write access, not append: on Windows a file opened to append can't be
+    // cut to length (`set_len` was "Access is denied", 6 Oct 2026, so a
+    // resumed download there failed before it began). Cut, then write on
+    // from the end.
+    let mut f = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&part).map_err(|e| e.to_string())?;
     f.set_len(have).map_err(|e| e.to_string())?;
+    std::io::Seek::seek(&mut f, std::io::SeekFrom::End(0)).map_err(|e| e.to_string())?;
     let mut so_far = have;
     progress(so_far, m.bytes);
     if have < m.bytes {
