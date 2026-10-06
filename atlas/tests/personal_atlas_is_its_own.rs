@@ -29,6 +29,11 @@ fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         if matches!(name, "target" | "build" | ".gradle" | ".cxx" | "rustlib" | "node_modules" | ".git") {
             continue;
         }
+        // The checkout's scratch (tests' and builds' temp files, ignored by
+        // git; ledger Q21) is not the tree either.
+        if name == "scratch" && p.join(".gitkeep").is_file() {
+            continue;
+        }
         if p.is_dir() {
             walk(&p, out);
         } else {

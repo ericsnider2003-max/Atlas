@@ -206,22 +206,25 @@ pub const TEST_SCRATCH_KEPT_FOR: std::time::Duration = std::time::Duration::from
 ///
 /// Hundreds of tests make a folder under the temp dir and few remove it; 18
 /// runs had left 11,452 folders, 12 GB. `.cargo/config.toml` points the
-/// tests' temp dir at `target/tmp`, and the first test in each run to reach
-/// `data_home` clears entries there older than `TEST_SCRATCH_KEPT_FOR`.
+/// temp dir of everything cargo runs at `atlas/scratch`, and the first test
+/// in each run to reach `data_home` clears entries there older than
+/// `TEST_SCRATCH_KEPT_FOR` (its `.gitkeep` stays).
 ///
-/// Only ever inside a folder named `tmp` under one named `target` -- a
-/// build's own scratch. Called anywhere else (the system temp dir, when the
-/// tests were started without cargo's config) it does nothing, so it can
-/// never reach a file of yours or a running Atlas's. Answers how many went.
+/// Only ever inside a folder named `scratch` that has a `.gitkeep` -- the
+/// checkout's own. Called anywhere else (the system temp dir, when the tests
+/// were started without cargo's config) it does nothing, so it can never
+/// reach a file of yours or a running Atlas's. Answers how many went.
 pub fn sweep_old_test_scratch(dir: &Path, now: std::time::SystemTime) -> usize {
-    let is_build_scratch = dir.file_name().is_some_and(|n| n == "tmp")
-        && dir.parent().and_then(|p| p.file_name()).is_some_and(|n| n == "target");
+    let is_build_scratch = dir.file_name().is_some_and(|n| n == "scratch") && dir.join(".gitkeep").is_file();
     if !is_build_scratch {
         return 0;
     }
     let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
     let mut gone = 0;
     for e in rd.flatten() {
+        if e.file_name() == ".gitkeep" {
+            continue;
+        }
         let old = e
             .metadata()
             .and_then(|m| m.modified())
