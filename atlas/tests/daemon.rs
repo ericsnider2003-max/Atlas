@@ -816,11 +816,14 @@ fn a_test_daemon_never_starts_a_mutation_sweep_of_the_checkout() {
     // round -- hours of builds, gigabytes in the temp folder, and the crew's
     // slots gone from the work eight other tests were waiting on.
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("no-sweep")), Proactive::new(ProactiveConfig::default()));
+    let dir = tmp("no-sweep");
+    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
     let t = atlas::store::now() + 3 * 24 * 3600;
     for i in 0..5 {
         d.tick(t + i * 1000);
     }
-    let names: Vec<String> = d.crew.errands().into_iter().map(|e| e.name).collect();
-    assert!(!names.iter().any(|n| n.contains("mutation")), "a test daemon started {names:?}");
+    // A sweep records the day it ran before it hands the work to the crew;
+    // none was even begun.
+    let last: u64 = Store::new(&dir).load("mutation_sweep_at");
+    assert_eq!(last, 0, "a test daemon began a mutation sweep");
 }

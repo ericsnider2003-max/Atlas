@@ -248,7 +248,9 @@ fn every_derived_folder_hangs_off_the_one_root() {
     // — and it is right to: `data_sub` and `models_dir` reached by way of
     // `logs_dir` are two functions with one test between them, which is how a
     // wrong base goes unnoticed in whichever of the two nobody exercised.
-    let r = atlas::roots::install_root();
+    // `data_home`: the install root, or this test process's own folder
+    // shaped like one (Q18) -- the shape is what's checked.
+    let r = atlas::roots::data_home();
     assert_eq!(atlas::roots::data_dir(), r.join("data"));
     assert_eq!(atlas::roots::state_dir(), r.join("data").join("state"));
     assert_eq!(atlas::roots::logs_dir(), r.join("data").join("logs"));
@@ -256,7 +258,8 @@ fn every_derived_folder_hangs_off_the_one_root() {
     assert_eq!(atlas::roots::backups_dir(), r.join("data").join("backups"));
     assert_eq!(atlas::roots::trash_dir(), r.join("data").join("trash"));
     assert_eq!(atlas::roots::tmp_dir(), r.join("data").join("tmp"));
-    assert_eq!(atlas::roots::models_dir(), r.join("models"));
+    // Models are read, never written by a test: always the real install's.
+    assert_eq!(atlas::roots::models_dir(), atlas::roots::install_root().join("models"));
     assert_eq!(atlas::roots::data_sub("finance"), r.join("data").join("finance"));
     // `models/` is a sibling of `data/`, not a child of it. The installer
     // downloads into `<install>/models`; a `data/models` would be 4GB of
