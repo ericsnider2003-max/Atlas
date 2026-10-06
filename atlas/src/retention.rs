@@ -185,6 +185,15 @@ pub fn classify_within(root: &Path, path: &Path) -> Class {
     if p == "calls" || p.starts_with("calls/") {
         return Class::NotOurs;
     }
+    // A self-fix's copy of the tree waits, built and proved, for you to say
+    // yes to landing it, and its build runs for many minutes. As scratch it
+    // had a ten-minute life: the sweep deleted copies mid-build and before
+    // they could land (fs::copy keeps a file's old modified time on Windows,
+    // so a fresh copy looked hours old). The self-fix keeps one copy at a
+    // time and clears the rest itself (`daemon/on_itself.rs`).
+    if p == "tmp/selffix" || p.starts_with("tmp/selffix/") {
+        return Class::NotOurs;
+    }
     classify_relative(&p)
 }
 
@@ -495,6 +504,12 @@ mod a_call_is_not_scratch {
         assert_eq!(classify_within(root, &root.join("calls").join("call-1791059092-you.wav")), Class::NotOurs);
         // A turn's own wav is still scratch.
         assert_eq!(classify_within(root, &root.join("tmp").join("turn.wav")), Class::Scratch);
+        // A self-fix's copy waits to land, and builds for many minutes: the
+        // self-fix keeps it, not the sweep (5 Oct 2026).
+        assert_eq!(classify_within(root, &root.join("tmp").join("selffix").join("self-fix-1").join("src").join("main.rs")), Class::NotOurs);
+        // And the build cache isn't in data/ at all, so the budget never
+        // counts it.
+        assert!(!crate::roots::build_cache().starts_with(crate::roots::data_dir()));
         let cfg = RetentionConfig::default();
         let item = Item { path: root.join("calls").join("call-1-you.wav"), bytes: 1, modified: 0, class: classify_within(root, &root.join("calls").join("call-1-you.wav")) };
         assert!(plan(&[item], &cfg, 10 * 3600).is_empty(), "a call recording must not be swept");

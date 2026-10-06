@@ -337,6 +337,25 @@ pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, 
     }
 }
 
+/// A cargo run in a copy of a tree builds into the shared cache
+/// (`roots::build_cache`) rather than a `target/` of its own, unless the
+/// caller or the environment already named one. Without it every copy is a
+/// cold build, and every self-fix on a laptop ran out of time compiling.
+pub(crate) fn warm_cargo(c: &mut std::process::Command, cmd: &str, env: &[(&str, &str)]) {
+    if is_cargo(cmd) && !env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR") && std::env::var_os("CARGO_TARGET_DIR").is_none() {
+        let dir = crate::roots::build_cache();
+        let _ = std::fs::create_dir_all(&dir);
+        c.env("CARGO_TARGET_DIR", dir);
+    }
+}
+
+/// Whether a program is cargo, however it was named.
+fn is_cargo(cmd: &str) -> bool {
+    std::path::Path::new(cmd)
+        .file_stem()
+        .is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("cargo"))
+}
+
 fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration) -> Ran {
     use std::io::Read;
     let mut c = crate::tools::command(cmd);
@@ -344,6 +363,7 @@ fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path
     for (k, v) in env {
         c.env(k, v);
     }
+    warm_cargo(&mut c, cmd, env);
     c.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut child = match c.spawn() {
         Ok(ch) => ch,

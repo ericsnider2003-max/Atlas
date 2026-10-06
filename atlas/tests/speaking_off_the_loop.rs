@@ -273,6 +273,50 @@ fn carrying_on_after_a_cut_starts_with_the_sentence_that_was_cut() {
     micthread::clear_cut();
 }
 
+// ================= 5. talking over what Atlas volunteers =================
+
+#[test]
+fn talking_over_a_line_atlas_volunteered_stops_it_and_nothing_is_kept_to_carry_on() {
+    // 5 Oct 2026, Eric: "talking over Atlas doesn't stop Atlas from
+    // spamming". Lines Atlas volunteers on the tick went through the plain
+    // `say`, which nothing could cut. They go through this now.
+    let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
+    micthread::clear_cut();
+    let (c, p) = (cfg(false), plat());
+    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("volunteered")), Proactive::new(ProactiveConfig::default()));
+    let mouth = SlowMouth::new(400, 1_500);
+    let played = mouth.played.clone();
+    let mut listen = || {
+        let now = played.now.lock().unwrap().clone();
+        now.filter(|s| s.starts_with("Second")).map(|_| {
+            std::thread::sleep(Duration::from_millis(300));
+            "stop".to_string()
+        })
+    };
+    let cut = d.say_volunteered_with(&mouth, "First, a note. Second, more of it. Third, the end.", &mut listen);
+    assert_eq!(cut.as_deref(), Some("stop"), "talking over it wasn't noticed");
+    let lines = mouth.lines();
+    assert!(!lines.iter().any(|(s, _)| s.starts_with("Third")), "it kept going after you cut in: {lines:?}");
+    // You talked over it because you didn't want it: not parked.
+    assert!(d.finish_saying().is_none(), "a volunteered line was kept to carry on");
+    micthread::clear_cut();
+
+    // Said to the end: nothing to report.
+    let mouth = SlowMouth::new(50, 50);
+    assert_eq!(d.say_volunteered_with(&mouth, "Short. Done.", &mut || None), None);
+    micthread::clear_cut();
+}
+
+// And the loop uses it for what the tick has to say.
+#[test]
+fn the_loop_says_the_ticks_lines_so_they_can_be_cut() {
+    let src = std::fs::read_to_string("src/daemon/running.rs").unwrap();
+    let after_tick = src.split("self.done_working(clock());").nth(1).expect("the tick's lines");
+    let next_lines: String = after_tick.lines().take(30).collect::<Vec<_>>().join("\n");
+    assert!(next_lines.contains("say_volunteered("), "the tick's lines aren't said cuttably:\n{next_lines}");
+    assert!(!next_lines.contains("for line in lines {\n                self.say(mouth"), "{next_lines}");
+}
+
 // ================= 2. the open floor after a reply =================
 
 #[derive(Default)]

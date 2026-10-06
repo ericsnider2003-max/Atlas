@@ -55,7 +55,9 @@ pub struct BuildConfig {
     /// Hand builds and project changes to a coding agent installed on this
     /// computer -- Claude Code (`claude`) or Codex (`codex`) -- when there is
     /// one (`coding_agent`, 2 Oct 2026). `auto` uses one when it's installed;
-    /// `off` never does.
+    /// `off` never does. Off unless you turn it on (5 Oct 2026): both are paid
+    /// services run by other companies, and the point of Atlas is not to
+    /// depend on them -- its own coding model writes the code.
     pub coding_agent: AgentUse,
     /// Ask before each hand-over to the coding agent. A change to one of your
     /// own projects is asked about whatever this says.
@@ -66,8 +68,8 @@ pub struct BuildConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentUse {
-    #[default]
     Auto,
+    #[default]
     Off,
 }
 
@@ -81,7 +83,7 @@ impl Default for BuildConfig {
             // means Python. A project folder's own language still wins.
             default_language: Lang::Python,
             render_svg_command: String::new(),
-            coding_agent: AgentUse::Auto,
+            coding_agent: AgentUse::Off,
             agent_asks_first: true,
         }
     }

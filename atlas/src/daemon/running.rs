@@ -427,8 +427,32 @@ impl<'a> Daemon<'a> {
             // A tick that ran long (a render, a sweep) is Atlas busy, not
             // you gone: the next break check measures from when it finished.
             self.done_working(clock());
-            for line in lines {
-                self.say(mouth, &line);
+            // What Atlas volunteers -- a reminder, a brief, a health note --
+            // said so you can talk over it (5 Oct 2026). It went through the
+            // plain `say`, which no voice, key or "stop" reaches: Eric's
+            // "talking over Atlas doesn't stop Atlas from spamming". Cut in,
+            // and the rest of this tick's lines are not said (they're in the
+            // log and on the screen); what you said is the next turn.
+            let mut over_it: Option<String> = None;
+            let n = lines.len();
+            for (i, line) in lines.iter().enumerate() {
+                if let Some(words) = self.say_volunteered(mouth, ears, line) {
+                    if i + 1 < n {
+                        self.log.info(&format!("cut in: {} more line(s) not said", n - i - 1));
+                        // On the screen and in the log still: not said is
+                        // not lost.
+                        for rest in &lines[i + 1..] {
+                            crate::outln!("{rest}");
+                            self.log.info(rest);
+                        }
+                    }
+                    over_it = Some(words);
+                    break;
+                }
+            }
+            if let Some(words) = over_it.filter(|w| !w.trim().is_empty() && !crate::speech::is_interruption(w) && w != crate::speech::YOUR_TURN) {
+                typed_meanwhile = Some(crate::input::Utterance { text: words, source: crate::input::Source::Voice });
+                continue;
             }
             // The typing watcher: which windows Atlas is typing in itself
             // (it keeps out of those), and anything it has to say.
@@ -1636,6 +1660,39 @@ impl<'a> Daemon<'a> {
                 self.log.warn(&format!("couldn't say it out loud: {e}"));
             }
         }
+    }
+
+    /// Say a line Atlas volunteered, so that your voice, the talk key or a
+    /// "stop" cuts it off. `Some` when you cut in, with what you said (empty
+    /// for a key pressed and nothing said); `None` when it was said to the
+    /// end, or a cough cut it and the rest was said anyway.
+    pub(super) fn say_volunteered(&mut self, mouth: &dyn Mouth, ears: &dyn Ears, line: &str) -> Option<String> {
+        let cut_in: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+        let talk_key = self.hotkeys.take();
+        let said = {
+            let mut listen = || key_cut_in(talk_key.as_ref(), ears, &cut_in);
+            self.say_volunteered_with(mouth, line, &mut listen)
+        };
+        self.hotkeys = talk_key;
+        // What you said holding the key, over the key's own marker.
+        said.map(|w| cut_in.into_inner().unwrap_or(w))
+    }
+
+    /// `say_volunteered` with the listening handed in -- the talk key in
+    /// Atlas, a stand-in in the tests.
+    pub fn say_volunteered_with(&mut self, mouth: &dyn Mouth, line: &str, listen: &mut dyn FnMut() -> Option<String>) -> Option<String> {
+        self.cut_in_by_voice = None;
+        self.unsaid = None;
+        let d = self.say_interruptibly(mouth, line, listen);
+        // A cut by a sound that wasn't words carries on (`stop_saying`) and
+        // leaves nothing parked: that isn't you cutting in.
+        if !d.was_interrupted() || self.unsaid.is_none() {
+            return None;
+        }
+        // A volunteered line isn't parked for "carry on": you talked over it
+        // because you didn't want it.
+        self.unsaid = None;
+        Some(self.cut_in_by_voice.take().or(d.interrupted_by.clone()).unwrap_or_default())
     }
 
     /// Speak a reply that you can cut off.

@@ -286,6 +286,17 @@ pub fn trash_dir() -> PathBuf {
     data_sub("trash")
 }
 
+/// Where cargo keeps what it has compiled for Atlas's own work on itself and
+/// for code it builds (5 Oct 2026). Beside `data/`, not in it: the hourly
+/// sweep and the space budget judge `data/`, and a build cache is gigabytes
+/// that would push the budget over and get everything else evicted for it.
+/// One cache shared by every copy of the tree, so only the first build is
+/// cold: on Eric's laptop a cold build of Atlas is twenty to forty minutes,
+/// and each self-fix used to start one from nothing in a fresh copy.
+pub fn build_cache() -> PathBuf {
+    data_home().join("build-cache")
+}
+
 pub fn tmp_dir() -> PathBuf {
     data_sub("tmp")
 }

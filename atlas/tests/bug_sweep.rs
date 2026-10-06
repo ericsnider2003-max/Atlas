@@ -285,7 +285,7 @@ const APPLIED_IN_CODE: &[(&str, &str)] = &[
     ("sync.folder", "the sync run, the invitation (household::leave_invitation) and the join (take_invitation) all read tools_cfg().sync.folder"),
     ("household.device_name", "the join form is filled with it and falls back to it; household::init names this device with it"),
     // Offered since 29 Sep 2026 (opportunity hunting).
-    ("hunt.top_n", "hunting::brief_items and the voice list take the best top_n from HuntState::top"),
+    ("hunt.top_n", "hunting::brief_items takes the best top_n not yet briefed (HuntState::take_unbriefed); the voice list takes them from HuntState::top"),
     ("hunt.max_requests_per_day", "HuntConfig::budget caps a day's requests at it (never above hunt::HARD_CEILING); hunting::tick skips a source that would pass it"),
     // Offered since 2 Oct 2026 ("may need a lighter model for gestures").
     ("hands.weight", "handweight::plan reads it (Daemon::hands_plan) every time hand tracking starts: the picture size, pace and idle rate follow from it"),

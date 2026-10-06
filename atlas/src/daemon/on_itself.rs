@@ -1084,16 +1084,42 @@ fn prove_in_a_copy(
     }
 
     let base = crate::roots::tmp_dir().join("selffix");
+    // One copy at a time: the sweep no longer clears these (`retention`),
+    // so the copy from an earlier fix -- landed, declined or failed -- goes
+    // before the next is made. Each is a whole copy of the source.
+    if let Ok(rd) = std::fs::read_dir(&base) {
+        for e in rd.flatten() {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
     let mut sandbox = crate::sandbox::Sandbox::create(&base, "self-fix")
         .map_err(|e| format!("couldn't make a copy to work in: {e}"))?;
+    let kept = sandbox.root.clone();
+    let proved = prove_in(thought, candidate, scfg, root, &mut sandbox);
+    if proved.is_err() {
+        // Nothing to land from a copy that didn't prove anything.
+        let _ = std::fs::remove_dir_all(&kept);
+    }
+    proved
+}
 
-    // Copy the compile inputs into the sandbox. Not `target/` — a cold
-    // build is the price of isolation.
+/// The work of `prove_in_a_copy`, in the copy it made.
+fn prove_in(
+    thought: &crate::pipeline::Thought,
+    candidate: &[crate::selfwork::Edit],
+    scfg: &crate::selfwork::SelfWorkConfig,
+    root: &std::path::Path,
+    sandbox: &mut crate::sandbox::Sandbox,
+) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String> {
+
+    // Copy the compile inputs into the sandbox. Not `target/`: cargo builds
+    // into the shared cache (`roots::build_cache`), so only the first fix
+    // pays for a cold build.
     copy_compile_inputs(root, &sandbox.root)
         .map_err(|e| format!("couldn't copy the tree: {e}"))?;
 
     // How many tests pass before the change.
-    let before = crate::selfwork::run_tests(&mut sandbox, scfg);
+    let before = crate::selfwork::run_tests(sandbox, scfg);
     let tests_before = before.tests_run;
 
     // Apply the candidate in the copy.
@@ -1108,7 +1134,7 @@ fn prove_in_a_copy(
     let proof_passes = proof == crate::selfwork::ProofToday::PassesAlready;
 
     // And nothing else broke — the whole suite, in the copy.
-    let after = crate::selfwork::run_tests(&mut sandbox, scfg);
+    let after = crate::selfwork::run_tests(sandbox, scfg);
     let nothing_else_broke = after.passed && after.tests_run + 1 >= tests_before;
 
     let build = crate::pipeline::Build {
