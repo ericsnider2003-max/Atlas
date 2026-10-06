@@ -431,16 +431,16 @@ fn swap_in(root: &Path, running: &Path) -> Option<Result<SwappedIn, String>> {
         return Some(Err(format!("the file in updates/ is {tag}, which already failed here and was rolled back; left it alone")));
     }
     if !new_sha.is_empty() && new_sha == running_sha {
-        let _ = std::fs::remove_file(&new);
+        crate::heard!(std::fs::remove_file(&new));
         return Some(Err(format!("the file in updates/ is {tag}, the very build already running; removed it")));
     }
     let keep = keep_old_at(root, &replaced);
     Some((|| {
-        let _ = std::fs::remove_file(&keep);
+        crate::heard!(std::fs::remove_file(&keep));
         std::fs::rename(running, &keep).map_err(|e| format!("couldn't keep the old one as {}: {e}", keep.display()))?;
         if let Err(e) = std::fs::rename(&new, running).or_else(|_| std::fs::copy(&new, running).map(|_| ()).and_then(|_| std::fs::remove_file(&new))) {
             // Put the old one back rather than leave nothing to start.
-            let _ = std::fs::rename(&keep, running);
+            crate::kept!(std::fs::rename(&keep, running));
             return Err(format!("couldn't put {tag} in place ({e}); still on {replaced}"));
         }
         // The one just kept, and one before it; older ones go.
@@ -505,7 +505,7 @@ fn stamp() -> u64 {
 pub(crate) fn log_update(root: &Path, line: &str) {
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(root.join("updates.log")) {
-        let _ = writeln!(f, "{} {line}", stamp());
+        crate::kept!(writeln!(f, "{} {line}", stamp()));
     }
 }
 
@@ -542,7 +542,7 @@ pub fn current_trial(root: &Path) -> Option<Trial> {
 
 /// Start the trial of `new`, which has just replaced `previous`.
 pub fn begin_trial(root: &Path, new: &str, previous: &str) {
-    let _ = Trial { new: new.into(), previous: previous.into(), starts: 0 }.save(root);
+    crate::kept!(Trial { new: new.into(), previous: previous.into(), starts: 0 }.save(root));
     log_update(root, &format!("{new} put in place of {previous}; on trial"));
 }
 
@@ -572,7 +572,7 @@ pub fn known_bad_reason(root: &Path, tag: &str) -> Option<String> {
 pub fn forgive(root: &Path, tag: &str) {
     let Ok(text) = std::fs::read_to_string(known_bad_file(root)) else { return };
     let kept: Vec<&str> = text.lines().filter(|l| l.split_whitespace().next() != Some(tag)).collect();
-    let _ = std::fs::write(known_bad_file(root), if kept.is_empty() { String::new() } else { kept.join("\n") + "\n" });
+    crate::kept!(std::fs::write(known_bad_file(root), if kept.is_empty() { String::new() } else { kept.join("\n") + "\n" }));
     log_update(root, &format!("{tag} may be tried again: what stopped it was on this machine, not in the build"));
 }
 
@@ -582,7 +582,7 @@ fn mark_known_bad(root: &Path, tag: &str, why: &str) {
         return;
     }
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(known_bad_file(root)) {
-        let _ = writeln!(f, "{tag} {}", why.replace('\n', " "));
+        crate::kept!(writeln!(f, "{tag} {}", why.replace('\n', " ")));
     }
 }
 
@@ -597,7 +597,7 @@ pub fn health_check(root: &Path, config_dir: &Path, state_dir: &Path) -> Result<
     // folder, never over yours: a build on trial changes nothing that the
     // previous one would find different if it came back.
     let scratch = state_dir.join(format!(".health-check-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
+    crate::heard!(std::fs::remove_dir_all(&scratch));
     match crate::firstlaunch::write_default_config(&scratch) {
         Ok(_) => match crate::config::Config::load(&scratch) {
             Ok(_) => ok.push("its shipped settings load".into()),
@@ -605,7 +605,7 @@ pub fn health_check(root: &Path, config_dir: &Path, state_dir: &Path) -> Result<
         },
         Err(e) => bad.push(format!("couldn't write its shipped settings to a scratch folder: {e}")),
     }
-    let _ = std::fs::remove_dir_all(&scratch);
+    crate::heard!(std::fs::remove_dir_all(&scratch));
 
     // Your settings folder is readable, if there is one yet.
     if config_dir.exists() {
@@ -618,7 +618,7 @@ pub fn health_check(root: &Path, config_dir: &Path, state_dir: &Path) -> Result<
     // It can keep state: a file written, read back, removed.
     let probe = state_dir.join(format!(".health-check-{}.tmp", std::process::id()));
     let wrote = std::fs::create_dir_all(state_dir).and_then(|_| std::fs::write(&probe, b"atlas")).and_then(|_| std::fs::read(&probe));
-    let _ = std::fs::remove_file(&probe);
+    crate::heard!(std::fs::remove_file(&probe));
     match wrote {
         Ok(b) if b == b"atlas" => ok.push("its state folder writes and reads back".into()),
         Ok(_) => bad.push(format!("{} gave back something other than what was written", state_dir.display())),
@@ -658,7 +658,7 @@ pub fn check_new_build(new: &Path, timeout: std::time::Duration) -> Result<Strin
     let reader = std::thread::spawn(move || {
         let mut s = String::new();
         if let Some(o) = out.as_mut() {
-            let _ = o.read_to_string(&mut s);
+            crate::heard!(o.read_to_string(&mut s));
         }
         s
     });
@@ -705,15 +705,15 @@ pub fn roll_back(root: &Path, running: &Path, failed: &str, previous: &str, why:
         return Err(format!("{failed} failed ({why}), and the previous build isn't at {} to go back to", keep.display()));
     }
     let aside = failed_at(root, failed);
-    let _ = std::fs::remove_file(&aside);
+    crate::heard!(std::fs::remove_file(&aside));
     std::fs::rename(running, &aside).map_err(|e| format!("couldn't set {failed} aside: {e}"))?;
     if let Err(e) = std::fs::rename(&keep, running) {
-        let _ = std::fs::rename(&aside, running);
+        crate::kept!(std::fs::rename(&aside, running));
         log_update(root, &format!("{failed} failed ({why}); couldn't put {previous} back: {e}"));
         return Err(format!("couldn't put {previous} back ({e}); still on {failed}"));
     }
     mark_known_bad(root, failed, why);
-    let _ = std::fs::remove_file(trial_file(root));
+    crate::heard!(std::fs::remove_file(trial_file(root)));
     prune_kept(root, ".failed", KEEP_BUILDS, Some(&aside));
     log_update(root, &format!("{failed} failed here ({why}); back on {previous}, {failed} kept as {}", aside.display()));
     Ok(())
@@ -772,7 +772,7 @@ pub fn trial_on_start(root: &Path, running: &Path) -> TrialStep {
     let here = tag_of(running, version());
     if t.new != here {
         // Something else was put in place by hand since; this trial is not about us.
-        let _ = std::fs::remove_file(trial_file(root));
+        crate::heard!(std::fs::remove_file(trial_file(root)));
         log_update(root, &format!("trial of {} dropped: {here} is what's running", t.new));
         return TrialStep::Settled;
     }
@@ -784,7 +784,7 @@ pub fn trial_on_start(root: &Path, running: &Path) -> TrialStep {
         };
     }
     t.starts += 1;
-    let _ = t.save(root);
+    crate::kept!(t.save(root));
     TrialStep::Trying(t.starts)
 }
 
@@ -804,7 +804,7 @@ pub fn trial_passed(root: &Path) -> bool {
 pub fn trial_passed_by(root: &Path, running: &str) -> bool {
     match Trial::load(root) {
         Some(t) if t.new == running => {
-            let _ = std::fs::remove_file(trial_file(root));
+            crate::heard!(std::fs::remove_file(trial_file(root)));
             log_update(root, &format!("{} got through start {} of its trial; kept", t.new, t.starts));
             true
         }

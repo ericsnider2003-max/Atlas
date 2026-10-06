@@ -102,7 +102,7 @@ impl Probe {
         if self.restore_focus && !apps.is_empty() {
             if let Some(w) = &was_focused {
                 if let Some(name) = app_named(cfg, &w.process) {
-                    let _ = workspace::focus_app(cfg, plat, &name);
+                    crate::heard!(workspace::focus_app(cfg, plat, &name));
                 }
             }
         }

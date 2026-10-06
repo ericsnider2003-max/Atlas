@@ -62,12 +62,11 @@ pub struct Devices {
 
 impl Devices {
     pub fn load(state_dir: &Path) -> Devices {
-        std::fs::read(state_dir.join(FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        crate::store::read_json(&state_dir.join(FILE))
     }
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(state_dir)?;
-        crate::store::write_whole(&state_dir.join(FILE), &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
+        crate::store::write_json(&state_dir.join(FILE), self)
     }
 
     /// One address per phone: a new one replaces the old (the distributor
@@ -126,6 +125,7 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
 // ------------------------------------------------------------------ encryption
 
 fn hmac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+    #[allow(clippy::expect_used, reason = "HMAC accepts a key of any length; new_from_slice cannot fail for it")]
     let mut m = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC takes any key length");
     for p in parts {
         m.update(p);
@@ -291,7 +291,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
     let key = vapid_key(&state)?;
     let payload = android_payload(note, cfg);
     let tmp = crate::roots::data_dir().join("tmp");
-    let _ = std::fs::create_dir_all(&tmp);
+    crate::heard!(std::fs::create_dir_all(&tmp));
     let now = crate::store::now();
     let (mut delivered, mut why, mut gone) = (0, String::new(), Vec::new());
     for (i, d) in devices.devices.iter().enumerate() {
@@ -317,8 +317,8 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
                 .args(webpush_args(&headers, &body_file, &d.endpoint))
                 .stderr(std::process::Stdio::null())
                 .output();
-            let _ = std::fs::remove_file(&headers);
-            let _ = std::fs::remove_file(&body_file);
+            crate::heard!(std::fs::remove_file(&headers));
+            crate::heard!(std::fs::remove_file(&body_file));
             let out = out.map_err(|e| format!("couldn't start curl: {e}"))?;
             Ok(read_distributor_reply(&String::from_utf8_lossy(&out.stdout)))
         })();
@@ -332,7 +332,7 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
         for e in &gone {
             devices.forget(e);
         }
-        let _ = devices.save(&state);
+        crate::kept!(devices.save(&state));
     }
     if delivered > 0 {
         Ok(())
@@ -358,7 +358,7 @@ pub fn b64url_decode(s: &str) -> Option<Vec<u8>> {
     }).collect();
     let t2 = t.trim_end_matches('=').to_string();
     t = t2;
-    while t.len() % 4 != 0 {
+    while !t.len().is_multiple_of(4) {
         t.push('=');
     }
     crate::b64::decode(&t).ok()

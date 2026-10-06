@@ -200,7 +200,7 @@ pub fn ended(secs: u64, said: usize, why: &str) -> String {
 
 /// Said when a watch starts.
 pub fn started(secs: u64, until_stopped: bool) -> String {
-    let mins = (secs + 59) / 60;
+    let mins = secs.div_ceil(60);
     let how_long = if mins <= 1 { "a minute".to_string() } else { format!("{mins} minutes") };
     if until_stopped {
         format!(
@@ -346,7 +346,7 @@ fn watch_loop(
         // A sentence from the model that can see, about this frame, when it
         // can (never for the first look, which the detectors describe fine).
         if let (Some(url), true) = (&setup.eyes_url, last_said.len() > 1 || line.starts_with("I can see a")) {
-            let rgba: Vec<u8> = frame.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+            let rgba: Vec<u8> = frame.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
             let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba { width: w as u32, height: h as u32, pixels: rgba });
             let q = format!(
                 "This is a frame from the user's webcam while you watch them, at their request. What just changed: \"{line}\". \

@@ -41,7 +41,7 @@ pub fn silence_args(input: &str) -> Vec<String> {
 pub fn silences(stderr: &str, duration: f64) -> Vec<(f64, f64)> {
     let mut out = Vec::new();
     let mut open: Option<f64> = None;
-    let num = |s: &str| s.trim().split(|c: char| c == ' ' || c == '|').next().and_then(|n| n.parse::<f64>().ok());
+    let num = |s: &str| s.trim().split([' ', '|']).next().and_then(|n| n.parse::<f64>().ok());
     for line in stderr.lines() {
         if let Some(i) = line.find("silence_start:") {
             open = num(&line[i + "silence_start:".len()..]);

@@ -306,6 +306,15 @@ pub trait Platform {
         crate::sync::best_folder().map(|(p, _)| p)
     }
 
+    /// Where the crew reads free memory and power for its admission rules
+    /// (`crew.keep_free_mb`, `crew.battery_floor_percent`). Behind the
+    /// platform for the same reason (6 Oct 2026): a test daemon on the mock
+    /// read the real machine, and on a laptop with 0.8 GB free every test
+    /// waiting on the crew failed, because its work was correctly held.
+    fn crew_room(&self) -> fn() -> crate::crew::Room {
+        crate::crew::this_machine
+    }
+
     /// What this device can do (`sync::Kind`): the laptop is `Full`, a phone
     /// `Standalone` -- which decides whether "ask the laptop to …" is sent
     /// on or just done here (item 24).

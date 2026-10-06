@@ -163,7 +163,7 @@ impl Phone {
                 Some(why) => format!("I can't tell you. {why}"),
                 None => "Nothing from the laptop yet.".into(),
             },
-            Some(days) if days == 0 => {
+            Some(0) => {
                 if waiting == 0 {
                     "Up to date.".into()
                 } else {

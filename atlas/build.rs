@@ -19,6 +19,7 @@
 //! compiler, the precompiled `windows/atlas.res` / `atlas-res.o` (icon, and a
 //! version block saying 0.1.0) are linked as before, with a warning, so a
 //! build never fails for want of one. Nothing happens for any other system.
+#![allow(clippy::expect_used, reason = "a build script: a variable cargo always sets that is missing fails the build, which is the right outcome")]
 
 use std::path::{Path, PathBuf};
 

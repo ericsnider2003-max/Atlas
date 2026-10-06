@@ -27,7 +27,7 @@ const K: [u32; 64] = [
 /// two can't drift.
 fn compress(h: &mut [u32; 8], block: &[u8]) {
     let mut w = [0u32; 64];
-    for (i, word) in block.chunks_exact(4).enumerate() {
+    for (i, word) in block.as_chunks::<4>().0.iter().enumerate() {
         w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
     }
     for i in 16..64 {
@@ -97,7 +97,7 @@ pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
     }
     message.extend_from_slice(&bits.to_be_bytes());
 
-    for block in message.chunks_exact(64) {
+    for block in message.as_chunks::<64>().0 {
         compress(&mut h, block);
     }
 
@@ -146,7 +146,7 @@ pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
             }
         }
         let whole = chunk.len() / 64 * 64;
-        for block in chunk[..whole].chunks_exact(64) {
+        for block in chunk[..whole].as_chunks::<64>().0 {
             compress(&mut h, block);
         }
         carry.extend_from_slice(&chunk[whole..]);
@@ -157,7 +157,7 @@ pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
         carry.push(0);
     }
     carry.extend_from_slice(&bits.to_be_bytes());
-    for block in carry.chunks_exact(64) {
+    for block in carry.as_chunks::<64>().0 {
         compress(&mut h, block);
     }
     let mut out = [0u8; 32];

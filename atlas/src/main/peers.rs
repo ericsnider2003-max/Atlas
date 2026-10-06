@@ -40,7 +40,7 @@ pub(super) fn run_invite(cfg: &Config) {
     // step succeeded.
     let port = flag_value("--port")
         .and_then(|p| p.parse().ok())
-        .unwrap_or_else(|| listening_port(&cfg));
+        .unwrap_or_else(|| listening_port(cfg));
 
     let dir = pairings_dir();
     let mut pairings = Pairings::load(&dir);
@@ -109,7 +109,7 @@ pub(super) fn run_accept(cfg: &Config) {
     // step succeeded.
     let port = flag_value("--port")
         .and_then(|p| p.parse().ok())
-        .unwrap_or_else(|| listening_port(&cfg));
+        .unwrap_or_else(|| listening_port(cfg));
 
     if first_time && (my_name.is_none() || my_host.is_none()) {
         println!(
@@ -301,10 +301,7 @@ pub(super) fn run_share(args: &[String]) {
             // its own, and making you type something as well would just get
             // you "here" every time.
             let note = if what.trim().is_empty() {
-                format!(
-                    "{}",
-                    path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
-                )
+                path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default().to_string()
             } else {
                 what.clone()
             };
@@ -532,7 +529,7 @@ pub(super) fn run_handoffs(args: &[String]) {
                             // own. Leaving both means the same file twice on
                             // disk and a stale one to wonder about later.
                             if let Some(f) = &got.file {
-                                let _ = std::fs::remove_file(store.root().join(&f.stored_at));
+                                atlas::heard!(std::fs::remove_file(store.root().join(&f.stored_at)));
                             }
                             println!("Kept it — it's in the tray as {tid}.");
                         }
@@ -554,7 +551,7 @@ pub(super) fn run_handoffs(args: &[String]) {
                         // that leaves the file on disk is a lie about what
                         // just happened.
                         if let Some(f) = &got.file {
-                            let _ = std::fs::remove_file(store.root().join(&f.stored_at));
+                            atlas::heard!(std::fs::remove_file(store.root().join(&f.stored_at)));
                         }
                         println!("Dropped the one from {}.", got.from);
                     }

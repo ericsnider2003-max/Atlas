@@ -217,7 +217,7 @@ impl Recording {
 
 impl Drop for Recording {
     fn drop(&mut self) {
-        let _ = self.end();
+        crate::heard!(self.end());
     }
 }
 

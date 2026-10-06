@@ -15,6 +15,7 @@
 //! "you only" or "everyone" — with nothing behind it that could tell one
 //! voice from another. With the encoder Atlas already uses for voice-lock,
 //! a recording becomes "You: … / Speaker 2: …", and "you only" can mean it.
+#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
 
 /// Average-linkage clustering. Returns a cluster number per embedding,
 /// numbered in order of first appearance.
@@ -33,7 +34,7 @@ fn cluster(embs: &[Vec<f32>], same_voice_at: f32) -> Vec<usize> {
                     }
                 }
                 let avg = total / (groups[a].len() * groups[b].len()) as f32;
-                if best.map_or(true, |x| avg > x.2) {
+                if best.is_none_or(|x| avg > x.2) {
                     best = Some((a, b, avg));
                 }
             }
@@ -194,7 +195,7 @@ pub fn read_wav(bytes: &[u8]) -> Result<(Vec<i16>, u32), String> {
             let frames: Vec<i16> = body
                 .chunks_exact(2 * ch)
                 .map(|f| {
-                    let sum: i32 = f.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as i32).sum();
+                    let sum: i32 = f.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as i32).sum();
                     (sum / ch as i32) as i16
                 })
                 .collect();
@@ -232,25 +233,7 @@ fn half_n_logdet(frames: &[&[f32; crate::mfcc::CEPS]]) -> Option<f64> {
         }
     }
     // Cholesky; log|Σ| is twice the sum of the log diagonal.
-    let mut l = vec![[0f64; D]; D];
-    let mut logdet = 0.0;
-    for i in 0..D {
-        for j in 0..=i {
-            let mut s = cov[i][j] / n as f64;
-            for k in 0..j {
-                s -= l[i][k] * l[j][k];
-            }
-            if i == j {
-                if s <= 1e-12 {
-                    return None;
-                }
-                l[i][i] = s.sqrt();
-                logdet += 2.0 * l[i][i].ln();
-            } else {
-                l[i][j] = s / l[j][j];
-            }
-        }
-    }
+    let (_, logdet) = cholesky(&cov, |i, j| cov[i][j] / n as f64)?;
     Some(n as f64 / 2.0 * logdet)
 }
 
@@ -283,27 +266,9 @@ fn fit_voice(frames: &[&[f32; crate::mfcc::CEPS]]) -> Option<Voice> {
             }
         }
     }
-    let mut l = vec![[0f64; D]; D];
-    let mut logdet = 0.0;
-    for i in 0..D {
-        for j in 0..=i {
-            // A little floor on the diagonal: a few seconds of speech is a
-            // thin estimate of nineteen dimensions.
-            let mut s = cov[i][j] + if i == j { 1e-3 } else { 0.0 };
-            for k in 0..j {
-                s -= l[i][k] * l[j][k];
-            }
-            if i == j {
-                if s <= 1e-12 {
-                    return None;
-                }
-                l[i][i] = s.sqrt();
-                logdet += 2.0 * l[i][i].ln();
-            } else {
-                l[i][j] = s / l[j][j];
-            }
-        }
-    }
+    // A little floor on the diagonal: a few seconds of speech is a thin
+    // estimate of nineteen dimensions.
+    let (l, logdet) = cholesky(&cov, |i, j| cov[i][j] + if i == j { 1e-3 } else { 0.0 })?;
     Some(Voice { mean, chol: l, half_logdet: logdet / 2.0 })
 }
 
@@ -376,17 +341,7 @@ pub fn split_strangers(samples: &[i16], rate: u32, lines: Vec<Line>, margin: f64
             out[i].speaker = format!("\u{1}stranger {fresh}");
         }
     }
-    let mut order: Vec<String> = Vec::new();
-    for l in &out {
-        if l.speaker != "You" && l.speaker != "Someone" && !order.contains(&l.speaker) {
-            order.push(l.speaker.clone());
-        }
-    }
-    for l in out.iter_mut() {
-        if let Some(k) = order.iter().position(|x| x == &l.speaker) {
-            l.speaker = format!("Speaker {}", k + 2);
-        }
-    }
+    number_the_speakers(&mut out);
     out
 }
 
@@ -433,7 +388,7 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
                 // Too little speech for a full model: ranked last, but still
                 // mergeable so the count is always reached.
                 let d = delta_bic(&pooled(&out, &now[a]), &pooled(&out, &now[b]), 1.0).unwrap_or(f64::MAX / 2.0);
-                if best.map_or(true, |x| d < x.2) {
+                if best.is_none_or(|x| d < x.2) {
                     best = Some((a, b, d));
                 }
             }
@@ -456,7 +411,7 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
             if let Some(v) = fit_voice(&others) {
                 let own: Vec<&F> = per_line[i].iter().collect();
                 let s = fits(&v, &own);
-                if worst.map_or(true, |w| s < w.1) {
+                if worst.is_none_or(|w| s < w.1) {
                     worst = Some((i, s));
                 }
             }
@@ -465,17 +420,7 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
         fresh += 1;
         out[i].speaker = format!("\u{1}new {fresh}");
     }
-    let mut order: Vec<String> = Vec::new();
-    for l in &out {
-        if l.speaker != "You" && l.speaker != "Someone" && !order.contains(&l.speaker) {
-            order.push(l.speaker.clone());
-        }
-    }
-    for l in out.iter_mut() {
-        if let Some(k) = order.iter().position(|x| x == &l.speaker) {
-            l.speaker = format!("Speaker {}", k + 2);
-        }
-    }
+    number_the_speakers(&mut out);
     out
 }
 
@@ -544,7 +489,7 @@ pub fn merge_same_voices(samples: &[i16], rate: u32, lines: Vec<Line>, lambda: f
         for (x, &a) in groups.iter().enumerate() {
             for &b in &groups[x + 1..] {
                 if let Some(d) = delta_bic(&pooled(a), &pooled(b), lambda) {
-                    if d < 0.0 && best.map_or(true, |(_, _, bd)| d < bd) {
+                    if d < 0.0 && best.is_none_or(|(_, _, bd)| d < bd) {
                         best = Some((a, b, d));
                     }
                 }
@@ -572,4 +517,47 @@ pub fn merge_same_voices(samples: &[i16], rate: u32, lines: Vec<Line>, lambda: f
         }
     }
     out
+}
+
+/// Everyone but you and "Someone" renamed "Speaker 2", "Speaker 3"... in the
+/// order they first speak. One copy (audit Q3).
+fn number_the_speakers(out: &mut [Line]) {
+    let mut order: Vec<String> = Vec::new();
+    for l in out.iter() {
+        if l.speaker != "You" && l.speaker != "Someone" && !order.contains(&l.speaker) {
+            order.push(l.speaker.clone());
+        }
+    }
+    for l in out.iter_mut() {
+        if let Some(k) = order.iter().position(|x| x == &l.speaker) {
+            l.speaker = format!("Speaker {}", k + 2);
+        }
+    }
+}
+
+/// The Cholesky factor of a symmetric matrix whose lower-triangle entries are
+/// `entry(i, j)`, with log|Σ| (twice the sum of the log diagonal). `None`
+/// when it isn't positive definite. One copy (audit Q3): the change score and
+/// a voice's model each had one.
+fn cholesky<const D: usize>(_shape: &[[f64; D]], entry: impl Fn(usize, usize) -> f64) -> Option<(Vec<[f64; D]>, f64)> {
+    let mut l = vec![[0f64; D]; D];
+    let mut logdet = 0.0;
+    for i in 0..D {
+        for j in 0..=i {
+            let mut s = entry(i, j);
+            for k in 0..j {
+                s -= l[i][k] * l[j][k];
+            }
+            if i == j {
+                if s <= 1e-12 {
+                    return None;
+                }
+                l[i][i] = s.sqrt();
+                logdet += 2.0 * l[i][i].ln();
+            } else {
+                l[i][j] = s / l[j][j];
+            }
+        }
+    }
+    Some((l, logdet))
 }

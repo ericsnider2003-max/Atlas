@@ -11,6 +11,7 @@
 //! machine with nothing installed, the module works there.
 //!
 //! Call [`report`] from a binary, a test, or Atlas itself.
+#![allow(clippy::unwrap_used, clippy::expect_used, reason = "built from fixed fixture data that is known to be valid; a self-check, not a path for real input")]
 
 use super::bars::Bars;
 use super::claims::{verify, Claim, Side, ALL_KINDS};

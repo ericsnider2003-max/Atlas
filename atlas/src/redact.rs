@@ -287,7 +287,7 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
         if boundary(i) && b[i].is_ascii_uppercase() && b[i + 1].is_ascii_uppercase() && b[i + 2].is_ascii_digit() && b[i + 3].is_ascii_digit() {
             let mut e = i;
             let mut packed = String::new();
-            while e < n && (b[e].is_ascii_alphanumeric() || (b[e] == b' ' && e + 1 < n && b[e + 1].is_ascii_alphanumeric() && packed.len() % 4 == 0)) {
+            while e < n && (b[e].is_ascii_alphanumeric() || (b[e] == b' ' && e + 1 < n && b[e + 1].is_ascii_alphanumeric() && packed.len().is_multiple_of(4))) {
                 if b[e] != b' ' {
                     packed.push(b[e].to_ascii_uppercase() as char);
                 }

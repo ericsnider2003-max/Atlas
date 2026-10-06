@@ -8,6 +8,7 @@
 //! component a rough class of sound; adapting it to one clip moves each
 //! component only as far as that clip has evidence for, so two clips are
 //! compared sound-class by sound-class — like with like.
+#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
 
 use crate::mfcc::CEPS;
 

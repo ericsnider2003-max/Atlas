@@ -100,7 +100,7 @@ pub fn passes(e: &Entry, a: &Asked) -> bool {
 /// what passes, newest first.
 pub fn by_filter<'a>(entries: impl Iterator<Item = &'a Entry>, a: &Asked, n: usize) -> Vec<&'a Entry> {
     let mut v: Vec<&Entry> = entries.filter(|e| passes(e, a)).collect();
-    v.sort_by(|x, y| y.modified.cmp(&x.modified));
+    v.sort_by_key(|y| std::cmp::Reverse(y.modified));
     v.truncate(n);
     v
 }

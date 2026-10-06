@@ -212,7 +212,7 @@ pub fn worth_keeping(c: &Claim, now: u64) -> f32 {
         Shelf::Volatile => 0.05,
     };
     let used = (c.asked_about as f32).min(10.0) / 10.0;
-    let agreed = (c.independent_sources() as f32 - 1.0).max(0.0).min(2.0) / 2.0;
+    let agreed = (c.independent_sources() as f32 - 1.0).clamp(0.0, 2.0) / 2.0;
 
     // Stale volatile things go first; used settled things go last.
     let stale = if c.worth_rechecking(now) { 0.6 } else { 1.0 };
@@ -358,7 +358,7 @@ pub fn compact(says: &str) -> String {
     // The first sentence, or the first clause before a qualifier that starts
     // a new thought.
     let first = says
-        .split(|c| c == '.' || c == ';')
+        .split(['.', ';'])
         .next()
         .unwrap_or(says)
         .trim();

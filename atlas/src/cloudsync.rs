@@ -402,7 +402,7 @@ pub fn still_syncing(folder: &std::path::Path, mine: &str, expect_others: bool, 
     if std::fs::write(&probe, now.to_string()).is_err() {
         return Some((Trouble::OutOfSpace, format!("I can't write into {} — full, or its permissions changed", folder.display())));
     }
-    let _ = std::fs::remove_file(&probe);
+    crate::heard!(std::fs::remove_file(&probe));
     if !expect_others {
         return None;
     }

@@ -368,7 +368,7 @@ impl Research {
             //
             // `quoted()` marks every line and names the source above it. The
             // protection is the shape, not the detector below.
-            let read = crate::untrusted::Read::new(&url, &text, crate::store::now());
+            let read = crate::untrusted::Read::new(url, &text, crate::store::now());
             if let Some(say) = read.worth_telling_him() {
                 // Said, not suppressed. The detector's job is to report that
                 // somebody tried, which is a thing Eric would want to know —
@@ -449,6 +449,7 @@ fn read_links(b: &mut crate::browser::Browser, page: &str, timeout_ms: u64) -> R
     // and one that never shows a link is given up on after the browser's own
     // timeout. Links are read either way -- a page that never matched still
     // gets its chance to yield nothing.
+    // unheard-ok: returns `bool`, not a Result
     let _ = b.cdp.wait_for("a[href]", timeout_ms)?;
     b.links()
 }
@@ -482,7 +483,7 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
     let mut rest = html;
     while let Some(i) = rest.find("uddg=") {
         let tail = &rest[i..];
-        let end = tail.find(|c: char| c == '"' || c == '\'' || c == '<' || c == ' ').unwrap_or(tail.len());
+        let end = tail.find(['"', '\'', '<', ' ']).unwrap_or(tail.len());
         let target = unwrap_redirect(&tail[..end]);
         rest = &tail[end.max(1)..];
         if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400 {
@@ -505,14 +506,13 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
         rest = &tail[end.max(1).min(tail.len())..];
         let Ok(bytes) = crate::b64::decode(&coded) else { continue };
         let Ok(target) = String::from_utf8(bytes) else { continue };
-        if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400 {
-            if seen.insert(target.clone(), ()).is_none() {
+        if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400
+            && seen.insert(target.clone(), ()).is_none() {
                 out.push(target);
                 if out.len() >= max {
                     return out;
                 }
             }
-        }
     }
     // A page that linked through Bing gave its results above; the rest of
     // it is Bing's own furniture.
@@ -523,7 +523,7 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
     while let Some(i) = rest.find("http") {
         let tail = &rest[i..];
         let end = tail
-            .find(|c: char| c == '"' || c == '\'' || c == '<' || c == ' ' || c == ')')
+            .find(['"', '\'', '<', ' ', ')'])
             .unwrap_or(tail.len());
         let url = &tail[..end];
         rest = &tail[end.max(1)..];
@@ -1085,7 +1085,7 @@ pub const LAST_RESEARCH: &str = ".last-research";
 pub const LAST_WRITTEN: &str = ".last-written";
 
 pub fn mark_last(dir: &str, which: &str, path: &str) {
-    let _ = std::fs::write(std::path::Path::new(dir).join(which), path);
+    crate::kept!(std::fs::write(std::path::Path::new(dir).join(which), path));
 }
 
 /// The note marked as `which`, if it's still there.

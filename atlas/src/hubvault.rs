@@ -286,7 +286,7 @@ impl Daemon<'_> {
         }
         let said = match crate::sync::set_key(&self.store, phrase.reveal(), replace, crate::store::now()) {
             Ok(said) => {
-                let _ = crate::sync::write_card(phrase.reveal().trim());
+                crate::heard!(crate::sync::write_card(phrase.reveal().trim()));
                 self.log.info("household key set from the hub");
                 said
             }
@@ -393,7 +393,7 @@ impl Daemon<'_> {
                         said = format!("{said}. {}", self.apply_setting("household.device_name", &device));
                     }
                     if self.tools_cfg().sync.folder.trim() == folder {
-                        let _ = std::fs::create_dir_all(&folder);
+                        crate::heard!(std::fs::create_dir_all(&folder));
                         format!("Your devices meet in {folder} now.")
                     } else {
                         said

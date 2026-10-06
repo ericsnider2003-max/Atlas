@@ -236,9 +236,9 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
                 }
             }
         }
-        if name == "item" && cur.is_some() {
-            if let Some(about) = attr(tag, "rdf:about") {
-                cur.as_mut().expect("just set").id = about;
+        if name == "item" {
+            if let (Some(it), Some(about)) = (cur.as_mut(), attr(tag, "rdf:about")) {
+                it.id = about;
             }
         }
         if !self_closing {
@@ -267,7 +267,7 @@ pub fn parse_date(s: &str) -> Option<u64> {
             hh = s.get(11..13)?.parse().ok()?;
             mm = s.get(14..16)?.parse().ok()?;
             ss = s.get(17..19)?.parse().ok()?;
-            let tz = s[19..].trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+            let tz = s.get(19..)?.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
             if tz.len() >= 6 && (tz.starts_with('+') || tz.starts_with('-')) {
                 let sign = if tz.starts_with('-') { -1 } else { 1 };
                 let oh: i64 = tz.get(1..3)?.parse().ok()?;
@@ -275,7 +275,7 @@ pub fn parse_date(s: &str) -> Option<u64> {
                 off = sign * (oh * 3600 + om * 60);
             }
         }
-        if !(1..=12).contains(&m) || d == 0 || d > 31 {
+        if !(1..=12).contains(&m) || d == 0 || d > 31 || !(0..24).contains(&hh) || !(0..60).contains(&mm) || !(0..=60).contains(&ss) {
             return None;
         }
         let t = crate::civil::days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss - off;
@@ -516,7 +516,7 @@ impl Feeds {
             f.seen.pop_front();
         }
         // Newest first; undated ones keep their order after the dated.
-        fresh.sort_by(|a, b| b.published.cmp(&a.published));
+        fresh.sort_by_key(|b| std::cmp::Reverse(b.published));
         if first {
             fresh.truncate(3);
         }
@@ -529,7 +529,7 @@ impl Feeds {
             }
             self.unread.push(Unread { feed: url.clone(), title: format!("{} — {}", it.title, name), link: it.link, at: it.published.unwrap_or(now) });
         }
-        self.unread.sort_by(|a, b| b.at.cmp(&a.at));
+        self.unread.sort_by_key(|b| std::cmp::Reverse(b.at));
         self.unread.truncate(MAX_UNREAD);
         n
     }

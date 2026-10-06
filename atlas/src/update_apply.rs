@@ -225,8 +225,10 @@ pub const MACHINE_RETRY_SECS: u64 = 6 * 3600;
 /// Whose fault a failure was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FailedBecause {
     /// Something in the build. It needs a fix and a new release.
+    #[default]
     TheBuild,
     /// Something on this machine. Put right here, the same build is tried again.
     ThisMachine,
@@ -261,11 +263,6 @@ fn default_cause() -> FailedBecause {
     FailedBecause::TheBuild
 }
 
-impl Default for FailedBecause {
-    fn default() -> Self {
-        FailedBecause::TheBuild
-    }
-}
 
 /// The largest report accepted over a pairing.
 pub const MAX_REPORT_BYTES: usize = 16 * 1024;
@@ -412,7 +409,7 @@ pub fn hold_release(store: &Store, sha256: &str) {
 /// Has a report stopped this build being handed out? Read by the file door
 /// (`update_courier::chunk`), from the state folder it serves.
 pub fn is_halted(state_root: &Path, sha256: &str) -> bool {
-    Store::new(state_root.to_path_buf()).load::<Vec<String>>(HALTED).iter().any(|s| s == sha256)
+    Store::new(state_root).load::<Vec<String>>(HALTED).iter().any(|s| s == sha256)
 }
 
 /// Every failure report the releaser has, newest last.
@@ -538,7 +535,7 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755));
+        crate::heard!(std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755)));
     }
     std::fs::rename(&part, &to).map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
     let _ = store.save(
@@ -604,17 +601,12 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
             settle(store);
             return UpdateSettled::Nothing;
         };
-        match release::accept(&installed, notice, upgrade::DATA_FORMAT, platform, Direction::Forward) {
-            Ok(acc) => {
-                installed.installed(&acc);
-                if installed.save(store).is_err() {
-                    return UpdateSettled::Waiting;
-                }
-                let _ = store.save(HISTORY, &History { previous: Some(before) });
+        if let Ok(acc) = release::accept(&installed, notice, upgrade::DATA_FORMAT, platform, Direction::Forward) {
+            installed.installed(&acc);
+            if installed.save(store).is_err() {
+                return UpdateSettled::Waiting;
             }
-            // Already recorded (a second call) is fine; anything else leaves
-            // the record alone and says nothing new.
-            Err(_) => {}
+            let _ = store.save(HISTORY, &History { previous: Some(before) });
         }
         settle(store);
         Available::forget_offer(store);
@@ -856,10 +848,10 @@ pub fn undo_update(store: &Store, install_root: &Path, running: &Path, _yes: Loc
         return Err(format!("The build kept is {previous}, the one already running."));
     }
     let aside = install_root.join(format!("atlas-{current_tag}.undone"));
-    let _ = std::fs::remove_file(&aside);
+    crate::heard!(std::fs::remove_file(&aside));
     std::fs::rename(running, &aside).map_err(|e| format!("I couldn't set {current} aside: {e}"))?;
     if let Err(e) = std::fs::rename(&kept, running) {
-        let _ = std::fs::rename(&aside, running);
+        crate::kept!(std::fs::rename(&aside, running));
         return Err(format!("I couldn't put {previous} back ({e}); still on {current}."));
     }
     upgrade::prune_kept(install_root, ".undone", upgrade::KEEP_BUILDS, Some(&aside));

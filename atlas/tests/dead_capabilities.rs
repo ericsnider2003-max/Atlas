@@ -1084,8 +1084,12 @@ fn unwired_modules() -> BTreeSet<String> {
 struct Groups {
     orphans: BTreeSet<String>,
     test_only: usize,
+    /// Which ones, so a count that moved says what moved (5 Oct 2026: it
+    /// rose by four and the message couldn't say which).
+    test_only_names: Vec<String>,
     helper_tested: usize,
     helper_untested: usize,
+    helper_untested_names: Vec<String>,
 }
 
 /// The same rule `bug_sweep.rs` uses, split four ways.
@@ -1119,8 +1123,10 @@ fn group() -> Groups {
     let mut g = Groups {
         orphans: BTreeSet::new(),
         test_only: 0,
+        test_only_names: Vec::new(),
         helper_tested: 0,
         helper_untested: 0,
+        helper_untested_names: Vec::new(),
     };
 
     // Same indexing as new_capabilities_are_wired, for the same reason: this
@@ -1179,8 +1185,14 @@ fn group() -> Groups {
             let tested = test_index.contains(&name);
             match (own, tested) {
                 (true, true) => g.helper_tested += 1,
-                (true, false) => g.helper_untested += 1,
-                (false, true) => g.test_only += 1,
+                (true, false) => {
+                    g.helper_untested += 1;
+                    g.helper_untested_names.push(format!("{module}::{name}"));
+                }
+                (false, true) => {
+                    g.test_only += 1;
+                    g.test_only_names.push(format!("{module}::{name}"));
+                }
                 (false, false) => {
                     g.orphans.insert(format!("{stem}::{name}"));
                 }
@@ -1255,13 +1267,15 @@ fn the_counts_are_exact_so_progress_cannot_hide_in_the_headroom() {
         g.test_only, TEST_ONLY_MAX,
         "test-only is {} and the ceiling says {TEST_ONLY_MAX}. If work was \
          done, lower it and say what got wired. If it rose, something was \
-         built and not reached.",
-        g.test_only
+         built and not reached. They are:\n  {}",
+        g.test_only,
+        g.test_only_names.join("\n  ")
     );
     assert_eq!(
         g.helper_untested, HELPER_UNTESTED_MAX,
-        "helper-untested is {} against {HELPER_UNTESTED_MAX}",
-        g.helper_untested
+        "helper-untested is {} against {HELPER_UNTESTED_MAX}:\n  {}",
+        g.helper_untested,
+        g.helper_untested_names.join("\n  ")
     );
 }
 

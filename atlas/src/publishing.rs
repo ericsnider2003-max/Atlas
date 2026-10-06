@@ -317,7 +317,7 @@ pub fn description_from(transcript: &str, p: Platform, topic: &str) -> String {
         // Short and front-loaded — only the first line is visible.
         Platform::TikTok | Platform::Reels => {
             let cut: String = first.chars().take(90).collect();
-            format!("{cut}")
+            cut.to_string()
         }
         // Still a search engine, so it wants the words people search.
         Platform::Shorts | Platform::YouTube => {

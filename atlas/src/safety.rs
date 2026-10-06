@@ -192,7 +192,7 @@ pub fn back_up(state: &Path, cfg: &BackupConfig, t: u64) -> Result<Backup> {
         Err(e) => {
             // A backup that failed is not a backup. Left on disk it has a
             // recent timestamp, which is worse than no backup at all.
-            let _ = std::fs::remove_dir_all(&dest);
+            crate::heard!(std::fs::remove_dir_all(&dest));
             Err(e)
         }
     }
@@ -247,7 +247,7 @@ fn copy_state_into_skipping(
             Ok(_) => {}
             // Same reasoning: gone between the listing and the copy.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let _ = std::fs::remove_file(&tmp);
+                crate::heard!(std::fs::remove_file(&tmp));
                 continue;
             }
             Err(e) => return Err(e.into()),
@@ -451,7 +451,7 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
     });
 
     let staging = state.join(format!(".restoring-{}", now()));
-    let _ = std::fs::remove_dir_all(&staging);
+    crate::heard!(std::fs::remove_dir_all(&staging));
     let stage_all = || -> Result<()> {
         for (src, rel) in &planned {
             let dst = staging.join(rel);
@@ -463,7 +463,7 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
         Ok(())
     };
     if let Err(e) = stage_all() {
-        let _ = std::fs::remove_dir_all(&staging);
+        crate::heard!(std::fs::remove_dir_all(&staging));
         return Err(AtlasError::Platform(format!(
             "couldn't read the whole backup ({e}), so I've left your files alone"
         )));
@@ -481,7 +481,7 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
             replaced.push(rel.display().to_string());
         }
         if let Err(e) = move_across(&staging.join(rel), &target) {
-            let _ = std::fs::remove_dir_all(&staging);
+            crate::heard!(std::fs::remove_dir_all(&staging));
             return Err(AtlasError::Platform(format!(
                 "I restored {n} file(s) and then couldn't put {} back: {e}. The ones I \
                  replaced are in the trash — say undo to put each back. Replaced so far: {}",
@@ -491,7 +491,7 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
         }
         n += 1;
     }
-    let _ = std::fs::remove_dir_all(&staging);
+    crate::heard!(std::fs::remove_dir_all(&staging));
     Ok(n)
 }
 
@@ -724,7 +724,7 @@ fn move_across(from: &Path, to: &Path) -> Result<()> {
     if meta.is_dir() {
         if let Err(e) = copy_tree(from, to) {
             // The half-copy goes; the original stays.
-            let _ = std::fs::remove_dir_all(to);
+            crate::heard!(std::fs::remove_dir_all(to));
             return Err(AtlasError::Platform(format!(
                 "couldn't copy {} to {}: {e}. Nothing was removed.",
                 from.display(),
@@ -734,7 +734,7 @@ fn move_across(from: &Path, to: &Path) -> Result<()> {
         std::fs::remove_dir_all(from)?;
     } else {
         if let Err(e) = std::fs::copy(from, to) {
-            let _ = std::fs::remove_file(to);
+            crate::heard!(std::fs::remove_file(to));
             return Err(AtlasError::Platform(format!(
                 "couldn't copy {} to {}: {e}. Nothing was removed.",
                 from.display(),
@@ -965,7 +965,7 @@ impl Trash {
             let mut back = keep;
             back.extend(stuck);
             back.sort_by_key(|i| i.id);
-            let _ = self.write_ledger(&back);
+            crate::heard!(self.write_ledger(&back));
         }
         gone
     }
@@ -1002,7 +1002,7 @@ impl Trash {
             size_on_disk(&p, &mut bytes);
             out.push((p, bytes));
         }
-        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out.sort_by_key(|b| std::cmp::Reverse(b.1));
         out
     }
 }

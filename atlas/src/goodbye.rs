@@ -170,7 +170,7 @@ pub fn asked_by_file(state_dir: &std::path::Path) -> bool {
     let f = stop_file(state_dir);
     if f.is_file() {
         let said = std::fs::read_to_string(&f).unwrap_or_default();
-        let _ = std::fs::remove_file(&f);
+        crate::heard!(std::fs::remove_file(&f));
         please_stop_because(if said.trim() == UPDATING { Why::Updating } else { Why::YouClosedIt });
         return true;
     }
@@ -228,6 +228,7 @@ pub fn listen() {
         // Windows gives roughly five seconds before killing the process
         // regardless, which is ample for a persist and a lock release but is
         // the reason the shutdown does the important things first.
+        #[allow(clippy::upper_case_acronyms, reason = "the Win32 type, by its Win32 name")]
         type BOOL = i32;
         const TRUE: BOOL = 1;
         unsafe extern "system" {

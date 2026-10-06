@@ -2404,11 +2404,9 @@ pub fn friends_page(v: &FriendsView) -> String {
             form("link", "", "Make a friend link")
         )),
     }
-    body.push_str(&format!(
-        "<h2>Got a link from someone?</h2><form method=post action=/hub/friends>\
+    body.push_str("<h2>Got a link from someone?</h2><form method=post action=/hub/friends>\
          <input type=hidden name=what value=add><input autocomplete=off name=link style='width:70%' aria-label='Their link, or the whole message' \
-         placeholder='Paste the whole message -- I&#39;ll find the link in it'> <button>Add them</button></form>"
-    ));
+         placeholder='Paste the whole message -- I&#39;ll find the link in it'> <button>Add them</button></form>");
     if !v.requests.is_empty() {
         body.push_str("<h2>Friend requests</h2>");
         for (from, group) in &v.requests {
@@ -2912,6 +2910,7 @@ fn first_run_html(d: &Deck) -> String {
     if crate::phonemode::on() {
         return first_run_on_the_phone(d);
     }
+    let connect = format!("{}#connect", Page::Accounts.href());
     format!(
         "<section class=brief aria-label='Welcome'>{MARK}<div><p><b>{greet}</b> This is home. It fills in as you go — \
          your brief, your day, what I'm working on. Nothing here yet, so let's give it a little to work with. \
@@ -2928,8 +2927,8 @@ fn first_run_html(d: &Deck) -> String {
         // Each goes where the thing is actually done (27 Sep 2026: "Connect"
         // opened the calendar, "Add" opened site security, and "Give Atlas a
         // file" opened search).
-        cal = format!("{}#connect", Page::Accounts.href()),
-        acc = format!("{}#connect", Page::Accounts.href()),
+        cal = connect,
+        acc = connect,
         give = Page::Give.href(),
     )
 }

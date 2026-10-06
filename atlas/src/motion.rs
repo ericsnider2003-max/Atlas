@@ -648,7 +648,8 @@ fn size_factor(low: &str) -> Option<(f32, &'static str)> {
 fn scale_times(svg: &str, k: f32) -> String {
     fn scale_tok(tok: &str, k: f32) -> Option<String> {
         let t = tok.trim();
-        let (num, unit) = if let Some(n) = t.strip_suffix("ms") { (n, "ms") } else if let Some(n) = t.strip_suffix('s') { (n, "s") } else { return None };
+        let (num, unit) = if let Some(n) = t.strip_suffix("ms") { (n, "ms") } else {
+            let n = t.strip_suffix('s')?; (n, "s") };
         let v: f32 = num.parse().ok()?;
         let out = v * k;
         Some(format!("{}{unit}", (out * 1000.0).round() / 1000.0))
@@ -724,7 +725,7 @@ fn main_colour(svg: &str) -> Option<String> {
         }
     }
     counts.retain(|(c, _)| !background.contains(c));
-    counts.sort_by(|a, b| b.1.cmp(&a.1));
+    counts.sort_by_key(|b| std::cmp::Reverse(b.1));
     counts.first().map(|(c, _)| c.clone())
 }
 
@@ -953,7 +954,7 @@ pub fn render(
     });
     let program = parts.next().ok_or("the render command is empty")?;
     let args: Vec<String> = parts.collect();
-    let _ = std::fs::remove_file(out_path);
+    crate::heard!(std::fs::remove_file(out_path));
     let status = crate::tools::command(&program)
         .args(&args)
         .status()

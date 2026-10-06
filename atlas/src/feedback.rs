@@ -166,6 +166,7 @@ pub fn send_decided(store: &Store, peer_dir: &std::path::Path, f: Feedback) -> R
     let (_, name, mine) = release_sender(store, peer_dir)
         .ok_or("This Atlas isn't in anyone's release channel, so there's no one to send feedback to.")?;
     if mine {
+        // unheard-ok: returns `Option<String>`, not a Result
         let _ = heard_feedback(store, "you", &serde_json::to_string(&f).unwrap_or_default());
         return Ok(Sending::Filed);
     }

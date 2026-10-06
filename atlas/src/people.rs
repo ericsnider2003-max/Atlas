@@ -148,7 +148,7 @@ impl People {
                 k
             }
         };
-        Ok(self.by_key.get_mut(&k).expect("just found or made"))
+        self.by_key.get_mut(&k).ok_or(Refused::Empty)
     }
 
     pub fn note(&mut self, name: &str, text: &str, now: u64) -> Result<(), Refused> {

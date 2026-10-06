@@ -143,8 +143,8 @@ pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::t
     let same_bytes = target.is_file()
         && crate::upgrade::sha256_of(exe).is_some_and(|a| Some(a) == crate::upgrade::sha256_of(&target));
     if !same_place(exe, &target) && !same_bytes {
-        if target.is_file() {
-            if stop_first && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING) {
+        if target.is_file()
+            && stop_first && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING) {
                 // It finishes what it's saving on the way out when asked. One
                 // that doesn't is ended; one that can't be is said, rather
                 // than left running the old version from the file it would be
@@ -158,7 +158,6 @@ pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::t
                     ));
                 }
             }
-        }
         copy_over(exe, &target).map_err(|e| format!("I couldn't copy myself into {}: {e}", home.display()))?;
     }
     // A copy keeps the "downloaded from the internet" mark, which would make
@@ -180,13 +179,13 @@ fn copy_over(from: &Path, to: &Path) -> std::io::Result<()> {
         Err(first) if to.is_file() => {
             let name = to.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let aside = to.with_file_name(format!("{name}{SET_ASIDE}{}", std::process::id()));
-            let _ = std::fs::remove_file(&aside);
+            crate::heard!(std::fs::remove_file(&aside));
             std::fs::rename(to, &aside).map_err(|e| std::io::Error::new(e.kind(), format!("{first}; and it couldn't be moved aside: {e}")))?;
             match std::fs::copy(from, to) {
                 Ok(_) => Ok(()),
                 Err(e) => {
-                    let _ = std::fs::remove_file(to);
-                    let _ = std::fs::rename(&aside, to);
+                    crate::heard!(std::fs::remove_file(to));
+                    crate::kept!(std::fs::rename(&aside, to));
                     Err(e)
                 }
             }
@@ -470,7 +469,7 @@ fn ask_atlas_to_stop_because(root: &Path, wait: std::time::Duration, why: &str) 
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
     // Not taken up: don't leave it for the next start to trip over.
-    let _ = std::fs::remove_file(crate::goodbye::stop_file(&state));
+    crate::heard!(std::fs::remove_file(crate::goodbye::stop_file(&state)));
     false
 }
 
@@ -621,8 +620,10 @@ pub fn downloads_and_desktop() -> Vec<PathBuf> {
     out
 }
 
+/// A Windows known folder (Desktop, Downloads...) by its id. The one copy:
+/// `organize` uses it too (audit Q3).
 #[cfg(windows)]
-fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
+pub(crate) fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
     use windows::Win32::System::Com::CoTaskMemFree;
     use windows::Win32::UI::Shell::{SHGetKnownFolderPath, KF_FLAG_DEFAULT};
     // SAFETY: the returned buffer is read once and freed with CoTaskMemFree.
@@ -737,9 +738,9 @@ fn start_problem_file(root: &Path) -> std::path::PathBuf {
 pub fn note_start_problem(root: &Path, why: &str) {
     let f = start_problem_file(root);
     if let Some(d) = f.parent() {
-        let _ = std::fs::create_dir_all(d);
+        crate::heard!(std::fs::create_dir_all(d));
     }
-    let _ = std::fs::write(f, why);
+    crate::kept!(std::fs::write(f, why));
 }
 
 /// What to tell someone whose background Atlas ended straight after being
@@ -762,7 +763,7 @@ pub fn start_failed_words(root: &Path, code: Option<i32>) -> String {
 /// once with a failure is reported rather than left silent. `Ok(())` is
 /// "still running when the watch ended" (or ended cleanly).
 pub fn start_background_watched(exe: &Path, root: &Path, watch: std::time::Duration) -> Result<(), String> {
-    let _ = std::fs::remove_file(start_problem_file(root));
+    crate::heard!(std::fs::remove_file(start_problem_file(root)));
     let mut child = spawn_quietly(exe, &["--daemon"]).map_err(|e| format!("I couldn't start Atlas in the background: {e}"))?;
     let until = std::time::Instant::now() + watch;
     while std::time::Instant::now() < until {

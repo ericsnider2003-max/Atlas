@@ -560,10 +560,10 @@ pub fn opening(yesterday: &Closed, carried: &[(String, Carried)], cfg: &DailyCon
 /// Everything a carried task brings with it.
 ///
 /// The point of the whole module: closing the day does not close the thread.
-pub fn thread<'a>(
-    item: &'a crate::workspace_view::Item,
+pub fn thread(
+    item: &crate::workspace_view::Item,
     carried: Carried,
-) -> (Carried, &'a [crate::workspace_view::Thought]) {
+) -> (Carried, &[crate::workspace_view::Thought]) {
     (carried, &item.thinking)
 }
 
@@ -715,9 +715,9 @@ pub fn wrap_asked(said: &str) -> Option<WrapAsked> {
     let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ");
     const WEEK: &[&str] = &["how did my week go", "how was my week", "weekly review", "review my week", "wrap up my week", "my week in review", "friday review"];
     const DAY: &[&str] = &["wrap up my day", "wrap up the day", "how did today go", "how did my day go", "end of day", "end of day wrap up", "day wrap up", "what did i get done today", "wrap up today"];
-    if WEEK.iter().any(|p| t == *p) {
+    if WEEK.contains(&t) {
         Some(WrapAsked::Week)
-    } else if DAY.iter().any(|p| t == *p) {
+    } else if DAY.contains(&t) {
         Some(WrapAsked::Day)
     } else {
         None

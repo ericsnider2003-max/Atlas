@@ -804,7 +804,7 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
             (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, e.hint)))
         })
         .collect();
-    pages.sort_by(|a, b| b.0.cmp(&a.0));
+    pages.sort_by_key(|b| std::cmp::Reverse(b.0));
     let mut caps: Vec<(usize, String)> = all()
         .iter()
         .filter_map(|c| {
@@ -815,7 +815,7 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
             })
         })
         .collect();
-    caps.sort_by(|a, b| b.0.cmp(&a.0));
+    caps.sort_by_key(|b| std::cmp::Reverse(b.0));
     let mut out = String::from(
         "About Atlas (you): you are Atlas. When asked about yourself, your setup or where something is, answer only \
          from these lines and name the hub page; if the answer isn't here, say you're not sure rather than guess. \
@@ -994,7 +994,7 @@ fn hub_pages_for(said: &str, most: usize) -> Vec<String> {
             (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, crate::router::clip_words(e.hint, 90))))
         })
         .collect();
-    pages.sort_by(|a, b| b.0.cmp(&a.0));
+    pages.sort_by_key(|b| std::cmp::Reverse(b.0));
     let best = pages.first().map(|p| p.0).unwrap_or(0);
     pages.into_iter().filter(|p| p.0 == best).take(most).map(|p| p.1).collect()
 }
@@ -1095,9 +1095,9 @@ pub fn can(id: &str) -> Option<(bool, String)> {
         ),
         State::Untested => (
             false,
-            format!("built, but it has never run on a real machine — so I can't promise it works."),
+            "built, but it has never run on a real machine — so I can't promise it works.".to_string(),
         ),
-        State::Planned => (false, format!("not built yet.")),
+        State::Planned => (false, "not built yet.".to_string()),
     })
 }
 
@@ -1173,12 +1173,16 @@ pub fn says(c: &Capability, p: Platform) -> String {
 
     match runs_on(c, p) {
         How::Never => {
-            let n = blocked_by(c, p).expect("Never means something is walled");
-            let mut s = format!("never on {} — it would have to be {}", p.name(), n.plain());
-            if let Some(why) = portable::because(p, n) {
-                s.push_str(&format!(", and {why}"));
+            match blocked_by(c, p) {
+                Some(n) => {
+                    let mut s = format!("never on {} — it would have to be {}", p.name(), n.plain());
+                    if let Some(why) = portable::because(p, n) {
+                        s.push_str(&format!(", and {why}"));
+                    }
+                    s
+                }
+                None => format!("never on {}", p.name()),
             }
-            s
         }
         How::Awkward => {
             let why = c
@@ -1567,10 +1571,11 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 4 Oct 2026: + `connect`, `connecting` (Chat B, connecting accounts) = 478
 // with webpush.
 // 4 Oct 2026: + `oauthlink` (one-click Google and Microsoft sign-in) = 479.
-// 5 Oct 2026: + `childjob` (Chat A, programs end with Atlas) = 481.
+// 5 Oct 2026: + `childjob` (Chat A, programs end with Atlas) and `unheard`
+// (Chat C, failures nobody was waiting for) = 482.
 // 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
-// ("think hard about": several tries, the best of them) = 483.
-pub const MODULES_IN_TREE: usize = 483;
+// ("think hard about": several tries, the best of them) = 484.
+pub const MODULES_IN_TREE: usize = 484;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1589,6 +1594,7 @@ pub const MODULES_IN_TREE: usize = 483;
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
     ("childjob", "ties every program Atlas starts for its own work to Atlas, so it ends when Atlas ends instead of running on with the fans"),
+    ("unheard", "failures nobody was waiting for (kept!/heard!): a write that failed is told like a failed save, the rest logged; nothing is discarded silently"),
     ("doorbell", "the one thing an idle Atlas waits on: typed lines, the microphone, the hub and a stop ring it, so nothing wakes on a timer to look"),
     ("cpuuse", "measures Atlas's own CPU while idle and where the loop's time goes, for the log and for self-repair"),
     ("b64", "base64 encoding for pictures and keys handed to other programs"),

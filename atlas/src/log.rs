@@ -14,14 +14,14 @@ pub struct Log {
 impl Log {
     pub fn new(dir: impl Into<PathBuf>, max_bytes: u64) -> Log {
         let dir: PathBuf = dir.into();
-        let _ = std::fs::create_dir_all(&dir);
+        crate::heard!(std::fs::create_dir_all(&dir));
         Log { path: dir.join("atlas.log"), max_bytes }
     }
 
     pub fn write(&self, level: &str, msg: &str) {
         self.rotate_if_needed();
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.path) {
-            let _ = writeln!(f, "{} {level} {msg}", crate::store::now());
+            crate::kept!(writeln!(f, "{} {level} {msg}", crate::store::now()));
         }
     }
 
@@ -37,7 +37,7 @@ impl Log {
         if md.len() < self.max_bytes {
             return;
         }
-        let _ = std::fs::rename(&self.path, self.path.with_extension("log.1"));
+        crate::kept!(std::fs::rename(&self.path, self.path.with_extension("log.1")));
     }
 
     pub fn size(&self) -> u64 {

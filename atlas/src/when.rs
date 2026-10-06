@@ -634,7 +634,7 @@ fn clock_at_bare(w: &[String], i: usize, context_pm: Option<Ctx>) -> Option<(u32
     if tok.contains(':') || tok.parse::<u32>().is_ok() {
         let mut v: Vec<String> = w.to_vec();
         v.insert(i, "at".into());
-        return clock_at(&v, i + 1, context_pm).map(|(m, u, g)| (m, u, g));
+        return clock_at(&v, i + 1, context_pm);
     }
     clock_at(w, i, context_pm)
 }

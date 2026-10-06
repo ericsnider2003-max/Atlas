@@ -111,14 +111,16 @@ unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
     let bmp = CreateCompatibleBitmap(screen, w, h);
     let old = SelectObject(mem, bmp);
     let copied = BitBlt(mem, 0, 0, w, h, screen, r.left, r.top, SRCCOPY | CAPTUREBLT).is_ok();
-    let mut info = BITMAPINFO::default();
-    info.bmiHeader = BITMAPINFOHEADER {
-        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-        biWidth: w,
-        biHeight: -h, // top row first
-        biPlanes: 1,
-        biBitCount: 32,
-        biCompression: BI_RGB.0,
+    let mut info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h, // top row first
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut bgra = vec![0u8; (w as usize) * (h as usize) * 4];
@@ -130,7 +132,7 @@ unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
     if lines == 0 {
         return None;
     }
-    let rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+    let rgb: Vec<u8> = bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
     Some((w as u32, h as u32, rgb))
 }
 
@@ -227,7 +229,7 @@ impl Platform for WindowsPlatform {
 
     fn active_window_id(&self) -> Result<Option<WindowId>> {
         let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
-        Ok((!hwnd.0.is_null()).then(|| WindowId(hwnd.0 as u64)))
+        Ok((!hwnd.0.is_null()).then_some(WindowId(hwnd.0 as u64)))
     }
 
     // --- The pointer (1 Oct 2026). None of these were built on Windows: the
@@ -636,7 +638,7 @@ impl Platform for WindowsPlatform {
                 return None;
             }
             let h = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            (!h.0.is_null()).then(|| h.0 as usize as u32)
+            (!h.0.is_null()).then_some(h.0 as usize as u32)
         }
     }
 
@@ -670,12 +672,14 @@ impl Platform for WindowsPlatform {
                         || t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED
                 })
                 .filter_map(|p| {
-                    let mut src = DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
-                    src.header = DISPLAYCONFIG_DEVICE_INFO_HEADER {
-                        r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
-                        size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
-                        adapterId: p.sourceInfo.adapterId,
-                        id: p.sourceInfo.id,
+                    let mut src = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
+                        header: DISPLAYCONFIG_DEVICE_INFO_HEADER {
+                            r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+                            size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
+                            adapterId: p.sourceInfo.adapterId,
+                            id: p.sourceInfo.id,
+                        },
+                        ..Default::default()
                     };
                     if DisplayConfigGetDeviceInfo(&mut src.header) != 0 {
                         return None;
@@ -764,7 +768,7 @@ impl Platform for WindowsPlatform {
             // WM_CLOSE per-window and is deliberately not implemented yet.
             // Through `tools::command` (no console window flashing up from the
             // windowless background Atlas; 28 Sep 2026).
-            let _ = crate::tools::command("taskkill").args(["/IM", p, "/F"]).output();
+            crate::heard!(crate::tools::command("taskkill").args(["/IM", p, "/F"]).output());
         }
         Ok(())
     }
@@ -886,7 +890,7 @@ impl Platform for WindowsPlatform {
         // with the language. None when it can't be made.
         let run = || -> windows::core::Result<String> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
-            let bgra: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let bgra: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
             let writer = DataWriter::new()?;
             writer.WriteBytes(&bgra)?;
             let buffer = writer.DetachBuffer()?;
@@ -911,7 +915,7 @@ impl Platform for WindowsPlatform {
         use windows::Storage::Streams::DataWriter;
         let run = || -> windows::core::Result<Vec<(String, super::PixelRect)>> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
-            let bgra: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let bgra: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
             let writer = DataWriter::new()?;
             writer.WriteBytes(&bgra)?;
             let buffer = writer.DetachBuffer()?;
@@ -1302,8 +1306,8 @@ unsafe fn automation() -> Result<windows::Win32::UI::Accessibility::IUIAutomatio
             .map_err(|e| AtlasError::Platform(format!("UI Automation isn't available: {e}")))?,
     };
     if let Ok(ua2) = ua.cast::<IUIAutomation2>() {
-        let _ = ua2.SetConnectionTimeout(2_000);
-        let _ = ua2.SetTransactionTimeout(2_000);
+        crate::heard!(ua2.SetConnectionTimeout(2_000));
+        crate::heard!(ua2.SetTransactionTimeout(2_000));
     }
     Ok(ua)
 }

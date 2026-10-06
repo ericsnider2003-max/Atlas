@@ -585,7 +585,7 @@ impl<'a> Daemon<'a> {
 
         let (room, label) = if known.len() == 1 {
             let who = &known[0];
-            match self.chats.open(who, space, &[who.clone()], &roster, &pairings) {
+            match self.chats.open(who, space, std::slice::from_ref(who), &roster, &pairings) {
                 Ok(id) => (id, who.clone()),
                 Err(e) => return e.plain(),
             }
@@ -968,7 +968,7 @@ impl<'a> Daemon<'a> {
                 }
             }
         } else {
-            match self.chats.open(&c.from, space, &[c.from.clone()], &roster, &pairings) {
+            match self.chats.open(&c.from, space, std::slice::from_ref(&c.from), &roster, &pairings) {
                 Ok(id) => id,
                 Err(e) => {
                     self.log
@@ -1340,12 +1340,12 @@ impl<'a> Daemon<'a> {
                 let dir = crate::models::Registry::dir_for(&self.tools_cfg().models);
                 if let Some((path, m)) = crate::phonemodel::present(&dir) {
                     std::thread::spawn(move || {
-                        let _ = crate::phonemodel::attach(&path);
+                        crate::heard!(crate::phonemodel::attach(&path));
                     });
                     return format!("{} is already on this phone; loading it now.", m.name);
                 }
                 return crate::phonemodel::start_download(dir, |path| {
-                    let _ = crate::phonemodel::attach(&path);
+                    crate::heard!(crate::phonemodel::attach(&path));
                 });
             }
             return crate::phonemodel::download_said(crate::phonemodel::download_state().as_ref(), attached.as_deref());
@@ -1494,7 +1494,7 @@ impl<'a> Daemon<'a> {
     pub(super) fn unfriend_half(&self, name: &str) {
         let mut pairings = crate::kin::Pairings::load(&self.peer_dir);
         if pairings.forget(name) {
-            let _ = pairings.save(&self.peer_dir);
+            crate::kept!(pairings.save(&self.peer_dir));
         }
         if let Some(l) = &self.signal_listener {
             l.forget_peer(name);
@@ -1550,7 +1550,7 @@ impl<'a> Daemon<'a> {
         self.admit_friend(&pairings, &name);
         let hello = Hello { invite: link.invite.clone(), name: me.name, key: me.key, routes: me.routes, token };
         let keep = Pending { name, link, hello, until: clock() + LINK_DAYS * 86_400 };
-        let _ = self.start_tor();
+        crate::heard!(self.start_tor());
         Ok(FriendKnock { identity, keep, socks: self.tor_socks() })
     }
 
@@ -1796,6 +1796,7 @@ impl<'a> Daemon<'a> {
             );
             self.journal.record_at(crate::activity::Kind::Offered, &said, true, clock());
             let note = crate::notify::Note::new("Friend request", &said, crate::notify::Urgency::Routine, clock());
+            // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
             let _ = self.reach_you(note, clock());
             return;
         }
@@ -2082,6 +2083,7 @@ impl<'a> Daemon<'a> {
         }
         let roster = crate::roster::Roster::load(&self.store);
         let line = format!("I've started \"{}\" again as a group with an owner — let's carry on there.", old.name);
+        // unheard-ok: a note posted into a room that may have been closed; nothing to tell
         let _ = self.chats.post(&old.id, &line, clock(), local_offset_mins(), &roster, &pairings);
         self.settle_owned_groups();
         let _ = self.chats.save(&self.store);
@@ -2166,7 +2168,7 @@ impl<'a> Daemon<'a> {
             } else if let Ok(rotation) = serde_json::from_str::<crate::release::SignedRotation>(&text) {
                 crate::update_apply::rotation_notice(&rotation)
             } else {
-                let _ = std::fs::rename(&f, f.with_extension("not-a-notice"));
+                crate::kept!(std::fs::rename(&f, f.with_extension("not-a-notice")));
                 continue;
             };
             let mut all = true;
@@ -2176,7 +2178,7 @@ impl<'a> Daemon<'a> {
                 }
             }
             if all {
-                let _ = std::fs::rename(&f, f.with_extension("posted"));
+                crate::kept!(std::fs::rename(&f, f.with_extension("posted")));
                 posted.push(f.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
             }
         }
@@ -2243,7 +2245,7 @@ impl<'a> Daemon<'a> {
     pub(super) fn peer_upkeep(&mut self, t: u64) {
         const RETRY_SECS: u64 = 300;
         // Tor, kept running while there's anyone to reach or be reached by.
-        if self.signal_listener.is_some() && self.tor.as_mut().map_or(true, |x| x.stopped()) {
+        if self.signal_listener.is_some() && self.tor.as_mut().is_none_or(|x| x.stopped()) {
             let k = "tor:start".to_string();
             if !self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
                 self.peer_tries.insert(k, t);
@@ -2254,10 +2256,12 @@ impl<'a> Daemon<'a> {
         }
         if let Some(said) = self.keep_tor_getting_through(t) {
             self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+            // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
             let _ = self.reach_you(crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t), t);
         }
         for said in self.friend_upkeep(t) {
             self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+            // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
             let _ = self.reach_you(crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t), t);
         }
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
@@ -2307,6 +2311,7 @@ impl<'a> Daemon<'a> {
                     }
                     Fetched::Ready(said) | Fetched::Bad(said) => {
                         self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                        // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
                         let _ = self.reach_you(crate::notify::Note::new("Atlas update", &said, crate::notify::Urgency::Routine, t), t);
                     }
                     Fetched::Partway(..) => {}
@@ -2379,6 +2384,7 @@ impl<'a> Daemon<'a> {
             match crate::update_apply::update_tick(&self.store, &self.store.install_root(), platform, &me, channel, &moment, t) {
                 crate::update_apply::Ticked::Say(said) => {
                     self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                    // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
                     let _ = self.reach_you(crate::notify::Note::new("Atlas update", &said, crate::notify::Urgency::Routine, t), t);
                 }
                 crate::update_apply::Ticked::Restart(said) => {

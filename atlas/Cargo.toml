@@ -2,6 +2,8 @@
 name = "atlas"
 version = "0.1.0"
 edition = "2021"
+# Never published to crates.io (also lets `cargo deny` skip its own licence).
+publish = false
 # The integration suite links the crate once, through tests/all.rs, instead of
 # once per file (348 separate binaries was the slow part of a dev cycle). So the
 # test targets are declared by hand below rather than auto-discovered: a new
@@ -102,6 +104,28 @@ libloading = "0.8"
 # llama.cpp `common` library, which Atlas doesn't use.
 llama-cpp-2 = { version = "=0.1.157", default-features = false, optional = true }
 encoding_rs = { version = "0.8", optional = true }
+
+# The lint gate (5 Oct 2026, audit Q4). CI runs `cargo clippy --lib -- -D warnings`,
+# so a new warning fails the merge rather than joining a pile (it was 332).
+[lints.rust]
+# An ignored Result is a compile error: discard one with `let _ =` and a
+# reason the guard test accepts, or through `kept!`/`heard!` (audit Q1).
+unused_must_use = "deny"
+
+[lints.clippy]
+# No panics on a production path (audit Q2). Tests may unwrap (clippy.toml);
+# a truly infallible call says why with `#[allow(.., reason = "..")]`.
+unwrap_used = "deny"
+expect_used = "deny"
+# Judgement calls, not defects: a long signature or a nested type is
+# sometimes the plain form. Revisit as the big files are split (audit Q6).
+type_complexity = "allow"
+too_many_arguments = "allow"
+# The guards that find dead code read text: `.map(|v| f(v))` is a call they
+# see, `.map(f)` is not (tests/common/mod.rs, `called_names`). The project's
+# rule is the closure, so clippy's opposite advice is switched off.
+redundant_closure = "allow"
+redundant_closure_for_method_calls = "allow"
 
 [dev-dependencies]
 serde_yaml = "0.9"
@@ -222,6 +246,10 @@ path = "tests/muse_and_thinking_hard.rs"
 [[test]]
 name = "connecting_is_one_button"
 path = "tests/connecting_is_one_button.rs"
+[[test]]
+# Its own process: one fresh daemon per command, each on its own thread.
+name = "every_command_end_to_end"
+path = "tests/every_command_end_to_end.rs"
 [[test]]
 name = "the_self_test_never_starts_another_atlas"
 path = "tests/the_self_test_never_starts_another_atlas.rs"

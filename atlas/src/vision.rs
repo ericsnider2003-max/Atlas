@@ -356,7 +356,7 @@ fn plainly_joined(parts: &[String]) -> String {
         1 => parts[0].clone(),
         2 => format!("{} and {}", parts[0], parts[1]),
         _ => {
-            let (last, rest) = parts.split_last().expect("checked above");
+            let Some((last, rest)) = parts.split_last() else { return String::new() };
             format!("{}, and {}", rest.join(", "), last)
         }
     }

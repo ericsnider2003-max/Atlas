@@ -467,7 +467,7 @@ impl eframe::App for App {
                                 .frame(false),
                         );
                         if open.clicked() {
-                            let _ = crate::firstlaunch::open_atlas_window(&crate::firstlaunch::First::Hub(page.clone()));
+                            crate::heard!(crate::firstlaunch::open_atlas_window(&crate::firstlaunch::First::Hub(page.clone())));
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     }

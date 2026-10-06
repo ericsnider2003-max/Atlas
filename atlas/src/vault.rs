@@ -1206,7 +1206,7 @@ const RECOVERY_LEN: usize = 24;
 /// characters twice. A code people will not use protects nothing.
 pub fn short_code(len: usize) -> String {
     let n = RECOVERY_ALPHABET.len() as u8;
-    let ceiling = (256 / n as u16 * n as u16) as u16;
+    let ceiling = 256 / n as u16 * n as u16;
     let mut out = String::with_capacity(len + len / 5);
     let mut taken = 0;
     while taken < len {
@@ -1238,7 +1238,7 @@ pub fn short_code(len: usize) -> String {
 /// one of these from paper should not have to know which of the two it is.
 pub fn new_recovery_key() -> String {
     let n = RECOVERY_ALPHABET.len() as u8;
-    let ceiling = (256 / n as u16 * n as u16) as u16;
+    let ceiling = 256 / n as u16 * n as u16;
     let mut out = String::with_capacity(RECOVERY_LEN + RECOVERY_LEN / 4);
     let mut taken = 0;
     while taken < RECOVERY_LEN {

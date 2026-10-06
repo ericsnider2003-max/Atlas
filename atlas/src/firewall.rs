@@ -180,7 +180,7 @@ impl Firewall {
     /// What is paused, newest first.
     pub fn waiting(&self) -> Vec<&Held> {
         let mut out: Vec<&Held> = self.held.iter().filter(|h| !h.released).collect();
-        out.sort_by(|a, b| b.when.cmp(&a.when));
+        out.sort_by_key(|b| std::cmp::Reverse(b.when));
         out
     }
 

@@ -34,9 +34,10 @@ pub struct Live {
 
 fn state<'a>(d: &'a mut Daemon<'_>) -> &'a mut HuntState {
     if d.workday.hunt.state.is_none() {
-        d.workday.hunt.state = Some(d.store.load(hunt::FILE));
+        let loaded = d.store.load(hunt::FILE);
+        return d.workday.hunt.state.insert(loaded);
     }
-    d.workday.hunt.state.as_mut().expect("loaded")
+    d.workday.hunt.state.get_or_insert_with(Default::default)
 }
 
 fn keep(d: &mut Daemon) -> Result<(), String> {
@@ -191,7 +192,7 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
             }
         }
     }
-    let _ = keep(d);
+    crate::heard!(keep(d));
     if plan.is_empty() || !online {
         return;
     }
@@ -317,7 +318,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
                     s.push(' ');
                     s.push_str(hunt::ASK);
                     state(d).asked = true;
-                    let _ = keep(d);
+                    crate::heard!(keep(d));
                 }
                 return s;
             }
@@ -357,7 +358,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
             match state(d).not_interested(&id) {
                 Some(title) => {
                     d.workday.hunt.shown.retain(|x| *x != id);
-                    let _ = keep(d);
+                    crate::heard!(keep(d));
                     format!("Dropped \"{title}\". I'll hold back ones like it.")
                 }
                 None => "That one's gone from the list.".into(),
@@ -417,7 +418,7 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
                 reply.push(' ');
                 reply.push_str(hunt::ASK);
                 state(d).asked = true;
-                let _ = keep(d);
+                crate::heard!(keep(d));
             }
             reply
         }
@@ -459,14 +460,14 @@ pub fn brief_items(d: &mut Daemon, t: u64) -> Vec<crate::brief::Item> {
     }
     if Interests::from_facts(&d.facts).is_empty() && !state(d).asked {
         state(d).asked = true;
-        let _ = keep(d);
+        crate::heard!(keep(d));
         out.push(item("opportunity:ask".into(), hunt::ASK.into()));
     }
     // Only finds not volunteered before (`HuntState::briefed`): the brief is
     // built several times a day, and each one said the same finds again.
     let top: Vec<hunt::Ranked> = state(d).take_unbriefed(cfg.top_n.max(1) as usize, t);
     if !top.is_empty() {
-        let _ = keep(d);
+        crate::heard!(keep(d));
     }
     for (i, r) in top.iter().enumerate() {
         out.push(item(format!("opportunity:{}", r.found.id), hunt::line(i + 1, r)));
@@ -595,7 +596,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     let said = match get("what").as_str() {
         "nope" => match state(d).not_interested(&id) {
             Some(t) => {
-                let _ = keep(d);
+                crate::heard!(keep(d));
                 format!("Dropped \"{t}\". I'll hold back ones like it.")
             }
             None => "That one's already gone.".into(),
@@ -644,7 +645,7 @@ pub fn fit_asked(d: &mut Daemon, said: &str) -> Option<String> {
         "am i a good fit for this job", "job fit", "check this job posting", "score this job", "how well do i fit this posting",
         "do i fit this posting", "how well do i match this job",
     ];
-    if !ASKS.iter().any(|a| t == *a) {
+    if !ASKS.contains(&t) {
         return None;
     }
     let posting = d.plat.read_clipboard().ok().flatten().unwrap_or_default();

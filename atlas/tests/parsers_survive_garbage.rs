@@ -388,3 +388,78 @@ fn no_position_is_taken_from_a_unicode_lowercased_copy() {
     }
     assert!(found.is_empty(), "use to_ascii_lowercase when the position is used on the original:\n{}", found.join("\n"));
 }
+
+// Folded in from the other Q20 pass (`fuzzing_the_readers.rs`, 5 Oct 2026):
+// the readers it covered that this file didn't.
+
+#[test]
+fn feeds_and_their_dates() {
+    let tried = survive(
+        "feeds::parse",
+        &[
+            b"<?xml version='1.0'?><rss><channel><title>t</title><item><title>a</title><link>http://x/1</link><pubDate>Mon, 05 Oct 2026 09:00:00 GMT</pubDate></item></channel></rss>",
+            b"<feed xmlns='http://www.w3.org/2005/Atom'><entry><title>a</title><link href='http://x/2' rel='alternate'/><updated>2026-10-05T09:00:00Z</updated></entry></feed>",
+            b"<rdf:RDF><item rdf:about='http://x/3'><title>b<![CDATA[ & ]]></title></item></rdf:RDF>",
+        ],
+        3000,
+        |b| {
+            let _ = atlas::feeds::parse(&text(b));
+        },
+    );
+    assert!(tried > 0, "nothing was tried");
+    let tried = survive("feeds::parse_date", &[b"Mon, 05 Oct 2026 09:00:00 GMT", b"2026-10-05T09:00:00+02:00"], 3000, |b| {
+        let _ = atlas::feeds::parse_date(&text(b));
+    });
+    assert!(tried > 0, "nothing was tried");
+}
+
+#[test]
+fn a_mail_servers_folder_list() {
+    let tried = survive("imap::list_entry", &[b"* LIST (\\HasNoChildren) \"/\" \"INBOX\"", b"* LIST (\\Noselect) \".\" Archive {12}"], 3000, |b| {
+        let _ = atlas::imap::list_entry(&text(b));
+    });
+    assert!(tried > 0, "nothing was tried");
+}
+
+#[test]
+fn a_web_page() {
+    let tried = survive(
+        "readable::extract",
+        &[b"<html><head><title>t</title></head><body><article><h1>A</h1><p>One <b>two</b>&nbsp;</p><pre>x</pre><!-- c --><script>s</script></article></body></html>"],
+        3000,
+        |b| {
+            let _ = atlas::readable::extract(&text(b));
+        },
+    );
+    assert!(tried > 0, "nothing was tried");
+}
+
+#[test]
+fn addresses_excerpts_and_pairing_codes() {
+    let tried = survive("mailbook::mail_addresses", &[b"\"Lovelace, Ada\" <ada@example.com>, bob@example.org (Bob), =?utf-8?q?Zo=C3=AB?= <z@x.io>"], 3000, |b| {
+        let _ = atlas::mailbook::mail_addresses(&text(b));
+    });
+    assert!(tried > 0, "nothing was tried");
+    let tried = survive("mailbook::excerpt", &[b"Hi,\n\n> quoted\r\nOn Mon someone wrote:\n-- \nsig"], 3000, |b| {
+        let _ = atlas::mailbook::excerpt(&text(b));
+    });
+    assert!(tried > 0, "nothing was tried");
+    let tried = survive("household::decode_pairing", &[b"ATLAS1-abcdefghjkmnpqrstuvwxyz23456789", "K7Q2M9X4TP-\u{e9}".as_bytes()], 3000, |b| {
+        let _ = atlas::household::decode_pairing(&text(b));
+    });
+    assert!(tried > 0, "nothing was tried");
+}
+
+/// The harness itself: a reader that panics fails the test, by name. Without
+/// this, a `survive` that swallowed panics would pass every check above.
+#[test]
+fn a_reader_that_panics_is_caught() {
+    let caught = std::panic::catch_unwind(|| {
+        survive("a reader that panics on anything changed", &[b"abcdefgh"], 50, |b| {
+            assert_eq!(b, b"abcdefgh", "changed");
+        })
+    });
+    let why = caught.expect_err("a panicking reader must fail the test");
+    let said = why.downcast_ref::<String>().cloned().unwrap_or_default();
+    assert!(said.contains("a reader that panics on anything changed panicked"), "{said}");
+}

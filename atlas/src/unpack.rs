@@ -61,7 +61,7 @@ pub fn entries_of(bytes: &[u8]) -> Result<Vec<Entry>, String> {
     let mut out = Vec::with_capacity(count);
     let mut i = dir_at;
     for _ in 0..count {
-        if !bytes.get(i..).map_or(false, |b| b.starts_with(&[0x50, 0x4b, 0x01, 0x02])) {
+        if !bytes.get(i..).is_some_and(|b| b.starts_with(&[0x50, 0x4b, 0x01, 0x02])) {
             return Err("the zip's list of contents is damaged".into());
         }
         let flags = u16_at(bytes, i + 8).unwrap_or(0);
@@ -86,7 +86,7 @@ pub fn entries_of(bytes: &[u8]) -> Result<Vec<Entry>, String> {
 /// The bytes of one entry, unpacked.
 pub fn read_entry(bytes: &[u8], e: &Entry) -> Result<Vec<u8>, String> {
     let at = e.local_header as usize;
-    if !bytes.get(at..).map_or(false, |b| b.starts_with(&[0x50, 0x4b, 0x03, 0x04])) {
+    if !bytes.get(at..).is_some_and(|b| b.starts_with(&[0x50, 0x4b, 0x03, 0x04])) {
         return Err(format!("{} is damaged in the zip", e.name));
     }
     let name_len = u16_at(bytes, at + 26).unwrap_or(0) as usize;
@@ -174,11 +174,11 @@ pub fn unzip(zip: &Path, dest: &Path, cfg: &crate::files::FilesConfig) -> Result
     for (e, rel) in entries.iter().zip(names) {
         let to = dest.join(&rel);
         if e.is_dir() {
-            let _ = std::fs::create_dir_all(&to);
+            crate::heard!(std::fs::create_dir_all(&to));
             continue;
         }
         if let Some(p) = to.parent() {
-            let _ = std::fs::create_dir_all(p);
+            crate::heard!(std::fs::create_dir_all(p));
         }
         let data = read_entry(&bytes, e)?;
         std::fs::write(&to, data).map_err(|err| format!("I couldn't write {}: {err}", rel.display()))?;

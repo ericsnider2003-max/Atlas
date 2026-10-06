@@ -298,7 +298,7 @@ pub fn what_was_scanned(text: &str) -> Scanned {
     if words < 5 {
         return Scanned::Unclear;
     }
-    let money = t.matches(|c| c == '$' || c == '£' || c == '€').count();
+    let money = t.matches(['$', '£', '€']).count();
     if (t.contains("total") || t.contains("subtotal")) && (money > 0 || t.contains("tax") || t.contains("change")) {
         return Scanned::Receipt;
     }

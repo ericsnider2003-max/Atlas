@@ -308,7 +308,7 @@ impl<'a> Daemon<'a> {
                 return Some(v);
             }
         }
-        let _ = self.plat.focus(win);
+        crate::heard!(self.plat.focus(win));
         let grab = self.plat.grab_window().ok().flatten()?;
         let origin = self.plat.rect_of(win).map(|r| (r.x, r.y)).unwrap_or((0, 0));
         let lines = self.plat.recognise_lines(&grab).ok()?;
@@ -321,7 +321,7 @@ impl<'a> Daemon<'a> {
         let target = |n: usize| view.targets.get(n.wrapping_sub(1)).cloned().ok_or_else(|| format!("there's no [{n}]"));
         let click_middle = |t: &Target| -> std::result::Result<(), String> {
             let (x, y) = t.middle().ok_or_else(|| "Windows didn't say where it is".to_string())?;
-            let _ = self.plat.focus(win);
+            crate::heard!(self.plat.focus(win));
             self.plat.click(x, y, crate::platform::Button::Left).map_err(|e| e.to_string())
         };
         match action {
@@ -350,16 +350,16 @@ impl<'a> Daemon<'a> {
                 } else {
                     click_middle(&t)?;
                 }
-                let _ = self.plat.press("ctrl+a");
+                crate::heard!(self.plat.press("ctrl+a"));
                 self.plat.type_text(text).map_err(|e| e.to_string())
             }
             Action::Key(k) => {
-                let _ = self.plat.focus(win);
+                crate::heard!(self.plat.focus(win));
                 self.plat.press(k).map_err(|e| e.to_string())
             }
             Action::Scroll(d) => {
                 if let Ok(r) = self.plat.rect_of(win) {
-                    let _ = self.plat.move_cursor(r.x + r.width / 2, r.y + r.height / 2);
+                    crate::heard!(self.plat.move_cursor(r.x + r.width / 2, r.y + r.height / 2));
                 }
                 self.plat.scroll(0, *d).map_err(|e| e.to_string())
             }

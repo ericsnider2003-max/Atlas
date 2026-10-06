@@ -127,6 +127,7 @@ impl Rolling {
     /// Blocks until a whole frame has arrived. A partial frame is never handed
     /// back — half a picture would be read as a hand in the wrong place rather
     /// than as an error, which is worse than no picture at all.
+    #[allow(clippy::should_implement_trait, reason = "a blocking read of the next whole frame, borrowing the buffer; not an Iterator")]
     pub fn next(&mut self) -> Option<&[u8]> {
         let out = self.child.stdout.as_mut()?;
         match out.read_exact(&mut self.frame) {

@@ -78,6 +78,7 @@ impl Walk {
         }
     }
 
+    #[allow(clippy::should_implement_trait, reason = "moves the walkthrough to its next stop and says whether there was one; not an Iterator")]
     pub fn next(&mut self) -> bool {
         if let Some(s) = self.stops.get_mut(self.at) {
             s.done = true;

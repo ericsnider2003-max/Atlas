@@ -48,7 +48,7 @@ fn module() -> Option<*mut c_void> {
         let current = std::fs::read(&path).map(|b| b == LOADER).unwrap_or(false);
         if !current {
             if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
+                crate::heard!(std::fs::create_dir_all(dir));
             }
             if std::fs::write(&path, LOADER).is_err() {
                 return 0;

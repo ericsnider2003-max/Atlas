@@ -293,7 +293,7 @@ impl Person {
             .iter()
             .filter_map(|(p, t)| {
                 let days = now.saturating_sub(*t) / 86_400;
-                (21..90).contains(&days).then(|| (p.as_str(), (days / 7) as u32))
+                (21..90).contains(&days).then_some((p.as_str(), (days / 7) as u32))
             })
             .collect()
     }

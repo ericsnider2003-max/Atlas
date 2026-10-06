@@ -118,12 +118,12 @@ pub(super) fn run_picture(cfg: &Config, args: &[String]) {
             return;
         };
         let dir = std::path::PathBuf::from(&tools.work_dir);
-        let _ = std::fs::create_dir_all(&dir);
+        atlas::heard!(std::fs::create_dir_all(&dir));
         let shot = dir.join(format!("screen_{}.png", atlas::store::now()));
         let mut vars = tools.vars.clone();
         vars.insert("out_png".into(), shot.display().to_string());
         if let Err(e) = tool.run(&vars, None) {
-            let _ = std::fs::remove_file(&shot);
+            atlas::heard!(std::fs::remove_file(&shot));
             println!("I couldn't take the picture: {e}");
             return;
         }
@@ -141,10 +141,10 @@ pub(super) fn run_picture(cfg: &Config, args: &[String]) {
         &|| false,
     );
     if let Some(p) = &small {
-        let _ = std::fs::remove_file(p);
+        atlas::heard!(std::fs::remove_file(p));
     }
     if taken {
-        let _ = std::fs::remove_file(&image);
+        atlas::heard!(std::fs::remove_file(&image));
     }
     match answer {
         Ok(a) => println!("{a}"),
@@ -575,7 +575,7 @@ pub(super) fn run_notes(cfg: &Config, args: &[String], merge_voices: bool, peopl
         Some(n) => atlas::diarize::to_count(&samples, rate, lines, n),
         None => lines,
     };
-    let _ = std::fs::remove_dir_all(&work);
+    atlas::heard!(std::fs::remove_dir_all(&work));
     if lines.is_empty() {
         return println!("I didn't find any speech in {path}.");
     }
@@ -651,7 +651,7 @@ pub(super) fn run_doc(args: &[String]) {
                 let taken = atlas::yata::take_queued(&inbox, &mut log, now);
                 if !taken.is_empty() && store.save("synclog", &Some(log)).is_ok() {
                     for f in taken {
-                        let _ = std::fs::remove_file(f);
+                        atlas::heard!(std::fs::remove_file(f));
                     }
                 }
                 lock.release();
@@ -1036,7 +1036,6 @@ pub(super) fn run_household(args: &[String]) {
                                 now,
                                 atlas::sync::HANDOFF_WAIT_SECS,
                             )
-                            .map_err(|e| e)
                         }) {
                             Ok(_) => println!(
                                 "\nI've left the key for it in your sync folder, sealed under \
@@ -1075,61 +1074,64 @@ pub(super) fn run_household(args: &[String]) {
                 code,
                 atlas::store::now(),
             );
-            if let Ok(inside) = short {
-                if mine.is_set() && mine.id != inside.for_household {
-                    println!(
-                        "This device already belongs to {} -- joining {} would mean two \
-                         households on one machine, which this file exists to prevent.",
-                        mine.name, inside.name
-                    );
-                    return;
-                }
-                if device.trim().is_empty() {
-                    println!("atlas household join <code> <this device's name>");
-                    return;
-                }
-                let joined = atlas::household::Household {
-                    id: inside.for_household.clone(),
-                    name: inside.name.clone(),
-                    made_at: atlas::store::now(),
-                    devices: vec![device.trim().to_string()],
-                };
-                match joined.save(&store) {
-                    Ok(()) => println!("Joined. This device now belongs to {}.", joined.name),
-                    Err(e) => {
-                        println!("Couldn't save that: {e}");
+            let short_failed = match short {
+                Err(why) => why,
+                Ok(inside) => {
+                    if mine.is_set() && mine.id != inside.for_household {
+                        println!(
+                            "This device already belongs to {} -- joining {} would mean two \
+                             households on one machine, which this file exists to prevent.",
+                            mine.name, inside.name
+                        );
                         return;
                     }
-                }
-                match inside.key_phrase {
-                    Some(phrase) => {
-                        let keeping =
-                            atlas::sync::KeptKey::keeping(&phrase, atlas::store::now());
-                        match store.save(atlas::sync::KEY_FILE, &keeping) {
-                            Ok(()) => {
-                                println!(
-                                    "The household key came with it, so sealed bundles from \
-                                     your other machine open here."
-                                );
-                                if let Ok(card) = atlas::sync::write_card(&phrase) {
-                                    println!("Written down in {}.", card.display());
-                                }
-                            }
-                            Err(e) => println!("I got the key and couldn't keep it: {e}"),
+                    if device.trim().is_empty() {
+                        println!("atlas household join <code> <this device's name>");
+                        return;
+                    }
+                    let joined = atlas::household::Household {
+                        id: inside.for_household.clone(),
+                        name: inside.name.clone(),
+                        made_at: atlas::store::now(),
+                        devices: vec![device.trim().to_string()],
+                    };
+                    match joined.save(&store) {
+                        Ok(()) => println!("Joined. This device now belongs to {}.", joined.name),
+                        Err(e) => {
+                            println!("Couldn't save that: {e}");
+                            return;
                         }
                     }
-                    None => println!(
-                        "(No household key came with it -- the other machine isn't sealing \
-                         what it carries.)"
-                    ),
+                    match inside.key_phrase {
+                        Some(phrase) => {
+                            let keeping =
+                                atlas::sync::KeptKey::keeping(&phrase, atlas::store::now());
+                            match store.save(atlas::sync::KEY_FILE, &keeping) {
+                                Ok(()) => {
+                                    println!(
+                                        "The household key came with it, so sealed bundles from \
+                                         your other machine open here."
+                                    );
+                                    if let Ok(card) = atlas::sync::write_card(&phrase) {
+                                        println!("Written down in {}.", card.display());
+                                    }
+                                }
+                                Err(e) => println!("I got the key and couldn't keep it: {e}"),
+                            }
+                        }
+                        None => println!(
+                            "(No household key came with it -- the other machine isn't sealing \
+                             what it carries.)"
+                        ),
+                    }
+                    return;
                 }
-                return;
-            }
+            };
 
             let Some((their_id, their_name, pairing)) = atlas::household::decode_pairing(code) else {
                 // The short path's reason is the useful one here: a mistyped
                 // ten-character code is far more likely than a mangled block.
-                println!("{}", short.unwrap_err());
+                println!("{short_failed}");
                 return;
             };
             let meeting = atlas::household::meets(
@@ -1867,7 +1869,7 @@ pub(super) fn run_selftest(args: &[String]) {
     if !args.iter().any(|a| a == "--inside") {
         let real = atlas::roots::install_root();
         let reports = atlas::selftest::reports_dir(&real);
-        let _ = std::fs::create_dir_all(&reports);
+        atlas::heard!(std::fs::create_dir_all(&reports));
         // The scratch folder lives inside data/, which isn't linked or
         // copied into itself: copy first, then point the child at it.
         let tmp = std::env::temp_dir().join(format!("atlas-selftest-{}", std::process::id()));
@@ -1890,7 +1892,7 @@ pub(super) fn run_selftest(args: &[String]) {
             cmd.arg("--no-model");
         }
         let status = cmd.status();
-        let _ = std::fs::remove_dir_all(&tmp);
+        atlas::heard!(std::fs::remove_dir_all(&tmp));
         // The test's failures become this install's cases (`regressions`):
         // read by self-repair as signals, and fixed ones taken off.
         if matches!(status, Ok(s) if s.success()) {
@@ -1956,17 +1958,17 @@ pub(super) fn run_selftest(args: &[String]) {
         let mark = if r.verdict.is_a_fault() { "!!" } else { "  " };
         println!("{mark} {n:>3}/{total} {:<22} {}", r.command, r.verdict.plain());
     });
-    let _ = std::fs::create_dir_all(&out);
+    atlas::heard!(std::fs::create_dir_all(&out));
     let stamp = atlas::hubpages::ymd((started / 86_400) as i64);
     let name = format!("report-{}-{:02}-{:02}-{}", stamp.0, stamp.1, stamp.2, started % 86_400);
     let md = atlas::selftest::report(&rows, &format!("{}-{:02}-{:02}", stamp.0, stamp.1, stamp.2), with_model);
-    let _ = std::fs::write(out.join(format!("{name}.md")), &md);
-    let _ = std::fs::write(out.join("latest.md"), &md);
-    let _ = std::fs::write(out.join(format!("{name}.json")), serde_json::to_string_pretty(&rows).unwrap_or_default());
+    atlas::kept!(std::fs::write(out.join(format!("{name}.md")), &md));
+    atlas::kept!(std::fs::write(out.join("latest.md"), &md));
+    atlas::kept!(std::fs::write(out.join(format!("{name}.json")), serde_json::to_string_pretty(&rows).unwrap_or_default()));
     // What failed, for the install's own regressions -- taken in by the
     // process that started this one (this one's store is the test copy's).
     let failing = atlas::selftest::failing_cases(&rows, started);
-    let _ = std::fs::write(out.join(atlas::regressions::FROM_SELFTEST), serde_json::to_string(&failing).unwrap_or_default());
+    atlas::kept!(std::fs::write(out.join(atlas::regressions::FROM_SELFTEST), serde_json::to_string(&failing).unwrap_or_default()));
     println!();
     println!("{}", atlas::selftest::summary(&rows));
     println!("The report: {}", out.join("latest.md").display());
@@ -1988,7 +1990,7 @@ fn selftest_under_coverage(no_model: bool) {
         leave(1);
     }
     let reports = atlas::selftest::reports_dir(&atlas::roots::install_root());
-    let _ = std::fs::create_dir_all(&reports);
+    atlas::heard!(std::fs::create_dir_all(&reports));
     let json = reports.join("coverage.json");
     let mut a: Vec<String> = ["llvm-cov", "run", "--bin", "atlas", "--json", "--output-path"].iter().map(|s| s.to_string()).collect();
     a.push(json.display().to_string());
@@ -2006,7 +2008,7 @@ fn selftest_under_coverage(no_model: bool) {
     let counts = atlas::coverage::fn_counts(&std::fs::read_to_string(&json).unwrap_or_default());
     let never = atlas::coverage::never_reached(&counts);
     let total = counts.keys().filter(|p| p.starts_with("atlas::")).count() as u32;
-    let _ = std::fs::write(reports.join(atlas::coverage::NEVER_REACHED), serde_json::to_string(&(never.clone(), total)).unwrap_or_default());
+    atlas::kept!(std::fs::write(reports.join(atlas::coverage::NEVER_REACHED), serde_json::to_string(&(never.clone(), total)).unwrap_or_default()));
     println!(
         "The self-test reached {} of Atlas's {total} functions; {} it never reached are listed in {}.",
         total as usize - never.len(),

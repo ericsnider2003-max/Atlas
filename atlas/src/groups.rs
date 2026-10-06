@@ -722,7 +722,8 @@ pub fn take_synced(store: &Store, me: Option<&Identity>, subject: &str, value: &
             *v = (*v).max(h.state.version);
         }
         (taken == Taken::New).then(String::new)
-    } else if let Some(device) = subject.strip_prefix(SYNC_DEVICE) {
+    } else {
+        let device = subject.strip_prefix(SYNC_DEVICE)?;
         if !sealed || !peerkey::is_public_key(device) || device != value {
             return None;
         }
@@ -737,8 +738,6 @@ pub fn take_synced(store: &Store, me: Option<&Identity>, subject: &str, value: &
         } else {
             String::new()
         })
-    } else {
-        return None;
     };
     groups.save(store).ok()?;
     let _ = store.save(SYNC_TOLD, &told);

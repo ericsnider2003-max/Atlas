@@ -43,21 +43,8 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // one-off command while --daemon is already running in the background is
     // exactly the kind of thing Atlas should still answer, and locking that
     // out too would make the CLI useless whenever the daemon is up.
-    let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
-    // Patiently: a lock that reads abandoned may be an Atlas that was only
-    // asleep with the laptop and is about to beat (`onlyone::WOKE_GRACE_SECS`).
-    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
-        Err(why) => {
-            eprintln!("{why}");
-            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
-            leave(1);
-        }
-        Ok(found) => {
-            if !matches!(found, atlas::onlyone::Found::Free) {
-                println!("{}", found.plain());
-            }
-        }
-    }
+    // Held to the end of this function: dropping it is what lets another Atlas start.
+    let _only = take_the_one_lock();
 
     // The words on the desktop while Atlas speaks (`overlaywin`). Always
     // started on Windows: it reads its own switch every few seconds, so
@@ -74,10 +61,11 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // The microphone this machine really has, for the daemon too (29 Sep
     // 2026): everything below reads this one configuration.
     let tc_owned = pick_the_microphone(cfg, plat, tc);
+    // Both read the same values: `cfg` is not changed again below.
     let mut cfg_owned = cfg.clone();
-    cfg_owned.tools = Some(tc_owned);
+    cfg_owned.tools = Some(tc_owned.clone());
     let cfg = &cfg_owned;
-    let tc = cfg.tools.as_ref().expect("just set");
+    let tc = &tc_owned;
     let voice = Voice::new(tc);
     let store = atlas::roots::store();
 
@@ -213,14 +201,14 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
             let had_link: String = atlas::roots::store().load(atlas::phonelink::LINK_KEY);
             if port != configured_port && !had_link.trim().is_empty() {
                 let token = t.clone();
-                let _ = std::thread::Builder::new().name("atlas-phone-link".into()).spawn(move || {
+                atlas::kept!(std::thread::Builder::new().name("atlas-phone-link".into()).spawn(move || {
                     let outcome = atlas::phonelink::publish(port, &token, &atlas::phonelink::tailscale_tool(), &atlas::tools::Vars::new());
                     if let atlas::phonelink::Serve::Published { url } = &outcome {
                         if let Err(e) = atlas::roots::store().save(atlas::phonelink::LINK_KEY, url) {
                             eprintln!("atlas: the phone's link moved to {url}, but I couldn't save it ({e})");
                         }
                     }
-                });
+                }));
             }
         });
         // Its own threads read the connections; the loop answers
@@ -317,6 +305,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         d.run(&voice, &voice, &keyboard, &mut throttle, audio_ok, &atlas::store::now)
     }));
     if ran.is_err() {
+        // unheard-ok: a panic while shutting down; the process is ending either way
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| d.shut_down()));
         drop(_tray);
         if atlas::crash::may_start_again(&atlas::roots::state_dir(), atlas::store::now()) {
@@ -460,7 +449,7 @@ pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas:
             for deaf in hearing.deaf_devices(&tc.hearing) {
                 println!("  ({} can't hear you from here.)", atlas::hearing::short(&deaf.name));
             }
-            let _ = hearing.save_to(&hstore);
+            atlas::kept!(hearing.save_to(&hstore));
         }
         Err(e) => {
             eprintln!("(couldn't list audio devices, using what's in tools.yaml: {e})");
@@ -505,7 +494,11 @@ pub(super) fn voice_loop(
     // at the `Config` level and both read the same one.
     let mut cfg_owned = cfg.clone();
     cfg_owned.tools = Some(tc_owned);
-    let tc_live = cfg_owned.tools.as_ref().expect("just set");
+    // Read back from the config the daemon gets, so the two can't differ.
+    let Some(tc_live) = cfg_owned.tools.as_ref() else {
+        eprintln!("config/tools.yaml is missing — nothing to talk to.");
+        leave(2);
+    };
     let voice = Voice::new(tc_live);
 
     // The same single-instance lock `run_daemon` takes, and for the same
@@ -514,21 +507,8 @@ pub(super) fn voice_loop(
     // writing the whole thing back means the second quietly erasing whatever
     // the first learned. Before this, `atlas --voice` touched almost no state,
     // so it did not need the lock; it does now.
-    let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
-    // Patiently: a lock that reads abandoned may be an Atlas that was only
-    // asleep with the laptop and is about to beat (`onlyone::WOKE_GRACE_SECS`).
-    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
-        Err(why) => {
-            eprintln!("{why}");
-            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
-            leave(1);
-        }
-        Ok(found) => {
-            if !matches!(found, atlas::onlyone::Found::Free) {
-                println!("{}", found.plain());
-            }
-        }
-    }
+    // Held to the end of this function: dropping it is what lets another Atlas start.
+    let _only = take_the_one_lock();
 
     // The real door, at last.
     //
@@ -576,7 +556,7 @@ pub(super) fn voice_loop(
             println!("[heard wake word]");
         } else {
             print!("[enter to listen] ");
-            let _ = io::stdout().flush();
+            atlas::heard!(io::stdout().flush());
             let mut l = String::new();
             // No keyboard at all is the end, not a press of Enter: read as
             // Enter, the loop recorded and acted on clip after clip with
@@ -714,11 +694,11 @@ pub(super) fn fake_monitors() -> Vec<Monitor> {
     ]
 }
 
-/// The hub, and nothing else.
-///
-/// Deliberately the smallest possible amount of Atlas: bind the loopback
-/// listener, serve pages, apply setting changes. If this can't start, nothing
-/// else was going to either, and it says why.
+// The hub, and nothing else.
+//
+// Deliberately the smallest possible amount of Atlas: bind the loopback
+// listener, serve pages, apply setting changes. If this can't start, nothing
+// else was going to either, and it says why.
 
 /// What each dashboard card has to show in settings-only mode.
 ///
@@ -751,4 +731,25 @@ pub(super) fn dash_bodies() -> Vec<(atlas::dash::Card, String)> {
             )
         })
         .collect()
+}
+
+/// The single-instance lock, taken patiently: a lock that reads abandoned
+/// may be an Atlas that was only asleep with the laptop and is about to beat
+/// (`onlyone::WOKE_GRACE_SECS`). Says who held it; leaves when it can't be
+/// had. One copy (audit Q3): the daemon and `--voice` each had one.
+fn take_the_one_lock() -> atlas::onlyone::OnlyOne {
+    let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
+    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
+        Err(why) => {
+            eprintln!("{why}");
+            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
+            leave(1);
+        }
+        Ok(found) => {
+            if !matches!(found, atlas::onlyone::Found::Free) {
+                println!("{}", found.plain());
+            }
+        }
+    }
+    only
 }

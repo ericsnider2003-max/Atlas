@@ -263,6 +263,7 @@ pub fn instead(accounts: &[Account]) -> String {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct AccountsConfig {
     pub enabled: bool,
     /// Never changes a security setting. Not configurable — see the note at
@@ -275,11 +276,6 @@ fn never() -> bool {
     false
 }
 
-impl Default for AccountsConfig {
-    fn default() -> Self {
-        AccountsConfig { enabled: false, may_change_security: false }
-    }
-}
 
 // ===========================================================================
 // The book: which accounts Atlas actually knows about.

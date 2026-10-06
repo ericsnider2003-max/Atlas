@@ -479,6 +479,7 @@ mod win {
         std::thread::spawn(move || unsafe {
             let mut problems = Vec::new();
             if let Some((vk, _)) = keys.talk {
+                // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
                 let _ = SHARED.set(Shared { vk, tx: tx.clone(), gate, started: std::time::Instant::now() });
                 if let Err(e) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0) {
                     problems.push(format!("Windows wouldn't let me watch the push-to-talk key ({e})"));
@@ -525,6 +526,7 @@ mod win {
                     }
                 }
             });
+            // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
             let _ = TIMER.set(timer.thread().clone());
         }
         ready_rx.recv().map_err(|_| "the key watcher didn't start".to_string())

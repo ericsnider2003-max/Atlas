@@ -268,7 +268,7 @@ pub fn infer(view: &AsOf<'_>) -> Option<Tf> {
         .take(200)
         .map(|w| (w[1] - w[0]) as f64 / MS_PER_MIN as f64)
         .collect();
-    gaps.sort_by(|a, b| a.total_cmp(&b));
+    gaps.sort_by(|a, b| a.total_cmp(b));
     let median = gaps[gaps.len() / 2];
     ALL.iter()
         .find(|tf| {

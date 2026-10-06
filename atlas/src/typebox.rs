@@ -266,9 +266,12 @@ pub fn run(_cfg: QuickInputConfig, _standby: bool) -> Result<(), String> {
 /// ends it once it has sat hidden for `HIDDEN_EXIT` (1 Oct 2026: a parked
 /// eframe window never ran its own check, and the hidden box still held a
 /// fifth of a core).
+#[cfg(feature = "desktop-ui")]
 static LAST_USED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(feature = "desktop-ui")]
 static ON_SCREEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+#[cfg(feature = "desktop-ui")]
 fn touch(on_screen: bool) {
     LAST_USED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
     ON_SCREEN.store(on_screen, std::sync::atomic::Ordering::Relaxed);

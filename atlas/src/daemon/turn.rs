@@ -276,6 +276,7 @@ impl<'a> Daemon<'a> {
             // arrive through `settle`, reported rather than swallowed.
             Some(Heard::Panic) => {
                 // A job in an app ends where it is.
+                // unheard-ok: returns `Option<String>`, not a Result
                 let _ = self.stop_operating();
                 // A model turn still thinking is stopped too: its answer
                 // would otherwise run its tool when it came back (28 Sep 2026).
@@ -555,7 +556,7 @@ impl<'a> Daemon<'a> {
         // `Intent::Unknown`. The word cap and exact-match lists in
         // `social_reply` are what stop a real instruction being swallowed as a
         // pleasantry.
-        if let Some(reply) = self.persona_now().social(said, crate::localclock::hour_here(t) as u8, t, self.last_turn_failed || self.mid_flow()) {
+        if let Some(reply) = self.persona_now().social(said, crate::localclock::hour_here(t), t, self.last_turn_failed || self.mid_flow()) {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -953,9 +954,9 @@ impl<'a> Daemon<'a> {
             // An edited video: keep it, and then the original (G8).
             if let Some((original, copy, result)) = self.pending_media_keep.take() {
                 self.session.pending = Pending::Nothing;
-                let _ = std::fs::remove_file(&copy);
+                crate::heard!(std::fs::remove_file(&copy));
                 if !is_yes(said) {
-                    let _ = std::fs::remove_file(&result);
+                    crate::heard!(std::fs::remove_file(&result));
                     return "Alright — I've thrown the edit away. Your original is untouched.".into();
                 }
                 // Removing an original is the consequential kind of media
@@ -1198,7 +1199,7 @@ impl<'a> Daemon<'a> {
                     // question forever. A note lookup is the one thing that
                     // can genuinely answer it; short of that, say so plainly
                     // rather than loop.
-                    Some(_) => self.from_notes(&original, t).unwrap_or_else(|| {
+                    Some(_) => self.answer_from_notes(&original, t).unwrap_or_else(|| {
                         "I don't have anything specific on that, but go ahead and tell me more."
                             .into()
                     }),
@@ -1355,10 +1356,11 @@ impl<'a> Daemon<'a> {
         reply
     }
 
-    /// Everything Atlas can answer from what it already holds, before any
-    /// model: reminders (B3), what you've said you want (B2), a correction or
-    /// fact you've stated, your notes, and the rest. `None` when none of it does.
-    fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
+    /// The helpers both `answer_locally` and `answer_before_the_model` ask
+    /// first, in this order. One list (audit Q3): it was written out twice,
+    /// and a helper added to one and not the other answered in one path and
+    /// went unheard in the other.
+    fn asked_of_a_helper(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
             .or_else(|| self.check_writing_help(raw))
@@ -1387,9 +1389,16 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.note_asked(raw, t))
             .or_else(|| self.weather_help(raw))
             .or_else(|| self.remind_help(raw, t))
+    }
+
+    /// Everything Atlas can answer from what it already holds, before any
+    /// model: reminders (B3), what you've said you want (B2), a correction or
+    /// fact you've stated, your notes, and the rest. `None` when none of it does.
+    fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
+        self.asked_of_a_helper(raw, t)
             .or_else(|| self.spot_opportunity(raw))
             .or_else(|| self.learn_stated(raw))
-            .or_else(|| self.from_notes(raw, t))
+            .or_else(|| self.answer_from_notes(raw, t))
             .or_else(|| self.ways_in_help(raw))
             .or_else(|| self.decision_help(raw))
             .or_else(|| self.knew_once_help(raw))
@@ -1410,34 +1419,7 @@ impl<'a> Daemon<'a> {
     /// (`notes_as_hints`) instead of answering on their own -- a note that
     /// shared one word with "what should I eat" was the whole reply.
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
-        self.keeping_track(raw, t)
-            .or_else(|| self.writing_help(raw))
-            .or_else(|| self.check_writing_help(raw))
-            .or_else(|| crate::hunting::fit_asked(self, raw))
-            .or_else(|| crate::hunting::applied_asked(self, raw, t))
-            .or_else(|| self.phone_online_help(raw))
-            .or_else(|| self.askdocs_help(raw))
-            .or_else(|| self.wrapup_help(raw, t))
-            .or_else(|| self.worksession_help(raw, t))
-            .or_else(|| self.why_moved_help(raw, t))
-            .or_else(|| self.studio_help(raw, t))
-            .or_else(|| self.noticed_help(raw, t))
-            .or_else(|| self.research_note_help(raw))
-            .or_else(|| self.later_words_help(raw, t))
-            .or_else(|| self.drafts_help(raw))
-            .or_else(|| self.connect_help(raw))
-            .or_else(|| self.muse_help(raw))
-            .or_else(|| self.think_hard_help(raw))
-            .or_else(|| self.one_message_help(raw))
-            .or_else(|| self.text_help(raw))
-            .or_else(|| self.move_window_help(raw))
-            .or_else(|| self.improvements_help(raw))
-            .or_else(|| self.compose_help(raw))
-            .or_else(|| self.progress_help(raw))
-            .or_else(|| self.unsubscribe_help(raw))
-            .or_else(|| self.note_asked(raw, t))
-            .or_else(|| self.weather_help(raw))
-            .or_else(|| self.remind_help(raw, t))
+        self.asked_of_a_helper(raw, t)
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.exact_fact(raw, t))
             .or_else(|| if opens_with_ways(raw) { self.ways_in_help(raw) } else { None })
@@ -2119,6 +2101,7 @@ impl<'a> Daemon<'a> {
                 // It is now in the reply, so it has been handed over and can
                 // be dropped. This is the only place the outbox is emptied.
                 let cfg = self.notify_cfg();
+                // unheard-ok: returns `Vec<Note>`, not a Result
                 let _ = self.outbox.collect(_t, &cfg);
                 format!("{b} {reply}")
             }

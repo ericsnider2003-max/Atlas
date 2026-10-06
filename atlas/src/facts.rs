@@ -577,7 +577,7 @@ fn tags_from(text: &str) -> Vec<String> {
     // Then a few of the most distinctive words (longest first are usually the
     // topical ones — "password", "homelab" — over "runs", "note").
     let mut words: Vec<String> = terms(text);
-    words.sort_by(|a, b| b.len().cmp(&a.len()));
+    words.sort_by_key(|b| std::cmp::Reverse(b.len()));
     for w in words {
         if out.len() >= 6 {
             break;
@@ -1334,7 +1334,7 @@ impl Book {
 
     pub fn of_kind(&self, kind: Kind) -> Vec<&Fact> {
         let mut v: Vec<&Fact> = self.facts.iter().filter(|f| f.kind == kind).collect();
-        v.sort_by(|a, b| b.as_of.cmp(&a.as_of));
+        v.sort_by_key(|b| std::cmp::Reverse(b.as_of));
         v
     }
 

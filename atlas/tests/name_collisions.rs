@@ -299,6 +299,11 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "tts::adjust",
     "tts::interpret",
     "tune::summary",
+    // 5 Oct (audit Q1): reached only through the `kept!` / `heard!` macros
+    // (`$crate::unheard::hear(..)`, which calls `record`); a name scan
+    // doesn't expand macros.
+    "unheard::hear",
+    "unheard::record",
     "unsub::judge",
     // 28 Sep 2026: its caller is `update_apply::update_tick` in the same
     // module, bare; `server::HubDoor::take_news` shares the name.

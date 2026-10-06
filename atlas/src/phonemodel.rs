@@ -137,7 +137,7 @@ fn fetch(
     }
     let got = crate::digest::sha256_file_hex(&part).map_err(|e| e.to_string())?;
     if !got.eq_ignore_ascii_case(m.sha256) {
-        let _ = std::fs::remove_file(&part);
+        crate::heard!(std::fs::remove_file(&part));
         return Err(format!("the {} file that arrived isn't the one it should be, so I threw it away", m.name));
     }
     std::fs::rename(&part, &done).map_err(|e| e.to_string())?;
@@ -315,7 +315,7 @@ pub fn download_said(d: Option<&Download>, attached: Option<&str>) -> String {
                 d.name,
                 d.have / 1_000_000,
                 d.of / 1_000_000,
-                if d.of == 0 { 0 } else { d.have * 100 / d.of }
+                (d.have * 100).checked_div(d.of).unwrap_or(0)
             ),
             Some(Ok(())) => format!("{} is here and loading.", d.name),
             Some(Err(why)) => format!("The {} download stopped: {why}. It carries on by itself on wifi, or say \"get your own model\".", d.name),

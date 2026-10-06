@@ -143,6 +143,15 @@ fn every_save_that_renames_into_place_is_patient() {
     }
     for name in ["apns", "webpush", "applewx", "peerkey", "sync", "yourchanges"] {
         let src = crate::common::source_of(name);
-        assert!(src.contains("store::write_whole("), "{name}: a state file is written straight onto its name");
+        // `store::write_json` is `write_whole` for a JSON value (audit Q3:
+        // apns and webpush had the same five lines); checked below.
+        assert!(
+            src.contains("store::write_whole(") || src.contains("store::write_json("),
+            "{name}: a state file is written straight onto its name"
+        );
     }
+    let store = crate::common::source_of("store");
+    let json = &store[store.find("pub fn write_json").expect("store::write_json")..];
+    let body = &json[..json.find("\n}").unwrap_or(json.len())];
+    assert!(body.contains("write_whole("), "store::write_json must write whole");
 }

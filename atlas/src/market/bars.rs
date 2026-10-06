@@ -588,10 +588,14 @@ impl<'a> AsOf<'a> {
 
         let (h, l) = (self.bars.high.as_slice(), self.bars.low.as_slice());
         let mut cache = self.bars.cache.borrow_mut();
-        if !cache.grown.iter().any(|g| g.k == k) {
-            cache.grown.push(Grown { k, tested_through: k.wrapping_sub(1), highs: vec![], lows: vec![] });
-        }
-        let g = cache.grown.iter_mut().find(|g| g.k == k).expect("just inserted");
+        let i = match cache.grown.iter().position(|g| g.k == k) {
+            Some(i) => i,
+            None => {
+                cache.grown.push(Grown { k, tested_through: k.wrapping_sub(1), highs: vec![], lows: vec![] });
+                cache.grown.len() - 1
+            }
+        };
+        let g = &mut cache.grown[i];
 
         // Extend the scan forward only. Nothing already decided is revisited,
         // which is the whole point — and is why this is identical to the old

@@ -372,7 +372,7 @@ pub fn turn_on(exe: &Path, mode: Mode) -> Result<String, String> {
             // One way in, not two: an entry left from an earlier fallback
             // would start a second copy at sign-in (which `onlyone` would
             // then turn away, but still).
-            let _ = run(&run_entry_remove());
+            crate::heard!(run(&run_entry_remove()));
             Ok("Atlas will start when you sign in.".into())
         }
         other => {
@@ -410,7 +410,7 @@ pub fn bring_up_to_date(exe: &Path, state_dir: &Path) -> Option<Result<String, S
     }
     let old = std::fs::read(task_file_path(exe)).ok()?;
     // UTF-16 with its mark, as `task_file_bytes` writes it.
-    let units: Vec<u16> = old.get(2..).unwrap_or(&[]).chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = old.get(2..).unwrap_or(&[]).as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
     let mode = needs_new_triggers(&String::from_utf16_lossy(&units))?;
     Some(turn_on(exe, mode))
 }
@@ -419,7 +419,7 @@ pub fn bring_up_to_date(exe: &Path, state_dir: &Path) -> Option<Result<String, S
 pub fn turn_off() -> Result<String, String> {
     let task = run(&remove());
     if cfg!(windows) {
-        let _ = run(&run_entry_remove());
+        crate::heard!(run(&run_entry_remove()));
     }
     match task {
         // "Not there" is the outcome asked for -- checked, not assumed (29 Sep

@@ -43,13 +43,18 @@ pub fn rung() -> u64 {
 /// not ring; so a wait there wakes five times a second to look. Windows'
 /// console handler runs on an ordinary thread and rings, so a wait there
 /// sleeps as long as it was asked to.
-pub const LONGEST_SLEEP_MS: u64 = if cfg!(unix) { 200 } else { u64::MAX };
+pub const LONGEST_SLEEP_MS: Option<u64> = if cfg!(unix) { Some(200) } else { None };
 
 /// Wait until the bell rings again after `seen` (a count from [`rung`]), or
 /// `ms` passes (at most `LONGEST_SLEEP_MS`). Returns at once if it already
 /// has. True when it rang.
 pub fn wait_after(seen: u64, ms: u64) -> bool {
-    let until = Instant::now() + Duration::from_millis(ms.min(LONGEST_SLEEP_MS));
+    // Capped only where there is a cap (not on Windows); and a very long
+    // wait can't overflow the clock: past what `Instant` can hold, it waits a
+    // day and looks again.
+    let ms = LONGEST_SLEEP_MS.map_or(ms, |most| ms.min(most));
+    let now = Instant::now();
+    let until = now.checked_add(Duration::from_millis(ms)).unwrap_or(now + Duration::from_secs(86_400));
     let mut n = RUNG.lock().unwrap_or_else(PoisonError::into_inner);
     while *n == seen {
         let left = until.saturating_duration_since(Instant::now());

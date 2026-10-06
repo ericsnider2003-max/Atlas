@@ -448,7 +448,7 @@ impl<S: Read + Write> Session<S> {
     }
 
     pub fn logout(&mut self) {
-        let _ = self.command("LOGOUT");
+        crate::heard!(self.command("LOGOUT"));
     }
 
     /// Select a mailbox and fetch every message a search finds, in one
@@ -610,19 +610,20 @@ impl StripPrefixCi for str {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Cursor;
 
     /// A fake server: replies come from a fixed script, writes go nowhere
     /// (or are captured for inspection). This is the whole point of
-    /// making `Session` generic — none of this needs a socket.
-    struct Scripted {
+    /// making `Session` generic — none of this needs a socket. SMTP's tests
+    /// use it too (audit Q3: it was written out twice).
+    pub(crate) struct Scripted {
         replies: Cursor<Vec<u8>>,
-        sent: Vec<u8>,
+        pub(crate) sent: Vec<u8>,
     }
     impl Scripted {
-        fn new(script: &str) -> Scripted {
+        pub(crate) fn new(script: &str) -> Scripted {
             Scripted { replies: Cursor::new(script.as_bytes().to_vec()), sent: Vec::new() }
         }
     }

@@ -1,0 +1,20 @@
+# Gitleaks findings checked by hand and found harmless (5 Oct 2026, audit Q9).
+# Each line is one exact finding (commit:file:rule:line), so a new secret --
+# even in the same file -- is still caught. Why each is harmless:
+#   go-loopvar.html: a public Google Tag Manager browser key inside a saved
+#     copy of a go.dev page (a crawler test fixture);
+#   tests/*.rs: made-up values that test the redactor and the hub (SAM-SECRET-KEY-1234,
+#     sk_live_51Habcdef..., nodekey:0123456789abcdef);
+#   wire.rs, vault_crypto.rs, MODULE_REFERENCE: prose about ChaCha20-Poly1305;
+#   tz.rs: a time-zone table; SENDING_FROM_YOUR_PHONE.md: a curl example to 127.0.0.1.
+10c390c065bee7de0ef72f881936c69cf2aebc4a:atlas/tests/fixtures/crawl/go-loopvar.html:gcp-api-key:1474
+e5ed14e1e1270bd5c344ca901d4a360c240e9a2a:atlas/tests/opportunity_hunting.rs:generic-api-key:141
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/docs/SENDING_FROM_YOUR_PHONE.md:curl-auth-header:180
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/docs/MODULE_REFERENCE_2026-09-26.md:generic-api-key:15924
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/src/tz.rs:generic-api-key:439
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/src/wire.rs:generic-api-key:25
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/fixtures/crawl/go-loopvar.html:gcp-api-key:1474
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/phone_link.rs:generic-api-key:21
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/the_hub_is_reachable.rs:generic-api-key:211
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/vault_crypto.rs:generic-api-key:285
+093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/your_answers_of_the_25th.rs:stripe-access-token:118

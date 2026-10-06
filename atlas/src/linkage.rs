@@ -230,7 +230,7 @@ impl Model {
         for i in 0..n {
             for j in i + 1..n {
                 k += 1;
-                if k % stride != 0 {
+                if !k.is_multiple_of(stride) {
                     continue;
                 }
                 let (a, b) = (&list[i], &list[j]);

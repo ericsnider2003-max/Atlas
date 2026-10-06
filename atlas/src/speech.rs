@@ -65,10 +65,8 @@ pub fn split(text: &str) -> Vec<String> {
     for c in text.chars() {
         current.push(c);
         let boundary = matches!(c, '.' | '!' | '?');
-        if boundary && current.trim().len() > 1 {
-            out.push(current.trim().to_string());
-            current.clear();
-        } else if current.len() >= LONG && c == ',' {
+        // A sentence's end, or a comma once a sentence has run long.
+        if (boundary && current.trim().len() > 1) || (current.len() >= LONG && c == ',') {
             out.push(current.trim().to_string());
             current.clear();
         }

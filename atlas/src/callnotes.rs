@@ -270,8 +270,8 @@ impl Notes {
             Step::StopAndDiscard(why) => {
                 if let Some(r) = call.theirs.take() {
                     let path = r.path.clone();
-                    let _ = r.finish();
-                    let _ = std::fs::remove_file(path);
+                    crate::heard!(r.finish());
+                    crate::heard!(std::fs::remove_file(path));
                 }
                 said.lines.push(why);
             }
@@ -289,8 +289,8 @@ impl Notes {
         if call.theirs.is_some() && !call.recorder.capturing_others() {
             if let Some(r) = call.theirs.take() {
                 let path = r.path.clone();
-                let _ = r.finish();
-                let _ = std::fs::remove_file(path);
+                crate::heard!(r.finish());
+                crate::heard!(std::fs::remove_file(path));
             }
             said.lines.push("I've stopped recording their side and deleted what I had of it.".into());
         }
@@ -489,6 +489,7 @@ impl Notes {
     pub fn end(&mut self, now: u64) -> Said {
         let mut said = Said::default();
         let Some(mut call) = self.call.take() else { return said };
+        // unheard-ok: returns `Step`, not a Result
         let _ = call.recorder.call_ended();
         let close = |r: Option<Recording>| -> Option<PathBuf> {
             let r = r?;
@@ -496,7 +497,7 @@ impl Notes {
             match r.finish() {
                 Ok(secs) if secs >= 1.0 => Some(p),
                 _ => {
-                    let _ = std::fs::remove_file(&p);
+                    crate::heard!(std::fs::remove_file(&p));
                     None
                 }
             }
@@ -580,7 +581,7 @@ pub fn transcribe_side(wav: &Path, timed: &crate::tools::ExternalTool, vars: &cr
         let mut tool = timed.clone();
         tool.timeout_secs = tool.timeout_secs.max(transcribe_timeout_secs(wav));
         let text = tool.run(&v, None).map_err(|e| format!("transcribing {} failed: {e}", wav.display()));
-        let _ = std::fs::remove_file(&srt);
+        crate::heard!(std::fs::remove_file(&srt));
         Ok(crate::viewing::read_timed(&text?))
     }
 }

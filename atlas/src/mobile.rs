@@ -188,6 +188,7 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
     while !stop.load(Ordering::Relaxed) {
         // Every request waiting, answered as soon as it arrives; the 30ms
         // is the longest this waits before looking at the clock again.
+        // unheard-ok: returns `Vec<HubCost>`, not a Result
         let _ = server.wait_and_answer(30, &mut |action| {
             crate::crash::caught("answering the hub", || crate::hublive::reply(&mut d, action)).unwrap_or_else(|why| {
                 crate::server::Reply { status: 500, body: serde_json::json!({ "error": why }).to_string(), ..Default::default() }
@@ -213,8 +214,9 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
             ) && d.store.load::<bool>(crate::phonemode::MODEL_ASKED_FOR)
             {
                 last_try = now;
+                // unheard-ok: the reply is a sentence about the download; its progress is reported as it runs
                 let _ = crate::phonemodel::start_download(models_dir.clone(), |path| {
-                    let _ = crate::phonemodel::attach(&path);
+                    crate::heard!(crate::phonemodel::attach(&path));
                 });
             }
         }

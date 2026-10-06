@@ -321,13 +321,13 @@ impl<'a> Daemon<'a> {
             // The frame goes either way. A picture of the room is not
             // something to leave lying about because a tool crashed.
             Err(e) => {
-                let _ = std::fs::remove_file(&frame);
+                crate::heard!(std::fs::remove_file(&frame));
                 return format!("could_not: the detector failed: {e}");
             }
         };
         // Read, then gone — the same rule as watching a video. Atlas keeps
         // what it worked out, never the picture of you.
-        let _ = std::fs::remove_file(&frame);
+        crate::heard!(std::fs::remove_file(&frame));
         printed
     }
 
@@ -538,16 +538,19 @@ impl<'a> Daemon<'a> {
     /// Open the seeing models, if they are not open already.
     pub(super) fn start_looking(&mut self) -> &mut crate::vision::Looking {
         self.wait_for_the_look();
-        if self.looking.is_none() {
-            let tools = self.tools_cfg();
-            let models = std::path::Path::new(&tools.models.dir).to_path_buf();
-            // ONNX Runtime lives under the install folder that holds
-            // `models/`, the way hand tracking finds it.
-            let looking = crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
-            self.log.info(&format!("seeing: {}", looking.engines()));
-            self.looking = Some(looking);
-        }
-        self.looking.as_mut().expect("just filled in")
+        let looking = match self.looking.take() {
+            Some(l) => l,
+            None => {
+                let tools = self.tools_cfg();
+                let models = std::path::Path::new(&tools.models.dir).to_path_buf();
+                // ONNX Runtime lives under the install folder that holds
+                // `models/`, the way hand tracking finds it.
+                let looking = crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
+                self.log.info(&format!("seeing: {}", looking.engines()));
+                looking
+            }
+        };
+        self.looking.insert(looking)
     }
 
     /// Look, once.
@@ -636,7 +639,7 @@ impl<'a> Daemon<'a> {
             Capture::Camera => (tools.capture_webcam.clone(), "webcam"),
         };
         let dir = std::path::PathBuf::from(&tools.work_dir);
-        let _ = std::fs::create_dir_all(&dir);
+        crate::heard!(std::fs::create_dir_all(&dir));
         let t = crate::store::now();
         let shot = dir.join(format!("{word}_{t}.png"));
         // A question about another app ("what does Slack say?") brings that
@@ -657,7 +660,7 @@ impl<'a> Daemon<'a> {
         let mut taken_here = false;
         if matches!(what, Capture::Screen) && matches!(target, crate::probe::Target::Active) {
             if let Some((named, grab)) = self.screen_picture() {
-                let rgba: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+                let rgba: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
                 let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba { width: grab.width, height: grab.height, pixels: rgba });
                 if std::fs::write(&shot, png).is_ok() {
                     label = named;
@@ -678,7 +681,7 @@ impl<'a> Daemon<'a> {
             if matches!(what, Capture::Camera) {
                 capture_later = Some((tool.clone(), vars.clone()));
             } else if let crate::probe::Target::App(app) = &target {
-                if self.plat.input_idle_secs().map_or(false, |s| s < 3) {
+                if self.plat.input_idle_secs().is_some_and(|s| s < 3) {
                     return format!(
                         "You're in the middle of something, so I won't move your windows to look at {app}. \
                          Ask again when you pause."
@@ -688,12 +691,12 @@ impl<'a> Daemon<'a> {
                     tool.run(&vars, None).map(|_| shot.display().to_string())
                 };
                 if let Err(e) = self.probe.gather(self.cfg, self.plat, &shoot, &target) {
-                    let _ = std::fs::remove_file(&shot);
+                    crate::heard!(std::fs::remove_file(&shot));
                     return format!("I couldn't take the picture of {app}: {e}");
                 }
             } else if let Err(e) = tool.run(&vars, None) {
                 // A capture that failed partway can leave a half-written file.
-                let _ = std::fs::remove_file(&shot);
+                crate::heard!(std::fs::remove_file(&shot));
                 return format!("I couldn't take the picture: {e}");
             }
         }
@@ -705,9 +708,9 @@ impl<'a> Daemon<'a> {
         if eyes_url.is_some() {
             // Already loaded and already counted: no room to make.
         } else if let Err(why) = self.room_for_heavy(name, crate::picture_talk::MEMORY_MB, t) {
-            let _ = std::fs::remove_file(&shot);
+            crate::heard!(std::fs::remove_file(&shot));
             if let Some(p) = &small {
-                let _ = std::fs::remove_file(p);
+                crate::heard!(std::fs::remove_file(p));
             }
             if matches!(what, Capture::Screen) {
                 if let Some(said) = self.screen_words_instead() {
@@ -733,7 +736,7 @@ impl<'a> Daemon<'a> {
             if let Some((tool, vars)) = &capture_later {
                 if let Err(e) = tool.run(vars, None) {
                     // A capture that failed partway can leave a half-written file.
-                    let _ = std::fs::remove_file(&shot);
+                    crate::heard!(std::fs::remove_file(&shot));
                     let o = PictureOutcome { took_ms: 0, prompt_chars: 0, answer: String::new(), failed: Some(format!("the camera didn't give me a picture ({e})")) };
                     return serde_json::to_string(&o).map_err(|e| e.to_string());
                 }
@@ -759,9 +762,9 @@ impl<'a> Daemon<'a> {
                 },
                 None => crate::picture_talk::ask_until(&cfg, &root, picture, &question, &|| c.stopping()),
             };
-            let _ = std::fs::remove_file(&shot);
+            crate::heard!(std::fs::remove_file(&shot));
             if let Some(p) = &small {
-                let _ = std::fs::remove_file(p);
+                crate::heard!(std::fs::remove_file(p));
             }
             let o = PictureOutcome {
                 took_ms: started.elapsed().as_millis() as u64,
@@ -779,9 +782,9 @@ impl<'a> Daemon<'a> {
             format!("Looking at {label} — I'll tell you in a moment.")
         } else {
             self.helpers.finished(name);
-            let _ = std::fs::remove_file(&shot_again);
+            crate::heard!(std::fs::remove_file(&shot_again));
             if let Some(p) = &small_again {
-                let _ = std::fs::remove_file(p);
+                crate::heard!(std::fs::remove_file(p));
             }
             "I have too much on to look right now — ask me again in a minute.".into()
         }
@@ -825,7 +828,7 @@ impl<'a> Daemon<'a> {
         }
         let keep = self.call_notes.cfg.keep_audio_days;
         for old in crate::callnotes::audio_to_delete(&self.call_notes.dir, t, keep) {
-            let _ = std::fs::remove_file(old);
+            crate::heard!(std::fs::remove_file(old));
         }
         out
     }
@@ -1465,7 +1468,7 @@ impl<'a> Daemon<'a> {
             self.steering_until = None;
             self.carrying = None;
             self.pointing_at = None;
-            let _ = self.plat.draw_overlay(&[]);
+            crate::heard!(self.plat.draw_overlay(&[]));
             return "Alright — I've stopped watching your hands.".into();
         }
         if self.hands.as_ref().is_some_and(|h| h.running()) {
@@ -1555,12 +1558,12 @@ impl<'a> Daemon<'a> {
         self.pointing_at = rect;
         if let Some(r) = rect {
             let element = crate::overlay::around((r.x, r.y, r.width, r.height), holding);
-            let _ = self.plat.draw_overlay(&[element]);
+            crate::heard!(self.plat.draw_overlay(&[element]));
         } else {
             // Nothing under the hand. Cleared rather than left pointing at
             // whatever it was last over, which would be a lie about where you
             // are.
-            let _ = self.plat.draw_overlay(&[]);
+            crate::heard!(self.plat.draw_overlay(&[]));
         }
     }
 
@@ -1578,7 +1581,7 @@ impl<'a> Daemon<'a> {
             .plat
             .monitors()
             .ok()
-            .and_then(|m| m.into_iter().find(|m| m.primary).or_else(|| None))
+            .and_then(|m| m.into_iter().find(|m| m.primary).or(None))
             .map(|m| (m.width, m.height))
             .unwrap_or((1920, 1080));
 
@@ -1594,19 +1597,19 @@ impl<'a> Daemon<'a> {
             // The pointer follows the hand. Not recorded and not spoken —
             // moving your hand is not an event.
             Move::Point { x, y } => {
-                let _ = self.plat.move_cursor(x, y);
+                crate::heard!(self.plat.move_cursor(x, y));
                 self.outline_under(x, y, false);
                 return None;
             }
             Move::Grab { x, y } => {
-                let _ = self.plat.move_cursor(x, y);
+                crate::heard!(self.plat.move_cursor(x, y));
                 self.carrying = self.plat.window_at(x, y).ok().flatten();
                 self.carried_from = self.carrying.and_then(|id| self.plat.rect_of(id).ok());
                 self.outline_under(x, y, true);
                 None
             }
             Move::Drag { x, y } => {
-                let _ = self.plat.move_cursor(x, y);
+                crate::heard!(self.plat.move_cursor(x, y));
                 if let (Some(id), Some(from)) = (self.carrying, self.carried_from) {
                     // Carry it by the point it was picked up, so it doesn't
                     // jump its own top-left corner under your hand.
@@ -1616,7 +1619,7 @@ impl<'a> Daemon<'a> {
                         width: from.width,
                         height: from.height,
                     };
-                    let _ = self.plat.place(id, rect);
+                    crate::heard!(self.plat.place(id, rect));
                 }
                 return None;
             }
@@ -1626,8 +1629,8 @@ impl<'a> Daemon<'a> {
                 None
             }
             Move::Tap { x, y } => {
-                let _ = self.plat.move_cursor(x, y);
-                let _ = self.plat.click(x, y, crate::platform::Button::Left);
+                crate::heard!(self.plat.move_cursor(x, y));
+                crate::heard!(self.plat.click(x, y, crate::platform::Button::Left));
                 // Say what was selected, not just that something was. A click
                 // with no idea what it hit is the version that cannot be
                 // trusted for anything consequential later.
@@ -1642,7 +1645,7 @@ impl<'a> Daemon<'a> {
                         width: ((from.width as f32) * by) as i32,
                         height: ((from.height as f32) * by) as i32,
                     };
-                    let _ = self.plat.place(id, rect);
+                    crate::heard!(self.plat.place(id, rect));
                 }
                 None
             }
@@ -2052,7 +2055,7 @@ impl<'a> Daemon<'a> {
             P::Waking => {
                 let mut items = self.brief_items();
                 // The same order the voice says it in (`mind::speak_brief`).
-                items.sort_by(|a, b| b.weight.cmp(&a.weight));
+                items.sort_by_key(|b| std::cmp::Reverse(b.weight));
                 let mut lines: Vec<String> = items.into_iter().map(|i| i.what).collect();
                 if lines.is_empty() {
                     // The waking mark still arrives; it just has nothing under it.
@@ -2181,10 +2184,9 @@ impl Daemon<'_> {
     /// Keep what the background just said for an app to show (`said_for_apps`),
     /// numbered so the app shows each once.
     pub fn keep_said_for_apps(&mut self, lines: Vec<String>) {
-        let mut next = self.said_for_apps.last().map(|(n, _)| n + 1).unwrap_or(1);
-        for l in lines.into_iter().filter(|l| !l.trim().is_empty()) {
+        let first = self.said_for_apps.last().map(|(n, _)| n + 1).unwrap_or(1);
+        for (next, l) in (first..).zip(lines.into_iter().filter(|l| !l.trim().is_empty())) {
             self.said_for_apps.push((next, l));
-            next += 1;
         }
         let over = self.said_for_apps.len().saturating_sub(SAID_FOR_APPS_KEPT);
         self.said_for_apps.drain(..over);
@@ -2260,7 +2262,7 @@ fn look_on_its_own(
             }
         }
     }
-    let cam = done.camera.as_ref().expect("just made sure");
+    let Some(cam) = done.camera.as_ref() else { return done };
     let (w, h) = cam.size();
     let wait = if done.opened_camera { std::time::Duration::from_secs(6) } else { std::time::Duration::from_millis(2500) };
     let Some(frame) = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, wait) else {

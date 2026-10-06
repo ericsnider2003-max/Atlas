@@ -249,8 +249,8 @@ pub(crate) fn inflate(data: &[u8], limit: usize) -> Result<Vec<u8>, String> {
                                 lengths.push(prev);
                             }
                         }
-                        17 => lengths.extend(std::iter::repeat(0).take(3 + b.bits(3)? as usize)),
-                        _ => lengths.extend(std::iter::repeat(0).take(11 + b.bits(7)? as usize)),
+                        17 => lengths.extend(std::iter::repeat_n(0, 3 + b.bits(3)? as usize)),
+                        _ => lengths.extend(std::iter::repeat_n(0, 11 + b.bits(7)? as usize)),
                     }
                 }
                 if lengths.len() > nlen + ndist {

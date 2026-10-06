@@ -56,7 +56,7 @@ impl Tilt {
 
 /// Grey from interleaved RGB (Rec. 601 weights).
 pub fn grey(rgb: &[u8]) -> Vec<f32> {
-    rgb.chunks_exact(3).map(|p| 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32).collect()
+    rgb.as_chunks::<3>().0.iter().map(|p| 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32).collect()
 }
 
 /// Measure the tilt of a grey picture `w` x `h`. `None` when there are

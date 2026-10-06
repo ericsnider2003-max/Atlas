@@ -340,7 +340,7 @@ pub fn speak_brief(items: &[Item]) -> String {
         return "Nothing needs you.".into();
     }
     let mut sorted: Vec<&Item> = items.iter().collect();
-    sorted.sort_by(|a, b| b.weight.cmp(&a.weight));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.weight));
 
     let top = sorted[0];
     let mut out = match top.weight {

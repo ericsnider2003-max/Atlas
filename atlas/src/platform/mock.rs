@@ -214,6 +214,11 @@ impl Platform for MockPlatform {
     fn cloud_folder(&self) -> Option<std::path::PathBuf> {
         None
     }
+    /// A mock machine with room to spare and on mains power, whatever the
+    /// machine running the tests has free.
+    fn crew_room(&self) -> fn() -> crate::crew::Room {
+        || crate::crew::Room { free_mb: Some(64 * 1024), on_battery: false, battery_percent: None }
+    }
     fn device_kind(&self) -> crate::sync::Kind {
         self.kind.get()
     }

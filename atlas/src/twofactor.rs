@@ -101,7 +101,7 @@ pub fn code_in_words(said: &str) -> Option<String> {
         // "Oh" and "o" are how a leading zero is read out. Before any digit
         // they only count when a digit follows, so "oh one seven…" keeps its
         // zero and "oh, the code" doesn't become one.
-        let next_is_digit = words.get(i + 1).map_or(false, |n| {
+        let next_is_digit = words.get(i + 1).is_some_and(|n| {
             n.chars().all(|c| c.is_ascii_digit())
                 || matches!(*n, "zero" | "one" | "two" | "three" | "four" | "five" | "six" | "seven" | "eight" | "nine" | "double" | "triple")
         });
@@ -200,7 +200,7 @@ pub fn code_in_text(subject: &str, body: &str) -> Option<String> {
         }
         let before = if start > 0 { chars[start - 1] } else { ' ' };
         let after = chars.get(j).copied().unwrap_or(' ');
-        let decimal = matches!(after, '.' | ',') && chars.get(j + 1).map_or(false, |c| c.is_ascii_digit());
+        let decimal = matches!(after, '.' | ',') && chars.get(j + 1).is_some_and(|c| c.is_ascii_digit());
         let not_money = !matches!(before, '$' | '£' | '€' | '#') && !matches!(after, '%' | ':' | '/') && !decimal;
         let part_of_something = before.is_ascii_alphabetic() || after.is_ascii_alphabetic() || before == '/';
         let year = digits.len() == 4 && (digits.starts_with("19") || digits.starts_with("20"));
@@ -231,7 +231,7 @@ pub fn code_in_text(subject: &str, body: &str) -> Option<String> {
         (0..at.min(bytes.len()))
             .filter(|&i| {
                 matches!(bytes[i], b'!' | b'?' | b'\n')
-                    || (bytes[i] == b'.' && bytes.get(i + 1).map_or(true, |c| c.is_ascii_whitespace()))
+                    || (bytes[i] == b'.' && bytes.get(i + 1).is_none_or(|c| c.is_ascii_whitespace()))
             })
             .count()
     };
@@ -243,7 +243,7 @@ pub fn code_in_text(subject: &str, body: &str) -> Option<String> {
             let dist = keyword_at
                 .iter()
                 .map(|&k| {
-                    let apart = if at >= k { at - k } else { k - at };
+                    let apart = at.abs_diff(k);
                     if sentence_of(k) == mine { apart } else { 1_000 + apart }
                 })
                 .min()

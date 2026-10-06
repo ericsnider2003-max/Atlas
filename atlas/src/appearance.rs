@@ -48,61 +48,49 @@ impl Default for Theme {
 /// The accent. Ember (warm-orange) is the default; the rest override it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Accent {
+    #[default]
     Ember,
     Blue,
     Teal,
     Purple,
     Forest,
 }
-impl Default for Accent {
-    fn default() -> Self {
-        Accent::Ember
-    }
-}
 
 /// Colour-blind mode. When set, the palette swaps to the Access set and the
 /// accent pick is dropped — safety over taste.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Cvd {
+    #[default]
     None,
     /// Deuteranopia / Protanopia — red-green.
     Deuter,
     /// Tritanopia — blue-yellow.
     Tritan,
 }
-impl Default for Cvd {
-    fn default() -> Self {
-        Cvd::None
-    }
-}
 
 /// Text size, scaling the whole interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Text {
+    #[default]
     Normal,
     Large,
     Larger,
-}
-impl Default for Text {
-    fn default() -> Self {
-        Text::Normal
-    }
 }
 
 /// How much sits on screen at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Density {
+    #[default]
     Comfortable,
     Compact,
-}
-impl Default for Density {
-    fn default() -> Self {
-        Density::Comfortable
-    }
 }
 
 /// Everything about how the hub looks, in one stored record.

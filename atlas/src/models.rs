@@ -446,7 +446,7 @@ impl Registry {
             }
         }
 
-        models.sort_by(|a, b| b.parameters.cmp(&a.parameters));
+        models.sort_by_key(|b| std::cmp::Reverse(b.parameters));
         (Registry { models }, trouble)
     }
 
@@ -903,11 +903,11 @@ fn launch_with(
 /// started afresh each launch. Nowhere, when that can't be opened.
 fn model_server_log(name: &str) -> std::process::Stdio {
     let dir = crate::roots::data_dir().join("logs");
-    let _ = std::fs::create_dir_all(&dir);
+    crate::heard!(std::fs::create_dir_all(&dir));
     // The last run's log kept beside it (`.previous`): started afresh, a
     // server that died and was restarted took the reason with it (30 Sep
     // 2026: four restarts in an hour on Eric's laptop, none explained).
-    let _ = std::fs::rename(dir.join(name), dir.join(format!("{name}.previous")));
+    crate::kept!(std::fs::rename(dir.join(name), dir.join(format!("{name}.previous"))));
     match std::fs::File::create(dir.join(name)) {
         Ok(f) => std::process::Stdio::from(f),
         Err(_) => std::process::Stdio::null(),
@@ -1013,6 +1013,7 @@ impl crate::brain::Llm for WaitsForServer {
     fn complete(&self, system: &str, user: &str) -> Result<String> {
         let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
         if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
+            // unheard-ok: returns `bool`, not a Result
             let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
         }
         self.inner.complete(system, user)
@@ -1021,6 +1022,7 @@ impl crate::brain::Llm for WaitsForServer {
     fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
         let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
         if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
+            // unheard-ok: returns `bool`, not a Result
             let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
         }
         self.inner.complete_long(system, user, max_tokens)
@@ -1043,6 +1045,7 @@ impl crate::brain::Llm for WaitsForServer {
     ) -> Result<crate::brain::ChatReply> {
         let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
         if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
+            // unheard-ok: returns `bool`, not a Result
             let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
         }
         self.inner.chat(req, on_text)
@@ -2251,8 +2254,7 @@ fn chat_call_io(
     loop {
         // Move what has arrived into the body, undoing chunking.
         if chunked {
-            loop {
-                let Some(eol) = pending.windows(2).position(|w| w == b"\r\n") else { break };
+            while let Some(eol) = pending.windows(2).position(|w| w == b"\r\n") {
                 let size_txt = String::from_utf8_lossy(&pending[..eol]).to_string();
                 let Ok(n) = usize::from_str_radix(size_txt.trim().split(';').next().unwrap_or("").trim(), 16) else {
                     eof = true;
@@ -2262,24 +2264,31 @@ fn chat_call_io(
                     eof = true;
                     break;
                 }
-                if pending.len() < eol + 2 + n + 2 {
+                // A size the server chose: checked, so a huge one can't wrap.
+                let Some(whole) = n.checked_add(eol + 4) else {
+                    eof = true;
+                    break;
+                };
+                if pending.len() < whole {
                     break;
                 }
                 body_bytes.extend_from_slice(&pending[eol + 2..eol + 2 + n]);
-                pending.drain(..eol + 2 + n + 2);
+                pending.drain(..whole);
             }
         } else {
             body_bytes.append(&mut pending);
         }
-        // Whole lines.
-        while status == 200 {
-            let Some(nl) = body_bytes.iter().position(|b| *b == b'\n') else { break };
-            let line: Vec<u8> = body_bytes.drain(..=nl).collect();
-            let line = String::from_utf8_lossy(&line).to_string();
-            if let Some(piece) = stream.line(&line) {
-                if !on_text(&piece) {
-                    stopped = true;
-                    break;
+        // Whole lines (an `if` around a `loop`: it was `while status == 200`,
+        // which clippy rightly flags -- `status` never changes in the loop).
+        if status == 200 {
+            while let Some(nl) = body_bytes.iter().position(|b| *b == b'\n') {
+                let line: Vec<u8> = body_bytes.drain(..=nl).collect();
+                let line = String::from_utf8_lossy(&line).to_string();
+                if let Some(piece) = stream.line(&line) {
+                    if !on_text(&piece) {
+                        stopped = true;
+                        break;
+                    }
                 }
             }
         }

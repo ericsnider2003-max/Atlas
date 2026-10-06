@@ -105,7 +105,7 @@ pub fn answer_for(name: &str, door: u16) -> String {
 
 /// Read an answer. `None` for anything that is not one.
 pub fn answer_from(line: &str, from: SocketAddr) -> Option<Found> {
-    let mut parts = line.trim().split_whitespace();
+    let mut parts = line.split_whitespace();
     if parts.next()? != "atlas-here-1" {
         return None;
     }

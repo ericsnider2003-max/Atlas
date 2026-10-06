@@ -175,7 +175,7 @@ pub fn read_spoken(said: &str, known_projects: &[String], known_people: &[String
         if let Some(i) = t.find(lead) {
             let rest = &said[i + lead.len()..];
             let stop = rest
-                .find(|c| c == ',' || c == '.')
+                .find([',', '.'])
                 .unwrap_or(rest.len());
             let v = rest[..stop].trim().to_string();
             if !v.is_empty() {
@@ -217,7 +217,7 @@ pub fn read_spoken(said: &str, known_projects: &[String], known_people: &[String
     for lead in ["due ", "by "] {
         if let Some(i) = t.find(lead) {
             let rest = &t[i + lead.len()..];
-            let stop = rest.find(|c| c == ',' || c == '.').unwrap_or(rest.len());
+            let stop = rest.find([',', '.']).unwrap_or(rest.len());
             let v = rest[..stop].trim();
             if !v.is_empty() && v.len() < 24 {
                 out.due_words = Some(v.to_string());
@@ -412,7 +412,7 @@ impl Notebook {
     /// is a cost at exactly the wrong moment.
     pub fn acknowledge(&self, id: u64) -> String {
         match self.notes.iter().find(|n| n.id == id) {
-            Some(n) if n.kind.is_work() => format!("Got it — on the list."),
+            Some(n) if n.kind.is_work() => "Got it — on the list.".to_string(),
             Some(_) => "Got it.".into(),
             None => String::new(),
         }

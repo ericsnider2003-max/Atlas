@@ -52,11 +52,11 @@ pub fn parse_wav(bytes: &[u8]) -> Result<Wav, String> {
     }
     // 0xFFFE is WAVE_FORMAT_EXTENSIBLE; its sub-format follows the same bits.
     let samples: Vec<f32> = match (format, bits) {
-        (1 | 0xFFFE, 16) => data.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect(),
+        (1 | 0xFFFE, 16) => data.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect(),
         (1 | 0xFFFE, 32) => {
-            data.chunks_exact(4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0).collect()
+            data.as_chunks::<4>().0.iter().map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0).collect()
         }
-        (3, 32) => data.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect(),
+        (3, 32) => data.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect(),
         (f, b) => return Err(format!("a WAV I don't play (format {f}, {b}-bit)")),
     };
     Ok(Wav { rate, channels, samples })

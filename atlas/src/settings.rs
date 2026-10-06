@@ -326,7 +326,7 @@ impl Settings {
     pub fn consequential(&self) -> Vec<&Setting> {
         let mut v: Vec<&Setting> =
             self.items.iter().filter(|s| s.weight.needs_confirming()).collect();
-        v.sort_by(|a, b| b.weight.cmp(&a.weight));
+        v.sort_by_key(|b| std::cmp::Reverse(b.weight));
         v
     }
 
@@ -336,7 +336,7 @@ impl Settings {
         self.items
             .iter()
             .filter(|s| matches!(s.value, Value::Toggle(true)))
-            .filter(|s| unused_keys.iter().any(|k| *k == s.key))
+            .filter(|s| unused_keys.contains(&s.key))
             .collect()
     }
 }

@@ -148,7 +148,7 @@ fn bars_from_file(path: &str) -> std::result::Result<atlas::market::bars::Bars, 
 fn trade_cfgs() -> atlas::together::TogetherConfig {
     let cfg = Config::load(&atlas::roots::config_dir()).ok();
     let tools = cfg.as_ref().and_then(|c| c.tools.as_ref());
-    tools.map(|t| t.together.clone()).unwrap_or_default()
+    tools.map(|t| t.together).unwrap_or_default()
 }
 
 /// Your `trading:` section — the risk limits, as you wrote them.
@@ -748,7 +748,7 @@ pub(super) fn run_money(cfg: &Config, args: &[String]) {
         println!("I can't read {path}.");
         return;
     };
-    let source = match flag("--from").as_deref() {
+    let source = match flag("--from") {
         None | Some("file") => Source::LocalFile,
         Some("export") => Source::SiteExport,
         Some("feed") => Source::Aggregator,

@@ -552,7 +552,7 @@ fn show_recovery_key(code: &str) {
     print!("  Press Enter once you have written it down. ");
     let _ = std::io::Write::flush(&mut std::io::stdout());
     let mut line = String::new();
-    let _ = std::io::stdin().read_line(&mut line);
+    atlas::heard!(std::io::stdin().read_line(&mut line));
     println!();
 }
 

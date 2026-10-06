@@ -58,7 +58,7 @@ pub struct Open {
 }
 
 impl Open {
-    fn to_target(&self) -> f64 {
+    fn to_target(self) -> f64 {
         (self.target - self.entry).abs()
     }
 
