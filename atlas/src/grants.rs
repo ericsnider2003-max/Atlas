@@ -75,7 +75,7 @@ impl Permissions {
         }
         if let Some(g) = self.find(app, action) {
             let why = match g.span {
-                Span::Once => format!("you asked for this specifically"),
+                Span::Once => "you asked for this specifically".to_string(),
                 Span::Session => format!("you approved {app} earlier"),
                 Span::Always => format!("{app} is always allowed"),
             };

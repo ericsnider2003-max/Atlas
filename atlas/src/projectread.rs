@@ -180,7 +180,7 @@ fn pointers(request: &str) -> Pointers {
     for raw in request.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ',' | ';' | '[' | ']' | '{' | '}' | '<' | '>' | '=')) {
         let had_call = raw.contains('(');
         let t = raw.trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '/' && c != '.' && c != ':' && c != '\\');
-        let t = t.split('(').next().unwrap_or("").trim_end_matches(|c: char| c == '.' || c == ':');
+        let t = t.split('(').next().unwrap_or("").trim_end_matches(['.', ':']);
         if t.len() < 3 {
             continue;
         }

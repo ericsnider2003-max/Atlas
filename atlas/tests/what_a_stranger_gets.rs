@@ -205,7 +205,7 @@ fn an_unrecognised_sentence_is_not_answered_out_of_your_notes() {
     // with a model, the notes go in front of it as hints (`notes_as_hints`),
     // which carries the same check itself -- the conversation path reaches
     // it without going through `run_command`'s handed-over guard above.
-    assert!(function_body(&src, "fn answer_locally(").contains("self.from_notes(raw, t)"), "answer_locally no longer reads the notes");
+    assert!(function_body(&src, "fn answer_locally(").contains("self.answer_from_notes(raw, t)"), "answer_locally no longer reads the notes");
     assert!(
         !function_body(&src, "fn answer_before_the_model(").contains("from_notes"),
         "the notes answer on their own before the model again, instead of being a hint to it"

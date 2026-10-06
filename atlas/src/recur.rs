@@ -421,9 +421,10 @@ fn parse_byday(d: &str) -> Result<(Option<i32>, u32), String> {
 pub fn parse_ical_time(v: &str) -> Result<i64, String> {
     let v = v.trim().trim_end_matches('Z');
     let bad = || format!("'{v}' is not an iCalendar date");
-    // Bytes, not characters: a stray non-ASCII character in a garbled invite
-    // made the slicing below panic mid-character (fuzzed, 5 Oct 2026).
-    if v.len() < 8 || !v.as_bytes()[..8].iter().all(|b| b.is_ascii_digit()) {
+    // ASCII first: a date is digits and a `T`, and the byte slices below
+    // (the time part too, not only the first eight) would split a character
+    // in a garbled invite (fuzzed, 5 Oct 2026, by both Q20 passes).
+    if !v.is_ascii() || v.len() < 8 || !v[..8].bytes().all(|b| b.is_ascii_digit()) {
         return Err(bad());
     }
     let y: i64 = v[0..4].parse().map_err(|_| bad())?;

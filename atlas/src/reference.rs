@@ -229,7 +229,7 @@ impl Shelf {
         if parts.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
             return None;
         }
-        let fetched = crate::market::time::days_from_civil(y, m, d) as i64;
+        let fetched = crate::market::time::days_from_civil(y, m, d);
         let today = (now / 86_400) as i64;
         u32::try_from(today.saturating_sub(fetched)).ok()
     }

@@ -341,11 +341,11 @@ impl Dictation {
         self.last_spoke = t;
 
         let pieces = parse(said, cfg);
-        if pieces.iter().any(|p| *p == Piece::Stop) {
+        if pieces.contains(&Piece::Stop) {
             self.state = State::Off;
             return Err("Stopped dictating.".into());
         }
-        if pieces.iter().any(|p| *p == Piece::Scratch) {
+        if pieces.contains(&Piece::Scratch) {
             let taken_back = std::mem::take(&mut self.last);
             return Err(format!("Took back: {taken_back}"));
         }

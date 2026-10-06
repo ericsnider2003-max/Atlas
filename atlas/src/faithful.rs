@@ -187,7 +187,7 @@ const NEGATORS: &[&str] = &[
 /// that boundary can wrongly cancel a later claim.
 fn asserts(text: &str, needle: &str) -> bool {
     let lower = text.to_lowercase();
-    for clause in lower.split(|c: char| matches!(c, '.' | ',' | ';' | '!' | '?')) {
+    for clause in lower.split(['.', ',', ';', '!', '?']) {
         let has_claim = if needle.contains(' ') {
             clause.contains(needle)
         } else {
@@ -250,7 +250,7 @@ fn asserts(text: &str, needle: &str) -> bool {
 
 fn first_sentence(text: &str) -> &str {
     let end = text
-        .find(|c| c == '.' || c == '!' || c == '?')
+        .find(['.', '!', '?'])
         .map(|i| i + 1)
         .unwrap_or(text.len());
     text[..end].trim()

@@ -395,8 +395,8 @@ pub fn ctc(values: &[f32], steps: usize) -> Result<Letters> {
                 best = i;
             }
         }
-        if best != 0 {
-            if best != last {
+        if best != 0
+            && best != last {
                 // `best - 1` because class nought is the blank. Getting this
                 // off by one does not fail — it returns real words with every
                 // letter shifted, which reads as a broken model rather than as
@@ -414,7 +414,6 @@ pub fn ctc(values: &[f32], steps: usize) -> Result<Letters> {
                     }
                 });
             }
-        }
         last = best;
     }
 

@@ -119,7 +119,7 @@ impl Reader<'_> {
             0x1 => {
                 let n = 1usize << low;
                 let raw = be(self.b.get(at + 1..at + 1 + n)?);
-                Value::Int(if n == 8 { raw as i64 } else { raw as i64 })
+                Value::Int(raw as i64)
             }
             0x5 => {
                 let (n, from) = self.length(at, low)?;

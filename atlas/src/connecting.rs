@@ -249,7 +249,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                             .iter()
                             .any(|l| l.url == oauthlink::calendar_key(Provider::Microsoft, &id));
                         d.vault.secrets.retain(|s| s.name != connect::vault_name(&id) && (calendar_uses_it || s.name != token));
-                        let _ = d.vault.save(&crate::roots::install_state());
+                        crate::kept!(d.vault.save(&crate::roots::install_state()));
                         back(&format!("Disconnected {id}, and its password is gone from the vault. You can also delete the app password at your provider."))
                     }
                     Ok(false) => back(&format!("{id} is listed in tools.yaml, so it's taken off there.")),
@@ -267,7 +267,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                             .any(|a| a.password_from_vault == oauthlink::vault_name(p, &email));
                         if !mail_uses_it {
                             d.vault.secrets.retain(|s| s.name != oauthlink::vault_name(p, &email));
-                            let _ = d.vault.save(&crate::roots::install_state());
+                            crate::kept!(d.vault.save(&crate::roots::install_state()));
                         }
                     }
                     match d.store.save(connect::CALENDAR_LINKS, &links) {
@@ -309,21 +309,8 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     let again = |said: &str| hub::back_with(&format!("{}#connect-next", Page::Accounts.href()), &format!("connect={}", crate::research::urlencode(&address)), said);
     // The vault first: there's no point proving a password that can't be kept.
     let now = crate::store::now();
-    if let Err(why) = d.vault_ready(now) {
-        let opened = {
-            let phrase = field(fields, "passphrase");
-            if phrase.is_empty() {
-                Err(why)
-            } else {
-                let cfg = d.tools_cfg().vault.clone();
-                d.vault.open(&phrase, now, &cfg).map(|()| {
-                    let _ = d.keep_sign_in_copy(now);
-                })
-            }
-        };
-        if let Err(e) = opened {
-            return again(&format!("Nothing was connected: {e}."));
-        }
+    if let Err(e) = open_the_vault(d, &field(fields, "passphrase"), now) {
+        return again(&format!("Nothing was connected: {e}."));
     }
     // Spaces in an app password are how Google shows it, not part of it.
     let password = if host.contains("gmail") { password.replace(' ', "") } else { password };
@@ -543,15 +530,8 @@ pub(crate) fn begin_signin(d: &mut Daemon, p: Provider, passphrase: &str) -> Res
     let now = crate::store::now();
     // No passphrase asked for: the vault opens on your Windows sign-in. A
     // passphrase is used only for a vault made before that, and only if given.
-    if let Err(e) = d.vault_ready(now) {
-        if passphrase.is_empty() {
-            return Err(format!("Nothing was started: {e}."));
-        }
-        let cfg = d.tools_cfg().vault.clone();
-        if let Err(e) = d.vault.open(passphrase, now, &cfg) {
-            return Err(format!("Nothing was started: {e}."));
-        }
-        let _ = d.keep_sign_in_copy(now);
+    if let Err(e) = open_the_vault(d, passphrase, now) {
+        return Err(format!("Nothing was started: {e}."));
     }
     let first = match std::net::TcpListener::bind("127.0.0.1:0") {
         Ok(l) => l,
@@ -604,7 +584,7 @@ fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) 
             let _ = stream.set_nonblocking(false);
             let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
             let mut line = String::new();
-            let _ = std::io::BufReader::new(&stream).read_line(&mut line);
+            crate::heard!(std::io::BufReader::new(&stream).read_line(&mut line));
             let mut w = &stream;
             // A browser also asks for /favicon.ico and the like: not the answer.
             if !line.contains("code=") && !line.contains("error=") {
@@ -654,7 +634,8 @@ pub fn keep_sign_in(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String
 
 fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     let name = oauthlink::vault_name(s.provider, &s.email);
-    let _ = d.vault_ready(now);
+    // If it stays shut, the `put` below fails and says so.
+    crate::heard!(d.vault_ready(now));
     let kept = d
         .vault
         .put(&name, crate::vault::Kind::Login, &s.refresh_token, now)
@@ -730,4 +711,22 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
             d.log.warn(&format!("a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"));
         }
     }
+}
+
+/// The vault opened for a connection: on your Windows sign-in when it can
+/// (`vault_ready`), else with a passphrase -- only for a vault made before
+/// that, and only if one was given -- after which it keeps a sign-in copy so
+/// it needn't be asked again. One copy (audit Q3): connecting an account and
+/// starting a sign-in each had one, and the 5 Oct no-passphrase change had to
+/// be made in both.
+fn open_the_vault(d: &mut Daemon<'_>, passphrase: &str, now: u64) -> Result<(), String> {
+    let Err(why) = d.vault_ready(now) else { return Ok(()) };
+    if passphrase.is_empty() {
+        return Err(why);
+    }
+    let cfg = d.tools_cfg().vault.clone();
+    d.vault.open(passphrase, now, &cfg)?;
+    // What it says is for the Accounts page; the connection's own answer follows.
+    d.keep_sign_in_copy(now);
+    Ok(())
 }

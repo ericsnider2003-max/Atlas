@@ -15,12 +15,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Health {
     Up,
     Down,
     /// Going up and down repeatedly — worse than plainly down, and easy to
     /// miss if you only alert on transitions.
     Flapping,
+    #[default]
     Unknown,
 }
 
@@ -73,11 +75,6 @@ pub struct Status {
     pub last_up: Option<u64>,
 }
 
-impl Default for Health {
-    fn default() -> Self {
-        Health::Unknown
-    }
-}
 
 /// Something worth telling you about.
 #[derive(Debug, Clone, PartialEq)]

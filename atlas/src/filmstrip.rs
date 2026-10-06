@@ -124,7 +124,7 @@ impl Drop for Player {
         self.cdp.close();
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.profile);
+        crate::heard!(std::fs::remove_dir_all(&self.profile));
     }
 }
 
@@ -132,7 +132,7 @@ impl Player {
     /// Start the browser headless on a port it picks, with its own profile —
     /// never your open browser windows — and attach to its page.
     fn start(browser: &Path, profile: &Path) -> Result<Player, String> {
-        let _ = std::fs::remove_dir_all(profile);
+        crate::heard!(std::fs::remove_dir_all(profile));
         std::fs::create_dir_all(profile).map_err(|e| format!("couldn't make a browser profile: {e}"))?;
         let mut cmd = crate::tools::command(browser);
         cmd.arg("--headless")
@@ -191,7 +191,8 @@ impl Player {
             Ok(c) => c,
             Err(e) => return fail(&mut child, format!("couldn't attach to the browser: {e}")),
         };
-        Ok(Player { child: child.take().expect("started"), cdp, profile: profile.to_path_buf() })
+        let Some(child) = child.take() else { return fail(&mut child, "the browser went away while it was starting".into()) };
+        Ok(Player { child, cdp, profile: profile.to_path_buf() })
     }
 
     fn call(&mut self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -264,7 +265,7 @@ pub fn play_frames(svg: &str, plan: &Plan, browser: &Path, work: &Path) -> Resul
         )?;
         let data = shot.get("data").and_then(|d| d.as_str()).ok_or(format!("frame {i}: the browser sent no picture"))?;
         let bytes = crate::b64::decode(data).map_err(|e| format!("frame {i}: {e}"))?;
-        let _ = std::fs::write(work.join(format!("frame{i:04}.png")), &bytes);
+        crate::kept!(std::fs::write(work.join(format!("frame{i:04}.png")), &bytes));
         frames.push(crate::pngcodec::read_png(&bytes).map_err(|e| format!("frame {i}: {e}"))?);
     }
     Ok(frames)
@@ -342,7 +343,7 @@ pub fn film(svg: &str, plan: &Plan, browser: &Path, ffmpeg: Option<&str>, dir: &
     // ..\\ball.svg` on the laptop failed exactly this way (24 Sep).
     let dir = &std::path::absolute(dir).map_err(|e| format!("couldn't place {}: {e}", dir.display()))?;
     let work = dir.join(format!(".{stem}.frames"));
-    let _ = std::fs::remove_dir_all(&work);
+    crate::heard!(std::fs::remove_dir_all(&work));
     let frames = play_frames(svg, plan, browser, &work)?;
     let mut made = Made {
         frames: frames.len(),
@@ -367,7 +368,7 @@ pub fn film(svg: &str, plan: &Plan, browser: &Path, ffmpeg: Option<&str>, dir: &
         Some(None) => made.notes.push("no MP4: that needs ffmpeg, and it isn't installed".into()),
         Some(Some(ff)) => {
             let mp4 = dir.join(format!("{stem}.mp4"));
-            let _ = std::fs::remove_file(&mp4);
+            crate::heard!(std::fs::remove_file(&mp4));
             // yuv420p needs even sides; pad by a pixel rather than refuse.
             let status = crate::tools::command(ff)
                 .args(["-hide_banner", "-loglevel", "error", "-y", "-framerate"])
@@ -389,7 +390,7 @@ pub fn film(svg: &str, plan: &Plan, browser: &Path, ffmpeg: Option<&str>, dir: &
             }
         }
     }
-    let _ = std::fs::remove_dir_all(&work);
+    crate::heard!(std::fs::remove_dir_all(&work));
     Ok(made)
 }
 

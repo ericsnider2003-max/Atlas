@@ -175,8 +175,8 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     if ok {
         let (_, shown) = run("netsh", &show_args());
         if describes_rule_for(&shown, exe) || shown.contains(RULE_NAME) {
-            let _ = std::fs::create_dir_all(state);
-            let _ = std::fs::write(state.join(ADDED), exe.display().to_string());
+            crate::heard!(std::fs::create_dir_all(state));
+            crate::kept!(std::fs::write(state.join(ADDED), exe.display().to_string()));
             return Standing::Added;
         }
         return Standing::Problem("Windows said yes but the rule isn't there; Windows will ask the first time your phone connects.".into());
@@ -186,8 +186,8 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     // problem to try again next time, not your choice (28 Sep 2026: every
     // failure used to be written down as "you chose no", for good).
     if said_no(&said) {
-        let _ = std::fs::create_dir_all(state);
-        let _ = std::fs::write(state.join(DECLINED), crate::store::now().to_string());
+        crate::heard!(std::fs::create_dir_all(state));
+        crate::kept!(std::fs::write(state.join(DECLINED), crate::store::now().to_string()));
         return Standing::Declined(declined_words());
     }
     let first = said.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("it didn't say why");
@@ -195,6 +195,14 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
         "not added: Windows couldn't make the rule ({first}). I'll try again the next time setup runs; until \
          then Windows will ask the first time your phone connects -- answer Allow."
     ))
+}
+
+/// What a test is told instead of a prompt: a No (`said_no` reads it so).
+const NOT_IN_A_TEST: &str = "not asked: a test never asks Windows for administrator rights (treated as cancelled by the user)";
+
+/// Would running this put up Windows' "allow changes" prompt?
+fn asks_for_elevation(args: &[String]) -> bool {
+    args.iter().any(|a| a.to_lowercase().contains("-verb runas"))
 }
 
 /// Is this what Windows says when you answer No (or close) the "allow
@@ -207,6 +215,14 @@ pub fn said_no(output: &str) -> bool {
 
 /// The real programs, hidden.
 pub fn run_program(program: &str, args: &[String]) -> (bool, String) {
+    // A test never asks Windows for administrator rights (6 Oct 2026): the
+    // setup walk's test ran this for real on the laptop, put up a "make
+    // changes" prompt for a firewall rule letting a throwaway atlas.exe in a
+    // temp folder take incoming connections, and hung the suite waiting on
+    // it. Refused before anything starts, worded as the No it amounts to.
+    if asks_for_elevation(args) && crate::roots::under_test() {
+        return (false, NOT_IN_A_TEST.to_string());
+    }
     let mut cmd = crate::tools::command(program);
     cmd.args(args).stdin(std::process::Stdio::null());
     #[cfg(windows)]
@@ -223,6 +239,20 @@ pub fn run_program(program: &str, args: &[String]) -> (bool, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_test_never_puts_up_a_windows_prompt() {
+        // The real runner, given exactly what `ensure` sends to add the rule:
+        // refused before anything starts, and read as a No.
+        let ps = elevated_command(&add_args(&exe()));
+        let args = ["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), ps];
+        assert!(asks_for_elevation(&args));
+        let (ok, said) = run_program("powershell", &args);
+        assert!(!ok);
+        assert!(said_no(&said), "{said}");
+        // Reading the rules asks nothing and is not refused.
+        assert!(!asks_for_elevation(&show_args()));
+    }
     use std::cell::RefCell;
 
     fn exe() -> std::path::PathBuf {

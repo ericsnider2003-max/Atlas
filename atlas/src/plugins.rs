@@ -525,6 +525,7 @@ impl Plugin {
 }
 
 /// What reading the file found, before your decision is consulted.
+#[allow(clippy::large_enum_variant, reason = "one short-lived value per plugin read; boxing buys nothing")]
 enum Read {
     Ok(Checked, String),
     Off(Status, String),
@@ -1087,7 +1088,9 @@ pub fn trust_step(store: &Store, dir: &Path, commands: &CommandsConfig, id: &str
     if let Some(why) = &q.always_asks {
         return Err(format!("I'll keep asking before \"{step}\": {why}."));
     }
-    let a = approvals.plugins.get_mut(id).expect("active means approved");
+    let Some(a) = approvals.plugins.get_mut(id) else {
+        return Err(format!("\"{id}\" isn't approved any more, so I'll ask before \"{step}\"."));
+    };
     if !a.trusted_steps.iter().any(|t| t == step) {
         a.trusted_steps.push(step.to_string());
     }

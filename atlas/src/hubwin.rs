@@ -113,9 +113,9 @@ fn open_in_browser(_url: &str) {}
 #[cfg_attr(not(windows), allow(dead_code))]
 fn note(dir: &std::path::Path, what: &str) {
     use std::io::Write;
-    let _ = std::fs::create_dir_all(dir);
+    crate::heard!(std::fs::create_dir_all(dir));
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("hub-region.log")) {
-        let _ = writeln!(f, "{} {what}", crate::store::now());
+        crate::kept!(writeln!(f, "{} {what}", crate::store::now()));
     }
 }
 
@@ -214,7 +214,7 @@ impl Hub {
             if self.problem.is_some() {
                 return;
             }
-            let _ = std::fs::create_dir_all(&self.data_dir);
+            crate::heard!(std::fs::create_dir_all(&self.data_dir));
             let mut ctx = wry::WebContext::new(Some(self.data_dir.clone()));
             let port = self.port;
             let log_dir = self.data_dir.clone();
@@ -271,15 +271,15 @@ impl Hub {
         }
         let Some((view, _)) = self.view.as_ref() else { return };
         if self.area.map(|a| !a.same_as(&area)).unwrap_or(true) {
-            let _ = view.set_bounds(rect);
+            crate::heard!(view.set_bounds(rect));
             self.area = Some(area);
         }
         if !self.visible {
-            let _ = view.set_visible(true);
+            crate::heard!(view.set_visible(true));
             self.visible = true;
         }
         if go {
-            let _ = view.load_url(url);
+            crate::heard!(view.load_url(url));
         }
     }
 
@@ -288,7 +288,7 @@ impl Hub {
         #[cfg(windows)]
         if let Some((view, _)) = self.view.as_ref() {
             if self.visible {
-                let _ = view.set_visible(false);
+                crate::heard!(view.set_visible(false));
             }
         }
         self.visible = false;

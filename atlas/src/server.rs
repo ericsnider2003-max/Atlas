@@ -2275,11 +2275,12 @@ impl Serving {
             std::thread::Builder::new()
                 .name("atlas-hub".into())
                 .spawn(move || {
-                    let listener = if which == 0 { &s.listener } else { s.also.as_ref().expect("counted above") };
+                    let Some(listener) = (if which == 0 { Some(&s.listener) } else { s.also.as_ref() }) else { return };
                     me.accept_on(listener, &s);
                 })
                 .map_err(|e| AtlasError::Platform(format!("couldn't start the hub's listener: {e}")))?;
         }
+        // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
         let _ = self.server.set(server);
         self.port.store(port, std::sync::atomic::Ordering::SeqCst);
         Ok(())
@@ -2504,6 +2505,7 @@ fn keep_trying(
             if serving.serve_also(l) {
                 if !where_to.is_loopback() {
                     if let Ok(l) = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, cfg.port)) {
+                        // unheard-ok: returns `bool`, not a Result
                         let _ = serving.serve_also(l);
                     }
                 }
@@ -2776,7 +2778,7 @@ pub fn ping(port: u16, wait: std::time::Duration) -> Option<String> {
     let _ = s.set_write_timeout(Some(wait));
     s.write_all(format!("GET {PING_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").as_bytes()).ok()?;
     let mut got = Vec::new();
-    let _ = s.take(4096).read_to_end(&mut got);
+    crate::heard!(s.take(4096).read_to_end(&mut got));
     let text = String::from_utf8_lossy(&got);
     let (head, body) = text.split_once("\r\n\r\n")?;
     if !head.starts_with("HTTP/1.1 200") && !head.starts_with("HTTP/1.0 200") {

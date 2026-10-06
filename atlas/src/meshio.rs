@@ -359,7 +359,10 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
                 }
                 for k in 1..corners.len() - 1 {
                     let c = [corners[0], corners[k], corners[k + 1]];
-                    let n = if c.iter().all(|x| x.1.is_some()) { Some([ns[c[0].1.unwrap()], ns[c[1].1.unwrap()], ns[c[2].1.unwrap()]]) } else { None };
+                    let n = match (c[0].1, c[1].1, c[2].1) {
+                        (Some(a), Some(b), Some(d)) => Some([ns[a], ns[b], ns[d]]),
+                        _ => None,
+                    };
                     tris.push(Tri { p: [vs[c[0].0], vs[c[1].0], vs[c[2].0]], n, colour: current });
                 }
             }

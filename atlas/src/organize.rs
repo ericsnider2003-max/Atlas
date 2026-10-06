@@ -285,15 +285,7 @@ pub fn user_folder(which: &str) -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn windows_known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
-    use windows::Win32::System::Com::CoTaskMemFree;
-    use windows::Win32::UI::Shell::{SHGetKnownFolderPath, KF_FLAG_DEFAULT};
-    // SAFETY: the returned buffer is read once and freed with CoTaskMemFree.
-    unsafe {
-        let p = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).ok()?;
-        let s = p.to_string().ok();
-        CoTaskMemFree(Some(p.0 as *const _));
-        s.map(PathBuf::from)
-    }
+    crate::firstlaunch::known_folder(id)
 }
 
 /// One line of `user-dirs.dirs`: `XDG_DOWNLOAD_DIR="$HOME/Downloads"`.

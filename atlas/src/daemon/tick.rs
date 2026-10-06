@@ -52,6 +52,7 @@ impl<'a> Daemon<'a> {
     fn tell_where_you_are(&mut self, out: &mut Vec<String>, title: &str, line: String, t: u64) {
         if self.quiet_for(t) > self.away_after {
             let note = crate::notify::Note::new(title, &line, crate::notify::Urgency::Routine, t);
+            // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
             let _ = self.reach_you(note, t);
         } else {
             out.push(line);
@@ -520,6 +521,7 @@ impl<'a> Daemon<'a> {
                 // could send, and a post left `Scheduled` came round every tick.
                 // A post in flight is skipped until its errand comes back.
                 Ok(_) => {
+                    // unheard-ok: returns `Option<String>`, not a Result
                     let _ = self.send_post(id, t, online);
                 }
                 Err(delivery::Outcome::Retry(_)) => {}
@@ -767,7 +769,7 @@ impl<'a> Daemon<'a> {
         let taken = crate::yata::take_queued(&inbox, &mut self.synclog, t);
         if !taken.is_empty() && self.store.save("synclog", &Some(self.synclog.clone())).is_ok() {
             for f in taken {
-                let _ = std::fs::remove_file(f);
+                crate::heard!(std::fs::remove_file(f));
             }
         }
 
@@ -856,7 +858,6 @@ impl<'a> Daemon<'a> {
             // Never prepare anything while you're mid-task; anticipation that
             // makes the laptop stutter is worse than none.
             can_afford_work: signals.idle_secs > 30 && !signals.in_conversation,
-            ..Default::default()
         };
         for rule in self.anticipator.due(&moment, t) {
             let lane = lane_for(&rule.command);
@@ -1208,6 +1209,7 @@ impl<'a> Daemon<'a> {
                             // the symptom its own cause and was refused.
                             let mut session = crate::selfwork::Session::new(&goal, 0);
                             for answer in [&thought.cause, &thought.where_, &thought.proof] {
+                                // unheard-ok: returns `Option<&str>`, not a Result
                                 let _ = session.diagnosing.answer(answer);
                             }
                             self.selfwork = Some(session);
@@ -1222,6 +1224,7 @@ impl<'a> Daemon<'a> {
         if t.saturating_sub(self.last_tidy) >= 3600 {
             self.last_tidy = t;
             // Atlas's own things, fixed without asking (E1).
+            // unheard-ok: returns `Vec<String>`, not a Result
             let _ = self.fix_my_own_things(t);
             // Routines: asked about once, and run when due (E4).
             if self.proactive.may_interrupt(&signals, t) {
@@ -1370,6 +1373,7 @@ impl<'a> Daemon<'a> {
         if !news.is_empty() && self.quiet_for(t) > self.away_after {
             for line in news {
                 let note = crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);
+                // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
                 let _ = self.reach_you(note, t);
             }
         } else {
@@ -1405,7 +1409,7 @@ impl<'a> Daemon<'a> {
             let bcfg = self.tools_cfg().brief.clone();
             let dcfg = self.tools_cfg().daily.clone();
             let rolls_at = self.rhythm.rolls_at(&dcfg);
-            let this_hour = crate::localclock::hour_here(t) as u8;
+            let this_hour = crate::localclock::hour_here(t);
             let arrival =
                 crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at, t, rolls_at, &dcfg);
 
@@ -1528,7 +1532,7 @@ impl<'a> Daemon<'a> {
         // Initiative before reaction. A stalled commitment matters more than
         // a folder that filled up, and if both are true you should only hear
         // one of them.
-        let hour = crate::localclock::hour_here(t) as u8;
+        let hour = crate::localclock::hour_here(t);
         // Record that the connections were looked at. Without this the
         // board reports its last answer in the present tense.
         // The heartbeat used to be here, and being here was the bug: two
@@ -2261,7 +2265,7 @@ impl<'a> Daemon<'a> {
             return Vec::new();
         };
         let mut lines: Vec<String> = Vec::new();
-        let _ = server.poll_from(std::time::Duration::from_millis(50), |peer, incoming| {
+        crate::heard!(server.poll_from(std::time::Duration::from_millis(50), |peer, incoming| {
             // A peer actually connected — now the key derivation is worth it.
             let key = self.sync_key();
             if !self.may_answer_wire(peer, &incoming, &cfg, key.as_deref()) {
@@ -2276,7 +2280,7 @@ impl<'a> Daemon<'a> {
             lines.extend(cl);
             lines.extend(sk);
             self.wire_bytes(&cfg, key.as_deref(), now)
-        });
+        }));
         self.sync_server = Some(server);
         lines
     }
@@ -2367,7 +2371,7 @@ impl<'a> Daemon<'a> {
         }
         if let Some(server) = self.sync_server.take() {
             let key_ref = key.as_deref();
-            let _ = server.poll_from(std::time::Duration::from_millis(200), |peer, incoming| {
+            crate::heard!(server.poll_from(std::time::Duration::from_millis(200), |peer, incoming| {
                 if !self.may_answer_wire(peer, &incoming, &cfg, key_ref) {
                     return None;
                 }
@@ -2376,7 +2380,7 @@ impl<'a> Daemon<'a> {
                 clashes.append(&mut cl);
                 skews.append(&mut sk);
                 self.wire_bytes(&cfg, key_ref, now)
-            });
+            }));
             self.sync_server = Some(server);
         }
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -2947,6 +2951,7 @@ impl Daemon<'_> {
                 (false, false) => Ok(format!("Downloaded {}. Still missing: {} -- I'll try again later.", got.join(", "), not.join("; "))),
             }
         });
+        // unheard-ok: returns `bool`, not a Result
         let _ = self.hand_off("getting-everything", t, work, None, SpeakPolicy::ViaWatcher);
     }
 }

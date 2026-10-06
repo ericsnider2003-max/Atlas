@@ -14,8 +14,10 @@ use serde::{Deserialize, Serialize};
 /// How much Atlas is allowed to interrupt in this mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Interruptions {
     /// Anything.
+    #[default]
     Normal,
     /// Only things that would cost you something to miss.
     Urgent,
@@ -54,11 +56,6 @@ fn d_detail() -> u8 {
     2
 }
 
-impl Default for Interruptions {
-    fn default() -> Self {
-        Interruptions::Normal
-    }
-}
 
 impl Mode {
     /// May Atlas speak up unprompted right now?

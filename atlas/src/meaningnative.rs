@@ -26,6 +26,9 @@ pub const VOCAB: &str = "models/understanding/vocab.txt";
 
 /// Lengths a text is padded to.
 const BUCKETS: [usize; 4] = [16, 32, 64, 128];
+/// The largest bucket, read at compile time: an empty `BUCKETS` fails the build
+/// rather than panicking at run time (audit Q2).
+const MOST_TOKENS: usize = BUCKETS[BUCKETS.len() - 1];
 
 type Runnable = std::sync::Arc<TypedRunnableModel>;
 
@@ -80,7 +83,7 @@ impl Native {
 
     fn embed_where(&mut self, text: &str, npu: bool) -> Option<Vec<f32>> {
         let mut ids = tokenize(text, &self.vocab);
-        let most = *BUCKETS.last().unwrap();
+        let most = MOST_TOKENS;
         if ids.len() > most {
             ids.truncate(most - 1);
             ids.push(*self.vocab.get(SEP).unwrap_or(&102));

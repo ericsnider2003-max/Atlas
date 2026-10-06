@@ -123,7 +123,7 @@ pub fn scale_wav(bytes: &mut [u8], volume: u8) -> bool {
                 return false;
             }
             let k = volume as i32;
-            for s in bytes[start..end].chunks_exact_mut(2) {
+            for s in bytes[start..end].as_chunks_mut::<2>().0 {
                 let v = i16::from_le_bytes([s[0], s[1]]) as i32 * k / 100;
                 s.copy_from_slice(&(v as i16).to_le_bytes());
             }

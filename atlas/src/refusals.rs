@@ -87,13 +87,14 @@ impl Refusals {
     /// Record one refusal.
     pub fn declined(&mut self, pair: &str, label: &str, reason: &str, now: u64) {
         let pair = pair.to_uppercase();
-        let causes = match self.by_pair.iter_mut().find(|(p, _)| *p == pair) {
-            Some((_, c)) => c,
+        let i = match self.by_pair.iter().position(|(p, _)| *p == pair) {
+            Some(i) => i,
             None => {
                 self.by_pair.push((pair.clone(), Vec::new()));
-                &mut self.by_pair.last_mut().expect("just pushed").1
+                self.by_pair.len() - 1
             }
         };
+        let causes = &mut self.by_pair[i].1;
         match causes.iter_mut().find(|c| c.label == label) {
             Some(c) => {
                 c.times = c.times.saturating_add(1);

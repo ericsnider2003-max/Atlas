@@ -59,8 +59,9 @@ impl WantedAbilities {
             self.items[i].asked_at = t;
             return &self.items[i];
         }
+        let i = self.items.len();
         self.items.push(Wanted { what, asked_at: t, state: State::Asked });
-        self.items.last().expect("just pushed")
+        &self.items[i]
     }
 
     /// The most recent request still waiting on a yes.

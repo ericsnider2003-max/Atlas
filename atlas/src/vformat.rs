@@ -57,8 +57,8 @@ pub fn unfold(text: &str) -> Vec<String> {
     let mut out: Vec<String> = vec![];
     for raw in text.split('\n') {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-        if (line.starts_with(' ') || line.starts_with('\t')) && !out.is_empty() {
-            out.last_mut().unwrap().push_str(&line[1..]);
+        if let Some(last) = out.last_mut().filter(|_| line.starts_with(' ') || line.starts_with('\t')) {
+            last.push_str(&line[1..]);
         } else if !line.is_empty() {
             out.push(line.to_string());
         }

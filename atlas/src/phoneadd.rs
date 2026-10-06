@@ -443,7 +443,7 @@ pub fn reach_out(port: u16) -> Result<String, String> {
 /// Take the code's address off Tailscale again.
 pub fn stop_reaching_out() {
     let tool = crate::phonelink::tailscale_tool();
-    let _ = crate::tools::ExternalTool { args: crate::ota::tailscale_args(0, false).1, ..tool }.run(&crate::tools::Vars::new(), None);
+    crate::heard!(crate::tools::ExternalTool { args: crate::ota::tailscale_args(0, false).1, ..tool }.run(&crate::tools::Vars::new(), None));
 }
 
 /// Where the phone apps wait on the computer, install-relative.
@@ -477,7 +477,7 @@ pub fn app_file(root: &std::path::Path, kind: Kind, downloads: &[std::path::Path
     if let Some((t, from)) = newest {
         if when(&kept).is_none_or(|k| k < t) {
             // A copy that fails leaves the kept one (if any) as it was.
-            let _ = std::fs::create_dir_all(root.join(APPS_DIR)).and_then(|_| std::fs::copy(&from, &kept));
+            crate::kept!(std::fs::create_dir_all(root.join(APPS_DIR)).and_then(|_| std::fs::copy(&from, &kept)));
         }
     }
     kept.is_file().then_some(kept)

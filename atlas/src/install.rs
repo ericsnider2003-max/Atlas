@@ -255,8 +255,9 @@ pub fn after(results: &[(&'static str, bool)]) -> String {
         s.push_str(" All optional — Atlas works without them.");
     } else {
         let p = pieces();
-        let first = p.iter().find(|p| p.name == *blocking[0]).unwrap();
-        s.push_str(&format!(" Without {}, {}.", first.name, first.without_it));
+        if let Some(first) = p.iter().find(|p| p.name == *blocking[0]) {
+            s.push_str(&format!(" Without {}, {}.", first.name, first.without_it));
+        }
     }
     s.push_str(" Run it again — it only fetches what's missing.");
     s

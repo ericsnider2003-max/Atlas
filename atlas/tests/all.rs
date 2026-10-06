@@ -85,6 +85,8 @@ mod a_reply_is_read_as_bytes_and_bounded;
 mod a_room_that_disagrees;
 #[path = "a_save_that_fails_is_not_silent.rs"]
 mod a_save_that_fails_is_not_silent;
+#[path = "no_silent_discards.rs"]
+mod no_silent_discards;
 #[path = "a_stage_that_cannot_be_reached.rs"]
 mod a_stage_that_cannot_be_reached;
 #[path = "a_switch_that_does_nothing.rs"]

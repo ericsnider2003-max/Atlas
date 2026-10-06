@@ -110,7 +110,7 @@ fn the_daemon_hears_a_held_key_and_opens_the_box_on_the_other() {
     assert!(keys < wake, "keys are checked before waiting on the wake word");
     // 28 Sep 2026: the wake word is heard on the microphone's own thread and
     // taken by `listen_pass`; the keys still come first.
-    let heard = src.find("if self.listen_pass(ears, mouth, clock)").expect("the wake word is taken from its thread");
+    let heard = src.find("self.listen_pass(ears, mouth, clock)").expect("the wake word is taken from its thread");
     assert!(keys < heard, "keys are checked before the wake word's news");
     assert!(src.contains("ears.listen_while(&|| h.held())"), "it listens for as long as the key is held");
     assert!(src.contains("crate::typebox::Standby::start("), "the other key opens the box");

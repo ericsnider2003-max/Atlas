@@ -130,7 +130,7 @@ mod platform {
                 let mut err = String::new();
                 if let Some(mut e) = child.stderr.take() {
                     use std::io::Read;
-                    let _ = e.read_to_string(&mut err);
+                    crate::heard!(e.read_to_string(&mut err));
                 }
                 Err(format!("the sleep inhibitor stopped at once ({status}): {}", err.trim()))
             }

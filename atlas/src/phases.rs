@@ -59,6 +59,6 @@ impl Phases {
 
     /// The work is filed: its phases aren't needed any more.
     pub fn close(&self) {
-        let _ = std::fs::remove_dir_all(&self.dir);
+        crate::heard!(std::fs::remove_dir_all(&self.dir));
     }
 }

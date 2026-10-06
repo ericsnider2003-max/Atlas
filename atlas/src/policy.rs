@@ -501,7 +501,7 @@ pub enum Press {
 pub fn press(name: &str) -> Press {
     let n = name.to_lowercase();
     let words: Vec<&str> = n.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
-    let has = |w: &str| words.iter().any(|x| *x == w);
+    let has = |w: &str| words.contains(&w);
     let paying = ["buy", "purchase", "checkout", "pay", "subscribe", "donate", "bid"].iter().any(|w| has(w))
         || n.contains("place order")
         || n.contains("place your order")

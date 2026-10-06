@@ -865,7 +865,7 @@ pub fn build_with(
         if rank(&o) == 4 {
             return (o, Some(*w));
         }
-        if best.as_ref().map_or(true, |(b, _)| rank(&o) >= rank(b)) {
+        if best.as_ref().is_none_or(|(b, _)| rank(&o) >= rank(b)) {
             best = Some((o, *w));
         }
     }
@@ -1385,7 +1385,7 @@ pub fn keep_building(
     );
     let said = crate::goal::ended_spoken(&goal, &ended, &attempts);
     let rounds = attempts.len() as u32;
-    let outcome = if attempts.last().map_or(false, |a| a.met_everything()) {
+    let outcome = if attempts.last().is_some_and(|a| a.met_everything()) {
         Outcome::Built { code, rounds, notes }
     } else {
         Outcome::Struggled { code, rounds, last_failure: failure }

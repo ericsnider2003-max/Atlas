@@ -199,6 +199,21 @@ impl<'a> Daemon<'a> {
                 failed.push((name, e));
             }
         }
+        // And everything else that failed with nobody waiting for the answer
+        // (`crate::unheard`, audit Q1): a write meant to last is a record not
+        // kept, told like the saves; the rest goes to the log, once each.
+        for u in crate::unheard::take() {
+            match u.cost {
+                crate::unheard::Cost::NotKept => {
+                    let name = crate::store::intern_record_name(u.part());
+                    self.log.warn(&u.line());
+                    if !failed.iter().any(|(w, _)| *w == name) {
+                        failed.push((name, u.error));
+                    }
+                }
+                crate::unheard::Cost::Logged => self.log.warn(&u.line()),
+            }
+        }
 
         // Logged on the way in and the way out, so the log shows a span
         // rather than one line per tick for as long as the disk is unhappy.
@@ -282,7 +297,7 @@ impl<'a> Daemon<'a> {
             if let Some(line) = runs.start(now, crate::whystopped::computer_started(now)) {
                 self.log.warn(&line);
             }
-            let _ = runs.save(&state);
+            crate::kept!(runs.save(&state));
             self.runs = Some(runs);
             // Windows starts Atlas again after an update restarts the
             // computer -- the same way it was started this time.
@@ -291,6 +306,7 @@ impl<'a> Daemon<'a> {
             if let Ok(exe) = std::env::current_exe() {
                 let state_dir = state.clone();
                 std::thread::spawn(move || {
+                    // unheard-ok: returns `Option<Result<String, String>>`, not a Result
                     let _ = crate::startup::bring_up_to_date(&exe, &state_dir);
                 });
             }
@@ -318,6 +334,7 @@ impl<'a> Daemon<'a> {
         // Starting it is quick (`keep_model_server` waits for nothing); the
         // reading happens on a thread of its own (`warm_the_model`).
         self.keep_model_server(clock());
+        // unheard-ok: returns `Option<JoinHandle<()>>`, not a Result
         let _ = self.warm_the_model(clock());
         // The hearing model too, when it's here and chosen (`parakeet`):
         // loading it takes seconds, and the first thing you say shouldn't.
@@ -372,7 +389,7 @@ impl<'a> Daemon<'a> {
 
         // A stop request left from before this start (Atlas wasn't running
         // to take it) must not end this run the moment it begins.
-        let _ = std::fs::remove_file(crate::goodbye::stop_file(&crate::roots::state_dir()));
+        crate::heard!(std::fs::remove_file(crate::goodbye::stop_file(&crate::roots::state_dir())));
         // Correcting as you type (Eric, H4): its own thread, polling the box
         // you're typing in. Only in the running Atlas, and only when on.
         let prose = self.tools_cfg().prose.clone();
@@ -636,11 +653,10 @@ impl<'a> Daemon<'a> {
 
             // The wake word, heard on the microphone's own thread: taken
             // here if it has news, never waited for.
-            if self.mic.is_some() {
-                if self.listen_pass(ears, mouth, clock) {
+            if self.mic.is_some()
+                && self.listen_pass(ears, mouth, clock) {
                     continue;
                 }
-            }
 
             match self.tiers.tier {
                 // Done above, on its own thread.
@@ -819,9 +835,11 @@ impl<'a> Daemon<'a> {
         for ask in crate::notifyicon::tray_asks() {
             match ask {
                 crate::notifyicon::TrayAction::Pause => {
+                    // unheard-ok: returns `String`, not a Result
                     let _ = self.turn("pause", t);
                 }
                 crate::notifyicon::TrayAction::Resume => {
+                    // unheard-ok: returns `String`, not a Result
                     let _ = self.turn("carry on", t);
                 }
                 _ => {}
@@ -990,7 +1008,7 @@ impl<'a> Daemon<'a> {
                 crate::notifyicon::bring_icon_back();
                 // Still here after all: hold the lock again and keep going.
                 // Helpers start again when next wanted.
-                let _ = crate::onlyone::OnlyOne::at(&self.store.data_dir()).take(crate::store::now());
+                crate::heard!(crate::onlyone::OnlyOne::at(&self.store.data_dir()).take(crate::store::now()));
                 self.stopped = false;
                 Err(why)
             }
@@ -1468,6 +1486,7 @@ impl<'a> Daemon<'a> {
                 // Set aside for what you said instead.
                 if let Some(mut s) = saying.take() {
                     s.cut(crate::speech::YOUR_TURN);
+                    // unheard-ok: returns `Said`, not a Result
                     let _ = s.finish();
                 }
                 self.timing.add(timed);
@@ -1507,9 +1526,11 @@ impl<'a> Daemon<'a> {
                 // Started while the model wrote: the rest joins it.
                 Some(mut s) => {
                     s.add(&reply);
+                    // unheard-ok: returns `Delivery`, not a Result
                     let _ = self.end_saying(s, mouth, &mut quick_listen);
                 }
                 None if !reply.is_empty() => {
+                    // unheard-ok: returns `Delivery`, not a Result
                     let _ = self.say_interruptibly(mouth, &reply, &mut quick_listen);
                 }
                 None => {}
@@ -1622,9 +1643,7 @@ impl<'a> Daemon<'a> {
                 Some(crate::micthread::Heard::FollowUp(..)) => {}
                 // Anything else is for the next pass of the loop.
                 Some(other) => {
-                    if self.mic_heard.is_none() {
-                        self.mic_heard = Some(other);
-                    }
+                    self.mic_heard.get_or_insert(other);
                 }
                 None => {}
             }

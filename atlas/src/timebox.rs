@@ -214,7 +214,7 @@ pub fn usual_secs(past: &[u64]) -> Option<u64> {
 /// or more (quick things get no warning), and not again for the same kind
 /// within two hours of the last time it was said.
 pub fn estimate_worth_saying(usual: Option<u64>, open_ended: bool, said_last: Option<u64>, now: u64) -> Option<String> {
-    if said_last.map_or(false, |at| now.saturating_sub(at) < 2 * 3600) {
+    if said_last.is_some_and(|at| now.saturating_sub(at) < 2 * 3600) {
         return None;
     }
     if open_ended {

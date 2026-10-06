@@ -85,8 +85,8 @@ fn mentions(hay: &str, needle: &str) -> bool {
         return hay.contains(needle);
     }
     hay.match_indices(needle).any(|(i, _)| {
-        let before = hay[..i].chars().next_back().map_or(true, |c| !c.is_alphanumeric());
-        let after = hay[i + needle.len()..].chars().next().map_or(true, |c| !c.is_alphanumeric());
+        let before = hay[..i].chars().next_back().is_none_or(|c| !c.is_alphanumeric());
+        let after = hay[i + needle.len()..].chars().next().is_none_or(|c| !c.is_alphanumeric());
         before && after
     })
 }

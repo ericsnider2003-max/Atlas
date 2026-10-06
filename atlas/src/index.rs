@@ -255,7 +255,7 @@ impl Index {
         // paths freed one by one was part of the half-second (30 Sep 2026).
         let old = std::mem::replace(&mut self.entries, fresh.entries);
         if old.len() > 5_000 {
-            let _ = std::thread::Builder::new().name("atlas-index-free".into()).spawn(move || drop(old));
+            crate::heard!(std::thread::Builder::new().name("atlas-index-free".into()).spawn(move || drop(old)));
         }
         self.last_scan = fresh.last_scan;
         c
@@ -312,7 +312,7 @@ impl Index {
             .values()
             .filter(|e| matches!(e.class, AssetClass::Document | AssetClass::Code) && e.size <= cap)
             .collect();
-        candidates.sort_by(|a, b| b.modified.cmp(&a.modified));
+        candidates.sort_by_key(|b| std::cmp::Reverse(b.modified));
 
         let mut ix = crate::bm25::Index::default();
         // (the file, the passage, and the file inside it when it's an archive)
@@ -375,7 +375,7 @@ impl Index {
 
     pub fn recent(&self, n: usize) -> Vec<&Entry> {
         let mut v: Vec<&Entry> = self.entries.values().collect();
-        v.sort_by(|a, b| b.modified.cmp(&a.modified));
+        v.sort_by_key(|b| std::cmp::Reverse(b.modified));
         v.into_iter().take(n).collect()
     }
 
@@ -434,7 +434,7 @@ impl Loading {
             // No thread: read it here, as before, rather than not at all.
             Err(_) => {
                 let (tx, rx) = std::sync::mpsc::channel();
-                let _ = tx.send(Index::load(&store));
+                let _ = tx.send(Index::load(store));
                 Loading { rx: Some(rx) }
             }
         }

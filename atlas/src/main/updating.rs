@@ -103,6 +103,7 @@ pub(super) fn run_feedback(args: &[String]) {
             println!("\nThis is exactly what will be sent:\n\n{}", feedback::feedback_preview(&f));
             if mine {
                 // Your own Atlas: straight into your own list.
+                // unheard-ok: returns `Option<String>`, not a Result
                 let _ = feedback::heard_feedback(&store, "you", &serde_json::to_string(&f).unwrap_or_default());
                 println!("This is your own Atlas, so it's in your own feedback list (`atlas feedback`).");
                 return;
@@ -448,7 +449,7 @@ pub(super) fn run_install_page(_words: &[String]) {
     println!("Waiting (Ctrl+C stops it early; the Tailscale switch then stays on until `tailscale {} --https=8443 off`).", on[0]);
     let base = format!("https://{}:{}", net.dns_name, ota::HTTPS_PORT);
     let served = ota::serve_install(&bytes, &package, port, &token, Some(&base), minutes, &mut |s: &str| println!("  {s}"));
-    let _ = run(&off);
+    atlas::heard!(run(&off));
     match served {
         Ok(0) => println!("Closed. No phone downloaded the app."),
         Ok(n) => println!("Closed. The app was downloaded {n} time(s). Tailscale's switch is off again."),
@@ -694,7 +695,7 @@ pub(super) fn run_release(args: &[String]) {
             let signed = release::seal_rotation(&signer, &rotation);
             let Some(mut vault) = open_vault() else { return };
             if let Ok(old) = vault.get(RELEASE_KEY_NAME, now) {
-                let _ = vault.put(&format!("{RELEASE_KEY_NAME} (before change {number})"), atlas::vault::Kind::ApiKey, &old, now);
+                atlas::heard!(vault.put(&format!("{RELEASE_KEY_NAME} (before change {number})"), atlas::vault::Kind::ApiKey, &old, now));
             }
             if let Err(why) = vault.put(RELEASE_KEY_NAME, atlas::vault::Kind::ApiKey, &release::seed_hex(&new_seed), now) {
                 println!("{why} Nothing changed.");

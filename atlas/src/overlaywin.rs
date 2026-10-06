@@ -135,7 +135,7 @@ pub struct Folders {
 pub fn run(folders: Folders) -> Result<(), String> {
     let Folders { data: data_dir, config: config_dir } = folders;
     let only = crate::onlyone::OnlyOne::at(&data_dir.join("overlay"));
-    let _ = std::fs::create_dir_all(data_dir.join("overlay"));
+    crate::heard!(std::fs::create_dir_all(data_dir.join("overlay")));
     match only.take(crate::store::now()) {
         Ok(_) => {}
         Err(_) => return Ok(()), // one is already showing; nothing to do
@@ -410,7 +410,7 @@ fn see_through(hwnd: isize) -> bool {
         let h = HWND(hwnd as *mut core::ffi::c_void);
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32 | crate::overlay::window_style();
         SetWindowLongPtrW(h, GWL_EXSTYLE, style as isize);
-        return SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok();
+        SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok()
     }
     #[cfg(not(windows))]
     {

@@ -48,18 +48,15 @@ use serde::{Deserialize, Serialize};
 /// never agreed to the risk.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Space {
     /// Eric's own work.
+    #[default]
     Personal,
     /// A named business, shared with somebody.
     Business(String),
 }
 
-impl Default for Space {
-    fn default() -> Self {
-        Space::Personal
-    }
-}
 
 impl Space {
     pub fn title(&self) -> String {

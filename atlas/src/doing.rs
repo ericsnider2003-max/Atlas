@@ -199,10 +199,7 @@ const MODE_NAMES: &[&str] = &[
 /// sentence carries on to the model (self-test, 4 Oct 2026: "go into focus"
 /// went to the model, 6 s, to be told there is no focus mode).
 fn a_mode(w: &[String]) -> Option<String> {
-    let lead = match (w.first().map(|s| s.as_str()), w.get(1).map(|s| s.as_str())) {
-        (Some("go"), Some("into")) | (Some("switch"), Some("to")) | (Some("enter"), _) => true,
-        _ => false,
-    };
+    let lead = matches!((w.first().map(|s| s.as_str()), w.get(1).map(|s| s.as_str())), (Some("go"), Some("into")) | (Some("switch"), Some("to")) | (Some("enter"), _));
     let named = w.iter().find(|x| MODE_NAMES.contains(&x.as_str()))?;
     let said_mode = has(w, "mode");
     let short = w.len() <= 4;

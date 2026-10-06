@@ -249,6 +249,14 @@ pub struct Room {
     pub battery_percent: Option<u8>,
 }
 
+/// This machine's free memory and power, as the crew's admission rules read
+/// them (the real platforms' `Platform::crew_room`).
+pub fn this_machine() -> Room {
+    let r = crate::health::read_machine();
+    let free_mb = (r.ram_total_gb > 0.0).then(|| ((r.ram_total_gb - r.ram_used_gb).max(0.0) * 1024.0) as u64);
+    Room { free_mb, on_battery: r.on_battery, battery_percent: r.battery_percent }
+}
+
 /// The crew's admission rules, as numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {

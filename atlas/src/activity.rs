@@ -125,7 +125,7 @@ impl Journal {
                 use std::io::Write;
                 let line = serde_json::json!({ "seq": last.seq, "hash": last.hash, "at": last.at }).to_string();
                 if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-                    let _ = writeln!(f, "{line}");
+                    crate::kept!(writeln!(f, "{line}"));
                 }
             }
         }
@@ -167,7 +167,7 @@ impl Journal {
             }
             self.events.drain(0..drop);
         }
-        let due = self.seal.checkpoints.last().map_or(true, |(at, _)| t >= at + 86_400);
+        let due = self.seal.checkpoints.last().is_none_or(|(at, _)| t >= at + 86_400);
         if due {
             let leaves: Vec<crate::sealedlog::Hash> =
                 self.seal.leaves.iter().filter_map(|h| crate::sealedlog::unhex(h)).collect();

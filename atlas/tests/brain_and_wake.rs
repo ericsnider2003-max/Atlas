@@ -165,3 +165,19 @@ fn decision_is_comparable_for_tests() {
     let a = Decision { intent: Intent::WorkspaceOn, say: "Working.".into(), model: atlas::brain::Reached::NotNeeded };
     assert_eq!(a.clone(), a);
 }
+
+/// Every command the model may never choose is refused when the model names
+/// it (audit Q3, 5 Oct 2026). Thirteen of them used to be accepted: a second
+/// copy of the command table in `parse_decision` matched them before the
+/// check ran -- among them that the other side of a call agreed to be
+/// recorded, "this is me", and a lesson applied to Atlas itself.
+#[test]
+fn the_model_cannot_choose_what_only_you_may_say() {
+    for name in atlas::intent::NEVER_FOR_THE_MODEL {
+        let reply = format!(r#"{{"action":"{name}","arg":"x","say":"ok"}}"#);
+        assert!(parse_decision(&reply).is_err(), "the model chose \"{name}\" and it was accepted");
+    }
+    // And an ordinary command still reaches the same intent the phrases do.
+    let d = parse_decision(r#"{"action":"close_app","arg":"notepad","say":"Closing it."}"#).unwrap();
+    assert_eq!(d.intent, Intent::CloseApp("notepad".into()));
+}

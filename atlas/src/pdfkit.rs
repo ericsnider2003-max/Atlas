@@ -925,8 +925,8 @@ pub fn stamp(doc: usize, page: usize, rgba: &[u8], w: u32, h: u32, x_pt: f64, y_
     if w == 0 || h == 0 || rgba.len() != (w * h * 4) as usize {
         return Err("the image's size and its pixels don't agree".into());
     }
-    let rgb: Vec<u8> = rgba.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect();
-    let alpha: Vec<u8> = rgba.chunks_exact(4).map(|p| p[3]).collect();
+    let rgb: Vec<u8> = rgba.as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect();
+    let alpha: Vec<u8> = rgba.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
     let img_dict = |cs: &str, data_len: usize| -> Dict {
         let _ = data_len;
         vec![

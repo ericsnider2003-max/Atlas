@@ -387,7 +387,7 @@ pub fn take_back_with(
     vault.lock();
     if let Err(why) = vault.open(phrase, now, cfg) {
         vault.lock();
-        let _ = h.take_back(vault, now);
+        crate::heard!(h.take_back(vault, now));
         return with_save(why, h.save(state));
     }
     let said = match h.take_back(vault, now) {

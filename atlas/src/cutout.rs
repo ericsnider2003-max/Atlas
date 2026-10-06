@@ -195,6 +195,7 @@ pub fn matte(by: Matter, model: &Path, rgb: &[u8], w: u32, h: u32) -> Result<Mat
 /// This build has no in-process models (a phone build): said, not failed.
 #[cfg(not(feature = "onnx"))]
 pub fn matte(by: Matter, _model: &Path, _rgb: &[u8], _w: u32, _h: u32) -> Result<Matte, String> {
+    // unheard-ok: only keeps these two in use in a build without the models
     let _ = (prepare(by, &[]), finish(by, &[]));
     Err("This copy of Atlas was built without its picture models, so it can't cut out a background here.".into())
 }

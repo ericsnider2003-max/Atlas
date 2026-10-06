@@ -243,7 +243,7 @@ pub fn clock_in(what: &str) -> Option<(Vec<u32>, u32)> {
 pub fn event_answers_to(title: &str, local_start: u64, what: &str) -> bool {
     if let Some((hours, minute)) = clock_in(what) {
         let c = crate::civil::Civil::from_local(local_start as i64);
-        if hours.contains(&(c.hour as u32)) && c.minute as u32 == minute {
+        if hours.contains(&{ c.hour }) && c.minute == minute {
             return true;
         }
     }

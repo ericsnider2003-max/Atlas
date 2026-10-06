@@ -16,6 +16,7 @@
 //! document and have it move everywhere. Each frame after the first stores
 //! only the rectangle that changed, so a ball crossing a still background costs
 //! the ball, not the background.
+#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
 
 use crate::pngcodec::Rgba;
 

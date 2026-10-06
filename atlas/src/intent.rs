@@ -951,11 +951,7 @@ impl Parser {
                 }
             } else if text == *phrase {
                 Some(String::new())
-            } else if let Some(r) = text.strip_prefix(&format!("{} ", phrase)) {
-                Some(r.trim().to_string())
-            } else {
-                None
-            };
+            } else { text.strip_prefix(&format!("{} ", phrase)).map(|r| r.trim().to_string()) };
 
             let Some(rest) = rest else { continue };
             if row.needs_arg && rest.is_empty() {

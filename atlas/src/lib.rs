@@ -430,6 +430,7 @@ pub mod spoken_form;
 pub mod signin;
 pub mod stance;
 pub mod store;
+pub mod unheard;
 pub mod strategy;
 pub mod subject;
 pub mod sync;

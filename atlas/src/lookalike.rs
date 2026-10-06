@@ -99,11 +99,10 @@ fn resembles(domain: &str, known: &str) -> Option<String> {
     if kl.len() < 4 {
         return None; // three letters is too short to say anything useful about
     }
-    if d.starts_with("xn--") || d.contains(".xn--") {
-        if skeleton(&dl) == skeleton(&kl) || dl.contains(&kl) {
+    if (d.starts_with("xn--") || d.contains(".xn--"))
+        && (skeleton(&dl) == skeleton(&kl) || dl.contains(&kl)) {
             return Some(format!("an encoded (xn--) name made to look like {k}"));
         }
-    }
     if skeleton(&d) == skeleton(&k) || (skeleton(&dl) == skeleton(&kl) && ds == ks) {
         return Some(format!("made of letters that look like {k} but aren't the same characters"));
     }

@@ -126,14 +126,14 @@ fn wait_or_kill(
     let out_t = std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(p) = so.as_mut() {
-            let _ = p.read_to_end(&mut buf);
+            crate::heard!(p.read_to_end(&mut buf));
         }
         buf
     });
     let err_t = std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(p) = se.as_mut() {
-            let _ = p.read_to_end(&mut buf);
+            crate::heard!(p.read_to_end(&mut buf));
         }
         buf
     });

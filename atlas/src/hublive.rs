@@ -75,7 +75,7 @@ impl Daemon<'_> {
                 .unwrap_or_else(|| Reply::redirect(Page::Sync.href())),
             Action::Changed(which) => {
                 let (v, busy) = self.live_page_state(&which);
-                Reply::ok(&serde_json::json!({ "v": v.to_string(), "busy": busy }).to_string())
+                Reply::ok(serde_json::json!({ "v": v.to_string(), "busy": busy }).to_string())
             }
             Action::LiveJson => {
                 let now = crate::store::now();
@@ -108,7 +108,7 @@ impl Daemon<'_> {
                     // they ring with the app closed -- nothing online.
                     "upcoming": crate::phonealarms::upcoming(&self.scheduler, now),
                 });
-                Reply::ok(&body.to_string())
+                Reply::ok(body.to_string())
             }
             Action::VoiceSample(id) => match self.voice_sample(&id) {
                 Ok(bytes) => Reply::media("audio/mpeg", bytes),
@@ -125,7 +125,7 @@ impl Daemon<'_> {
                     return Reply { status: 400, body: serde_json::json!({ "error": "That isn't a push address." }).to_string(), ..Reply::default() };
                 }
                 self.carry_push_address(&token, env, crate::store::now());
-                Reply::ok(&serde_json::json!({ "kept": true }).to_string())
+                Reply::ok(serde_json::json!({ "kept": true }).to_string())
             }
             Action::WebPushEndpoint(body) => {
                 // `{"endpoint": "https://…", "p256dh": "…", "auth": "…"}` from
@@ -139,11 +139,11 @@ impl Daemon<'_> {
                     return Reply { status: 400, body: serde_json::json!({ "error": "That isn't a push address." }).to_string(), ..Reply::default() };
                 }
                 self.carry_web_push_address(&endpoint, &p256dh, &auth, crate::store::now());
-                Reply::ok(&serde_json::json!({ "kept": true }).to_string())
+                Reply::ok(serde_json::json!({ "kept": true }).to_string())
             }
             Action::PhoneCalendar(body) => {
                 let now = crate::store::now();
-                Reply::ok(&self.phone_calendar(&body, now).to_string())
+                Reply::ok(self.phone_calendar(&body, now).to_string())
             }
             Action::TalkJson => {
                 let recent: Vec<serde_json::Value> = self
@@ -156,16 +156,17 @@ impl Daemon<'_> {
                     .map(|e| serde_json::json!({ "said": e.said, "reply": e.reply }))
                     .collect();
                 let pending: Vec<&String> = self.talk_queue.iter().map(|(s, _)| s).collect();
-                Reply::ok(&serde_json::json!({ "recent": recent, "pending": pending, "thinking": self.talk_is_thinking() }).to_string())
+                Reply::ok(serde_json::json!({ "recent": recent, "pending": pending, "thinking": self.talk_is_thinking() }).to_string())
             }
             Action::GlanceJson => {
                 let now = crate::store::now();
                 let g = self.glance(now);
-                Reply::ok(&serde_json::to_string(&g).unwrap_or_default())
+                Reply::ok(serde_json::to_string(&g).unwrap_or_default())
             }
             Action::Pause(on) => {
                 // The same path as saying it, so a paused Atlas from the hub
                 // is exactly as paused as one told out loud.
+                // unheard-ok: returns `String`, not a Result
                 let _ = self.turn(if on { "pause" } else { "carry on" }, crate::store::now());
                 hub::back_with(
                     Page::Now.href(),
@@ -277,7 +278,7 @@ impl Daemon<'_> {
                 };
                 // JSON, not a page: this is answered to a phone, which wants a
                 // line to show in a share sheet rather than a dashboard.
-                Reply::ok(&format!(
+                Reply::ok(format!(
                     "{{\"said\":{}}}",
                     serde_json::to_string(&said).unwrap_or_else(|_| "\"\"".into())
                 ))
@@ -305,7 +306,7 @@ impl Daemon<'_> {
                         Err(why) => why,
                     },
                 };
-                Reply::ok(&format!(
+                Reply::ok(format!(
                     "{{\"said\":{}}}",
                     serde_json::to_string(&said).unwrap_or_else(|_| "\"\"".into())
                 ))
@@ -323,7 +324,7 @@ impl Daemon<'_> {
                     Err(why) => why,
                     Ok(bytes) => self.bring_in(&name, &bytes),
                 };
-                Reply::ok(&format!(
+                Reply::ok(format!(
                     "{{\"said\":{}}}",
                     serde_json::to_string(&said).unwrap_or_else(|_| "\"\"".into())
                 ))
@@ -488,7 +489,7 @@ impl Daemon<'_> {
                                             crate::sync::KeptKey::keeping(&phrase, now);
                                         match self.store.save(crate::sync::KEY_FILE, &keeping) {
                                             Ok(()) => {
-                                                let _ = crate::sync::write_card(&phrase);
+                                                crate::heard!(crate::sync::write_card(&phrase));
                                                 said.push_str(
                                                     " The household key came with it, so \
                                                      sealed bundles from the other machine \
@@ -677,6 +678,7 @@ impl Daemon<'_> {
             ),
             Action::Queued => Reply::ok(self.on_queued()),
             Action::Say(text) => {
+                // unheard-ok: returns `Reply`, not a Result
                 let _ = self.hub_post("/hub/talk", &[("text".to_string(), text)]);
                 Reply::ok("heard")
             }
@@ -927,7 +929,7 @@ impl Daemon<'_> {
             .items
             .iter()
             .filter(|i| !i.done)
-            .map(crate::backlog::Backlog::phrase)
+            .map(|i| crate::backlog::Backlog::phrase(i))
             .collect();
         lines.extend(stopped.iter().cloned());
         let proposed: Vec<(String, String)> = self
@@ -1082,7 +1084,7 @@ impl Daemon<'_> {
             .items
             .iter()
             .filter(|i| !i.done)
-            .map(|i| crate::backlog::Backlog::phrase(i))
+            .map(crate::backlog::Backlog::phrase)
             .collect();
         if stuck.is_empty() {
             return hub::nothing("Nothing is waiting on you.");
@@ -1223,7 +1225,7 @@ impl Daemon<'_> {
             fetching.push(id.to_string());
             let id = id.to_string();
             std::thread::spawn(move || {
-                let _ = crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {});
+                crate::heard!(crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {}));
                 FETCHING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|f| *f != id);
             });
         }
@@ -1325,6 +1327,7 @@ impl Daemon<'_> {
     fn phone_view(&mut self, kind: Option<crate::phoneadd::Kind>) -> crate::hubpages::PhoneView {
         use crate::phoneadd::{app_file, Kind};
         let now = crate::store::now();
+        // unheard-ok: returns `Vec<String>`, not a Result
         let _ = self.take_heard_phones(now);
         // A code that came up on the crew is shown now, not at the next tick.
         let coming: Vec<_> = self
@@ -1346,7 +1349,7 @@ impl Daemon<'_> {
         let ipa_file = app_file(&root, Kind::Apple, &self.builds_dirs());
         // A closure, not `.and_then(ipa_facts)`: the reachability guards find
         // a call by its `name(`.
-        let ipa = ipa_file.as_deref().and_then(|f| ipa_facts(f)).map(|(version, devices)| {
+        let ipa = ipa_file.as_deref().and_then(|p| ipa_facts(p)).map(|(version, devices)| {
             let fits = mine.iter().any(|d| devices.iter().any(|u| u.eq_ignore_ascii_case(&d.udid)));
             (version, fits)
         });
@@ -1751,6 +1754,7 @@ impl Daemon<'_> {
                 }
             }
             _ => {
+                // unheard-ok: returns `Option<String>`, not a Result
                 let _ = crate::feedback::heard_feedback(&self.store, "you", &serde_json::to_string(&f).unwrap_or_default());
                 "It's on your own list to fix, on your Feedback page.".to_string()
             }
@@ -2187,7 +2191,7 @@ impl Daemon<'_> {
         match which {
             "now" => {
                 let v = self.now_view();
-                return (hub::live_version(&v), v.working);
+                (hub::live_version(&v), v.working)
             }
             "talk" => {
                 self.thread.len().hash(&mut h);
@@ -2402,8 +2406,8 @@ impl Daemon<'_> {
                                 Ok(o) => crate::vadcal::Outcome::say(&o),
                                 Err(e) => e,
                             };
-                            let _ = std::fs::remove_file(&room_path);
-                            let _ = std::fs::remove_file(&you_path);
+                            crate::heard!(std::fs::remove_file(&room_path));
+                            crate::heard!(std::fs::remove_file(&you_path));
                             said
                         }
                         (Ok(_), Err(_)) => "Got the room. Now bring in a recording of you talking somewhere quiet.".into(),
@@ -2550,7 +2554,7 @@ impl Daemon<'_> {
             if crate::localclock::day_here(t) == today {
                 crate::localclock::hhmm_here(t)
             } else {
-                let (_, m, d) = crate::hubpages::ymd(crate::localclock::day_here(t) as i64);
+                let (_, m, d) = crate::hubpages::ymd(crate::localclock::day_here(t));
                 format!("{} {d}", crate::hubpages::MONTHS[(m - 1) as usize])
             }
         };
@@ -2701,11 +2705,11 @@ impl Daemon<'_> {
                 let roster = crate::roster::Roster::load(&self.store);
                 let businesses = roster.businesses();
                 let tasks = crate::shared_task::Tasks::load(&self.store);
-                let today = crate::localclock::day(now, off) as i64;
+                let today = crate::localclock::day(now, off);
                 let mut rows = Vec::new();
                 for b in &businesses {
                     for t in tasks.for_space(&crate::earned::Space::Business(b.clone())) {
-                        let due_day = t.due.map(|d| crate::localclock::day_here(d) as i64);
+                        let due_day = t.due.map(|d| crate::localclock::day_here(d));
                         rows.push(crate::hubpages::TaskRow {
                             id: t.id,
                             what: t.description.clone(),
@@ -2936,7 +2940,7 @@ impl Daemon<'_> {
             }
             Page::Help => {
                 let reviewed = {
-                    let (y, m, d) = crate::hubpages::ymd(crate::localclock::day(now, off) as i64);
+                    let (y, m, d) = crate::hubpages::ymd(crate::localclock::day(now, off));
                     format!("{d} {} {y}", crate::hubpages::MONTHS[(m - 1) as usize])
                 };
                 crate::hubpages::help_page(&reviewed, said.as_deref())
@@ -3350,7 +3354,7 @@ impl Daemon<'_> {
                 return format!("Couldn't save that: {e}");
             }
             if let Some(f) = &got.file {
-                let _ = std::fs::remove_file(self.store.root().join(&f.stored_at));
+                crate::heard!(std::fs::remove_file(self.store.root().join(&f.stored_at)));
             }
             return format!("Binned the one from {}.", got.from);
         }
@@ -3367,7 +3371,7 @@ impl Daemon<'_> {
             Ok(_) => match self.tray.save(&self.store).and_then(|()| inbox.save(&self.store)) {
                 Ok(()) => {
                     if let Some(f) = &got.file {
-                        let _ = std::fs::remove_file(self.store.root().join(&f.stored_at));
+                        crate::heard!(std::fs::remove_file(self.store.root().join(&f.stored_at)));
                     }
                     format!("Kept the one from {}. It's with your documents.", got.from)
                 }
@@ -3517,7 +3521,7 @@ impl Daemon<'_> {
                         let due = t
                             .due
                             .map(|d| {
-                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day_here(d) as i64);
+                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day_here(d));
                                 format!("{} {dd}", crate::hubpages::MONTHS[(m - 1) as usize])
                             })
                             .unwrap_or_else(|| "No date".into());
@@ -3585,8 +3589,8 @@ impl Daemon<'_> {
                     let who = field_of(f, "who").unwrap_or_default();
                     let pairings = crate::kin::Pairings::load(&self.peer_dir);
                     let roster = crate::roster::Roster::load(&self.store);
-                    let space = self.shared_space(&[who.clone()], &roster, &pairings);
-                    return match self.chats.open(&who, space, &[who.clone()], &roster, &pairings) {
+                    let space = self.shared_space(std::slice::from_ref(&who), &roster, &pairings);
+                    return match self.chats.open(&who, space, std::slice::from_ref(&who), &roster, &pairings) {
                         Ok(id) => {
                             if let Err(e) = self.chats.save(&self.store) {
                                 return hub::back_with(

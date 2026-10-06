@@ -62,9 +62,9 @@ fn register() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let key = format!("HKCU\\Software\\Classes\\AppUserModelId\\{APP_ID}");
-        let _ = crate::tools::command("reg")
+        crate::heard!(crate::tools::command("reg")
             .args(["add", &key, "/v", "DisplayName", "/t", "REG_SZ", "/d", "Atlas", "/f"])
-            .output();
+            .output());
     });
 }
 

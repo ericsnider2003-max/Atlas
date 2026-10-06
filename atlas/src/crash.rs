@@ -165,7 +165,7 @@ pub fn watch(store_root: &Path) {
         // aborts the process, which would turn a recoverable crash into an
         // unrecoverable one — so every step here is allowed to fail.
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            crate::heard!(std::fs::create_dir_all(dir));
         }
         if let Ok(json) = serde_json::to_string_pretty(&note) {
             // Beside it and rename, not straight over the top. `fs::write`
@@ -175,7 +175,7 @@ pub fn watch(store_root: &Path) {
             // used to be, and the previous one is the more useful of the two.
             let tmp = path.with_extension("json.writing");
             if std::fs::write(&tmp, json).is_ok() {
-                let _ = std::fs::rename(&tmp, &path);
+                crate::kept!(std::fs::rename(&tmp, &path));
             }
         }
         previous(info);
@@ -205,7 +205,7 @@ pub fn last(store: &Store) -> Option<Note> {
 pub fn take(store: &Store) -> Option<Note> {
     let n = last(store);
     if n.is_some() {
-        let _ = std::fs::remove_file(note_path(store.root()));
+        crate::heard!(std::fs::remove_file(note_path(store.root())));
     }
     n
 }
@@ -291,7 +291,7 @@ pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
         return false;
     }
     recent.push(now);
-    let _ = std::fs::create_dir_all(state_dir);
+    crate::heard!(std::fs::create_dir_all(state_dir));
     // A restart that can't be counted isn't made: uncounted, a crash on
     // every start would restart for ever.
     serde_json::to_string(&recent).ok().is_some_and(|json| std::fs::write(&path, json).is_ok())

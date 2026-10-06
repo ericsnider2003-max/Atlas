@@ -546,7 +546,11 @@ pub fn spoken(items: &[Item], now: u64) -> String {
         return "Nothing outstanding.".into();
     }
 
-    let now_view = shipped().into_iter().find(|v| v.name == "Now").unwrap();
+    // `shipped()` always has "Now" (its own test says so); without it there
+    // is no view to rank by, so nothing is picked rather than a panic.
+    let Some(now_view) = shipped().into_iter().find(|v| v.name == "Now") else {
+        return "Nothing outstanding.".into();
+    };
     let first = apply(items, &now_view, now).first().copied();
 
     let mut s = match first {

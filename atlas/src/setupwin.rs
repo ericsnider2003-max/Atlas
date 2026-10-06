@@ -367,7 +367,7 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
     // tried again the next time Atlas is opened.
     let problems = progress.lock().or_else(crate::crash::unpoison).map(|p| p.problems()).unwrap_or(0);
     if problems == 0 {
-        let _ = firstlaunch::mark_set_up(&place.root);
+        crate::heard!(firstlaunch::mark_set_up(&place.root));
     }
     let after = after_setup(place, settings_ok, first_time);
     if let Ok(mut p) = progress.lock().or_else(crate::crash::unpoison) {
@@ -397,7 +397,7 @@ fn after_setup(place: &Place, settings_ok: bool, just_set_up: bool) -> Vec<Strin
     if next.register {
         match crate::startup::turn_on(&place.exe, crate::startup::Mode::Background) {
             Ok(words) => {
-                let _ = crate::startup::remember(&state, true);
+                crate::heard!(crate::startup::remember(&state, true));
                 said.push(format!("{words} You can switch that off below."));
             }
             // Not remembered, so the next setup tries again.
@@ -437,7 +437,7 @@ fn phone_section(place: &Place) -> Phone {
         crate::phonelink::Serve::Published { url } => {
             // Kept, so the hub's "Your devices" page can show the same code
             // for adding another device.
-            let _ = crate::roots::store().save(crate::phonelink::LINK_KEY, &url);
+            crate::kept!(crate::roots::store().save(crate::phonelink::LINK_KEY, &url));
             match crate::phonelink::qr_modules(&url) {
             Some(modules) => Phone::Link { url, modules },
             None => Phone::Why("I have your phone's link but couldn't draw its code.".into()),
@@ -466,14 +466,14 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
     // double-click on the icon or the Start menu each opened another. A
     // second one asks the first to come forward, and goes.
     let window_dir = place.root.join("data").join("window");
-    let _ = std::fs::create_dir_all(&window_dir);
+    crate::heard!(std::fs::create_dir_all(&window_dir));
     let window_lock = crate::onlyone::OnlyOne::at(&window_dir);
     let now = crate::store::now();
     if !window_lock.look(now).can_take() {
         return std::fs::write(window_dir.join(RAISE_FILE), b"")
             .map_err(|e| format!("Atlas's window is already open, and I couldn't ask it to come forward: {e}"));
     }
-    let _ = window_lock.take(now);
+    crate::heard!(window_lock.take(now));
     let progress = Arc::new(Mutex::new(Progress::new()));
     start_work(&place, &progress);
     let opts = eframe::NativeOptions {
@@ -825,7 +825,7 @@ impl eframe::App for App {
                             Ok(words) => {
                                 // Your choice, kept: setup never switches it
                                 // back on once you've decided.
-                                let _ = crate::startup::remember(&self.place.root.join("data").join("state"), on);
+                                crate::heard!(crate::startup::remember(&self.place.root.join("data").join("state"), on));
                                 self.with_windows = Some(on);
                                 self.note = Some(words);
                             }

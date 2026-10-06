@@ -371,11 +371,10 @@ fn degrees_in(l: &str) -> Option<f32> {
         let Ok(n) = t.trim_start_matches('+').parse::<f32>() else { continue };
         let next = words.get(i + 1).copied().unwrap_or("");
         let prev = if i > 0 { words[i - 1] } else { "" };
-        if word.ends_with('°') || next.starts_with("degree") || next.starts_with("deg") || matches!(prev, "by" | "rotate" | "turn") {
-            if n.is_finite() && n.abs() > 0.0 && n.abs() <= 360.0 {
+        if (word.ends_with('°') || next.starts_with("degree") || next.starts_with("deg") || matches!(prev, "by" | "rotate" | "turn"))
+            && n.is_finite() && n.abs() > 0.0 && n.abs() <= 360.0 {
                 return Some(n);
             }
-        }
     }
     None
 }
@@ -418,7 +417,7 @@ pub fn stats(p: &Picture) -> Stats {
     let n = (p.rgb.len() / 3).max(1);
     let mut hist = [0u32; 256];
     let mut sum = [0f64; 3];
-    for px in p.rgb.chunks_exact(3) {
+    for px in p.rgb.as_chunks::<3>().0 {
         let y = (0.299 * px[0] as f32 + 0.587 * px[1] as f32 + 0.114 * px[2] as f32).round() as usize;
         hist[y.min(255)] += 1;
         for c in 0..3 {
@@ -504,14 +503,14 @@ fn run(ffmpeg: &str, args: &[String], limit: std::time::Duration) -> Result<std:
     let out_t = std::thread::spawn(move || {
         let mut b = Vec::new();
         if let Some(p) = so.as_mut() {
-            let _ = p.read_to_end(&mut b);
+            crate::heard!(p.read_to_end(&mut b));
         }
         b
     });
     let err_t = std::thread::spawn(move || {
         let mut b = Vec::new();
         if let Some(p) = se.as_mut() {
-            let _ = p.read_to_end(&mut b);
+            crate::heard!(p.read_to_end(&mut b));
         }
         b
     });
@@ -758,7 +757,7 @@ impl Memory {
     }
 
     pub fn save(&self, state: &Path) {
-        let _ = crate::store::Store::new(state).save(MEMORY, self);
+        crate::kept!(crate::store::Store::new(state).save(MEMORY, self));
     }
 }
 
@@ -818,10 +817,14 @@ pub fn copy_path(original: &Path, format: Format) -> PathBuf {
     if !first.exists() {
         return first;
     }
-    (2..)
-        .map(|n| dir.join(format!("{base}.edited-{n}.{ext}")))
-        .find(|p| !p.exists())
-        .expect("some number is free")
+    let mut n = 2u64;
+    loop {
+        let p = dir.join(format!("{base}.edited-{n}.{ext}"));
+        if !p.exists() {
+            return p;
+        }
+        n += 1;
+    }
 }
 
 fn name_of(p: &Path) -> String {
@@ -1087,14 +1090,14 @@ fn edit_inner(setup: &Setup, photo: &Path, wish: &Wish, offer: Option<f32>, batc
             a.push(copy.display().to_string());
             let out = run(ffmpeg, &a, LIMIT)?;
             if !out.status.success() || !copy.is_file() {
-                let _ = std::fs::remove_file(&copy);
+                crate::heard!(std::fs::remove_file(&copy));
                 return Err(format!("ffmpeg stopped: {}", complaint(&out.stderr)));
             }
             let size = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
             match max_bytes {
                 Some(max) if size > max && i + 1 < steps.len() => {
                     // Our own new file, made a moment ago: remade smaller.
-                    let _ = std::fs::remove_file(&copy);
+                    crate::heard!(std::fs::remove_file(&copy));
                 }
                 Some(max) if size > max => {
                     said.push(format!("it's {:.1} MB, over the {} MB a phone can upload -- fine from a computer", size as f64 / 1e6, max / 1_000_000));
@@ -1116,7 +1119,7 @@ fn edit_inner(setup: &Setup, photo: &Path, wish: &Wish, offer: Option<f32>, batc
         })
     })();
     for f in scratch {
-        let _ = std::fs::remove_file(f);
+        crate::heard!(std::fs::remove_file(f));
     }
     result
 }

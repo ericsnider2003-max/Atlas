@@ -37,11 +37,11 @@ pub fn cardinal(n: u64) -> String {
     }
     let mut parts = Vec::new();
     for (scale, name) in [(1_000_000_000_000u64, "trillion"), (1_000_000_000, "billion"), (1_000_000, "million"), (1_000, "thousand")] {
-        if n >= scale && n / scale % 1000 > 0 {
+        if n >= scale && !(n / scale).is_multiple_of(1000) {
             parts.push(format!("{} {name}", below_1000(n / scale % 1000)));
         }
     }
-    if n % 1000 > 0 {
+    if !n.is_multiple_of(1000) {
         parts.push(below_1000(n % 1000));
     }
     parts.join(" ")

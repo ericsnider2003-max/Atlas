@@ -39,7 +39,7 @@ pub(super) fn run_craft() {
         let todo = craft::still_worth_running(lang, &ran);
         let Some(gate) = todo.first() else { break };
         print!("  {} ... ", gate.command);
-        let _ = io::stdout().flush();
+        atlas::heard!(io::stdout().flush());
         let r = run_gate(&dir, gate);
         println!("{}", if r.passed { "ok" } else { "failed" });
         ran.push(r);
@@ -494,7 +494,7 @@ pub(super) fn run_enrol_voice(cfg: &Config, plat: &dyn Platform) {
     while id.enrolled() < needed {
         println!("{}", atlas::voiceid::enrollment_prompt(id.enrolled(), needed));
         print!("[enter when ready] ");
-        let _ = io::stdout().flush();
+        atlas::heard!(io::stdout().flush());
         let mut l = String::new();
         if matches!(io::stdin().read_line(&mut l), Ok(0) | Err(_)) {
             return;
@@ -1064,7 +1064,7 @@ pub(super) fn run_startup(args: &[String]) {
             }
             match startup::run(&plan) {
                 Ok(true) => {
-                    let _ = startup::remember(&atlas::roots::state_dir(), true);
+                    atlas::heard!(startup::remember(&atlas::roots::state_dir(), true));
                     println!("Done. Atlas will start when you log in, and {}.", mode.plainly());
                     println!("Turn it off again with `atlas startup off`.");
                 }
@@ -1083,9 +1083,9 @@ pub(super) fn run_startup(args: &[String]) {
             // The sign-in list entry the window falls back to when Task
             // Scheduler says no (`startup::turn_on`), gone too.
             if cfg!(windows) {
-                let _ = startup::run(&startup::run_entry_remove());
+                atlas::heard!(startup::run(&startup::run_entry_remove()));
             }
-            let _ = startup::remember(&atlas::roots::state_dir(), false);
+            atlas::heard!(startup::remember(&atlas::roots::state_dir(), false));
             match startup::run(&plan) {
                 Ok(true) => println!("Done. Atlas will not start on its own any more."),
                 // `/Delete` on a task that is not there reports failure, and
@@ -1170,9 +1170,9 @@ pub(super) fn run_backends(args: &[String]) {
     }
 }
 
-/// Which Atlas this is, and which of your own devices belong to it. See
-/// `household.rs`'s own doc: two installs know nothing about each other
-/// unless the same person paired them, device to device, with a code.
+// Which Atlas this is, and which of your own devices belong to it. See
+// `household.rs`'s own doc: two installs know nothing about each other
+// unless the same person paired them, device to device, with a code.
 
 /// `atlas wireguard` — your own server, reached over WireGuard, fenced so
 /// your devices reach its model server and nothing else.
@@ -1397,7 +1397,7 @@ pub(super) fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
     }
     let dir = atlas::roots::config_dir();
     if atlas::firstlaunch::settings_missing(&dir) {
-        let _ = atlas::firstlaunch::write_default_config(&dir);
+        atlas::heard!(atlas::firstlaunch::write_default_config(&dir));
     }
     let configured = Config::load(&dir).ok().and_then(|c| c.tools.map(|t| t.server.port)).unwrap_or(8787);
     // Opening Atlas once it's set up makes sure the background Atlas is
@@ -1496,8 +1496,8 @@ pub(super) fn run_kokoro_check(words: &[String]) -> i32 {
         return 1;
     }
     let out = atlas::roots::data_dir().join("tmp").join("kokoro-check.wav");
-    let _ = std::fs::create_dir_all(out.parent().unwrap_or(&root));
-    let _ = std::fs::write(&out, atlas::kokoro::to_wav(&samples, k.sample_rate()));
+    atlas::heard!(std::fs::create_dir_all(out.parent().unwrap_or(&root)));
+    atlas::kept!(std::fs::write(&out, atlas::kokoro::to_wav(&samples, k.sample_rate())));
     println!(
         "Kokoro ({voice}, {threads} threads): loaded in {load_ms} ms; {secs:.2} s of speech made in {synth_ms:.0} ms \
          ({:.2}x its own length). Saved to {}.",
@@ -1532,7 +1532,7 @@ pub(super) fn run_get(which: Option<&str>) {
         println!("  [get ] {} ({} MB)...", piece.name, piece.megabytes());
         let last = std::cell::Cell::new(0u64);
         let report = |done: u64, total: u64| {
-            let pct = if total == 0 { 0 } else { done * 100 / total };
+            let pct = (done * 100).checked_div(total).unwrap_or(0);
             if pct >= last.get() + 10 {
                 last.set(pct - pct % 10);
                 println!("         {pct}%");
@@ -1590,7 +1590,7 @@ pub(super) fn run_plugins(cfg: &Config, args: &[String]) {
             }
             println!("\nApprove {} to do the above? Type yes to approve.", p.name());
             let mut line = String::new();
-            let _ = std::io::stdin().read_line(&mut line);
+            atlas::heard!(std::io::stdin().read_line(&mut line));
             if line.trim().to_lowercase() != "yes" {
                 println!("Not approved. It stays off.");
                 return;
@@ -1639,7 +1639,7 @@ pub(super) fn run_plugins(cfg: &Config, args: &[String]) {
             }
             println!("Add it and allow that? Type yes.");
             let mut line = String::new();
-            let _ = std::io::stdin().read_line(&mut line);
+            atlas::heard!(std::io::stdin().read_line(&mut line));
             if line.trim().to_lowercase() != "yes" {
                 println!("Left it where it is.");
                 return;
@@ -1690,7 +1690,7 @@ fn send_plugin(dir: &std::path::Path, id: &str, to: &str) -> Result<String, Stri
             reached.push(who.clone());
         }
     }
-    let _ = std::fs::remove_file(&named);
+    atlas::heard!(std::fs::remove_file(&named));
     if reached.is_empty() {
         return Err(format!("couldn't reach anyone in {to} to share \"{name}\" with"));
     }
@@ -1733,7 +1733,7 @@ fn describe_plugin(p: &atlas::plugins::Plugin) {
     for t in &p.trouble {
         println!("  note: {t}");
     }
-    println!("  file fingerprint {}", &p.sha256.get(..16).unwrap_or(""));
+    println!("  file fingerprint {}", p.sha256.get(..16).unwrap_or(""));
 }
 
 /// `atlas edits` -- your own edits to the shipped config files, which Atlas
@@ -1830,7 +1830,7 @@ pub(super) fn run_call_check(args: &[String]) {
                     // Loudest moment, against a floor above hiss: about 3%.
                     let peak = std::fs::read(path)
                         .ok()
-                        .map(|b| b.get(44..).unwrap_or(&[]).chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs()).max().unwrap_or(0))
+                        .map(|b| b.get(44..).unwrap_or(&[]).as_chunks::<2>().0.iter().map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs()).max().unwrap_or(0))
                         .unwrap_or(0);
                     let peak = if peak > 1000 { 1 } else { 0 };
                     println!(

@@ -81,6 +81,12 @@ pub(crate) fn parse_rfc2822(s: &str) -> Option<u64> {
     let hour: i64 = t.next()?.parse().ok()?;
     let min: i64 = t.next()?.parse().ok()?;
     let sec: i64 = t.next().unwrap_or("0").parse().ok()?;
+    // Every field within a real date and time before any arithmetic: a mail
+    // or feed from anywhere can say year 2022022022022026, which overflowed
+    // the sum below (found by fuzzing a feed date, tests/parsers_survive_garbage.rs).
+    if !(1..=9999).contains(&year) || !(1..=31).contains(&day) || !(0..24).contains(&hour) || !(0..60).contains(&min) || !(0..=60).contains(&sec) {
+        return None;
+    }
     let tz = parts.next().unwrap_or("+0000");
     let tz_offset_secs = parse_tz_offset(tz).unwrap_or(0);
 
@@ -94,7 +100,7 @@ pub(crate) fn parse_rfc2822(s: &str) -> Option<u64> {
 }
 
 fn parse_tz_offset(tz: &str) -> Option<i64> {
-    if tz.len() != 5 {
+    if tz.len() != 5 || !tz.is_ascii() {
         return None;
     }
     let sign = match tz.as_bytes()[0] {
@@ -320,7 +326,7 @@ fn first_line(s: &str) -> String {
 /// The whole inbox, sorted by what it needs.
 pub fn sort_all(messages: &[Message]) -> Vec<Triaged> {
     let mut out: Vec<Triaged> = messages.iter().map(triage).collect();
-    out.sort_by(|a, b| b.needs.cmp(&a.needs));
+    out.sort_by_key(|b| std::cmp::Reverse(b.needs));
     out
 }
 

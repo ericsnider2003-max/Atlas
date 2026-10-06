@@ -457,7 +457,7 @@ pub fn move_folder(from: &std::path::Path, to: &std::path::Path, now: u64) -> Re
         to.display(),
         before / 1_000_000
     );
-    let _ = std::fs::write(from.with_extension("MOVED.txt"), note);
+    crate::kept!(std::fs::write(from.with_extension("MOVED.txt"), note));
     Ok(Moved { from: from.display().to_string(), to: to.display().to_string(), mb: before / 1_000_000, at: now })
 }
 
@@ -482,7 +482,7 @@ pub fn parse_tasklist(csv: &str) -> Vec<(String, u64)> {
         *by.entry(name).or_default() += kb / 1024;
     }
     let mut v: Vec<(String, u64)> = by.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v.sort_by_key(|b| std::cmp::Reverse(b.1));
     v
 }
 
@@ -498,7 +498,7 @@ pub fn parse_ps(text: &str) -> Vec<(String, u64)> {
         *by.entry(parts.join(" ")).or_default() += kb / 1024;
     }
     let mut v: Vec<(String, u64)> = by.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v.sort_by_key(|b| std::cmp::Reverse(b.1));
     v
 }
 
@@ -587,7 +587,7 @@ pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
     // Deepest first, and only the empty ones (`remove_dir` refuses the rest).
     dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
     for d in dirs {
-        let _ = std::fs::remove_dir(&d);
+        crate::heard!(std::fs::remove_dir(&d));
     }
     c.mb /= 1024 * 1024;
     c
@@ -982,7 +982,7 @@ pub fn slowest_words(load: &[Load]) -> String {
         .map(|l| format!("{} {:.0}%", l.name, l.cpu_pct))
         .collect();
     let mut by_mem: Vec<&Load> = load.iter().collect();
-    by_mem.sort_by(|a, b| b.mem_mb.cmp(&a.mem_mb));
+    by_mem.sort_by_key(|b| std::cmp::Reverse(b.mem_mb));
     let heavy: Vec<String> = by_mem.iter().take(4).map(|l| format!("{} {}", l.name, mb_words(l.mem_mb))).collect();
     let total: f32 = load
         .iter()
@@ -1209,7 +1209,7 @@ pub fn close_loads(loads: &[Load], wait: std::time::Duration) -> Vec<Closed> {
         }
         // A background process refuses a polite request ("can only be
         // terminated forcefully"); that refusal is expected, not a failure.
-        let _ = taskkill(false, l, &pids);
+        crate::heard!(taskkill(false, l, &pids));
     }
     let until = std::time::Instant::now() + wait;
     loop {
@@ -1597,7 +1597,7 @@ pub fn look_at_space(downloads: &std::path::Path, temp: &std::path::Path, budget
     let downloads_mb = files.iter().map(|f| f.1).sum::<u64>() / 1_048_576;
     let mut biggest: Vec<(std::path::PathBuf, u64)> =
         files.iter().filter(|f| f.1 >= 50 * 1_048_576).map(|f| (f.0.clone(), f.1 / 1_048_576)).collect();
-    biggest.sort_by(|a, b| b.1.cmp(&a.1));
+    biggest.sort_by_key(|b| std::cmp::Reverse(b.1));
     biggest.truncate(10);
 
     let mut by_size: std::collections::BTreeMap<u64, Vec<usize>> = Default::default();
@@ -1698,7 +1698,7 @@ pub fn may_move_into(dest: &std::path::Path, from_dir: &std::path::Path) -> Resu
     if (drive_rooted && windows_system.contains(&second)) || (!drive_rooted && unix_system.contains(&first)) {
         return Err(format!("{} is where the system keeps its own files, so nothing of yours goes there", dest.display()));
     }
-    if parts.iter().any(|p| *p == "appdata") {
+    if parts.contains(&"appdata") {
         return Err(format!("{} is inside a program's settings folder, so nothing of yours goes there", dest.display()));
     }
     let from = from_dir.display().to_string().replace('/', "\\").to_lowercase();
@@ -1732,7 +1732,7 @@ fn move_exact(from: &std::path::Path, to: &std::path::Path) -> Result<(), String
     let len = std::fs::metadata(from).map_err(|e| format!("{}: {e}", from.display()))?.len();
     let copied = std::fs::copy(from, to).map_err(|e| format!("{} couldn't be copied: {e}", from.display()))?;
     if copied != len {
-        let _ = std::fs::remove_file(to);
+        crate::heard!(std::fs::remove_file(to));
         return Err(format!("{} didn't copy whole, so the original stays", from.display()));
     }
     std::fs::remove_file(from).map_err(|e| format!("{} was copied but the original couldn't be removed: {e}", from.display()))
@@ -1770,7 +1770,7 @@ pub fn move_back(moves: &[(std::path::PathBuf, std::path::PathBuf)]) -> (usize, 
             continue;
         }
         if let Some(dir) = was.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            crate::heard!(std::fs::create_dir_all(dir));
         }
         match move_exact(is, was) {
             Ok(()) => back += 1,
@@ -1868,7 +1868,7 @@ pub fn undo_tune_change(u: &TuneUndo) -> Result<String, String> {
             let (back, not) = move_back(moves);
             // `remove_dir` only ever removes an empty folder.
             for d in made.iter().rev() {
-                let _ = std::fs::remove_dir(d);
+                crate::heard!(std::fs::remove_dir(d));
             }
             let mut s = format!("Put {back} of {} back where {} were.", moves.len(), if back == 1 { "it" } else { "they" });
             if !not.is_empty() {

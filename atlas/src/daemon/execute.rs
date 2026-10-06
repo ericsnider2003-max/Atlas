@@ -236,7 +236,7 @@ impl<'a> Daemon<'a> {
             // decided what to do with a list of opinions; nothing ever built
             // one, so `tally`, `Verdict` and `spoken` all computed over a list
             // only a test had filled.
-            Intent::AskTheRoom(q) => self.ask_the_room(&q),
+            Intent::AskTheRoom(q) => self.ask_the_room(q),
             // The callers `revise.rs` never had.
             // The whole sentence, not the intent's argument: the parser
             // hands over what came *after* the phrase it matched, so the
@@ -695,7 +695,7 @@ impl<'a> Daemon<'a> {
                         || what.contains("do it")
                         || what.contains("yes")) => self.on_work_on_yourself_go_on(),
 
-            Intent::WorkOnYourself(what) => self.work_on_myself(&what),
+            Intent::WorkOnYourself(what) => self.work_on_myself(what),
 
             Intent::Build(what) => self.build_from_description(what),
 
@@ -746,7 +746,7 @@ impl<'a> Daemon<'a> {
         self.got_it_wrong(&said, now)
     }
 
-    fn on_what_i_have(&mut self, q: &String) -> String {
+    fn on_what_i_have(&mut self, q: &str) -> String {
         // The fact book first: what you actually told Atlas to remember
         // answers "what do you know about X" directly, rather than
         // pointing at a note to open. The index makes this fast however
@@ -806,7 +806,7 @@ impl<'a> Daemon<'a> {
     }
     }
 
-    fn on_ask_the_shelf(&mut self, q: &String) -> String {
+    fn on_ask_the_shelf(&mut self, q: &str) -> String {
         let cfg = self.tools_cfg().reference.clone();
         // Your `reference.shelves`, which this ignored until 18 Sep
         // 2026 -- see `reference::chosen` for what empty means and
@@ -824,8 +824,8 @@ impl<'a> Daemon<'a> {
         )
     }
 
-    fn on_ask_plain(&mut self, q: &String) -> String {
-        match self.from_notes(q, crate::store::now()) {
+    fn on_ask_plain(&mut self, q: &str) -> String {
+        match self.answer_from_notes(q, crate::store::now()) {
         // Came out of the library, so it is grounded and says so.
         Some(answer) => {
             self.hedge(&answer, crate::certainty::Grounding::from_what_it_holds())
@@ -834,7 +834,7 @@ impl<'a> Daemon<'a> {
         // the layer above to carry on with — hedging that produced
         // "What's the capital of France? I'm not certain", which is
         // Atlas casting doubt on your own sentence.
-        None => q.clone(),
+        None => q.to_owned(),
     }
     }
 
@@ -902,7 +902,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_address_as(&mut self, said: &String) -> String {
+    fn on_address_as(&mut self, said: &str) -> String {
         match crate::returning::address_change(said) {
         Some(new_address) => {
             let reply = crate::returning::confirm_address(&new_address);
@@ -930,14 +930,14 @@ impl<'a> Daemon<'a> {
     }
     }
 
-    fn on_dictate(&mut self, first: &String) -> String {
+    fn on_dictate(&mut self, first: &str) -> String {
         // `self.last_present` is this turn's `t`, set at the top of
         // `turn_from`. Reaching for `store::now()` here instead —
         // which is what every other arm does, because none of them
         // keeps a clock — put `last_spoke` on a different clock from
         // the one `tick` hands `idle_check`, so dictation could never
         // time out. Caught by the idle test, not by reading.
-        let first = first.clone();
+        let first = first.to_owned();
         let t = self.last_present;
         self.start_dictating(&first, t)
     }
@@ -1193,7 +1193,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_draft_post(&mut self, channel: &String) -> String {
+    fn on_draft_post(&mut self, channel: &str) -> String {
         // "linkedin about finishing a project": the channel, and what it's
         // about when that was said too.
         let (channel, about) = match channel.split_once(" about ") {
@@ -1294,7 +1294,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_set_mode(&mut self, name: &String) -> String {
+    fn on_set_mode(&mut self, name: &str) -> String {
         let n = name.trim().trim_end_matches(" mode").trim();
         // Leaving a mode. `enter` was wired and `leave` was not, so a
         // mode could be turned on and never cleanly turned off -- and a
@@ -1390,7 +1390,7 @@ impl<'a> Daemon<'a> {
         );
         // The deeper look: what's holding the memory, whoever it is.
         let mut top: Vec<&(String, u64, bool)> = survey.memory_by_app.iter().collect();
-        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.sort_by_key(|b| std::cmp::Reverse(b.1));
         // (On Windows the sampled reading below says this, with CPU.)
         if !top.is_empty() && !cfg!(windows) {
             let named: Vec<String> = top.iter().take(4).map(|(a, mb, _)| format!("{a} {}", if *mb >= 1024 { format!("{:.1} GB", *mb as f32 / 1024.0) } else { format!("{mb} MB") })).collect();
@@ -1446,7 +1446,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_use_clipboard(&mut self, what: &String) -> String {
+    fn on_use_clipboard(&mut self, what: &str) -> String {
         let cfg = self.clipboard_cfg();
         if !cfg.enabled {
             return "Using the clipboard is switched off.".into();
@@ -1518,7 +1518,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_rehearse(&mut self, command: &String) -> String {
+    fn on_rehearse(&mut self, command: &str) -> String {
         // Runs against the same fake operating system the tests use,
         // so there is no path from here to your real windows.
         let mock = crate::platform::mock::MockPlatform::new(
@@ -1527,19 +1527,19 @@ impl<'a> Daemon<'a> {
         let inner = self.parser.parse(command);
         let reply = match &inner {
             Intent::WorkspaceOn => {
-                let _ = workspace::workspace_on(self.cfg, &mock);
+                crate::heard!(workspace::workspace_on(self.cfg, &mock));
                 String::new()
             }
             Intent::WorkspaceOff => {
-                let _ = workspace::workspace_off(self.cfg, &mock);
+                crate::heard!(workspace::workspace_off(self.cfg, &mock));
                 String::new()
             }
             Intent::OpenApp(a) => {
-                let _ = workspace::open_app(self.cfg, &mock, a);
+                crate::heard!(workspace::open_app(self.cfg, &mock, a));
                 String::new()
             }
             Intent::CloseApp(a) => {
-                let _ = workspace::close_app(self.cfg, &mock, a);
+                crate::heard!(workspace::close_app(self.cfg, &mock, a));
                 String::new()
             }
             other => format!("I don't know how to rehearse {}.", other.plain()),
@@ -1575,7 +1575,7 @@ impl<'a> Daemon<'a> {
         brief
     }
 
-    fn on_show(&mut self, what: &String) -> String {
+    fn on_show(&mut self, what: &str) -> String {
         let w = what.trim().to_lowercase();
         let panel = if w.contains("outstanding") || w.contains("task") || w.contains("list") {
             crate::panel::Panel::Tasks
@@ -1610,7 +1610,7 @@ impl<'a> Daemon<'a> {
                 s.title_hints = vec![w.to_string(), squashed.clone()];
                 self.plat.find_window(&s).ok().flatten()
             }) {
-                let _ = self.plat.focus(win);
+                crate::heard!(self.plat.focus(win));
                 return format!("There's {w}.");
             }
             // Not configured and not open: an app by its Start-menu name, as
@@ -1699,7 +1699,7 @@ impl<'a> Daemon<'a> {
         if was_up { String::new() } else { "There's nothing up to put away.".into() }
     }
 
-    fn on_capabilities_settled(&mut self, what: &String) -> String {
+    fn on_capabilities_settled(&mut self, what: &str) -> String {
         let chose = crate::whichone::weigh(
             what,
             crate::whichone::WHICH_MACHINE,
@@ -1731,7 +1731,7 @@ impl<'a> Daemon<'a> {
         )
     }
 
-    fn on_capabilities_plain(&mut self, what: &String) -> String {
+    fn on_capabilities_plain(&mut self, what: &str) -> String {
         let w = what.trim().to_lowercase();
         if w.contains("offline")
             || w.contains("without internet")
@@ -1849,7 +1849,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_history(&mut self, what: &String) -> String {
+    fn on_history(&mut self, what: &str) -> String {
         use crate::undo::{reverse, say, tell, understand, Asking};
         match understand(if what.trim().is_empty() { "what did you do" } else { what }) {
             Asking::WhatDidYouDo { since_mins } => {
@@ -1894,7 +1894,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_why(&mut self, about: &String) -> String {
+    fn on_why(&mut self, about: &str) -> String {
         let matching: Vec<&crate::why::Decision> = self
             .decisions
             .decisions
@@ -1948,7 +1948,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_create_account(&mut self, where_: &String) -> String {
+    fn on_create_account(&mut self, where_: &str) -> String {
         let money = self.tools_ref()
             .map(|t| t.finance.clone())
             .unwrap_or_default();
@@ -1969,10 +1969,8 @@ impl<'a> Daemon<'a> {
                 match crate::enrol::Enrolment::permitted(&domain, &cfg, &money) {
                     // `permitted`'s own wording for this one is terse;
                     // keep the line that tells you where the switch is.
-                    Err(why) if why == "account creation is switched off" => format!(
-                        "Signing up is switched off. Turn on \"Make accounts\" in \
-                         settings if you want me doing that."
-                    ),
+                    Err(why) if why == "account creation is switched off" => "Signing up is switched off. Turn on \"Make accounts\" in \
+                         settings if you want me doing that.".to_string(),
                     Err(why) => why,
                     // Eric, B6: Atlas may make accounts. It
                     // stops for good at payment or ID, and hands
@@ -2127,7 +2125,7 @@ impl<'a> Daemon<'a> {
         self.name_this(&who, crate::store::now())
     }
 
-    fn on_hand_over(&mut self, note: &String) -> String {
+    fn on_hand_over(&mut self, note: &str) -> String {
         let state = crate::roots::install_state();
         let mut h = crate::handover::Handover::load(&state);
         let said = h.hand_over(note, clock());
@@ -2144,7 +2142,7 @@ impl<'a> Daemon<'a> {
         said
     }
 
-    fn on_unlock(&mut self, phrase: &String) -> String {
+    fn on_unlock(&mut self, phrase: &str) -> String {
         let now = clock();
         match self.vault.open(phrase, now, &self.tools_cfg().vault) {
             Ok(()) => {
@@ -2178,7 +2176,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_pair(&mut self, their_name: &String) -> String {
+    fn on_pair(&mut self, their_name: &str) -> String {
         let their_name = spoken_name(their_name);
         if their_name.is_empty() {
             return "Who should I pair with?".into();
@@ -2236,7 +2234,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_accept_pairing(&mut self, code: &String) -> String {
+    fn on_accept_pairing(&mut self, code: &str) -> String {
         let code = code.trim();
         if code.is_empty() {
             return "Paste the pairing code someone sent you.".into();
@@ -2271,7 +2269,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_forget_peer(&mut self, name: &String) -> String {
+    fn on_forget_peer(&mut self, name: &str) -> String {
         let name = spoken_name(name);
         if name.is_empty() {
             return "Who should I forget the pairing with?".into();
@@ -2317,7 +2315,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_capture(&mut self, text: &String) -> String {
+    fn on_capture(&mut self, text: &str) -> String {
         let now = clock();
         let cfg = self.tools_cfg().capture.clone();
 
@@ -2338,7 +2336,7 @@ impl<'a> Daemon<'a> {
             // loose note. `title` is what to do, if the capture named
             // one, else the raw text.
             if self.workshop.resolve(p).is_some() {
-                let task = spoken.title.clone().unwrap_or_else(|| text.clone());
+                let task = spoken.title.clone().unwrap_or_else(|| text.to_owned());
                 self.workshop.add_task(p, &task, now);
                 let _ = self.workshop.save(&self.store);
             }
@@ -2349,7 +2347,7 @@ impl<'a> Daemon<'a> {
             // unless the project was one the workshop tracks).
             let id = self.notebook.capture(text, None, now, &cfg);
             self.wd_date_note(id, now);
-            self.synclog.append(crate::sync::What::Captured { id: id.to_string(), text: text.clone() }, now);
+            self.synclog.append(crate::sync::What::Captured { id: id.to_string(), text: text.to_owned() }, now);
             if let Err(e) = self.notebook.save(&self.store) {
                 return format!("I couldn't write that down ({e}). Say it again once that's sorted, because I haven't kept it.");
             }
@@ -2366,7 +2364,7 @@ impl<'a> Daemon<'a> {
             self.synclog.append(
                 crate::sync::What::Captured {
                     id: id.to_string(),
-                    text: text.clone(),
+                    text: text.to_owned(),
                 },
                 now,
             );
@@ -2438,7 +2436,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_mail_which_one(&mut self, what: &String) -> String {
+    fn on_mail_which_one(&mut self, what: &str) -> String {
         let w = crate::whichone::weigh(
             what,
             crate::whichone::ABOUT_MAIL,
@@ -2531,7 +2529,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_mail_plain(&mut self, what: &String) -> String {
+    fn on_mail_plain(&mut self, what: &str) -> String {
         let cfg = self.tools_cfg().mail.clone();
         if what.contains("outlook setup") || what.contains("connect outlook") && what.contains("help") {
             crate::msoauth::SETUP.to_string()
@@ -2561,7 +2559,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_brief_on(&mut self, who: &String) -> String {
+    fn on_brief_on(&mut self, who: &str) -> String {
         let cfg = self.tools_cfg().elsewhere.clone();
         if !cfg.enabled {
             "Asking your other Atlases is switched off in your settings.".into()
@@ -2601,7 +2599,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_review_post_which_one(&mut self, what: &String) -> String {
+    fn on_review_post_which_one(&mut self, what: &str) -> String {
         let w = crate::whichone::weigh(
             what,
             crate::whichone::ABOUT_A_POST,
@@ -2611,7 +2609,7 @@ impl<'a> Daemon<'a> {
             .unwrap_or_else(|| "Which did you mean?".into())
     }
 
-    fn on_review_post_stance(&mut self, what: &String) -> String {
+    fn on_review_post_stance(&mut self, what: &str) -> String {
         // A post is a case being made, so that's what it's judged as.
         let kind = crate::stance::Kind::Case;
         let s = crate::stance::assess(what, kind);
@@ -2637,7 +2635,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_review_post_brand(&mut self, what: &String) -> String {
+    fn on_review_post_brand(&mut self, what: &str) -> String {
         let asked = crate::editcraft::what_they_asked(what);
         match crate::editcraft::reply_to(asked) {
             Some(r) => format!("{r}\n\n{}", crate::editcraft::THE_PRINCIPLE),
@@ -2645,7 +2643,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_review_post_plain(&mut self, what: &String) -> String {
+    fn on_review_post_plain(&mut self, what: &str) -> String {
         let opsec = self.tools_cfg().opsec.clone();
         // Was a fixed, aging string, and `check` was called against
         // `""` rather than the post -- meaning this arm has never
@@ -2720,7 +2718,7 @@ impl<'a> Daemon<'a> {
             .next_back();
         if let Some(id) = open_draft {
             let final_text =
-                if fixed_count > 0 { corrected.as_str() } else { what.as_str() };
+                if fixed_count > 0 { corrected.as_str() } else { what };
             if self.publisher.edit(id, final_text) {
                 if let Some(q) = self.publisher.request_approval(id) {
                     let _ = self.publisher.save(&self.store);
@@ -2773,7 +2771,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_files(&mut self, what: &String) -> String {
+    fn on_files(&mut self, what: &str) -> String {
         // A question about your files waits a moment for the list
         // on disk (`index::Loading`), then answers honestly either way.
         self.wait_for_index(INDEX_WAIT_FOR_A_QUESTION);
@@ -2835,10 +2833,10 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn on_unknown(&mut self, raw: &String) -> String {
+    fn on_unknown(&mut self, raw: &str) -> String {
         match self.known_procedure(raw) {
         Some(how) => how,
-        None => match self.from_notes(raw, crate::store::now()) {
+        None => match self.answer_from_notes(raw, crate::store::now()) {
             Some(answer) => answer,
             // A question Atlas has no way to answer here is said to
             // be one, rather than "I didn't catch that" -- which tells

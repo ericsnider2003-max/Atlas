@@ -130,7 +130,7 @@ pub fn take_first_sound() -> Option<std::time::Instant> {
 
 /// Playback has finished (or failed): the line goes back to rest.
 pub fn end(data_dir: &Path) {
-    let _ = std::fs::remove_file(path(data_dir));
+    crate::heard!(std::fs::remove_file(path(data_dir)));
 }
 
 /// What's being said, if anything.
@@ -184,8 +184,8 @@ pub fn levels_of_wav(wav: &[u8], frame_ms: u32) -> Option<Vec<u8>> {
     // 16-bit whole numbers (piper), or 32-bit floats (some other engines);
     // `format` 0xFFFE says which in its sub-format, kept in `sub`.
     let samples: Vec<f32> = match (format, bits) {
-        (1, 16) => data.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32).collect(),
-        (3, 32) => data.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]) * 32767.0).collect(),
+        (1, 16) => data.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32).collect(),
+        (3, 32) => data.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]) * 32767.0).collect(),
         _ => return None,
     };
     let rms: Vec<f32> = samples

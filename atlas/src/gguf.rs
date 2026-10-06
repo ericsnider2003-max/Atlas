@@ -372,8 +372,8 @@ fn skip_array<R: Read + Seek>(r: &mut R, elem_ty: u32, count: u64) -> Result<()>
     let fixed = match elem_ty {
         0 | 1 | 7 => 1,
         2 | 3 => 2,
-        4 | 5 | 6 => 4,
-        10 | 11 | 12 => 8,
+        4..=6 => 4,
+        10..=12 => 8,
         8 => {
             // Strings are variable length; walk them.
             for _ in 0..count {

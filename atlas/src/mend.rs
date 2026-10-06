@@ -349,8 +349,8 @@ pub fn about_approval(request: &str) -> Question {
         doing: format!("You asked me to {what}."),
         asks: format!("Do you want me to go ahead with {what}?"),
         options: vec![
-            format!("yes — I do it and tell you what happened"),
-            format!("no — I drop it and stop asking"),
+            "yes — I do it and tell you what happened".to_string(),
+            "no — I drop it and stop asking".to_string(),
         ],
         set_aside: what,
     }

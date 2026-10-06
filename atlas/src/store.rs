@@ -452,13 +452,13 @@ impl Store {
                 .open(self.root.join("preserve-failed.log"))
             {
                 use std::io::Write;
-                let _ = writeln!(
+                crate::kept!(writeln!(
                     f,
                     "{}: could not move {} aside ({why}). The next save will \
                      overwrite it.",
                     now(),
                     from.display()
-                );
+                ));
             }
         }
     }
@@ -637,7 +637,7 @@ impl Store {
         // leaves one behind, but it is named with the pid that made it rather
         // than sitting on the name the next writer wants.
         if let Err(e) = rename_patiently(&tmp, &final_path) {
-            let _ = std::fs::remove_file(&tmp);
+            crate::heard!(std::fs::remove_file(&tmp));
             return Err(e.into());
         }
         remember_written(&final_path, hash);
@@ -741,6 +741,18 @@ pub fn rename_patiently_with(
     }
 }
 
+/// A small JSON file outside a `Store`, read whole: the default when it is
+/// missing or unreadable. With `write_json`, the one way the device lists
+/// (apns, webpush) are kept (audit Q3: each had its own copy).
+pub fn read_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
+    std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// `value` written to `path` as pretty JSON, whole (`write_whole`).
+pub fn write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
+    write_whole(path, &serde_json::to_vec_pretty(value).map_err(std::io::Error::other)?)
+}
+
 /// Write `bytes` as the whole of `path`, or leave the old file as it was:
 /// written beside it under a name only this process uses, flushed to the
 /// disk, then renamed over it (`rename_patiently`). For the small state files
@@ -759,7 +771,7 @@ pub fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     });
     let done = written.and_then(|_| rename_patiently(&tmp, path));
     if done.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+        crate::heard!(std::fs::remove_file(&tmp));
     }
     done
 }

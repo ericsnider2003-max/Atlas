@@ -191,7 +191,7 @@ impl Gate {
             return None;
         }
         let mut held = std::mem::take(&mut self.held);
-        held.sort_by(|a, b| b.weight.cmp(&a.weight));
+        held.sort_by_key(|b| std::cmp::Reverse(b.weight));
         for h in &held {
             self.said.retain(|(a, _)| *a != h.about);
             self.said.push((h.about.clone(), now));
@@ -278,7 +278,7 @@ impl Muted {
     /// rather than claiming to have done something.
     pub fn mute(&mut self, topic: &str) -> bool {
         let t = topic.trim().to_lowercase();
-        if t.is_empty() || self.topics.iter().any(|m| *m == t) {
+        if t.is_empty() || self.topics.contains(&t) {
             return false;
         }
         self.topics.push(t);

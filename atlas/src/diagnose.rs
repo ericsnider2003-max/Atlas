@@ -190,7 +190,7 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
         }
     }
 
-    out.sort_by(|a, b| b.impact.cmp(&a.impact));
+    out.sort_by_key(|b| std::cmp::Reverse(b.impact));
     out
 }
 

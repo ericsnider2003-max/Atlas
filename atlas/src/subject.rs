@@ -163,13 +163,7 @@ pub fn resolve(said: &str, c: &Candidates) -> Resolution {
 
     // The wording pushes one kind up and the others down.
     for (score, subject, _) in scored.iter_mut() {
-        let matches_want = match (want, &*subject) {
-            (Wants::Text, Subject::Clipboard(_) | Subject::Selection(_)) => true,
-            (Wants::File, Subject::File(_)) => true,
-            (Wants::Screen, Subject::Window { .. } | Subject::Capture(_)) => true,
-            (Wants::Any, _) => true,
-            _ => false,
-        };
+        let matches_want = matches!((want, &*subject), (Wants::Text, Subject::Clipboard(_) | Subject::Selection(_)) | (Wants::File, Subject::File(_)) | (Wants::Screen, Subject::Window { .. } | Subject::Capture(_)) | (Wants::Any, _));
         if matches_want {
             *score += 0.15;
         } else if want != Wants::Any {

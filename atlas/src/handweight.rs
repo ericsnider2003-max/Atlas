@@ -197,7 +197,7 @@ pub fn plan(cfg: &HandsConfig, m: &Machine, last_cost_ms: Option<u32>, base: &Pa
         }
     };
     if light {
-        let want = base.want_per_second.min(LIGHT_MOST_PER_SECOND).max(1);
+        let want = base.want_per_second.clamp(1, LIGHT_MOST_PER_SECOND);
         Plan {
             light,
             width: LIGHT_PICTURE.0,

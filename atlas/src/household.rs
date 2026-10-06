@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// One person's Atlas, across their devices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Household {
     /// Random, made once, never derived from anything about you.
     pub id: String,
@@ -173,19 +174,10 @@ pub fn init(store: &crate::store::Store, name: &str, device: &str, now: u64) -> 
     Ok(h)
 }
 
-impl Default for Household {
-    // Only so `Store::load`'s `Default` bound is satisfiable before
-    // `atlas household init` has ever run. An empty id is never a real
-    // household -- `meets()` comparing two empty strings would read as
-    // "the same household" by accident, so callers must treat this as
-    // "no household yet", not as a household with nothing in it.
-    fn default() -> Self {
-        Household { id: String::new(), name: String::new(), made_at: 0, devices: Vec::new() }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct HouseholdConfig {
     /// What to call this machine when it joins, so you are not asked on a
     /// phone keyboard. The join form is pre-filled with it and falls back to
@@ -211,11 +203,6 @@ pub struct HouseholdConfig {
     // either is told by `atlas doctor` rather than ignored in silence.
 }
 
-impl Default for HouseholdConfig {
-    fn default() -> Self {
-        HouseholdConfig { device_name: String::new() }
-    }
-}
 
 /// A bundle that arrived from somewhere else.
 ///
@@ -584,12 +571,12 @@ pub fn take_invitation(
         // open is not ours to have an opinion about.
         if now.saturating_sub(env.made_at) > env.valid_secs {
             expired = true;
-            let _ = std::fs::remove_file(&path);
+            crate::heard!(std::fs::remove_file(&path));
             continue;
         }
         let inside: Inside =
             serde_json::from_slice(&plain).map_err(|_| "that invitation is damaged".to_string())?;
-        let _ = std::fs::remove_file(&path);
+        crate::heard!(std::fs::remove_file(&path));
         return Ok(inside);
     }
     Err(if expired {

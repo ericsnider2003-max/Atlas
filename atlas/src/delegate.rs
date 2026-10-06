@@ -385,12 +385,12 @@ pub fn type_into_window(
 ) -> std::result::Result<(), String> {
     let before = plat.active_window_id().ok().flatten();
     if before != Some(win) {
-        let _ = plat.focus(win);
+        crate::heard!(plat.focus(win));
         plat.sleep_ms(150);
     }
     let restore = || {
         if let Some(b) = before.filter(|b| *b != win) {
-            let _ = plat.focus(b);
+            crate::heard!(plat.focus(b));
         }
     };
     if plat.active_window_id().ok().flatten() != Some(win) {

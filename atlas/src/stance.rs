@@ -234,7 +234,7 @@ pub fn assess(text: &str, kind: Kind) -> Vec<Gap> {
     }
 
     // The strongest sentence should be near the front, not buried.
-    if claims.len() >= 1 && ss.len() > 3 {
+    if !claims.is_empty() && ss.len() > 3 {
         let first_claim = ss.iter().position(|s| marks(s, CLAIM_MARKERS)).unwrap_or(0);
         if first_claim as f32 > ss.len() as f32 * 0.55 {
             gaps.push(Gap {

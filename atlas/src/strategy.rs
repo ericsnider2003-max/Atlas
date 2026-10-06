@@ -248,8 +248,7 @@ impl Campaign {
         if self.efforts.is_empty() {
             return "Haven't started on it yet.".into();
         }
-        if self.efforts.last().map(|e| e.solved).unwrap_or(false) {
-            let last = self.efforts.last().unwrap();
+        if let Some(last) = self.efforts.last().filter(|e| e.solved) {
             return format!(
                 "Fixed it on the {} attempt — {}.",
                 ordinal(self.efforts.len()),
@@ -259,7 +258,7 @@ impl Campaign {
         format!(
             "{} approaches, none worked. Last was {}.",
             self.efforts.len(),
-            self.efforts.last().unwrap().angle.label()
+            self.efforts.last().map(|e| e.angle.label()).unwrap_or_default()
         )
     }
 }

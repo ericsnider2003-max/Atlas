@@ -264,10 +264,9 @@ impl Decision {
             return Err(CannotLean::NothingLeftToCompare);
         }
         // Fewest unsupported assumptions, then cheapest to be wrong about.
-        let best = standing
-            .iter()
-            .min_by_key(|o| (o.rests_on.len(), o.costs.len()))
-            .expect("at least two standing");
+        let Some(best) = standing.iter().min_by_key(|o| (o.rests_on.len(), o.costs.len())) else {
+            return Err(CannotLean::NothingLeftToCompare);
+        };
         let mut because = vec![format!("it rests on the fewest unstated things: {}", best.rests_on.join("; "))];
         because.push(format!("what it costs you: {}", best.costs));
         if let Some(w) = &self.if_wrong {

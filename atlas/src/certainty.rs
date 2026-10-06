@@ -189,14 +189,16 @@ pub fn aged(
     }
     // The weakest thing an answer rests on decides it. Averaging would let
     // nine fresh notes hide one that is two years out of date.
-    let worst = basis
+    let Some(worst) = basis
         .iter()
         .min_by(|a, b| {
             a.weight(now)
                 .partial_cmp(&b.weight(now))
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
-        .expect("non-empty");
+    else {
+        return (level, None);
+    };
 
     match (level, worst.state(now)) {
         (Confidence::Withhold, _) => (Confidence::Withhold, None),

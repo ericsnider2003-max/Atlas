@@ -256,7 +256,7 @@ impl<'a> Daemon<'a> {
         hearing.learn_levels(&crate::leveller::remembered());
         let laptop_active = self.plat.built_in_screen_on().unwrap_or(true);
         let Some(p) = crate::hearing::pick_microphone(devices, &mut hearing, &tc, &w, laptop_active, t) else { return };
-        let _ = hearing.save_to(&store);
+        crate::kept!(hearing.save_to(&store));
         let (now_name, now_device) = crate::voice::microphone_now(&tc);
         if let Some(line) = microphone_change(&now_name, &now_device, &p) {
             crate::voice::set_microphone(&p.name, &p.device);
@@ -371,7 +371,7 @@ impl<'a> Daemon<'a> {
             // doesn't (29 Sep 2026: every pass counted, so the half-hour
             // keep-warm never ran out and the model held its memory all day).
             if a_turn {
-                let _ = self.helpers.want("model-server", 0, t, || Ok(None));
+                crate::heard!(self.helpers.want("model-server", 0, t, || Ok(None)));
                 self.helpers.done("model-server", t);
             }
             // Ours is the one answering: once it is let go, the next turn
@@ -1145,6 +1145,7 @@ impl<'a> Daemon<'a> {
             let words = crate::recall::measure(&lib, &questions, None, &rcfg, t);
             // Between the two passes: a pause holds here, and a stop ends it
             // before the slower meaning pass starts.
+            // unheard-ok: returns `bool`, not a Result
             let _ = c.checkpoint();
             if c.stopping() {
                 return Err("you asked me to stop".into());
@@ -1520,7 +1521,7 @@ impl<'a> Daemon<'a> {
         Some(top.answer(now))
     }
 
-    pub(super) fn from_notes(&self, question: &str, now: u64) -> Option<String> {
+    pub(super) fn answer_from_notes(&self, question: &str, now: u64) -> Option<String> {
         // The fact book first — it holds what you stated and what Atlas looked
         // up, and answers directly when it knows.
         if let Some(answer) = self.facts_answer(question, now) {
@@ -1660,6 +1661,7 @@ impl<'a> Daemon<'a> {
         if kept.starts_with("I couldn't keep") || kept.starts_with("no setting") {
             return kept;
         }
+        // unheard-ok: returns `Vec<String>`, not a Result
         let _ = self.pick_up_settings();
         self.follow_the_talk_setting();
         if better {

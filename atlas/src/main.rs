@@ -180,6 +180,7 @@ struct TrialGuard;
 /// came through the update courier, record it as installed (`update_apply`).
 fn settle_update(root: &std::path::Path) {
     if atlas::upgrade::trial_passed(root) {
+        // unheard-ok: returns `UpdateSettled`, not a Result
         let _ = atlas::update_apply::finish_after_start(&atlas::roots::store(), root, &atlas::upgrade::this_tag());
     }
 }
@@ -206,6 +207,7 @@ fn main() {
     // First, before anything is printed: join the terminal Atlas was typed
     // in, if it was (it's a windowed program on Windows, with no console of
     // its own). The answer is kept for the rest of `main`.
+    // unheard-ok: returns `bool`, not a Result
     let _ = atlas::firstlaunch::started_without_a_terminal();
     // Atlas writes UTF-8 (curly quotes, dashes). A Windows console left on
     // its old code page shows each of those as two or three junk characters
@@ -298,6 +300,7 @@ fn main() {
                     // fingerprint is worked out from the whole program file.
                     let store = atlas::roots::store();
                     if atlas::update_apply::pending(&store).is_some() {
+                        // unheard-ok: returns `UpdateSettled`, not a Result
                         let _ = atlas::update_apply::finish_after_start(&store, &root, &atlas::upgrade::this_tag());
                     }
                 }
@@ -1288,7 +1291,7 @@ fn main() {
         println!("atlas ready. type a command, 'help', or 'quit'.");
         loop {
             print!("> ");
-            let _ = io::stdout().flush();
+            atlas::heard!(io::stdout().flush());
             let mut line = String::new();
             // Nothing more to read (no keyboard: started by another program,
             // or its input closed) is the end, not an empty line: read as an
@@ -1344,6 +1347,6 @@ fn run_talk_bench(cfg: &atlas::config::Config, words: &[String]) -> i32 {
     let store = std::env::temp_dir().join(format!("atlas-talk-bench-{}", std::process::id()));
     let answers = atlas::talkbench::run(cfg, llm, &store);
     println!("{}", atlas::talkbench::report(&model.id, &answers));
-    let _ = std::fs::remove_dir_all(&store);
+    atlas::heard!(std::fs::remove_dir_all(&store));
     0
 }

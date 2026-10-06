@@ -151,6 +151,7 @@ fn fft(re: &mut [f32], im: &mut [f32]) {
 /// The windows the model is shown: 200 frames each, half overlapping, each
 /// with its own mean taken off. A clip under 200 frames is repeated up to
 /// 200 (under half a second isn't a voice to judge: `None`).
+#[cfg(any(feature = "onnx", test))]
 fn windows(frames: &[[f32; BINS]]) -> Option<Vec<Vec<f32>>> {
     if frames.len() < 50 {
         return None;
@@ -177,6 +178,7 @@ fn windows(frames: &[[f32; BINS]]) -> Option<Vec<Vec<f32>>> {
 }
 
 /// Unit length.
+#[cfg(any(feature = "onnx", test))]
 fn normalised(mut v: Vec<f32>) -> Vec<f32> {
     let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     if n > 0.0 {

@@ -140,7 +140,7 @@ pub fn reach_of(path: &str) -> Reach {
     let p = path.replace('\\', "/").to_lowercase();
     let file = p.rsplit('/').next().unwrap_or(&p);
 
-    if ITS_OWN_LIMITS.iter().any(|f| file == *f) {
+    if ITS_OWN_LIMITS.contains(&file) {
         return Reach::ItsOwnLimits;
     }
     // Anything that runs before, or instead of, the tests. A build script or
@@ -152,7 +152,7 @@ pub fn reach_of(path: &str) -> Reach {
     }
 
     if p.starts_with("tests/") || p.contains("/tests/") {
-        if ORDINARY_TESTS.iter().any(|f| file == *f) {
+        if ORDINARY_TESTS.contains(&file) {
             // Still shown to you: a test says what correct means, and that's
             // worth seeing even when it's an ordinary one.
             return Reach::WhatItTouches;
@@ -162,16 +162,12 @@ pub fn reach_of(path: &str) -> Reach {
 
     if ["system.rs", "workspace.rs", "publish.rs", "signin.rs", "vault.rs", "mail.rs",
         "browser.rs", "enrol.rs", "cdp.rs", "server.rs", "install.rs", "selfwork.rs",
-        "selfaudit.rs"]
-        .iter()
-        .any(|f| file == *f)
+        "selfaudit.rs"].contains(&file)
     {
         return Reach::WhatItTouches;
     }
 
-    if ["commands.yaml", "persona.rs", "plainchange.rs", "voiceover.rs", "language.rs"]
-        .iter()
-        .any(|f| file == *f)
+    if ["commands.yaml", "persona.rs", "plainchange.rs", "voiceover.rs", "language.rs"].contains(&file)
     {
         return Reach::WhatItSays;
     }

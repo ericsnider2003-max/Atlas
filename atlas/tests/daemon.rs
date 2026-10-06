@@ -808,3 +808,35 @@ fn a_rough_day_with_an_empty_list_offers_help_without_performing_concern() {
         "an empty backlog should give the quiet offer, got: {reply}"
     );
 }
+
+#[test]
+fn a_test_daemon_never_starts_a_mutation_sweep_of_the_checkout() {
+    // 5 Oct 2026: on a machine with cargo-mutants, every daemon a test built
+    // started a real `cargo mutants` over the checkout once its day had come
+    // round -- hours of builds, gigabytes in the temp folder, and the crew's
+    // slots gone from the work eight other tests were waiting on.
+    let (c, p) = (cfg(), plat());
+    let dir = tmp("no-sweep");
+    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let t = atlas::store::now() + 3 * 24 * 3600;
+    for i in 0..5 {
+        d.tick(t + i * 1000);
+    }
+    // A sweep records the day it ran before it hands the work to the crew;
+    // none was even begun.
+    let last: u64 = Store::new(&dir).load("mutation_sweep_at");
+    assert_eq!(last, 0, "a test daemon began a mutation sweep");
+}
+
+#[test]
+fn a_test_daemon_reads_the_mock_machine_for_room_not_the_real_one() {
+    // 6 Oct 2026: the crew's free memory came straight from the operating
+    // system, so on a laptop with 0.8 GB free (under the crew's 1 GB floor)
+    // every test that waits on the crew failed -- the work was correctly
+    // held, on a machine the test never meant to ask about.
+    let p = plat();
+    let room = (atlas::platform::Platform::crew_room(&p))();
+    let floor = atlas::crew::CrewConfig::default();
+    assert!(room.free_mb.is_some_and(|mb| mb > floor.keep_free_mb), "{room:?}");
+    assert!(!room.on_battery);
+}
