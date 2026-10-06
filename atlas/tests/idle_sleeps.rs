@@ -144,3 +144,34 @@ fn nothing_idle_polls_on_a_timer_any_more() {
         assert!(src.matches("park_timeout").count() >= 1 && src.contains(m), "{name}: the hold timer parks while the key is up");
     }
 }
+
+// Q8 mutation baseline (6 Oct 2026): `rung` could return 0 or 1 and
+// `wait_after` could always say "it rang" without a test noticing.
+
+#[test]
+fn ringing_moves_the_count() {
+    let before = atlas::doorbell::rung();
+    atlas::doorbell::ring();
+    assert!(atlas::doorbell::rung() > before, "the count is how a waiter knows there was news");
+}
+
+#[test]
+fn a_wait_that_nothing_rings_says_it_timed_out() {
+    // Other tests in this binary ring the bell, so one quiet window is looked
+    // for among many: a wait that always claims news never finds one.
+    let quiet = (0..500).any(|_| !atlas::doorbell::wait_after(atlas::doorbell::rung(), 2));
+    assert!(quiet, "a wait that ran out must say so, not report news that never came");
+}
+
+#[test]
+fn a_wait_longer_than_the_clock_can_hold_still_wakes_on_news() {
+    let seen = atlas::doorbell::rung();
+    let ringer = std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        atlas::doorbell::ring();
+    });
+    let started = std::time::Instant::now();
+    assert!(atlas::doorbell::wait_after(seen, u64::MAX), "news must end even an endless wait");
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    ringer.join().expect("ringer");
+}
