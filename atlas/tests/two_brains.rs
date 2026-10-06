@@ -592,7 +592,7 @@ fn every_background_call_site_asks_for_the_background_model() {
     // Research, the running summary, drafted mail, a decision, code drafts,
     // the council, a call's notes, keeping at a build: each takes
     // `background_llm`, not the talking model.
-    let src = |p: &str| std::fs::read_to_string(p).unwrap();
+    let src = |p: &str| crate::common::read_source_path(p).unwrap();
     for (file, fun) in [
         ("src/daemon/reading.rs", "fn research("),
         ("src/daemon/late.rs", "fn fold_if_due("),

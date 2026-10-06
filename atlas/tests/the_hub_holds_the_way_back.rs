@@ -324,7 +324,7 @@ fn passphrases_only_travel_on_this_machine_or_tailscale() {
     }
     // Wired where the address and the action meet: the check is in the
     // connection handler, before the action reaches Atlas.
-    let src = std::fs::read_to_string("src/server.rs").unwrap();
+    let src = with_split_children("src/server.rs");
     // Since 28 Sep 2026 every connection (threaded or polled) is read and
     // checked in `read_asked`, which hands the action on as `Asked`.
     let at = src.find("fn read_asked(").expect("read_asked");
@@ -569,9 +569,9 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
 
 #[test]
 fn nothing_the_hub_says_about_these_names_a_command() {
-    let src = std::fs::read_to_string("src/hublive.rs").unwrap();
+    let src = with_split_children("src/hublive.rs");
     assert!(!src.contains("`atlas household init"), "the Sync page still answers with a command");
-    let hub = std::fs::read_to_string("src/hub.rs").unwrap();
+    let hub = with_split_children("src/hub.rs");
     assert!(!hub.contains("<code>atlas household join</code>"), "the invite text still names a command");
     let page = sync_page_unplaced(true, "D:/atlas", None, None, None, "");
     assert!(!page.contains("atlas household"));
@@ -591,4 +591,26 @@ fn sync_page_unplaced(sealing: bool, folder: &str, phrase: Option<&str>, card: O
         this_device,
         &atlas::hub::SyncView { house: atlas::hub::HouseView::Unknown, suggested_folder: None },
     )
+}
+
+/// A source file and every child module split out beside it (`src/hub.rs`
+/// plus `src/hub/*.rs`, recursively): audit Q6 moved code into children
+/// without changing what the module is.
+fn with_split_children(path: &str) -> String {
+    fn walk(dir: &Path, out: &mut String) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for p in entries {
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                out.push('\n');
+                out.push_str(&std::fs::read_to_string(&p).unwrap());
+            }
+        }
+    }
+    let mut text = std::fs::read_to_string(path).unwrap();
+    walk(&Path::new(path).with_extension(""), &mut text);
+    text
 }
