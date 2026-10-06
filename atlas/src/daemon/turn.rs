@@ -235,6 +235,17 @@ impl<'a> Daemon<'a> {
             return String::new();
         }
 
+        // "I want you to be able to ...": a request for a new ability, kept
+        // (`requests`). First, as you said it: above everything that would
+        // act on a word inside it ("... send texts"), and above the phrase
+        // book and reference resolution, which rewrote the second wording of
+        // one into "be able to send texts ..." (5 Oct 2026).
+        if let Some(reply) = self.capability_request(said, t).or_else(|| self.what_broke_asked(said, t)) {
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
+
         // "Stop" while Atlas is working an app ends that job, there and then.
         if self.operating.is_some() {
             let l = said.to_lowercase();

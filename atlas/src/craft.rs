@@ -404,6 +404,38 @@ pub fn ladder(lang: Lang) -> Vec<Gate> {
     }
 }
 
+/// The command that makes a failing gate's own fixes, when the tool has one.
+///
+/// Compilers and linters already know the exact change for many of the
+/// things they report -- rustc and clippy mark those suggestions
+/// machine-applicable, ruff and clang-tidy have `--fix`. Atlas used to hand
+/// every one of them to a model to retype (5 Oct 2026). Now the tool makes
+/// its own fixes first, in the copy being built, and the gate is run again;
+/// only what's left goes to a model. No model, no service: the toolchain
+/// Atlas already downloads.
+///
+/// Only for checks whose fixes don't change what the program means: the
+/// type checker and the tests have none.
+pub fn autofix_for(gate: &Gate) -> Option<String> {
+    let c = gate.command.as_str();
+    if c.starts_with("cargo check") {
+        // `--broken-code`: keep what it fixed even when something it can't
+        // fix still stops the build -- the next model round then works from
+        // what's really left.
+        return Some("cargo fix --allow-dirty --allow-no-vcs --all-targets --broken-code".into());
+    }
+    if c.starts_with("cargo clippy") {
+        return Some("cargo clippy --fix --allow-dirty --allow-no-vcs --all-targets".into());
+    }
+    if let Some(rest) = c.strip_prefix("ruff check") {
+        return Some(format!("ruff check --fix{rest}"));
+    }
+    if let Some(rest) = c.strip_prefix("clang-tidy ") {
+        return Some(format!("clang-tidy --fix {rest}"));
+    }
+    None
+}
+
 /// The program a gate's command starts, when the gate couldn't start it
 /// because it isn't installed: `Sandbox::run` says "could not start <cmd>",
 /// and a shell says "not found" / "is not recognized".
@@ -645,4 +677,24 @@ pub fn lang_of_dir(dir: &std::path::Path) -> Option<Lang> {
         return Some(Lang::Cpp);
     }
     None
+}
+
+#[cfg(test)]
+mod the_toolchains_own_fixes {
+    use super::*;
+
+    #[test]
+    fn each_language_names_the_fixer_its_tool_already_has() {
+        let fix = |lang: Lang, tells: Tells| ladder(lang).into_iter().filter(|g| g.tells == tells).find_map(|g| autofix_for(&g));
+        assert!(fix(Lang::Rust, Tells::Sound).unwrap().starts_with("cargo fix"));
+        assert!(fix(Lang::Rust, Tells::Style).unwrap().starts_with("cargo clippy --fix"));
+        assert_eq!(fix(Lang::Python, Tells::Style).unwrap(), "ruff check --fix .");
+        assert!(fix(Lang::Cpp, Tells::Style).unwrap().starts_with("clang-tidy --fix "));
+        // The tests and the type checker have nothing to apply: never "fixed"
+        // by a tool, only by a change that's been reasoned about.
+        for lang in [Lang::Rust, Lang::Python, Lang::Go, Lang::JavaScript, Lang::TypeScript, Lang::Cpp] {
+            assert!(fix(lang, Tells::Behaviour).is_none(), "{lang:?}");
+        }
+        assert!(fix(Lang::Python, Tells::Sound).is_none(), "mypy has no fixer");
+    }
 }

@@ -228,6 +228,8 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "explain", what: "explain code in plain English — a recent build, a change waiting to be implemented, a file or a paste — at the depth you ask for, honest that it can't prove it's right", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["explain"] },
         Capability { id: "workshop", what: "keep a per-project queue of proposed changes you review and implement when ready", area: Files, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["workshop"] },
         Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when", "keeping"] },
+        Capability { id: "requests", what: "keep what you ask me to be able to do -- \"I want you to be able to ...\" -- in your words, say what I already do that looks like it, and read the list back; it's the queue work on me starts from", area: Itself, state: Untested, needs: None, offline: true, added: 46, runs: &[Needs::JustThinking], modules: &["requests"] },
+        Capability { id: "what_broke", what: "find the change that broke one of my tests -- \"what broke <test>\" runs it at older versions of me until it passes, then narrows it to the one change, and names the files it touched; no model", area: Itself, state: Untested, needs: Some("my source code on this computer, with its history"), offline: true, added: 46, runs: &[Needs::Background], modules: &["bisect"] },
         Capability { id: "weather", what: "say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account)", area: Time, state: Untested, needs: None, offline: false, added: 42, runs: &[Needs::JustThinking], modules: &["weather"] },
         // 23 Sep 2026, the GitHub ports: an .ics invite from anyone, "the last
         // Friday of every month", a repeat that can be written to a file.
@@ -1568,7 +1570,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // with webpush.
 // 4 Oct 2026: + `oauthlink` (one-click Google and Microsoft sign-in) = 479.
 // 5 Oct 2026: + `childjob` (Chat A, programs end with Atlas) = 481.
-pub const MODULES_IN_TREE: usize = 481;
+// 5 Oct 2026: + `requests` (Chat A, what you ask Atlas to be able to do).
+// 5 Oct 2026: + `bisect` (Chat A, what broke a test).
+pub const MODULES_IN_TREE: usize = 483;
 
 /// Every module no capability claims, and why it is not one.
 ///
