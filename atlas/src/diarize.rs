@@ -195,7 +195,7 @@ pub fn read_wav(bytes: &[u8]) -> Result<(Vec<i16>, u32), String> {
             let frames: Vec<i16> = body
                 .chunks_exact(2 * ch)
                 .map(|f| {
-                    let sum: i32 = f.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as i32).sum();
+                    let sum: i32 = f.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as i32).sum();
                     (sum / ch as i32) as i16
                 })
                 .collect();

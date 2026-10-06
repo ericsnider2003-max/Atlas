@@ -410,7 +410,7 @@ pub fn bring_up_to_date(exe: &Path, state_dir: &Path) -> Option<Result<String, S
     }
     let old = std::fs::read(task_file_path(exe)).ok()?;
     // UTF-16 with its mark, as `task_file_bytes` writes it.
-    let units: Vec<u16> = old.get(2..).unwrap_or(&[]).chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = old.get(2..).unwrap_or(&[]).as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
     let mode = needs_new_triggers(&String::from_utf16_lossy(&units))?;
     Some(turn_on(exe, mode))
 }

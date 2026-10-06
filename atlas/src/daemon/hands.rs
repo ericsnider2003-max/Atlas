@@ -660,7 +660,7 @@ impl<'a> Daemon<'a> {
         let mut taken_here = false;
         if matches!(what, Capture::Screen) && matches!(target, crate::probe::Target::Active) {
             if let Some((named, grab)) = self.screen_picture() {
-                let rgba: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+                let rgba: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
                 let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba { width: grab.width, height: grab.height, pixels: rgba });
                 if std::fs::write(&shot, png).is_ok() {
                     label = named;

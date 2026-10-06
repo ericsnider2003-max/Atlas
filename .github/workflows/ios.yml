@@ -93,8 +93,10 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          python3 -m pip install --quiet --break-system-packages pyjwt cryptography 2>/dev/null \
-            || python3 -m pip install --quiet pyjwt cryptography
+          # Pinned (audit Q20): this step holds the App Store key, so the code
+          # it runs is chosen, not whatever was newest that day.
+          python3 -m pip install --quiet --break-system-packages pyjwt==2.15.1 cryptography==50.0.2 2>/dev/null \
+            || python3 -m pip install --quiet pyjwt==2.15.1 cryptography==50.0.2
           # The phones Atlas collected (devices.txt), registered with Apple
           # first, so the profiles this build makes include them.
           ASC_KEY_PATH="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" python3 atlas/mobile/ios/register_devices.py atlas/mobile/ios/devices.txt

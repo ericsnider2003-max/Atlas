@@ -2,6 +2,8 @@
 name = "atlas"
 version = "0.1.0"
 edition = "2021"
+# Never published to crates.io (also lets `cargo deny` skip its own licence).
+publish = false
 # The integration suite links the crate once, through tests/all.rs, instead of
 # once per file (348 separate binaries was the slow part of a dev cycle). So the
 # test targets are declared by hand below rather than auto-discovered: a new

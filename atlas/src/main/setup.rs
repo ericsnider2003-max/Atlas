@@ -1830,7 +1830,7 @@ pub(super) fn run_call_check(args: &[String]) {
                     // Loudest moment, against a floor above hiss: about 3%.
                     let peak = std::fs::read(path)
                         .ok()
-                        .map(|b| b.get(44..).unwrap_or(&[]).chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs()).max().unwrap_or(0))
+                        .map(|b| b.get(44..).unwrap_or(&[]).as_chunks::<2>().0.iter().map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs()).max().unwrap_or(0))
                         .unwrap_or(0);
                     let peak = if peak > 1000 { 1 } else { 0 };
                     println!(

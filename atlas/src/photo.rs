@@ -417,7 +417,7 @@ pub fn stats(p: &Picture) -> Stats {
     let n = (p.rgb.len() / 3).max(1);
     let mut hist = [0u32; 256];
     let mut sum = [0f64; 3];
-    for px in p.rgb.chunks_exact(3) {
+    for px in p.rgb.as_chunks::<3>().0 {
         let y = (0.299 * px[0] as f32 + 0.587 * px[1] as f32 + 0.114 * px[2] as f32).round() as usize;
         hist[y.min(255)] += 1;
         for c in 0..3 {

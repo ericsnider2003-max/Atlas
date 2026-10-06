@@ -132,7 +132,7 @@ unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
     if lines == 0 {
         return None;
     }
-    let rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+    let rgb: Vec<u8> = bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
     Some((w as u32, h as u32, rgb))
 }
 
@@ -890,7 +890,7 @@ impl Platform for WindowsPlatform {
         // with the language. None when it can't be made.
         let run = || -> windows::core::Result<String> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
-            let bgra: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let bgra: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
             let writer = DataWriter::new()?;
             writer.WriteBytes(&bgra)?;
             let buffer = writer.DetachBuffer()?;
@@ -915,7 +915,7 @@ impl Platform for WindowsPlatform {
         use windows::Storage::Streams::DataWriter;
         let run = || -> windows::core::Result<Vec<(String, super::PixelRect)>> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
-            let bgra: Vec<u8> = grab.rgb.chunks_exact(3).flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let bgra: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
             let writer = DataWriter::new()?;
             writer.WriteBytes(&bgra)?;
             let buffer = writer.DetachBuffer()?;
