@@ -114,6 +114,24 @@ pub fn asks_for_an_ability(said: &str) -> Option<String> {
     }
     // "Give yourself the ability to …", "add the capability to …".
     const LEADS: &[&str] = &[
+        // The way it's most often said (5 Oct 2026: "I need the ability to
+        // tell Atlas what I want" -- and "I want you to be able to ..."
+        // reached nothing here).
+        "i want you to be able to ",
+        "i'd like you to be able to ",
+        "i would like you to be able to ",
+        "i need you to be able to ",
+        "i want atlas to be able to ",
+        "i need atlas to be able to ",
+        "you should be able to ",
+        "can you learn to ",
+        "can you learn how to ",
+        "add a capability that ",
+        "add a capability for ",
+        "add a new capability that ",
+        "add a new capability to ",
+        "add a new ability to ",
+        "new capability ",
         "give yourself the ability to ",
         "give yourself the capability to ",
         "give yourself the ability ",
@@ -138,6 +156,10 @@ pub fn asks_for_an_ability(said: &str) -> Option<String> {
                 let rest = t[i + lead.len()..].trim();
                 // "learn how to" is everyday English; only about Atlas itself.
                 if lead.starts_with("learn") && !t.contains("yourself") && !t.contains("your own") {
+                    continue;
+                }
+                // "Can you learn to ..." with nothing much after it.
+                if lead.starts_with("can you") && rest_words(&t[i + lead.len()..]) < 2 {
                     continue;
                 }
                 // "Add a feature to my app" is work on your code, not a new
@@ -184,6 +206,65 @@ pub fn asks_for_an_ability(said: &str) -> Option<String> {
     None
 }
 
+fn rest_words(s: &str) -> usize {
+    s.split_whitespace().count()
+}
+
+const STOP: &[&str] = &[
+    "about", "after", "again", "also", "being", "could", "every", "from", "have", "into", "just", "like", "make", "more", "need", "only",
+    "should", "some", "than", "that", "them", "then", "there", "these", "they", "thing", "things", "this", "what", "when", "where", "which",
+    "while", "with", "would", "your", "able", "want", "atlas", "yourself",
+];
+
+/// The words that carry meaning: four letters or more, not filler.
+fn meaning_words(s: &str) -> Vec<String> {
+    let mut v: Vec<String> = s
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 4 && !STOP.contains(w))
+        .map(|w| w.trim_end_matches('s').to_string())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// What Atlas already does that shares at least two meaningful words with
+/// a request, best first, at most three (5 Oct 2026). Words, not meaning:
+/// it says "this looks like" and leaves the deciding to you.
+pub fn already_close(what: &str, catalogue: &[crate::capability::Capability]) -> Vec<(String, String)> {
+    let want = meaning_words(what);
+    let mut scored: Vec<(usize, &crate::capability::Capability)> = catalogue
+        .iter()
+        .map(|c| {
+            let has = meaning_words(c.what);
+            (want.iter().filter(|w| has.contains(*w)).count(), c)
+        })
+        .filter(|(n, _)| *n >= 2)
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.into_iter().take(3).map(|(_, c)| (c.id.to_string(), c.what.to_string())).collect()
+}
+
+/// The Improvements page's "Asked for" section: every ability asked for,
+/// newest first, and where it stands.
+pub fn section(w: &WantedAbilities) -> String {
+    let esc = crate::hub::esc;
+    let mut rows = String::new();
+    for x in w.items.iter().rev().take(30) {
+        let s = match x.state {
+            State::Asked => "waiting on your yes",
+            State::Approved => "approved -- on the build list",
+            State::Declined => "declined",
+        };
+        rows.push_str(&format!("<li>{} -- <i>{s}</i></li>", esc(&x.what)));
+    }
+    if rows.is_empty() {
+        rows.push_str("<li>Nothing yet. Say \"I want you to be able to read my texts out loud\" -- or whatever you'd like -- and it's kept here.</li>");
+    }
+    format!("<section><h2>Asked for</h2><p>New abilities you've asked me for, in your words. Say \"approve that ability\" for the newest.</p><ul>{rows}</ul></section>")
+}
+
 /// "Yes, build that ability", "approve that ability", "no, not that ability".
 pub fn answer(said: &str) -> Option<State> {
     let t = plain(said);
@@ -211,12 +292,24 @@ pub fn asks_for_the_list(said: &str) -> bool {
 }
 
 /// What Atlas says when it writes a request down.
-pub fn noted(what: &str) -> String {
+fn noted(what: &str) -> String {
     format!(
         "I can't switch on a new ability by myself -- new abilities wait for your yes -- but I've written it \
          down as a request: \"{what}\". Say \"approve that ability\" and it goes on the build list; \
          \"what abilities have I asked for\" lists them."
     )
+}
+
+/// `noted`, with what Atlas already does that looks like it (5 Oct 2026).
+pub fn noted_beside(what: &str, close: &[(String, String)]) -> String {
+    match close.first() {
+        None => noted(what),
+        Some((id, does)) => format!(
+            "{} One thing: I already {} ({id}). If that's what you meant, say \"no, not that ability\" and tell me what it gets wrong instead.",
+            noted(what),
+            does.split(" -- ").next().unwrap_or(does)
+        ),
+    }
 }
 
 /// The truth when the model says it can't gain abilities (`backed`).
@@ -238,6 +331,28 @@ mod tests {
             Some("watch me for five minutes".into())
         );
         assert_eq!(asks_for_an_ability("add the capability to read my texts aloud").as_deref(), Some("read my texts aloud"));
+    }
+
+    #[test]
+    fn the_way_it_is_most_often_said_is_heard() {
+        assert_eq!(asks_for_an_ability("I want you to be able to send texts from my phone").as_deref(), Some("send texts from my phone"));
+        assert_eq!(asks_for_an_ability("Ok Atlas, I'd like you to be able to edit my videos.").as_deref(), Some("edit my videos"));
+        assert_eq!(asks_for_an_ability("add a capability that tracks my sleep").as_deref(), Some("tracks my sleep"));
+        assert_eq!(asks_for_an_ability("can you learn how to read my calendar?").as_deref(), Some("read my calendar"));
+        assert_eq!(asks_for_an_ability("can you learn to?"), None);
+        assert_eq!(asks_for_an_ability("I want to go to bed"), None);
+    }
+
+    #[test]
+    fn what_atlas_already_does_is_named_and_the_list_is_on_the_page() {
+        let all = crate::capability::all();
+        let close = already_close("check the weather forecast for tomorrow in another town", &all);
+        assert!(close.iter().any(|(id, _)| id == "weather"), "{close:?}");
+        assert!(already_close("juggle flaming torches", &all).is_empty());
+        assert!(noted_beside("say the weather", &close).contains("(weather)"));
+        let mut w = WantedAbilities::default();
+        w.ask("juggle flaming torches", 1);
+        assert!(section(&w).contains("juggle flaming torches") && section(&w).contains("waiting on your yes"));
     }
 
     #[test]

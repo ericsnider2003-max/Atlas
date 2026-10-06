@@ -228,6 +228,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "explain", what: "explain code in plain English — a recent build, a change waiting to be implemented, a file or a paste — at the depth you ask for, honest that it can't prove it's right", area: Thinking, state: Untested, needs: Some("a model to draft with"), offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["explain"] },
         Capability { id: "workshop", what: "keep a per-project queue of proposed changes you review and implement when ready", area: Files, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["workshop"] },
         Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when", "keeping"] },
+        Capability { id: "bisect", what: "find the change that broke one of my tests -- \"what broke <test>\" runs it at older versions of me until it passes, then narrows it to the one change, and names the files it touched; no model", area: Itself, state: Untested, needs: Some("my source code on this computer, with its history"), offline: true, added: 46, runs: &[Needs::Background], modules: &["bisect"] },
         Capability { id: "weather", what: "say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account)", area: Time, state: Untested, needs: None, offline: false, added: 42, runs: &[Needs::JustThinking], modules: &["weather"] },
         // 23 Sep 2026, the GitHub ports: an .ics invite from anyone, "the last
         // Friday of every month", a repeat that can be written to a file.
@@ -346,7 +347,7 @@ pub fn all() -> Vec<Capability> {
         // 2 Oct 2026, "Atlas doesn't really understand me".
         Capability { id: "phrasebook", what: "learn the words you use for things from being corrected -- \"no, I meant open Spotify\" -- and do what you meant next time without guessing; \"what have you learned about how I talk\" lists them and \"forget that phrase\" drops one", area: Thinking, state: Untested, needs: None, offline: true, added: 45, runs: &[Needs::JustThinking], modules: &["phrasebook"] },
         Capability { id: "misses", what: "keep a list of what it got wrong -- not understood, asked back, corrected, undone or misheard -- and read the week's back with how well it's been hearing you (\"what did you misunderstand this week\"); a mishearing you correct twice is put right from then on", area: Itself, state: Untested, needs: None, offline: true, added: 45, runs: &[Needs::JustThinking], modules: &["misses"] },
-        Capability { id: "growth", what: "take down a new ability you ask me for, and keep it for your yes", area: Itself, state: Working, needs: None, offline: true, added: 44, runs: &[Needs::Files], modules: &["growth"] },
+        Capability { id: "growth", what: "take down a new ability you ask me for -- \"I want you to be able to ...\" -- say what I already do that looks like it, keep it for your yes, and list it on the Improvements page", area: Itself, state: Working, needs: None, offline: true, added: 44, runs: &[Needs::Files], modules: &["growth"] },
         Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
         Capability { id: "recovery", what: "get you back in when you've lost the way in", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files], modules: &["recovery", "codes"] },
@@ -1573,9 +1574,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 4 Oct 2026: + `oauthlink` (one-click Google and Microsoft sign-in) = 479.
 // 5 Oct 2026: + `childjob` (Chat A, programs end with Atlas) and `unheard`
 // (Chat C, failures nobody was waiting for) = 482.
+// 5 Oct 2026: + `bisect` (Chat A, what broke a test) = 483.
 // 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
-// ("think hard about": several tries, the best of them) = 484.
-pub const MODULES_IN_TREE: usize = 484;
+// ("think hard about": several tries, the best of them) = 485.
+pub const MODULES_IN_TREE: usize = 485;
 
 /// Every module no capability claims, and why it is not one.
 ///
