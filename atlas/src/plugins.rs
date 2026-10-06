@@ -525,6 +525,7 @@ impl Plugin {
 }
 
 /// What reading the file found, before your decision is consulted.
+#[allow(clippy::large_enum_variant, reason = "one short-lived value per plugin read; boxing buys nothing")]
 enum Read {
     Ok(Checked, String),
     Off(Status, String),

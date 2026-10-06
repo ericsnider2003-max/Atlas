@@ -111,14 +111,16 @@ unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
     let bmp = CreateCompatibleBitmap(screen, w, h);
     let old = SelectObject(mem, bmp);
     let copied = BitBlt(mem, 0, 0, w, h, screen, r.left, r.top, SRCCOPY | CAPTUREBLT).is_ok();
-    let mut info = BITMAPINFO::default();
-    info.bmiHeader = BITMAPINFOHEADER {
-        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-        biWidth: w,
-        biHeight: -h, // top row first
-        biPlanes: 1,
-        biBitCount: 32,
-        biCompression: BI_RGB.0,
+    let mut info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h, // top row first
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut bgra = vec![0u8; (w as usize) * (h as usize) * 4];
@@ -227,7 +229,7 @@ impl Platform for WindowsPlatform {
 
     fn active_window_id(&self) -> Result<Option<WindowId>> {
         let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
-        Ok((!hwnd.0.is_null()).then(|| WindowId(hwnd.0 as u64)))
+        Ok((!hwnd.0.is_null()).then_some(WindowId(hwnd.0 as u64)))
     }
 
     // --- The pointer (1 Oct 2026). None of these were built on Windows: the
@@ -636,7 +638,7 @@ impl Platform for WindowsPlatform {
                 return None;
             }
             let h = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            (!h.0.is_null()).then(|| h.0 as usize as u32)
+            (!h.0.is_null()).then_some(h.0 as usize as u32)
         }
     }
 
@@ -670,12 +672,14 @@ impl Platform for WindowsPlatform {
                         || t == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED
                 })
                 .filter_map(|p| {
-                    let mut src = DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
-                    src.header = DISPLAYCONFIG_DEVICE_INFO_HEADER {
-                        r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
-                        size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
-                        adapterId: p.sourceInfo.adapterId,
-                        id: p.sourceInfo.id,
+                    let mut src = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
+                        header: DISPLAYCONFIG_DEVICE_INFO_HEADER {
+                            r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+                            size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
+                            adapterId: p.sourceInfo.adapterId,
+                            id: p.sourceInfo.id,
+                        },
+                        ..Default::default()
                     };
                     if DisplayConfigGetDeviceInfo(&mut src.header) != 0 {
                         return None;

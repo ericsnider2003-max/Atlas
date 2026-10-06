@@ -15,6 +15,7 @@
 //! "you only" or "everyone" — with nothing behind it that could tell one
 //! voice from another. With the encoder Atlas already uses for voice-lock,
 //! a recording becomes "You: … / Speaker 2: …", and "you only" can mean it.
+#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
 
 /// Average-linkage clustering. Returns a cluster number per embedding,
 /// numbered in order of first appearance.

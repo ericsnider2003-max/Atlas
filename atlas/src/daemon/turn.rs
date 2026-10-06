@@ -1198,7 +1198,7 @@ impl<'a> Daemon<'a> {
                     // question forever. A note lookup is the one thing that
                     // can genuinely answer it; short of that, say so plainly
                     // rather than loop.
-                    Some(_) => self.from_notes(&original, t).unwrap_or_else(|| {
+                    Some(_) => self.answer_from_notes(&original, t).unwrap_or_else(|| {
                         "I don't have anything specific on that, but go ahead and tell me more."
                             .into()
                     }),
@@ -1386,7 +1386,7 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.remind_help(raw, t))
             .or_else(|| self.spot_opportunity(raw))
             .or_else(|| self.learn_stated(raw))
-            .or_else(|| self.from_notes(raw, t))
+            .or_else(|| self.answer_from_notes(raw, t))
             .or_else(|| self.ways_in_help(raw))
             .or_else(|| self.decision_help(raw))
             .or_else(|| self.knew_once_help(raw))

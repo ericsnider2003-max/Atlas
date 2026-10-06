@@ -2244,8 +2244,7 @@ fn chat_call_io(
     loop {
         // Move what has arrived into the body, undoing chunking.
         if chunked {
-            loop {
-                let Some(eol) = pending.windows(2).position(|w| w == b"\r\n") else { break };
+            while let Some(eol) = pending.windows(2).position(|w| w == b"\r\n") {
                 let size_txt = String::from_utf8_lossy(&pending[..eol]).to_string();
                 let Ok(n) = usize::from_str_radix(size_txt.trim().split(';').next().unwrap_or("").trim(), 16) else {
                     eof = true;
@@ -2267,8 +2266,7 @@ fn chat_call_io(
         // Whole lines (an `if` around a `loop`: it was `while status == 200`,
         // which clippy rightly flags -- `status` never changes in the loop).
         if status == 200 {
-            loop {
-                let Some(nl) = body_bytes.iter().position(|b| *b == b'\n') else { break };
+            while let Some(nl) = body_bytes.iter().position(|b| *b == b'\n') {
                 let line: Vec<u8> = body_bytes.drain(..=nl).collect();
                 let line = String::from_utf8_lossy(&line).to_string();
                 if let Some(piece) = stream.line(&line) {

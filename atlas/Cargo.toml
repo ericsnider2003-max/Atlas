@@ -103,6 +103,23 @@ libloading = "0.8"
 llama-cpp-2 = { version = "=0.1.157", default-features = false, optional = true }
 encoding_rs = { version = "0.8", optional = true }
 
+# The lint gate (5 Oct 2026, audit Q4). CI runs `cargo clippy --lib -- -D warnings`,
+# so a new warning fails the merge rather than joining a pile (it was 332).
+[lints.rust]
+# An ignored Result is a compile error: discard one with `let _ =` and a
+# reason the guard test accepts, or through `kept!`/`heard!` (audit Q1).
+unused_must_use = "deny"
+
+[lints.clippy]
+# No panics on a production path (audit Q2). Tests may unwrap (clippy.toml);
+# a truly infallible call says why with `#[allow(.., reason = "..")]`.
+unwrap_used = "deny"
+expect_used = "deny"
+# Judgement calls, not defects: a long signature or a nested type is
+# sometimes the plain form. Revisit as the big files are split (audit Q6).
+type_complexity = "allow"
+too_many_arguments = "allow"
+
 [dev-dependencies]
 serde_yaml = "0.9"
 # Used by twelve assertions across tests/joined.rs and tests/brain_and_wake.rs.

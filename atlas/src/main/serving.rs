@@ -716,11 +716,11 @@ pub(super) fn fake_monitors() -> Vec<Monitor> {
     ]
 }
 
-/// The hub, and nothing else.
-///
-/// Deliberately the smallest possible amount of Atlas: bind the loopback
-/// listener, serve pages, apply setting changes. If this can't start, nothing
-/// else was going to either, and it says why.
+// The hub, and nothing else.
+//
+// Deliberately the smallest possible amount of Atlas: bind the loopback
+// listener, serve pages, apply setting changes. If this can't start, nothing
+// else was going to either, and it says why.
 
 /// What each dashboard card has to show in settings-only mode.
 ///

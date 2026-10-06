@@ -1521,7 +1521,7 @@ impl<'a> Daemon<'a> {
         Some(top.answer(now))
     }
 
-    pub(super) fn from_notes(&self, question: &str, now: u64) -> Option<String> {
+    pub(super) fn answer_from_notes(&self, question: &str, now: u64) -> Option<String> {
         // The fact book first — it holds what you stated and what Atlas looked
         // up, and answers directly when it knows.
         if let Some(answer) = self.facts_answer(question, now) {

@@ -228,6 +228,7 @@ pub fn listen() {
         // Windows gives roughly five seconds before killing the process
         // regardless, which is ample for a persist and a lock release but is
         // the reason the shutdown does the important things first.
+        #[allow(clippy::upper_case_acronyms, reason = "the Win32 type, by its Win32 name")]
         type BOOL = i32;
         const TRUE: BOOL = 1;
         unsafe extern "system" {

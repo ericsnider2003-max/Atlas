@@ -825,7 +825,7 @@ impl<'a> Daemon<'a> {
     }
 
     fn on_ask_plain(&mut self, q: &str) -> String {
-        match self.from_notes(q, crate::store::now()) {
+        match self.answer_from_notes(q, crate::store::now()) {
         // Came out of the library, so it is grounded and says so.
         Some(answer) => {
             self.hedge(&answer, crate::certainty::Grounding::from_what_it_holds())
@@ -2836,7 +2836,7 @@ impl<'a> Daemon<'a> {
     fn on_unknown(&mut self, raw: &str) -> String {
         match self.known_procedure(raw) {
         Some(how) => how,
-        None => match self.from_notes(raw, crate::store::now()) {
+        None => match self.answer_from_notes(raw, crate::store::now()) {
             Some(answer) => answer,
             // A question Atlas has no way to answer here is said to
             // be one, rather than "I didn't catch that" -- which tells

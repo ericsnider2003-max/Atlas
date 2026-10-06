@@ -343,6 +343,7 @@ impl Session {
     /// second (the hands, 2 Oct 2026): ONNX Runtime's default is a thread
     /// per core spinning while it waits, which is the fan noise this was
     /// moved to the NPU to stop.
+    #[allow(clippy::result_large_err, reason = "the ONNX runtime's own error type; built once at start-up")]
     pub fn open_with(root: &Path, model: &Path, shapes: &[(String, Vec<i64>)], want: Where, quiet: bool) -> Result<Session, String> {
         let e = engine(root)?;
         let mut b = ort::session::Session::builder().map_err(|e| e.to_string())?;

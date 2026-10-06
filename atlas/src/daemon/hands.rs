@@ -2184,10 +2184,9 @@ impl Daemon<'_> {
     /// Keep what the background just said for an app to show (`said_for_apps`),
     /// numbered so the app shows each once.
     pub fn keep_said_for_apps(&mut self, lines: Vec<String>) {
-        let mut next = self.said_for_apps.last().map(|(n, _)| n + 1).unwrap_or(1);
-        for l in lines.into_iter().filter(|l| !l.trim().is_empty()) {
+        let first = self.said_for_apps.last().map(|(n, _)| n + 1).unwrap_or(1);
+        for (next, l) in (first..).zip(lines.into_iter().filter(|l| !l.trim().is_empty())) {
             self.said_for_apps.push((next, l));
-            next += 1;
         }
         let over = self.said_for_apps.len().saturating_sub(SAID_FOR_APPS_KEPT);
         self.said_for_apps.drain(..over);

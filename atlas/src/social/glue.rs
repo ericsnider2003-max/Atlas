@@ -595,13 +595,12 @@ impl Daemon<'_> {
         let asked = label.ends_with("-asked") || matches!(label, "social-read" | "social-summary" | "social-google" | "social-tiktok");
         let body = match ending {
             Ending::Done(Ok(b)) => b.clone(),
-            Ending::Done(Err(e)) => return Some(match label {
+            Ending::Done(Err(e)) => return asked.then_some(match label {
                 "social-read" => format!("I couldn't read that page: {e}"),
                 "social-google" => format!("The Google sign-in didn't finish: {e}"),
                 "social-tiktok" => format!("The TikTok sign-in didn't finish: {e}"),
                 _ => format!("That didn't work: {e}"),
-            })
-            .filter(|_| asked),
+            }),
             Ending::Stopped => return asked.then(|| "Stopped.".into()),
             Ending::Vanished => return asked.then(|| "That stopped without finishing. Ask me again.".into()),
         };

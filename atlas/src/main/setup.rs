@@ -1170,9 +1170,9 @@ pub(super) fn run_backends(args: &[String]) {
     }
 }
 
-/// Which Atlas this is, and which of your own devices belong to it. See
-/// `household.rs`'s own doc: two installs know nothing about each other
-/// unless the same person paired them, device to device, with a code.
+// Which Atlas this is, and which of your own devices belong to it. See
+// `household.rs`'s own doc: two installs know nothing about each other
+// unless the same person paired them, device to device, with a code.
 
 /// `atlas wireguard` — your own server, reached over WireGuard, fenced so
 /// your devices reach its model server and nothing else.
@@ -1532,7 +1532,7 @@ pub(super) fn run_get(which: Option<&str>) {
         println!("  [get ] {} ({} MB)...", piece.name, piece.megabytes());
         let last = std::cell::Cell::new(0u64);
         let report = |done: u64, total: u64| {
-            let pct = if total == 0 { 0 } else { done * 100 / total };
+            let pct = (done * 100).checked_div(total).unwrap_or(0);
             if pct >= last.get() + 10 {
                 last.set(pct - pct % 10);
                 println!("         {pct}%");
@@ -1733,7 +1733,7 @@ fn describe_plugin(p: &atlas::plugins::Plugin) {
     for t in &p.trouble {
         println!("  note: {t}");
     }
-    println!("  file fingerprint {}", &p.sha256.get(..16).unwrap_or(""));
+    println!("  file fingerprint {}", p.sha256.get(..16).unwrap_or(""));
 }
 
 /// `atlas edits` -- your own edits to the shipped config files, which Atlas

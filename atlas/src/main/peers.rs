@@ -40,7 +40,7 @@ pub(super) fn run_invite(cfg: &Config) {
     // step succeeded.
     let port = flag_value("--port")
         .and_then(|p| p.parse().ok())
-        .unwrap_or_else(|| listening_port(&cfg));
+        .unwrap_or_else(|| listening_port(cfg));
 
     let dir = pairings_dir();
     let mut pairings = Pairings::load(&dir);
@@ -109,7 +109,7 @@ pub(super) fn run_accept(cfg: &Config) {
     // step succeeded.
     let port = flag_value("--port")
         .and_then(|p| p.parse().ok())
-        .unwrap_or_else(|| listening_port(&cfg));
+        .unwrap_or_else(|| listening_port(cfg));
 
     if first_time && (my_name.is_none() || my_host.is_none()) {
         println!(
@@ -301,10 +301,7 @@ pub(super) fn run_share(args: &[String]) {
             // its own, and making you type something as well would just get
             // you "here" every time.
             let note = if what.trim().is_empty() {
-                format!(
-                    "{}",
-                    path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
-                )
+                path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default().to_string()
             } else {
                 what.clone()
             };

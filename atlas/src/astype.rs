@@ -48,6 +48,7 @@
 //!   that becomes a correction Atlas makes, provided the two are close
 //!   spellings of each other. One of your fixes is never enough, and learned
 //!   corrections fade like everything else.
+#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

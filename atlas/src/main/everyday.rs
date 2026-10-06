@@ -331,7 +331,7 @@ pub(super) fn run_clients(args: &[String]) {
             }
             _ => println!("atlas clients add <address> [name]"),
         },
-        Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
+        Some("import") => match args.get(1).map(std::fs::read_to_string) {
             Some(Ok(text)) => match list.import_vcf(&text, now) {
                 Ok((added, skipped, notes)) => {
                     keep(list.save(&store), "your clients");
@@ -690,7 +690,7 @@ pub(super) fn run_calendar(args: &[String]) {
         }
     }
     match args.first().map(|s| s.to_lowercase()).as_deref() {
-        Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
+        Some("import") => match args.get(1).map(std::fs::read_to_string) {
             Some(Ok(text)) => match cal.import_ics(&text, now, &zone) {
                 Ok((n, unknown)) => {
                     keep(cal.save(&store), "your calendar");
@@ -1036,7 +1036,6 @@ pub(super) fn run_household(args: &[String]) {
                                 now,
                                 atlas::sync::HANDOFF_WAIT_SECS,
                             )
-                            .map_err(|e| e)
                         }) {
                             Ok(_) => println!(
                                 "\nI've left the key for it in your sync folder, sealed under \
@@ -1075,61 +1074,64 @@ pub(super) fn run_household(args: &[String]) {
                 code,
                 atlas::store::now(),
             );
-            if let Ok(inside) = short {
-                if mine.is_set() && mine.id != inside.for_household {
-                    println!(
-                        "This device already belongs to {} -- joining {} would mean two \
-                         households on one machine, which this file exists to prevent.",
-                        mine.name, inside.name
-                    );
-                    return;
-                }
-                if device.trim().is_empty() {
-                    println!("atlas household join <code> <this device's name>");
-                    return;
-                }
-                let joined = atlas::household::Household {
-                    id: inside.for_household.clone(),
-                    name: inside.name.clone(),
-                    made_at: atlas::store::now(),
-                    devices: vec![device.trim().to_string()],
-                };
-                match joined.save(&store) {
-                    Ok(()) => println!("Joined. This device now belongs to {}.", joined.name),
-                    Err(e) => {
-                        println!("Couldn't save that: {e}");
+            let short_failed = match short {
+                Err(why) => why,
+                Ok(inside) => {
+                    if mine.is_set() && mine.id != inside.for_household {
+                        println!(
+                            "This device already belongs to {} -- joining {} would mean two \
+                             households on one machine, which this file exists to prevent.",
+                            mine.name, inside.name
+                        );
                         return;
                     }
-                }
-                match inside.key_phrase {
-                    Some(phrase) => {
-                        let keeping =
-                            atlas::sync::KeptKey::keeping(&phrase, atlas::store::now());
-                        match store.save(atlas::sync::KEY_FILE, &keeping) {
-                            Ok(()) => {
-                                println!(
-                                    "The household key came with it, so sealed bundles from \
-                                     your other machine open here."
-                                );
-                                if let Ok(card) = atlas::sync::write_card(&phrase) {
-                                    println!("Written down in {}.", card.display());
-                                }
-                            }
-                            Err(e) => println!("I got the key and couldn't keep it: {e}"),
+                    if device.trim().is_empty() {
+                        println!("atlas household join <code> <this device's name>");
+                        return;
+                    }
+                    let joined = atlas::household::Household {
+                        id: inside.for_household.clone(),
+                        name: inside.name.clone(),
+                        made_at: atlas::store::now(),
+                        devices: vec![device.trim().to_string()],
+                    };
+                    match joined.save(&store) {
+                        Ok(()) => println!("Joined. This device now belongs to {}.", joined.name),
+                        Err(e) => {
+                            println!("Couldn't save that: {e}");
+                            return;
                         }
                     }
-                    None => println!(
-                        "(No household key came with it -- the other machine isn't sealing \
-                         what it carries.)"
-                    ),
+                    match inside.key_phrase {
+                        Some(phrase) => {
+                            let keeping =
+                                atlas::sync::KeptKey::keeping(&phrase, atlas::store::now());
+                            match store.save(atlas::sync::KEY_FILE, &keeping) {
+                                Ok(()) => {
+                                    println!(
+                                        "The household key came with it, so sealed bundles from \
+                                         your other machine open here."
+                                    );
+                                    if let Ok(card) = atlas::sync::write_card(&phrase) {
+                                        println!("Written down in {}.", card.display());
+                                    }
+                                }
+                                Err(e) => println!("I got the key and couldn't keep it: {e}"),
+                            }
+                        }
+                        None => println!(
+                            "(No household key came with it -- the other machine isn't sealing \
+                             what it carries.)"
+                        ),
+                    }
+                    return;
                 }
-                return;
-            }
+            };
 
             let Some((their_id, their_name, pairing)) = atlas::household::decode_pairing(code) else {
                 // The short path's reason is the useful one here: a mistyped
                 // ten-character code is far more likely than a mangled block.
-                println!("{}", short.unwrap_err());
+                println!("{short_failed}");
                 return;
             };
             let meeting = atlas::household::meets(

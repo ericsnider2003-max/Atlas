@@ -326,13 +326,10 @@ impl<'a> Daemon<'a> {
         if self.handover().stance.handed_over() || !crate::phrasebook::learnable_action(intent) {
             return None;
         }
-        let (tool, arg) = match crate::phrasebook::intent_as_tool(intent, meant) {
-            Some(pair) => pair,
-            // Not one command and one argument: kept as the words, which the
-            // phrases read the same way again -- or, when they don't, only as
-            // a hint for the model.
-            None => (String::new(), String::new()),
-        };
+        // Not one command and one argument: kept as the words, which the
+        // phrases read the same way again -- or, when they don't, only as a
+        // hint for the model (an empty tool and argument).
+        let (tool, arg) = crate::phrasebook::intent_as_tool(intent, meant).unwrap_or_default();
         let meaning = self.meaning_route.as_ref().and_then(|m| m.text(wording)).unwrap_or_default();
         let phrase = crate::phrasebook::Phrase {
             wording: wording.trim().to_string(),

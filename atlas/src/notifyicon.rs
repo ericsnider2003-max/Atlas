@@ -398,7 +398,7 @@ mod win {
     unsafe fn mark() -> HICON {
         let loaded = LoadImageW(
             instance(),
-            PCWSTR(1 as *const u16),
+            PCWSTR(std::ptr::dangling::<u16>()),
             IMAGE_ICON,
             GetSystemMetrics(SM_CXSMICON),
             GetSystemMetrics(SM_CYSMICON),

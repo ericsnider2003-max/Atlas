@@ -787,7 +787,6 @@ impl<'a> Daemon<'a> {
             // Never prepare anything while you're mid-task; anticipation that
             // makes the laptop stutter is worse than none.
             can_afford_work: signals.idle_secs > 30 && !signals.in_conversation,
-            ..Default::default()
         };
         for rule in self.anticipator.due(&moment, t) {
             let lane = lane_for(&rule.command);

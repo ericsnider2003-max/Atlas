@@ -72,7 +72,7 @@ impl Reading {
         let cpu_total: u64 = self.cpu_parts.iter().map(|p| p.1).sum::<u64>().max(1);
         let cpu: Vec<String> = self.cpu_parts.iter().take(3).map(|(n, us)| format!("{n} {}%", us * 100 / cpu_total)).collect();
         let loop_ms = self.cpu_parts.iter().map(|p| p.1).sum::<u64>() / 1000;
-        let loop_share = if self.process_ms > 0 { (loop_ms * 100 / self.process_ms).min(100) } else { 0 };
+        let loop_share = (loop_ms * 100).checked_div(self.process_ms).map_or(0, |s| s.min(100));
         format!(
             "{:.1}% of one core over {} min{}; the main loop {}% of that, its CPU: {}; its time: {}",
             self.percent,

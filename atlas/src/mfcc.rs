@@ -10,6 +10,7 @@
 //! Written here rather than taken from a crate so the speaker check
 //! (`speaker`), the wake word (`wakeword`) and room calibration all share one
 //! front end that nothing outside the tree can change underneath them.
+#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
 
 /// Coefficients kept per frame, c1..c19 (c0 is loudness, dropped).
 pub const CEPS: usize = 19;

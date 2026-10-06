@@ -497,9 +497,8 @@ fn dechunk(src: &[u8]) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(src.len());
     let mut i = 0usize;
 
-    loop {
+    while let Some(eol) = find(src, i, b"\r\n") {
         // The size line runs to the next CRLF.
-        let Some(eol) = find(src, i, b"\r\n") else { break };
         let line = &src[i..eol];
         let text = String::from_utf8_lossy(line);
         let size_part = text.trim().split(';').next().unwrap_or("").trim();

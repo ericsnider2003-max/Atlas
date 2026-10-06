@@ -357,7 +357,6 @@ impl<'a> Daemon<'a> {
             let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = writers.iter().map(|(w, l)| (*w, l.as_ref())).collect();
             let (outcome, by) = crate::build_it::build_with(&desc, lang, &refs, max_rounds, &mut check);
             // The sandbox has done its job; left behind, one piled up per build.
-            drop(check);
             crate::heard!(sandbox.discard());
             // A build that ran out of tries is kept, so "keep at it" carries
             // on from its best draft (E3).
@@ -752,7 +751,6 @@ impl<'a> Daemon<'a> {
                 }
             };
             // The sandbox has done its job; left behind, one piled up per change.
-            drop(check);
             crate::heard!(sandbox.discard());
             if ctl.checkpoint() {
                 return Err("you asked me to stop".into());

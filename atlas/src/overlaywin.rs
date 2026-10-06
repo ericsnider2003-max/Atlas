@@ -410,7 +410,7 @@ fn see_through(hwnd: isize) -> bool {
         let h = HWND(hwnd as *mut core::ffi::c_void);
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32 | crate::overlay::window_style();
         SetWindowLongPtrW(h, GWL_EXSTYLE, style as isize);
-        return SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok();
+        SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok()
     }
     #[cfg(not(windows))]
     {
