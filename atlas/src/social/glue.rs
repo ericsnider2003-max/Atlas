@@ -915,7 +915,7 @@ impl Daemon<'_> {
         let nothing_from = Platform::ALL.iter().filter(|p| !have.contains(p)).map(|p| p.name().to_string()).collect();
         let min = self.tools_ref().map(|x| x.content.min_posts_for_patterns).unwrap_or(8);
         let w = self.social_watch().clone();
-        let _ = self.vault_ready(t);
+        crate::heard!(self.vault_ready(t));
         let vault_open = self.vault.state() == crate::vault::State::Open;
         let listed: Vec<String> = self.vault.list().iter().map(|(n, _)| n.to_string()).collect();
         let kept = |n: &str| vault_open.then(|| listed.iter().any(|x| x == n));
@@ -1044,7 +1044,7 @@ impl Daemon<'_> {
                 if secret.is_empty() {
                     return "Nothing to keep.".into();
                 }
-                let _ = self.vault_ready(t);
+                crate::heard!(self.vault_ready(t));
                 match self.vault.put(name, crate::vault::Kind::ApiKey, &secret, t) {
                     Ok(()) => match self.vault.save(&self.vault_home) {
                         Ok(()) => {

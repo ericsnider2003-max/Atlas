@@ -1095,7 +1095,7 @@ fn prove_in_a_copy(
     // before the next is made. Each is a whole copy of the source.
     if let Ok(rd) = std::fs::read_dir(&base) {
         for e in rd.flatten() {
-            let _ = std::fs::remove_dir_all(e.path());
+            crate::heard!(std::fs::remove_dir_all(e.path()));
         }
     }
     let mut sandbox = crate::sandbox::Sandbox::create(&base, "self-fix")
@@ -1104,7 +1104,7 @@ fn prove_in_a_copy(
     let proved = prove_in(thought, candidate, scfg, root, &mut sandbox);
     if proved.is_err() {
         // Nothing to land from a copy that didn't prove anything.
-        let _ = std::fs::remove_dir_all(&kept);
+        crate::heard!(std::fs::remove_dir_all(&kept));
     }
     proved
 }

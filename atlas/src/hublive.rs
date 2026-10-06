@@ -2707,7 +2707,7 @@ impl Daemon<'_> {
                 let mut rows = Vec::new();
                 for b in &businesses {
                     for t in tasks.for_space(&crate::earned::Space::Business(b.clone())) {
-                        let due_day = t.due.map(|d| crate::localclock::day_here(d) as i64);
+                        let due_day = t.due.map(|d| crate::localclock::day_here(d));
                         rows.push(crate::hubpages::TaskRow {
                             id: t.id,
                             what: t.description.clone(),

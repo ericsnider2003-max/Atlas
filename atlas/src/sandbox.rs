@@ -344,7 +344,7 @@ pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, 
 pub(crate) fn warm_cargo(c: &mut std::process::Command, cmd: &str, env: &[(&str, &str)]) {
     if is_cargo(cmd) && !env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR") && std::env::var_os("CARGO_TARGET_DIR").is_none() {
         let dir = crate::roots::build_cache();
-        let _ = std::fs::create_dir_all(&dir);
+        crate::heard!(std::fs::create_dir_all(&dir));
         c.env("CARGO_TARGET_DIR", dir);
     }
 }

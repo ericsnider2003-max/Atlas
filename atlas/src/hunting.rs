@@ -467,7 +467,7 @@ pub fn brief_items(d: &mut Daemon, t: u64) -> Vec<crate::brief::Item> {
     // built several times a day, and each one said the same finds again.
     let top: Vec<hunt::Ranked> = state(d).take_unbriefed(cfg.top_n.max(1) as usize, t);
     if !top.is_empty() {
-        let _ = keep(d);
+        crate::heard!(keep(d));
     }
     for (i, r) in top.iter().enumerate() {
         out.push(item(format!("opportunity:{}", r.found.id), hunt::line(i + 1, r)));
