@@ -3988,6 +3988,10 @@ pub fn phone_block(link: Option<&str>, why_not: Option<&str>) -> String {
 /// What the Accounts page's vault section needs to know.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct VaultView {
+    /// Opens with your Windows sign-in (5 Oct 2026: the usual way).
+    pub opens_on_login: bool,
+    /// Made before that, with a passphrase and no sign-in copy yet.
+    pub needs_its_passphrase_once: bool,
     pub has_passphrase: bool,
     pub has_recovery_key: bool,
     pub handed_over: bool,
@@ -4041,6 +4045,30 @@ pub fn vault_section(v: &VaultView) -> String {
         out.push_str("</section>");
         return out;
     }
+    if v.needs_its_passphrase_once {
+        out.push_str(&format!(
+            "<p>Your vault was made before Atlas opened it with your Windows sign-in. Unlock it once with its \
+             passphrase or its recovery key, and from then on it opens by itself -- nothing to type again.</p>\
+             <form method=post action=/hub/vault><input type=hidden name=what value=unlock>{nonce}\
+             <label for=vault-once>Passphrase or recovery key</label>\
+             <input id=vault-once name=old type=password autocomplete=current-password required>\
+             <button class=primary>Unlock it this once</button></form>\
+             <details><summary>I don't remember either</summary>\
+             <p>Start a new vault that opens with your Windows sign-in and needs no passphrase. The old one is \
+             set aside, not deleted. What was in it (sign-ins and keys) comes back by pressing Connect again.</p>\
+             <form method=post action=/hub/vault><input type=hidden name=what value=fresh>{nonce}\
+             <button>Start a new vault</button></form></details>"
+        ));
+        out.push_str("</section>");
+        return out;
+    }
+    if v.opens_on_login {
+        out.push_str("<p>Your vault opens with your Windows sign-in, so there's nothing to type or remember. \
+                      What's kept in it is sign-ins and keys -- if it's ever lost, pressing Connect again brings them back.</p>\
+                      <details><summary>Passphrase and recovery key (optional)</summary>\
+                      <p class=note>Only needed for keeping authenticator codes or recovery codes here, or for handing \
+                      this machine to someone else and taking it back.</p>");
+    }
     if !v.has_passphrase {
         out.push_str(&format!(
             "<p>No passphrase yet. Until there is one, unlocking the vault proves nothing — the first \
@@ -4055,6 +4083,9 @@ pub fn vault_section(v: &VaultView) -> String {
              <input id=vault-again name=again type=password autocomplete=new-password minlength=12 required>\
              <button class=primary>Set the passphrase</button></form>"
         ));
+        if v.opens_on_login {
+            out.push_str("</details>");
+        }
         out.push_str("</section>");
         return out;
     }
@@ -4083,6 +4114,9 @@ pub fn vault_section(v: &VaultView) -> String {
              handover could never be taken back. Making one takes ten seconds."
         }
     ));
+    if v.opens_on_login {
+        out.push_str("</details>");
+    }
     out.push_str("</section>");
     out
 }

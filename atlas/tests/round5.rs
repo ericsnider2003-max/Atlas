@@ -144,8 +144,9 @@ fn only_logins_and_api_keys_open_for_unattended_work_and_never_off_windows() {
         assert!(e.contains("locked") || e.contains("Windows only"), "{e}");
         assert!(atlas::loginseal::seal(b"k").unwrap_err().contains("Windows only"));
     }
-    // The setting ships off.
-    assert!(!cfg().tools.unwrap().vault.open_on_this_login);
+    // The setting ships on (5 Oct 2026): a passphrase nobody remembers made
+    // the vault, and every Connect button behind it, unusable.
+    assert!(cfg().tools.unwrap().vault.open_on_this_login);
 }
 
 // ---- 7. Windows notifications --------------------------------------------------------------

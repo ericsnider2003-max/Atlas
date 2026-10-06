@@ -1357,6 +1357,15 @@ pub struct Daemon<'a> {
     /// send isn't started twice, and a retry waits five minutes rather than
     /// going round every tick.
     posting: Vec<(u64, u64)>,
+    /// The automatic sync's sends to your other devices, made off the loop
+    /// (5 Oct 2026, Q5): each waited up to 4 s for a device that was asleep
+    /// or away, every quarter hour, with Atlas frozen meanwhile. Set while
+    /// the automatic pass runs; the sends it would have made are collected
+    /// in `dials` and made on a thread, and their answers come back through
+    /// `dial_answers` to the next pass.
+    pub(crate) dial_later: bool,
+    pub(crate) dials: Vec<tick::Dial>,
+    pub(crate) dial_answers: Option<std::sync::mpsc::Receiver<(tick::Dial, std::result::Result<Vec<u8>, String>)>>,
     /// A button that can't be undone, waiting for your yes: (window, name, app).
     pending_press: Option<(u64, String, String)>,
     /// A storage plan shown and waiting for your yes.
@@ -2028,6 +2037,9 @@ impl<'a> Daemon<'a> {
             pending_post_approval: None,
             pending_post_when: None,
             posting: Vec::new(),
+            dial_later: false,
+            dials: Vec::new(),
+            dial_answers: None,
             pending_press: None,
             pending_storage: None,
             pending_optimize: None,

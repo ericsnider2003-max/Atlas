@@ -177,7 +177,7 @@ impl<'a> Daemon<'a> {
 
     /// Make or remove the vault's sign-in copy to match the setting, while
     /// the vault is open with your passphrase. Returns a sentence to add.
-    pub(super) fn keep_sign_in_copy(&mut self, now: u64) -> String {
+    pub(crate) fn keep_sign_in_copy(&mut self, now: u64) -> String {
         let want = self.tools_cfg().vault.open_on_this_login;
         let have = self.vault.sealed_to_this_login();
         let said = if want && !have {
@@ -209,6 +209,34 @@ impl<'a> Daemon<'a> {
         if let Err(why) = self.vault.open_unattended(now) {
             self.log.warn(&format!("couldn't open the vault on your sign-in: {why}"));
         }
+    }
+
+    /// Have the vault open without asking you for anything, when it can be.
+    ///
+    /// 5 Oct 2026: every Connect button stopped at "unlock the vault first",
+    /// and the passphrase it wanted was one nobody remembers. So: open it on
+    /// your Windows sign-in; a brand-new vault starts that way with no
+    /// passphrase at all. Only a vault made before this, which no sign-in
+    /// copy was ever sealed for, still needs its passphrase -- once, after
+    /// which it opens on your sign-in too (`keep_sign_in_copy`).
+    pub(crate) fn vault_ready(&mut self, now: u64) -> std::result::Result<(), String> {
+        if self.vault.state() == crate::vault::State::Open {
+            return Ok(());
+        }
+        if self.vault.sealed_to_this_login() {
+            return self.vault.open_unattended(now);
+        }
+        if self.vault.is_brand_new() && self.tools_cfg().vault.open_on_this_login {
+            self.vault.start_on_this_login(now)?;
+            if let Err(e) = self.vault.save(&self.vault_home) {
+                // Not on disk, so not started: back to what is.
+                self.vault = crate::vault::Vault::load(&self.vault_home);
+                return Err(format!("I couldn't write the vault: {e}"));
+            }
+            self.log.info("vault started on your Windows sign-in");
+            return Ok(());
+        }
+        Err(crate::vault::OLD_VAULT.into())
     }
 
     /// Update the contact book from the messages just read, and say what is
@@ -959,6 +987,23 @@ impl<'a> Daemon<'a> {
     /// summarised and drafted to, but not read or answered one at a time).
     /// From the mail Atlas already fetched (`MailBook`); a reply is a draft
     /// that waits for "send it", like any other.
+    /// "Connect my Google calendar", "connect my YouTube", "sign me into my
+    /// socials": the same as pressing the Connect button, said (5 Oct 2026).
+    pub(super) fn connect_help(&mut self, said: &str) -> Option<String> {
+        use crate::connecting::Connect;
+        use crate::oauthlink::Provider;
+        Some(match crate::connecting::connect_asked(said)? {
+            Connect::Google => match crate::connecting::begin_signin(self, Provider::Google, "") {
+                Ok(s) | Err(s) => s,
+            },
+            Connect::Microsoft => match crate::connecting::begin_signin(self, Provider::Microsoft, "") {
+                Ok(s) | Err(s) => s,
+            },
+            Connect::Youtube => self.connect_youtube(),
+            Connect::Socials => self.open_social_signins(),
+        })
+    }
+
     pub(super) fn one_message_help(&mut self, said: &str) -> Option<String> {
         let asked = one_message_asked(said)?;
         let book: crate::mailbook::MailBook = self.store.load(crate::mailbook::MailBook::FILE);
@@ -1308,3 +1353,4 @@ pub fn one_message_asked(said: &str) -> Option<OneMessage> {
     }
     None
 }
+
