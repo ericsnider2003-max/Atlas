@@ -2144,54 +2144,6 @@ mod naming_a_project {
     }
 }
 
-impl<'a> Daemon<'a> {
-    /// "I want you to be able to ...": kept as a request (`requests`), read
-    /// back, dropped or closed. Heard before any intent, so a word inside the
-    /// request ("... send texts") doesn't start doing the thing instead
-    /// (5 Oct 2026). Never for a guest: what Atlas becomes is the owner's.
-    pub(super) fn capability_request(&mut self, said: &str, t: u64) -> Option<String> {
-        if self.handover().stance.handed_over() {
-            return None;
-        }
-        let mut kept: crate::requests::Requests = self.store.load(crate::requests::FILE);
-        if crate::requests::list_asked(said) {
-            return Some(crate::requests::read_back(&kept));
-        }
-        if let Some((n, status)) = crate::requests::changed(said) {
-            let reply = match kept.set(n, status) {
-                Some(r) => format!("Request {n} (\"{}\") is {} now.", r.what, status.plain()),
-                None => return Some(format!("There's no request {n}. {}", crate::requests::read_back(&kept))),
-            };
-            return Some(match self.store.save(crate::requests::FILE, &kept) {
-                Ok(()) => reply,
-                Err(e) => format!("I couldn't save that ({e}), so it may come back."),
-            });
-        }
-        let what = crate::requests::ability_asked_for(said)?;
-        let again = kept.already(&what).map(|r| r.n);
-        let similar = crate::requests::looks_like(&what, &crate::capability::all());
-        let n = match again {
-            Some(k) => {
-                if let Some(r) = kept.list.iter_mut().find(|r| r.n == k) {
-                    r.more.push(said.trim().to_string());
-                }
-                k
-            }
-            None => kept.add(said, &what, similar.iter().map(|(id, _)| id.clone()).collect(), t),
-        };
-        if let Err(e) = self.store.save(crate::requests::FILE, &kept) {
-            return Some(format!("I heard it, but couldn't keep it ({e}) -- say it again in a moment."));
-        }
-        self.log.info(&format!("capability request {n}: {what}"));
-        Some(crate::requests::heard_reply(n, &what, &similar, again))
-    }
-
-    /// The Improvements page's "Asked for" section.
-    pub(crate) fn requests_section(&self) -> String {
-        crate::requests::section(&self.store.load(crate::requests::FILE))
-    }
-}
-
 /// "What broke the_brief_is_said_once?": the test named, when it is one.
 fn what_broke_test(said: &str) -> Option<String> {
     let t = said.trim().to_lowercase();

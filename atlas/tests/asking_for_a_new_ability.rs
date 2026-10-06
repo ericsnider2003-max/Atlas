@@ -1,6 +1,8 @@
 //! Telling Atlas what you want it to be able to do (5 Oct 2026, Eric: "I
 //! need the ability to tell Atlas what I want when I want to add new
-//! capabilities to Atlas").
+//! capabilities to Atlas"). `growth` took these since 1 Oct, but only
+//! phrased "give yourself the ability to ..."; the usual way of saying it
+//! reached whatever a word inside it matched.
 
 use atlas::config::Config;
 use atlas::daemon::Daemon;
@@ -18,28 +20,22 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 #[test]
-fn a_request_is_kept_not_acted_on_and_comes_back_when_asked() {
+fn i_want_you_to_be_able_to_is_written_down_not_acted_on() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
     let store = tmp("kept");
     let mut d = Daemon::new(&c, &p, None, Store::new(store.clone()), Proactive::new(ProactiveConfig::default()));
     // "send texts" inside it must not send a text.
     let r = d.turn("I want you to be able to send texts from my phone when I'm driving", 100);
-    assert!(r.starts_with("Kept as request 1"), "{r}");
-    assert!(r.contains("Nothing's built yet"), "says honestly it isn't built: {r}");
-    // Said again: not kept twice.
+    assert!(r.contains("written it") && r.contains("send texts from my phone"), "{r}");
+    // A second wording, after the first: still heard as a request.
     let again = d.turn("I want you to be able to send texts from my phone while I'm driving", 110);
-    assert!(again.contains("request 1"), "{again}");
-    let r2 = d.turn("add a capability that tracks my sleep", 120);
-    assert!(r2.starts_with("Kept as request 2"), "{r2}");
-    let list = d.turn("what have I asked you to be able to do?", 130);
-    assert!(list.contains("1. send texts") && list.contains("2. tracks my sleep"), "{list}");
-    let dropped = d.turn("drop request 2", 140);
-    assert!(dropped.contains("dropped"), "{dropped}");
-    let list = d.turn("show my requests", 150);
-    assert!(!list.contains("sleep"), "{list}");
-    // Kept where a coding session can read it.
-    let kept: atlas::requests::Requests = Store::new(store).load(atlas::requests::FILE);
-    assert_eq!(kept.list.len(), 2);
-    assert_eq!(kept.list[0].more.len(), 1, "the second wording is kept with the first");
+    assert!(again.contains("written it"), "{again}");
+    let list = d.turn("what abilities have I asked for?", 120);
+    assert!(list.contains("send texts"), "{list}");
+    let yes = d.turn("approve that ability", 130);
+    assert!(yes.starts_with("Approved"), "{yes}");
+    let kept: atlas::growth::WantedAbilities = Store::new(store).load(atlas::growth::STORE);
+    assert!(kept.items.iter().any(|w| w.state == atlas::growth::State::Approved));
+    assert!(atlas::growth::section(&kept).contains("approved"));
 }

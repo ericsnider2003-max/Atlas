@@ -235,12 +235,12 @@ impl<'a> Daemon<'a> {
             return String::new();
         }
 
-        // "I want you to be able to ...": a request for a new ability, kept
-        // (`requests`). First, as you said it: above everything that would
-        // act on a word inside it ("... send texts"), and above the phrase
-        // book and reference resolution, which rewrote the second wording of
-        // one into "be able to send texts ..." (5 Oct 2026).
-        if let Some(reply) = self.capability_request(said, t).or_else(|| self.what_broke_asked(said, t)) {
+        // Asking Atlas for a new ability (`growth`), and "what broke <test>"
+        // (`bisect`). First, as you said it (5 Oct 2026): above everything
+        // that would act on a word inside the request ("I want you to be
+        // able to send texts" sending a text), and above the phrase book,
+        // which rewrote a second wording of one to "be able to send texts".
+        if let Some(reply) = (if self.handover().stance.handed_over() { None } else { self.ability_request(said, t) }).or_else(|| self.what_broke_asked(said, t)) {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -1333,12 +1333,8 @@ impl<'a> Daemon<'a> {
             return "Nothing to confirm.".into();
         }
 
-        // Asking Atlas for a new ability (Eric, 1 Oct 2026): written down for
-        // his yes, never refused as impossible and never quietly switched on
-        // (`growth`).
-        if let Some(reply) = self.ability_request(said, t) {
-            return reply;
-        }
+        // Asking Atlas for a new ability (Eric, 1 Oct 2026) is heard at the
+        // top of the turn now (5 Oct 2026), before any intent.
         // "Watch me for five minutes" (`camwatch`).
         if let Some(reply) = self.watch_request(said, t) {
             return reply;
@@ -2417,7 +2413,7 @@ impl<'a> Daemon<'a> {
         wanted.ask(&what, t);
         let _ = self.store.save(crate::growth::STORE, &wanted);
         self.log.info(&format!("ability asked for: {what}"));
-        Some(crate::growth::noted(&what))
+        Some(crate::growth::noted_beside(&what, &crate::growth::already_close(&what, &crate::capability::all())))
     }
 
     /// What "this" refers to right now.

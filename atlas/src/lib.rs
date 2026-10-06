@@ -249,7 +249,6 @@ pub mod opportunity;
 // Finding opportunities on a polite daily schedule, and the daemon's side of it.
 pub mod hunt;
 pub mod hunting;
-pub mod requests;
 pub mod bisect;
 pub mod dash;
 pub mod decide;

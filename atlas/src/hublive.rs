@@ -768,8 +768,8 @@ impl Daemon<'_> {
                 let free = self.free_wins();
                 // How you talk, and what went wrong this week (2 Oct 2026,
                 // `learning`).
-                // What you've asked it to be able to do (`requests`).
-                let page = with_block(hub::recommendations_page(&recs, None, &free), &self.requests_section());
+                // What you've asked it to be able to do (`growth`).
+                let page = with_block(hub::recommendations_page(&recs, None, &free), &crate::growth::section(&self.store.load(crate::growth::STORE)));
                 with_block(page, &self.how_you_talk_block(now))
             }
             Page::Status => {

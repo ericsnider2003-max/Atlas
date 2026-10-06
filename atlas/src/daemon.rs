@@ -4437,9 +4437,11 @@ mod the_toolchain_fixes_first {
         match check {
             Check::Passed(notes) => {
                 assert!(code.contains("is_empty()"), "the fix wasn't carried into the code handed over:\n{code}");
-                assert!(notes.iter().any(|n| n.contains("toolchain fixed")), "{notes:?}");
+                assert!(notes.iter().any(|n| n.contains("toolchain fixed")), "notes: {}", notes.join(" | "));
             }
-            other => panic!("{other:?}"),
+            Check::Failed(out) => panic!("it failed after the fixes: {out}"),
+            Check::CannotCheck(p) => panic!("{p} isn't here"),
+            Check::Rewrote(..) => panic!("settle leaves no rewrite behind"),
         }
     }
 }

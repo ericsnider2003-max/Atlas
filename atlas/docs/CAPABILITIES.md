@@ -221,7 +221,6 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
 | run in the background from the moment you sign in with nothing open — an icon by the clock to open it, open the hub, pause or quit — and start itself again after a crash or an update | built, never run for real | `notifyicon` `startup` `crash` `goodbye` `onlyone` | ready | would | would | catch | would | **no** |
-| keep what you ask me to be able to do -- "I want you to be able to ..." -- in your words, say what I already do that looks like it, and read the list back; it's the queue work on me starts from | built, never run for real | `requests` | ready | ready | ready | ready | ready | ready |
 | find the change that broke one of my tests -- "what broke <test>" runs it at older versions of me until it passes, then narrows it to the one change, and names the files it touched; no model | built, never run for real | `bisect` | ready | would | would | catch | would | **no** |
 | watch what you name — the disk over 90% for ten minutes, a server down — and say so when your rule comes true; reminders on weekdays or 'the last Friday of the month' | built, never run for real | `automation` `cronspec` `scheduler` | ready | would | would | catch | would | **no** |
 | reach any page or action by typing, and ask 'did you mean' when a word is one typo off | built, never run for real | `palette` `typos` | ready | ready | ready | ready | ready | ready |
@@ -236,7 +235,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | read what it's handed without being told what to do | built, never run for real | `untrusted` | ready | ready | ready | ready | ready | ready |
 | check itself and say what's wrong | working | `doctor` `diagnose` | ready | ready | ready | ready | ready | ready |
 | keep a list of what it got wrong -- not understood, asked back, corrected, undone or misheard -- and read the week's back with how well it's been hearing you ("what did you misunderstand this week"); a mishearing you correct twice is put right from then on | built, never run for real | `misses` | ready | ready | ready | ready | ready | ready |
-| take down a new ability you ask me for, and keep it for your yes | working | `growth` | ready | ready | ready | catch | would | catch |
+| take down a new ability you ask me for -- "I want you to be able to ..." -- say what I already do that looks like it, keep it for your yes, and list it on the Improvements page | working | `growth` | ready | ready | ready | catch | would | catch |
 | pick back up what a restart cut off — windows it was working, research and council redone once, project work carried on from its last finished phase — and say what it didn't redo | working | `resume` `phases` | ready | would | would | catch | would | **no** |
 | say what needs you first when you come back, rather than what happened first | working | `next_up` | ready | ready | ready | ready | ready | ready |
 | pause one errand without losing what it has done, and work out which one you meant when several are going | working | `which_errand` `attention` | ready | would | would | catch | would | **no** |
@@ -366,4 +365,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-247 things, across 435 of 483 source files. The other 48 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+246 things, across 434 of 482 source files. The other 48 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
