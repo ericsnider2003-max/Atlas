@@ -53,6 +53,32 @@ fn remember_written(path: &Path, hash: u64) {
     if let Ok(mut w) = WRITTEN.lock().or_else(crate::crash::unpoison) {
         w.insert(path.to_path_buf(), (hash, m.len(), m.modified().ok()));
     }
+    remember_seen(path, Some((m.len(), m.modified().ok())));
+}
+
+/// A file's size and modified time, or `None` when it isn't there.
+type Stamp = Option<(u64, Option<std::time::SystemTime>)>;
+
+fn stamp_of(path: &Path) -> Stamp {
+    std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().ok()))
+}
+
+/// Each state file as this process last read or wrote it (5 Oct 2026, Q13).
+///
+/// The daemon keeps its records in memory and writes them all back after
+/// every turn; a command run beside it (`atlas calendar add ...`, the hub's
+/// own CLI, a second Atlas on the same folder) writes the same files. Last
+/// writer won, silently: the daemon's next save put its stale copy back over
+/// the command's change. Knowing how the file looked when this process last
+/// had it is what lets a save see that someone else has written it since
+/// (`changed_elsewhere`), and the daemon reload it first.
+static SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Stamp>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn remember_seen(path: &Path, stamp: Stamp) {
+    if let Ok(mut s) = SEEN.lock().or_else(crate::crash::unpoison) {
+        s.insert(path.to_path_buf(), stamp);
+    }
 }
 
 /// Saves that failed, whoever made them and whether or not they looked at the
@@ -245,9 +271,15 @@ impl Store {
     /// default is returned, so the next save cannot land on it.
     pub fn load<T: DeserializeOwned + Default>(&self, name: &str) -> T {
         let path = self.path(name);
+        // Taken before reading: a write between the two leaves this older
+        // than the file, so the change is seen as someone else's, never missed.
+        let stamp = stamp_of(&path);
         let text = match read_with_patience(&path) {
             Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return T::default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                remember_seen(&path, None);
+                return T::default();
+            }
             Err(_) => {
                 // It is there and it could not be read, even after waiting a
                 // moment. Move it out of the way of the next save, which is
@@ -261,6 +293,7 @@ impl Store {
         // Current format.
         if let Ok(env) = serde_json::from_str::<Envelope<T>>(&text) {
             if env.schema == SCHEMA {
+                remember_seen(&path, stamp);
                 return env.data;
             }
             // A future or older shape. Keep it; do not silently overwrite.
@@ -269,6 +302,7 @@ impl Store {
         }
         // Pre-envelope files, so an existing install keeps working.
         if let Ok(v) = serde_json::from_str::<T>(&text) {
+            remember_seen(&path, stamp);
             return v;
         }
         // Corrupt. Keep the evidence rather than clobbering it on next save.
@@ -338,6 +372,19 @@ impl Store {
         value
     }
 
+    /// Has someone else -- another process, a command, a hand edit -- written
+    /// this record since this process last read or wrote it? `false` for a
+    /// record this process hasn't touched yet: it has nothing to be stale
+    /// about.
+    pub fn changed_elsewhere(&self, name: &str) -> bool {
+        let path = self.path(name);
+        let seen = SEEN.lock().or_else(crate::crash::unpoison).ok().and_then(|s| s.get(&path).copied());
+        match seen {
+            Some(seen) => stamp_of(&path) != seen,
+            None => false,
+        }
+    }
+
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         let r = self.save_unrecorded(name, value);
         if let Err(e) = &r {
@@ -400,6 +447,18 @@ impl Store {
         }
 
         std::fs::create_dir_all(&self.root)?;
+
+        // Someone else wrote this since we read it, and what we're about to
+        // write differs from theirs: theirs is kept beside it, named, and you
+        // are told, rather than overwritten without a trace (Q13). The daemon
+        // reloads such records before it works (`Daemon::take_outside_changes`),
+        // so this is the narrow race left over, not the common case.
+        if self.changed_elsewhere(name) && final_path.is_file() {
+            let theirs = self.root.join(format!("{name}.theirs.{}.json.bak", now()));
+            if std::fs::copy(&final_path, &theirs).is_ok() {
+                note_set_aside(&self.root, name, THEIRS);
+            }
+        }
 
         // The temp file is named per PROCESS, not per record.
         //
@@ -623,14 +682,35 @@ pub fn set_aside_sentence(names: &[String]) -> String {
 /// place it showed).
 pub fn tell_set_aside(store: &Store) -> Option<String> {
     let mut v = SET_ASIDE.lock().unwrap_or_else(|p| p.into_inner());
-    let mut names: Vec<String> = Vec::new();
+    let (mut unreadable, mut theirs): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
     for s in v.iter_mut().filter(|s| !s.told && s.root == store.root) {
         s.told = true;
-        if !names.contains(&s.name) {
-            names.push(s.name.clone());
+        let list = if s.why == THEIRS { &mut theirs } else { &mut unreadable };
+        if !list.contains(&s.name) {
+            list.push(s.name.clone());
         }
     }
-    (!names.is_empty()).then(|| set_aside_sentence(&names))
+    let mut said = Vec::new();
+    if !unreadable.is_empty() {
+        said.push(set_aside_sentence(&unreadable));
+    }
+    if !theirs.is_empty() {
+        said.push(theirs_sentence(&theirs));
+    }
+    (!said.is_empty()).then(|| said.join(" "))
+}
+
+/// Why a copy was kept when another writer had changed the file (Q13).
+pub const THEIRS: &str = "changed elsewhere";
+
+/// Said when a save went over a change made elsewhere: the other version
+/// is kept, and where.
+fn theirs_sentence(names: &[String]) -> String {
+    let what = names.iter().map(|n| n.replace('_', " ")).collect::<Vec<_>>().join(", ");
+    format!(
+        "My saved {what} was changed outside me (a command, or another Atlas on this folder) at the same moment I saved mine, \
+         so I kept that other version beside mine in my state folder (the .theirs. file) rather than lose it."
+    )
 }
 
 #[cfg(test)]

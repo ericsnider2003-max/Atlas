@@ -52,6 +52,9 @@ impl<'a> Daemon<'a> {
     /// Work Atlas does without being asked. Returns anything worth saying.
     pub fn tick(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
+        // A command's change first, so nothing below works on (and then
+        // saves back) an older copy (Q13).
+        self.take_outside_changes();
         // Where this pass spends its time, named in the log when it's slow.
         self.tick_laps = crate::timing::Laps::start();
         // Notes `reach_you` routed to speaking, said now (30 Sep 2026: that
