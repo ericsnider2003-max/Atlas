@@ -87,7 +87,9 @@ fn every_dependency_says_what_it_is_for() {
             section = l;
             continue;
         }
-        if section == "[features]" {
+        // Nor are the lint table's keys (lint names, audit Q4) or the
+        // package's own settings.
+        if section == "[features]" || section.starts_with("[lints") || section == "[package]" {
             continue;
         }
         let Some((name, _)) = l.split_once(" = ") else {

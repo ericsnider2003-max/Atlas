@@ -199,7 +199,7 @@ pub fn youtube_videos(v: &Value, now: u64, source: &str) -> Vec<Record> {
                 taken: now,
                 posted: it.pointer("/snippet/publishedAt").and_then(|x| x.as_str()).and_then(rfc3339),
                 text: it.pointer("/snippet/title").and_then(|x| x.as_str()).unwrap_or("").chars().take(280).collect(),
-                seconds: it.pointer("/contentDetails/duration").and_then(|x| x.as_str()).and_then(iso_duration),
+                seconds: it.pointer("/contentDetails/duration").and_then(|x| x.as_str()).and_then(|d| iso_duration(d)),
                 source: source.into(),
                 m: Metrics {
                     views: s.get("viewCount").and_then(n),

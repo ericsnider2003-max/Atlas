@@ -493,8 +493,12 @@ pub(super) fn voice_loop(
     // views of the configuration, one of them stale. So the clone is made
     // at the `Config` level and both read the same one.
     let mut cfg_owned = cfg.clone();
-    cfg_owned.tools = Some(tc_owned.clone());
-    let tc_live = &tc_owned;
+    cfg_owned.tools = Some(tc_owned);
+    // Read back from the config the daemon gets, so the two can't differ.
+    let Some(tc_live) = cfg_owned.tools.as_ref() else {
+        eprintln!("config/tools.yaml is missing — nothing to talk to.");
+        leave(2);
+    };
     let voice = Voice::new(tc_live);
 
     // The same single-instance lock `run_daemon` takes, and for the same

@@ -96,11 +96,15 @@ fn the_voice_door_takes_the_single_instance_lock() {
     // means the second silently erasing what the first learned — which is
     // exactly why `run_daemon` has taken this lock all along.
     let body = body_of(&main_rs(), "fn voice_loop(");
+    // Directly, or through `take_the_one_lock`, the one copy since audit
+    // Q3, which must itself take the lock patiently.
     assert!(
-        body.contains("OnlyOne::at("),
+        body.contains("OnlyOne::at(") || body.contains("take_the_one_lock()"),
         "`atlas voice` can now clobber the daemon's state and does not take \
          the lock"
     );
+    let lock = body_of(&main_rs(), "fn take_the_one_lock(");
+    assert!(lock.contains("OnlyOne::at(") && lock.contains("take_patiently("), "take_the_one_lock doesn't take the lock");
 }
 
 #[test]

@@ -121,6 +121,11 @@ expect_used = "deny"
 # sometimes the plain form. Revisit as the big files are split (audit Q6).
 type_complexity = "allow"
 too_many_arguments = "allow"
+# The guards that find dead code read text: `.map(|v| f(v))` is a call they
+# see, `.map(f)` is not (tests/common/mod.rs, `called_names`). The project's
+# rule is the closure, so clippy's opposite advice is switched off.
+redundant_closure = "allow"
+redundant_closure_for_method_calls = "allow"
 
 [dev-dependencies]
 serde_yaml = "0.9"
@@ -236,6 +241,10 @@ path = "tests/all.rs"
 # Its own process, so a deep run (ATLAS_FUZZ_ROUNDS) can be started alone.
 name = "fuzzing_the_readers"
 path = "tests/fuzzing_the_readers.rs"
+[[test]]
+# Its own process: one fresh daemon per command, each on its own thread.
+name = "every_command_end_to_end"
+path = "tests/every_command_end_to_end.rs"
 [[test]]
 name = "the_self_test_never_starts_another_atlas"
 path = "tests/the_self_test_never_starts_another_atlas.rs"

@@ -124,7 +124,7 @@ mod imp {
 
     pub fn read() -> OsLook {
         let dark = dword(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme").map(|v| v == 0);
-        let text_scale = dword(r"Software\Microsoft\Accessibility", "TextScaleFactor").map(text_scale_from_percent).unwrap_or(1.0);
+        let text_scale = dword(r"Software\Microsoft\Accessibility", "TextScaleFactor").map(|p| text_scale_from_percent(p)).unwrap_or(1.0);
         let mut hc = HighContrastW { cb_size: std::mem::size_of::<HighContrastW>() as u32, dw_flags: 0, default_scheme: std::ptr::null_mut() };
         let hc_on = unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cb_size, &mut hc as *mut _ as *mut _, 0) } != 0
             && hc.dw_flags & HCF_HIGHCONTRASTON != 0;

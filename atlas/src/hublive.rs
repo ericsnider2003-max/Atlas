@@ -1347,7 +1347,7 @@ impl Daemon<'_> {
         let ipa_file = app_file(&root, Kind::Apple, &self.builds_dirs());
         // A closure, not `.and_then(ipa_facts)`: the reachability guards find
         // a call by its `name(`.
-        let ipa = ipa_file.as_deref().and_then(ipa_facts).map(|(version, devices)| {
+        let ipa = ipa_file.as_deref().and_then(|p| ipa_facts(p)).map(|(version, devices)| {
             let fits = mine.iter().any(|d| devices.iter().any(|u| u.eq_ignore_ascii_case(&d.udid)));
             (version, fits)
         });

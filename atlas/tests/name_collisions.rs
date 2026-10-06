@@ -86,6 +86,12 @@ use std::collections::{BTreeSet, HashSet};
 ///
 /// Sorted, so a diff reads as "these were cleared, these appeared".
 const NAME_COLLISION_ONLY: &[&str] = &[
+    // --- 5 Oct (audit Q1) -----------------------------------------------
+    // Reached only through the `kept!` / `heard!` macros (`$crate::unheard::
+    // hear(..)`, which `hear` uses to call `record`), at hundreds of sites
+    // across the tree; a name scan doesn't expand macros.
+    "unheard::hear",
+    "unheard::record",
     // --- 18 Sep ---------------------------------------------------------
     // `mesh::choose` joined this list when its only caller went. That caller
     // was in `Intent::Sync`, passed four hardcoded literals, and threw the

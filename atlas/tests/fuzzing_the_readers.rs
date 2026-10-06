@@ -69,7 +69,7 @@ fn mutate(r: &mut Rng, seed: &[u8], alphabet: &[&[u8]]) -> Vec<u8> {
 
 /// Run `read` on `rounds` inputs made from `seeds`; fail naming the first
 /// input that panicked.
-fn survives(name: &str, rounds: usize, seeds: &[&[u8]], alphabet: &[&[u8]], read: impl Fn(&[u8])) {
+fn assert_survives(name: &str, rounds: usize, seeds: &[&[u8]], alphabet: &[&[u8]], read: impl Fn(&[u8])) {
     // `ATLAS_FUZZ_ROUNDS=50000` for a deep run; CI uses the default.
     let rounds = std::env::var("ATLAS_FUZZ_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(rounds);
     let mut r = Rng(0x9E37_79B9_7F4A_7C15 ^ name.len() as u64);
@@ -106,7 +106,7 @@ const ROUNDS: usize = 3000;
 
 #[test]
 fn a_calendar_repeat_rule() {
-    survives(
+    assert_survives(
         "recur::Rule::parse",
         ROUNDS,
         &[b"FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;COUNT=10", b"FREQ=MONTHLY;BYMONTHDAY=-1;UNTIL=20271231T235959Z"],
@@ -115,7 +115,7 @@ fn a_calendar_repeat_rule() {
             let _ = atlas::recur::Rule::parse(&text(b));
         },
     );
-    survives(
+    assert_survives(
         "recur::parse_ical_time",
         ROUNDS,
         &[b"20261005T093000Z", b"20261005", b"TZID=America/New_York:20261101T013000"],
@@ -128,7 +128,7 @@ fn a_calendar_repeat_rule() {
 
 #[test]
 fn a_feed() {
-    survives(
+    assert_survives(
         "feeds::parse",
         ROUNDS,
         &[
@@ -141,7 +141,7 @@ fn a_feed() {
             let _ = atlas::feeds::parse(&text(b));
         },
     );
-    survives(
+    assert_survives(
         "feeds::parse_date",
         ROUNDS,
         &[b"Mon, 05 Oct 2026 09:00:00 GMT", b"2026-10-05T09:00:00+02:00"],
@@ -154,7 +154,7 @@ fn a_feed() {
 
 #[test]
 fn a_contact_card_or_invite() {
-    survives(
+    assert_survives(
         "vformat::parse",
         ROUNDS,
         &[
@@ -170,7 +170,7 @@ fn a_contact_card_or_invite() {
 
 #[test]
 fn a_3d_model() {
-    survives(
+    assert_survives(
         "meshio::read_obj",
         ROUNDS,
         &[b"v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf 1//1 2//1 3//1\nf 1 2 3 4\n"],
@@ -181,10 +181,10 @@ fn a_3d_model() {
     );
     let mut stl = vec![0u8; 84 + 50];
     stl[80] = 1;
-    survives("meshio::read_stl", ROUNDS, &[&stl, b"solid x\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nendloop\nendfacet\nendsolid"], &[b"\xff\xff\xff\xff", b"facet", b"vertex"], |b| {
+    assert_survives("meshio::read_stl", ROUNDS, &[&stl, b"solid x\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nendloop\nendfacet\nendsolid"], &[b"\xff\xff\xff\xff", b"facet", b"vertex"], |b| {
         let _ = atlas::meshio::read_stl(b);
     });
-    survives(
+    assert_survives(
         "meshio::read_gltf",
         ROUNDS,
         &[b"{\"asset\":{\"version\":\"2.0\"},\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],\"accessors\":[{\"bufferView\":0,\"count\":3,\"type\":\"VEC3\",\"componentType\":5126}],\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],\"buffers\":[{\"byteLength\":36}]}", b"glTF\x02\x00\x00\x00"],
@@ -197,7 +197,7 @@ fn a_3d_model() {
 
 #[test]
 fn a_reply_off_the_network() {
-    survives(
+    assert_survives(
         "http::parse_response",
         ROUNDS,
         &[
@@ -209,7 +209,7 @@ fn a_reply_off_the_network() {
             let _ = atlas::http::parse_response(b);
         },
     );
-    survives(
+    assert_survives(
         "imap::list_entry",
         ROUNDS,
         &[b"* LIST (\\HasNoChildren) \"/\" \"INBOX\"", b"* LIST (\\Noselect) \".\" Archive"],
@@ -222,7 +222,7 @@ fn a_reply_off_the_network() {
 
 #[test]
 fn a_page_or_a_document() {
-    survives(
+    assert_survives(
         "readable::extract",
         ROUNDS,
         &[b"<html><head><title>t</title></head><body><article><h1>A</h1><p>One <b>two</b></p><pre>x</pre></article></body></html>"],
@@ -231,7 +231,7 @@ fn a_page_or_a_document() {
             let _ = atlas::readable::extract(&text(b));
         },
     );
-    survives(
+    assert_survives(
         "pdftext::read",
         1000,
         &[b"%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF"],
@@ -244,7 +244,7 @@ fn a_page_or_a_document() {
 
 #[test]
 fn an_address_or_a_code() {
-    survives(
+    assert_survives(
         "mailbook::mail_addresses",
         ROUNDS,
         &[b"\"Lovelace, Ada\" <ada@example.com>, bob@example.org (Bob)"],
@@ -253,10 +253,10 @@ fn an_address_or_a_code() {
             let _ = atlas::mailbook::mail_addresses(&text(b));
         },
     );
-    survives("mailbook::excerpt", ROUNDS, &[b"Hi,\n\n> quoted\nOn Mon someone wrote:\n-- \nsig"], &[b"\n", b">", b"-- \n", b"\r"], |b| {
+    assert_survives("mailbook::excerpt", ROUNDS, &[b"Hi,\n\n> quoted\nOn Mon someone wrote:\n-- \nsig"], &[b"\n", b">", b"-- \n", b"\r"], |b| {
         let _ = atlas::mailbook::excerpt(&text(b));
     });
-    survives(
+    assert_survives(
         "household::decode_pairing",
         ROUNDS,
         &[b"ATLAS1-abcdefghjkmnpqrstuvwxyz23456789", b"K7Q2M9X4TP"],
@@ -270,7 +270,7 @@ fn an_address_or_a_code() {
 #[test]
 fn the_harness_does_catch_a_panic() {
     let caught = catch_unwind(|| {
-        survives("a reader that panics on 'x'", 200, &[b"abc"], &[b"x"], |b| {
+        assert_survives("a reader that panics on 'x'", 200, &[b"abc"], &[b"x"], |b| {
             assert!(!b.contains(&b'x'), "x");
         })
     });
