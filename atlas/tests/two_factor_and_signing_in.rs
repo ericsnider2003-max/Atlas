@@ -312,7 +312,34 @@ fn serve_one(s: std::net::TcpStream) {
     }
 }
 
-fn a_browser(tag: &str) -> Option<atlas::browser::Browser> {
+/// The test's Chrome, shut down when the test ends however it ends (6 Oct
+/// 2026): `close()` only dropped the connection, so every run left a headless
+/// Chrome behind, phoning Google's push service for as long as the machine
+/// stayed up.
+struct Quits(Option<atlas::browser::Browser>);
+
+impl std::ops::Deref for Quits {
+    type Target = atlas::browser::Browser;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("browser")
+    }
+}
+
+impl std::ops::DerefMut for Quits {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().expect("browser")
+    }
+}
+
+impl Drop for Quits {
+    fn drop(&mut self) {
+        if let Some(b) = self.0.take() {
+            b.quit();
+        }
+    }
+}
+
+fn a_browser(tag: &str) -> Option<Quits> {
     let chrome = std::env::var("ATLAS_CHROMIUM").unwrap_or_else(|_| "/opt/pw-browsers/chromium".into());
     if !Path::new(&chrome).exists() {
         eprintln!("no headless Chromium here ({chrome}); the page scripts weren't run in a browser");
@@ -323,11 +350,11 @@ fn a_browser(tag: &str) -> Option<atlas::browser::Browser> {
     let debug_port = 9400 + (std::process::id() % 300) as u16 * 3 + which;
     let profile = scratch(&format!("chrome-{tag}"));
     let yaml = format!(
-        "port: {debug_port}\ntimeout_ms: 8000\nstartup_ms: 15000\nlaunch:\n  command: \"{chrome}\"\n  args: [\"--headless=new\", \"--no-sandbox\", \"--disable-gpu\", \"--remote-debugging-port={debug_port}\", \"--user-data-dir={}\", \"--no-first-run\"]\n",
+        "port: {debug_port}\ntimeout_ms: 8000\nstartup_ms: 15000\nlaunch:\n  command: \"{chrome}\"\n  args: [\"--headless=new\", \"--no-sandbox\", \"--disable-gpu\", \"--remote-debugging-port={debug_port}\", \"--user-data-dir={}\", \"--no-first-run\", \"--disable-background-networking\", \"--disable-component-update\", \"--disable-sync\", \"--no-pings\"]\n",
         profile.display()
     );
     let bcfg: atlas::browser::BrowserConfig = serde_yaml::from_str(&yaml).unwrap();
-    atlas::browser::Browser::start(&bcfg, &Default::default()).ok()
+    atlas::browser::Browser::start(&bcfg, &Default::default()).ok().map(|b| Quits(Some(b)))
 }
 
 #[test]
@@ -350,7 +377,6 @@ fn signing_in_fills_the_login_then_the_code_in_a_real_browser() {
     // A page that isn't the site asked for: nothing filled.
     let got = atlas::webrun::sign_in_at(&mut b, "github.com", &start, "eric", "right-pass");
     assert_eq!(got, atlas::webrun::SignedIn::SomewhereElse("localhost".into()));
-    b.close();
 }
 
 #[test]
@@ -367,6 +393,5 @@ fn signing_up_fills_the_form_agrees_to_the_terms_and_stops_at_a_card() {
     let mut e = atlas::enrol::Enrolment::new("localhost", "eric", 0);
     let got = atlas::webrun::sign_up(&mut b, &mut e, "eric@example.com", "Xk7-long-pass", &cfg, Some(&format!("http://localhost:{site}/signup-paid")));
     assert!(matches!(got, atlas::webrun::SignedUp::Stopped(atlas::enrol::Stopped::WantsPayment(_))), "{got:?}");
-    b.close();
 }
 
