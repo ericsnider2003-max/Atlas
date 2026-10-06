@@ -14,6 +14,36 @@ const NOWHERE_TO_SYNC: &str = "I've nowhere to put it — there's no cloud folde
 /// How often `sync.automatic` carries your things (seconds).
 pub const AUTO_SYNC_EVERY_SECS: u64 = 900;
 
+/// One send to another device of yours, made off the loop by the automatic
+/// sync (`Daemon::dial_later`): who, where, and what to send.
+#[derive(Debug, Clone)]
+pub struct Dial {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub bytes: Vec<u8>,
+    pub timeout: std::time::Duration,
+    pub sealed_key: Option<Vec<u8>>,
+}
+
+/// Make the sends on their own thread, one after another; each answer goes
+/// back as it comes. Nothing here touches Atlas's state.
+pub fn dial_off_the_loop(dials: Vec<Dial>) -> std::sync::mpsc::Receiver<(Dial, std::result::Result<Vec<u8>, String>)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("atlas-sync-dial".into())
+        .spawn(move || {
+            for d in dials {
+                let got = crate::transport::exchange(&d.host, d.port, &d.bytes, d.timeout).map_err(|e| e.to_string());
+                if tx.send((d, got)).is_err() {
+                    return;
+                }
+            }
+        })
+        .ok();
+    rx
+}
+
 impl<'a> Daemon<'a> {
     /// Something timely, said at the desk; away from it, sent the way any
     /// note is (the phone, a notification, or held for when you're back).
@@ -687,8 +717,20 @@ impl<'a> Daemon<'a> {
             && t.saturating_sub(self.last_auto_sync) >= AUTO_SYNC_EVERY_SECS
         {
             self.last_auto_sync = t;
+            self.dial_later = true;
             let said = self.carry_to_your_other_devices(t);
+            self.dial_later = false;
             self.log.info(&format!("automatic sync: {said}"));
+            // Sent on a thread, not here (Q5): a device that's asleep held
+            // this pass for 4 s each. A pass still waiting on the last
+            // round's answers doesn't start another.
+            if !self.dials.is_empty() && self.dial_answers.is_none() {
+                self.dial_answers = Some(dial_off_the_loop(std::mem::take(&mut self.dials)));
+            }
+            self.dials.clear();
+        }
+        for line in self.take_dial_answers(t) {
+            self.log.info(&format!("automatic sync: {line}"));
         }
 
         // Shared-page edits made from the command line (`atlas doc`)
@@ -1873,6 +1915,46 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// The answers to the automatic sync's sends (`dial_off_the_loop`), taken
+    /// in as the direct sends would have been: never waits for one.
+    fn take_dial_answers(&mut self, now: u64) -> Vec<String> {
+        let mut lines = Vec::new();
+        let Some(rx) = self.dial_answers.take() else { return lines };
+        let cfg = self.tools_cfg().sync.clone();
+        let mut finished = false;
+        loop {
+            match rx.try_recv() {
+                Ok((d, Ok(reply))) => {
+                    let key = d.sealed_key.as_deref();
+                    let theirs = reply.is_empty()
+                        || std::str::from_utf8(&reply)
+                            .ok()
+                            .and_then(|t| crate::sync::read_bundle(t, key).ok())
+                            .is_some_and(|b| crate::sync::can_open(&b).is_ok() && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok());
+                    if !theirs {
+                        lines.push(format!("{} answered but didn't take the sync — it may belong to a different Atlas or hold an older key.", d.name));
+                        continue;
+                    }
+                    let (t, cl, sk) = self.take_in_wire(&reply, &cfg, key, now);
+                    lines.push(format!("synced straight across to {}{}", d.name, if t > 0 { format!(", took in {t}") } else { String::new() }));
+                    lines.extend(cl);
+                    lines.extend(sk);
+                }
+                // Asleep or away: the folder carries it, as before.
+                Ok((_, Err(_))) => {}
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    finished = true;
+                    break;
+                }
+            }
+        }
+        if !finished {
+            self.dial_answers = Some(rx);
+        }
+        lines
+    }
+
     fn dial_configured_peers(
         &mut self,
         cfg: &crate::sync::SyncConfig,
@@ -1897,6 +1979,10 @@ impl<'a> Daemon<'a> {
                 continue;
             };
             let port = p.sync_port.unwrap_or(crate::transport::SYNC_PORT);
+            if self.dial_later {
+                self.dials.push(Dial { name, host, port, bytes, timeout: std::time::Duration::from_secs(4), sealed_key: key.map(<[u8]>::to_vec) });
+                continue;
+            }
             match crate::transport::exchange(
                 &host,
                 port,
@@ -2481,6 +2567,18 @@ impl<'a> Daemon<'a> {
                     // one round trip. The folder above already ran, so a miss
                     // here costs nothing — it just means the folder does it.
                     match self.wire_bytes(&cfg, key.as_deref(), now) {
+                        Some(bytes) if self.dial_later => {
+                            self.dials.push(Dial {
+                                name: name.clone(),
+                                host: host.clone(),
+                                port: *port,
+                                bytes,
+                                timeout: std::time::Duration::from_secs(3),
+                                sealed_key: key.clone(),
+                            });
+                            synced_directly.push(name.clone());
+                            said.push_str(&format!(" ({why} — sending straight across to your other Atlas.)"));
+                        }
                         Some(bytes) => match crate::transport::exchange(
                             host,
                             *port,

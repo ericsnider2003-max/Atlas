@@ -515,6 +515,8 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "sync_never_holds_the_loop.rs"]
+mod sync_never_holds_the_loop;
 #[path = "older_atlas_keeps_newer_fields.rs"]
 mod older_atlas_keeps_newer_fields;
 #[path = "two_writers.rs"]
