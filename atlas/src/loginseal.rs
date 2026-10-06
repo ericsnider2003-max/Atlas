@@ -24,7 +24,14 @@
 const PURPOSE: &[u8] = b"atlas vault data key v1";
 
 pub fn available() -> bool {
-    cfg!(windows)
+    #[cfg(windows)]
+    {
+        true
+    }
+    #[cfg(not(windows))]
+    {
+        stand_in()
+    }
 }
 
 #[cfg(windows)]
@@ -58,13 +65,30 @@ pub fn unseal(blob: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(not(windows))]
-pub fn seal(_data: &[u8]) -> Result<Vec<u8>, String> {
+pub fn seal(data: &[u8]) -> Result<Vec<u8>, String> {
+    if stand_in() {
+        return Ok([STAND_IN, data].concat());
+    }
     Err(NOT_HERE.into())
 }
 
 #[cfg(not(windows))]
-pub fn unseal(_blob: &[u8]) -> Result<Vec<u8>, String> {
+pub fn unseal(blob: &[u8]) -> Result<Vec<u8>, String> {
+    if stand_in() {
+        return blob.strip_prefix(STAND_IN).map(<[u8]>::to_vec).ok_or_else(|| "this sign-in can't open it".to_string());
+    }
     Err(NOT_HERE.into())
+}
+
+/// Tests off Windows: a seal that is no seal at all, so the paths that use
+/// one can be run. Only in a debug build, and only when a test asks for it
+/// (`ATLAS_TEST_LOGINSEAL=1`) -- never in anything that ships.
+#[cfg(not(windows))]
+const STAND_IN: &[u8] = b"TEST-ONLY-NOT-SEALED:";
+
+#[cfg(not(windows))]
+fn stand_in() -> bool {
+    cfg!(debug_assertions) && std::env::var("ATLAS_TEST_LOGINSEAL").as_deref() == Ok("1")
 }
 
 pub const NOT_HERE: &str = "sealing the vault to your sign-in works on Windows only; on this system the \

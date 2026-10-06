@@ -28,8 +28,28 @@ pub struct Accounts {
     pub google_app_in_testing: bool,
 }
 
+/// One service on the "Connect your accounts" list: what it is, whether
+/// it's connected, and the one thing to press.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Service {
+    pub name: String,
+    /// "Connected", "Connected as @maya", "Not connected".
+    pub state: String,
+    pub connected: bool,
+    /// The form's `what`, and the button's words. `None` when there's no
+    /// button yet, and `note` says why.
+    pub button: Option<(String, String)>,
+    /// Hidden fields or a box the button needs (a handle).
+    pub inner: String,
+    pub note: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct View {
+    /// 5 Oct 2026: one Connect button per service, the way every
+    /// professional app links accounts. Everything that asks you to paste a
+    /// key or make a developer app is folded under "For developers".
+    pub services: Vec<Service>,
     pub notice: Option<String>,
     pub own_refresh: bool,
     pub scan: bool,
@@ -74,6 +94,26 @@ pub fn render_social(v: &View) -> String {
         v.watching.len()
     ));
 
+    // -- connect: one button per service, nothing to paste
+    if !v.services.is_empty() {
+        b.push_str("<section><h2>Connect your accounts</h2><p class=what>Press Connect, sign in on the site's own page, \
+                    allow Atlas, and you're done. Nothing to copy or paste, and no passphrase.</p><ul class='plainlist services'>");
+        for sv in &v.services {
+            let action = match &sv.button {
+                Some((what, words)) => form(what, &sv.inner, words),
+                None => String::new(),
+            };
+            let note = if sv.note.is_empty() { String::new() } else { format!("<span class=meta>{}</span>", esc(&sv.note)) };
+            b.push_str(&format!(
+                "<li><span><b>{}</b> <span class='{}'>{}</span></span>{note}{action}</li>",
+                esc(&sv.name),
+                if sv.connected { "ok" } else { "meta" },
+                esc(&sv.state)
+            ));
+        }
+        b.push_str("</ul></section>");
+    }
+
     // -- your accounts
     b.push_str("<section><h2>Your accounts</h2>");
     if v.rows.is_empty() {
@@ -111,9 +151,12 @@ pub fn render_social(v: &View) -> String {
     b.push_str(&form("import", "<label>File or folder <input name=path required size=48></label>", "Import it"));
     b.push_str("</section>");
 
-    // -- which accounts
+    // -- for developers: keys, your own apps, one site at a time
+    b.push_str("<section><details class=advanced><summary>For developers: your own keys and apps</summary>\
+                <p class=meta>Not needed to use Atlas -- the Connect buttons above do it. This is for using an API key \
+                or a developer app of your own instead.</p>");
     let a = &v.accounts;
-    b.push_str("<section><h2>Which accounts I read</h2><p>Your handles, and which platforms the refresh reads through their own APIs. Each one that needs a key says so below; one that's on without its key is named as not set up, and nothing else stops.</p>");
+    b.push_str("<h2>Which accounts I read</h2><p>Your handles, and which platforms the refresh reads through their own APIs. Each one that needs a key says so below; one that's on without its key is named as not set up, and nothing else stops.</p>");
     b.push_str(&form(
         "accounts",
         &format!(
@@ -129,10 +172,9 @@ pub fn render_social(v: &View) -> String {
         ),
         "Save",
     ));
-    b.push_str("</section>");
 
     // -- keys
-    b.push_str("<section><h2>Keys and sign-ins</h2><p>Kept in the vault, never in a file, and only for your own accounts. How to get each one is under \"How to set each one up\" below.</p><ul class=plainlist>");
+    b.push_str("<h2>Keys and sign-ins</h2><p>Kept in the vault, never in a file, and only for your own accounts. How to get each one is under \"How to set each one up\" below.</p><ul class=plainlist>");
     for (what, kept) in &v.keys {
         let state = match kept {
             Some(true) => "kept",
@@ -169,10 +211,9 @@ pub fn render_social(v: &View) -> String {
         "<label>The address TikTok sent you to <input name=address required size=48></label>",
         "Finish TikTok sign-in",
     ));
-    b.push_str("<h3>Sign in to your accounts</h3><p class=what>Once each, in Atlas's own browser: the window opens on the \
-                site's sign-in page, you sign in the way you normally do (codes included) and close it. Atlas keeps that \
-                sign-in for reading your pages. The sites don't allow apps to do this, so an account can occasionally be \
-                asked to confirm it's you.</p><div class=signins>");
+    // One window, a tab per site, is on the Connect list; one site at a time
+    // stays here.
+    b.push_str("<h3>Sign in one site at a time</h3><div class=signins>");
     for (name, domain) in super::SIGN_IN_SITES {
         b.push_str(&form("browser-signin", &format!("<input type=hidden name=site value='{}'>", esc(domain)), &format!("Sign in to {name}")));
     }
@@ -185,7 +226,7 @@ pub fn render_social(v: &View) -> String {
         }
         b.push_str("</ol></details>");
     }
-    b.push_str("</section>");
+    b.push_str("</details></section>");
 
     // -- watching
     b.push_str("<section><h2>What you watch</h2>");

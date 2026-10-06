@@ -105,9 +105,10 @@ pub struct VaultConfig {
     pub lock_after_mins: u64,
     /// Re-lock when the machine sleeps or locks.
     pub lock_on_screen_lock: bool,
-    /// Seal a copy of the vault's key to your Windows sign-in, so scheduled
-    /// work can open it while you're signed in (`loginseal`). Off unless you
-    /// turn it on.
+    /// Seal a copy of the vault's key to your Windows sign-in, so it opens
+    /// without a passphrase while you're signed in (`loginseal`). On by
+    /// default since 5 Oct 2026: a passphrase nobody remembers made the
+    /// vault -- and every Connect button behind it -- something no one used.
     pub open_on_this_login: bool,
 }
 
@@ -145,7 +146,7 @@ impl Default for VaultConfig {
             // kitchen isn't a window.
             lock_after_mins: 15,
             lock_on_screen_lock: true,
-            open_on_this_login: false,
+            open_on_this_login: true,
             // Deliberately expensive: a second to unlock, years to attack.
         }
     }
@@ -290,6 +291,19 @@ impl Vault {
         // checked against what was set and never re-judged.
         if !self.has_a_passphrase() {
             crate::guessable::fit_for_the_vault(passphrase, VAULT_WORDS)?;
+        }
+        // A vault started on your Windows sign-in has no passphrase; typing
+        // one here *adds* it, around the key the vault already has. Never the
+        // brand-new branch of `open_the_old_way`, which would make a second
+        // key and strand everything sealed under the first.
+        if self.opens_on_login_only() {
+            if self.key.is_none() {
+                self.open_unattended(now)?;
+            }
+            self.adopt_envelope(passphrase, now, cfg)?;
+            self.verified = false;
+            self.opened_with = Some(How::Passphrase);
+            return Ok(());
         }
         // The envelope, once this vault has one.
         if self.has_wrap(How::Passphrase) {
@@ -564,6 +578,40 @@ impl Vault {
         self.wraps.iter().any(|w| w.how == how)
     }
 
+    /// Nothing in it and no way in yet: the vault as it is before first use.
+    pub fn is_brand_new(&self) -> bool {
+        self.wraps.is_empty() && self.secrets.is_empty() && self.check.is_empty()
+    }
+
+    /// Opens with your Windows sign-in and nothing else.
+    pub fn opens_on_login_only(&self) -> bool {
+        self.has_wrap(How::ThisLogin) && !self.has_wrap(How::Passphrase) && !self.has_wrap(How::RecoveryKey)
+    }
+
+    /// Start a brand-new vault on your Windows sign-in, with no passphrase.
+    ///
+    /// 5 Oct 2026: a passphrase you chose once and can't remember is a vault
+    /// you can't use, and nobody wants to type one to connect an account.
+    /// What professional apps do on Windows is what this does -- seal the key
+    /// to your sign-in (DPAPI), which you already use every day and which
+    /// Windows lets you reset. What's kept in here is sign-ins and keys you
+    /// can make again by connecting again, so losing your Windows account
+    /// loses nothing you can't get back. A passphrase can still be added
+    /// later, for the secrets that never open on a sign-in alone.
+    pub fn start_on_this_login(&mut self, now: u64) -> Result<(), String> {
+        if !self.is_brand_new() {
+            return Err("this vault already has a way in, so it isn't started again".into());
+        }
+        let key = random_bytes(32);
+        let blob = crate::loginseal::seal(&key)?;
+        self.wraps.push(Wrap { how: How::ThisLogin, salt: Vec::new(), sealed_key: blob, made: now });
+        self.key = Some(key);
+        self.opened_at = now;
+        self.verified = false;
+        self.opened_with = Some(How::ThisLogin);
+        Ok(())
+    }
+
     /// Seal a copy of the open vault's key to this Windows sign-in.
     pub fn seal_to_this_login(&mut self, now: u64) -> Result<(), String> {
         let key = self.key.clone().ok_or("the vault is locked")?;
@@ -683,6 +731,11 @@ impl Vault {
     /// vault with no passphrase, the first `open` sets one rather than
     /// checking one, so "it opened" says nothing about who is typing.
     pub fn has_a_passphrase(&self) -> bool {
+        if self.opens_on_login_only() {
+            // Its secrets are sealed under a random key, not one a passphrase
+            // made, so the "any secret at all" reading below doesn't apply.
+            return false;
+        }
         self.has_wrap(How::Passphrase)
             || !self.check.is_empty()
             // `!s.real` as well as `s.real`, which is to say: any secret at
@@ -843,6 +896,13 @@ impl Vault {
                 kind.plain()
             ));
         }
+        if self.opens_on_login_only() && !kind.usable_unattended() {
+            return Err(format!(
+                "{} never open on your Windows sign-in alone, and this vault has no passphrase yet. \
+                 Add one on the Accounts page first, or keep them in your password manager.",
+                kind.plain()
+            ));
+        }
         let key = self.key.as_ref().ok_or("the vault is locked")?;
 
         // The bug this replaced: the refusal above asks "is real encryption
@@ -882,7 +942,7 @@ impl Vault {
     }
 
     pub fn get(&mut self, name: &str, now: u64) -> Result<String, String> {
-        let key = self.key.as_ref().ok_or("the vault is locked — say the passphrase")?.clone();
+        let key = self.key.as_ref().ok_or("the vault is locked")?.clone();
         let unattended = self.opened_with == Some(How::ThisLogin);
         let s = self
             .secrets
@@ -1475,3 +1535,8 @@ pub fn make_recovery_key(v: &mut Vault, phrase: &str, cfg: &VaultConfig, now: u6
     v.lock();
     made
 }
+
+/// Said when the vault is one made before it opened on your sign-in.
+pub const OLD_VAULT: &str = "your vault is one made before Atlas opened it with your Windows sign-in, so it \
+     still wants the passphrase you chose then -- once, on the Accounts page, and never again after. If you don't \
+     remember it, \"Start a new vault\" there sets one up that needs nothing (you'd connect your accounts again)";
