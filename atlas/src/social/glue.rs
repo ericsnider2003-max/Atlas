@@ -121,7 +121,7 @@ impl Daemon<'_> {
         if !cfg.enabled {
             return "Your social accounts are switched off (workday.social.enabled).".into();
         }
-        let low = said.to_lowercase();
+        let low = said.to_ascii_lowercase();
         let only = Platform::in_words(&low);
         if let Some(url) = onepage::url_in(said) {
             if onepage::check_url(&url).is_ok() {

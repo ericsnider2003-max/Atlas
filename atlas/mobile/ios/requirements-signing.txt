@@ -1,0 +1,16 @@
+# Hash-pinned for the iOS job (macOS arm64 runner, Python 3.11-3.14). pip's
+# --require-hashes refuses anything else, so a changed or swapped package on
+# PyPI can't run next to the App Store Connect key. Regenerate with
+#   pip download --only-binary=:all: --platform macosx_14_0_arm64 --python-version 3.1X pyjwt cryptography
+# and sha256 of each wheel (ledger Q20, 5 Oct 2026).
+cffi==2.1.1 \
+    --hash=sha256:398aff33cee2767e3e781d2554c54bd0dff386bb437581e0d8011fde1a942ec1 \
+    --hash=sha256:f81b3b8f3d4e343550fa4baa0e479bba9f2d29ce9c2e9b51d1ce1718d7442fcf \
+    --hash=sha256:19ee6127ee34de7d83ce3d371ebc5ed91addbdcc39f9ab15ce4eb35a4e534971 \
+    --hash=sha256:661c298b4821edebead0c91edd2b00374d67ad7c5a1f7a91d4442633b79d6a72
+cryptography==50.0.2 \
+    --hash=sha256:fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb
+pycparser==3.0 \
+    --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+pyjwt==2.15.1 \
+    --hash=sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193

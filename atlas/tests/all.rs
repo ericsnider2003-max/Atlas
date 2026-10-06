@@ -515,6 +515,12 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "two_writers.rs"]
+mod two_writers;
+#[path = "parsers_survive_garbage.rs"]
+mod parsers_survive_garbage;
+#[path = "test_scratch_is_cleared.rs"]
+mod test_scratch_is_cleared;
 #[path = "posting_to_bluesky.rs"]
 mod posting_to_bluesky;
 #[path = "posting_with_media.rs"]
