@@ -215,6 +215,10 @@ name = "all"
 path = "tests/all.rs"
 # Its own process: it turns on the test-only sign-in seal for the whole
 # process (ATLAS_TEST_LOGINSEAL), which tests in `all` must not see.
+# Its own process: the Muse key and the month's spending are process-wide.
+[[test]]
+name = "muse_and_thinking_hard"
+path = "tests/muse_and_thinking_hard.rs"
 [[test]]
 name = "connecting_is_one_button"
 path = "tests/connecting_is_one_button.rs"
