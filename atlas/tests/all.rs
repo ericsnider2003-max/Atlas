@@ -515,6 +515,8 @@ mod remembering;
 mod reminders_and_wants;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
+#[path = "older_atlas_keeps_newer_fields.rs"]
+mod older_atlas_keeps_newer_fields;
 #[path = "two_writers.rs"]
 mod two_writers;
 #[path = "parsers_survive_garbage.rs"]
