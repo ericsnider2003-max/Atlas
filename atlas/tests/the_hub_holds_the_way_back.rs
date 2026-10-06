@@ -150,7 +150,11 @@ fn a_first_passphrase_set_in_the_hub_shows_its_recovery_key_once_and_never_in_an
     empty_vault();
     handed_over(false);
     let dir = config("first");
-    let c = Config::load(&dir).unwrap();
+    let mut c = Config::load(&dir).unwrap();
+    // The passphrase path, on every platform (6 Oct 2026). On Windows the
+    // vault is also sealed to the sign-in, and the page then offers no
+    // passphrase change in this form.
+    c.tools.as_mut().expect("tools").vault.open_on_this_login = false;
     let p = plat();
     let mut d = daemon(&c, &p, "first", &dir);
 

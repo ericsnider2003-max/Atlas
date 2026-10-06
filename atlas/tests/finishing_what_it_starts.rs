@@ -411,17 +411,22 @@ const FOUR: &str = "find the tax pdf, then find the receipts, then find the invo
 #[test]
 fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
     let (c, p) = (cfg(), plat());
-    let llm = four_steps(350);
+    // Each model call takes MODEL_MS; the turn must come back well before
+    // one could. 350 ms against a 300 ms limit left 50 ms of margin, and a
+    // busy Windows laptop used it up (6 Oct 2026: 510 ms, passing alone).
+    // The same test with room for a loaded machine.
+    const MODEL_MS: u64 = 1_500;
+    let llm = four_steps(MODEL_MS);
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("offloop")), Proactive::new(ProactiveConfig::default()));
     let t0 = Instant::now();
     let first = d.turn(FOUR, 1_790_740_000);
-    assert!(t0.elapsed() < Duration::from_millis(300), "the turn held the loop: {:?} (this process's install is {:?})", t0.elapsed(), atlas::handover::Handover::load(&atlas::roots::install_state()).stance);
+    assert!(t0.elapsed() < Duration::from_millis(MODEL_MS * 4 / 5), "the turn held the loop: {:?}", t0.elapsed());
     assert!(first.starts_with("Working through that in"), "{first}");
     assert!(d.working_through_steps());
     // The hub, asked all the while: every page answered quickly.
     let mut hub_times = Vec::new();
     let mut said: Vec<(String, Instant)> = Vec::new();
-    let until = Instant::now() + Duration::from_secs(20);
+    let until = Instant::now() + Duration::from_secs(40);
     let mut t = 1_790_740_000;
     while d.working_through_steps() && Instant::now() < until {
         let asked = Instant::now();
@@ -435,7 +440,7 @@ fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
         std::thread::sleep(Duration::from_millis(30));
     }
     assert!(!d.working_through_steps(), "the loop never finished");
-    assert!(hub_times.len() >= 10, "the hub was asked only {} times in ~1.7 s of model calls", hub_times.len());
+    assert!(hub_times.len() >= 10, "the hub was asked only {} times in ~7.5 s of model calls", hub_times.len());
     let slowest = hub_times.iter().max().unwrap();
     assert!(*slowest < Duration::from_millis(1_000), "a hub page waited {slowest:?}");
     // Each step said as it happened, then the answer.
@@ -445,8 +450,8 @@ fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
     let answer = said.last().unwrap();
     assert!(answer.0.contains("none of them is on this computer"), "{said:?}");
     // Spread out, not all at the end: the first step was said well before
-    // the answer came (three more model calls of 350 ms each).
-    assert!(answer.1.duration_since(steps[0].1) > Duration::from_millis(700), "the steps were said all at once");
+    // the answer came (three more model calls of MODEL_MS each).
+    assert!(answer.1.duration_since(steps[0].1) > Duration::from_millis(MODEL_MS * 2), "the steps were said all at once");
     assert_eq!(llm.requests().len(), 5);
     // Beside the conversation, not in its slot.
     assert!(llm.requests().iter().all(|r| r.aside), "the loop used the conversation's slot");
@@ -575,25 +580,28 @@ fn two_parts_are_worked_out_at_the_same_time_on_both_slots() {
             ("boat", says("Call her Second Wind.")),
         ],
         vec![],
-        400,
+        1_500,
     );
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("side")), Proactive::new(ProactiveConfig::default()));
     let started = Instant::now();
     // 30 Sep 2026: worked off the loop; the turn comes back at once and the
     // answers come through the ticks, together.
     let first = d.turn("write a haiku about rain and make up a name for my boat", 1_790_740_000);
-    assert!(started.elapsed() < Duration::from_millis(350), "the turn waited for the model: {:?} (this process's install is {:?})", started.elapsed(), atlas::handover::Handover::load(&atlas::roots::install_state()).stance);
+    // Model calls of 1.5 s; the turn comes back well before one could
+    // (it was 400 ms against 350, which a busy laptop crossed, 6 Oct 2026).
+    assert!(started.elapsed() < Duration::from_millis(1_200), "the turn waited for the model: {:?}", started.elapsed());
     assert_eq!(first, "Doing both at once: write a haiku about rain, and make up a name for my boat.");
-    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let said = tick_until_done(&mut d, 1_790_740_000, 30);
     let reply = said.last().map(|(l, _)| l.clone()).unwrap_or_default();
-    let took = started.elapsed();
     let asked = llm.asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 2, "{reply}");
     // Asked at the same time, one on each of the model server's slots.
     let (a, b) = (&asked[0], &asked[1]);
     assert!(a.1 < b.2 && b.1 < a.2, "the two calls didn't overlap");
     assert_ne!(a.0.aside, b.0.aside, "both parts used the same slot");
-    assert!(took < Duration::from_millis(1_400), "took {took:?}: one after the other");
+    // That the two calls' times overlap (above) is the proof they ran at
+    // once; a total under a wall-clock figure only said the same thing
+    // while the machine was idle, and failed when it wasn't.
     assert!(reply.contains("Rain taps") && reply.contains("Second Wind"), "{reply}");
     // Nothing is left running, and it says so.
     let status = d.turn("what are you working on", 1_790_740_060);

@@ -2929,10 +2929,14 @@ impl SignalListener {
         if listeners.is_empty() || v4_port != 0 {
             match TcpListener::bind(("0.0.0.0", v4_port)) {
                 Ok(l) => listeners.push(l),
-                Err(e) if listeners.is_empty() => {
-                    return Err(AtlasError::Platform(format!("could not open the signal door on {port}: {e}")))
+                // Covered only if the IPv6 socket takes IPv4 too -- asked of
+                // the socket, not assumed (6 Oct 2026). Linux's do; Windows'
+                // don't, and there a port held on IPv4 by something else
+                // left the door "open" on IPv6 only, with IPv4 visitors
+                // reaching the other program.
+                Err(e) if listeners.is_empty() || listeners.first().and_then(|l| l.only_v6().ok()).unwrap_or(true) => {
+                    return Err(AtlasError::Platform(format!("could not open the signal door on {v4_port}: {e}")))
                 }
-                // Already covered: this system's IPv6 socket takes IPv4 too.
                 Err(_) => {}
             }
         }

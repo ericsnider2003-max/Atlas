@@ -390,7 +390,7 @@ pub fn asked_of_muse(said: &str) -> Option<String> {
     let low = t.to_ascii_lowercase();
     for p in ["ask muse spark ", "ask muse ", "muse spark, ", "muse, ", "hey muse "] {
         if low.starts_with(p) {
-            let q = t[p.len()..].trim().trim_start_matches(|c: char| c == ',' || c == ':').trim();
+            let q = t[p.len()..].trim().trim_start_matches([',', ':']).trim();
             let q = q.strip_prefix("to ").unwrap_or(q);
             return (!q.is_empty()).then(|| q.to_string());
         }

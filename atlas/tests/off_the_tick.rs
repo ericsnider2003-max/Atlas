@@ -55,8 +55,13 @@ fn a_due_backup_goes_through_the_crew_and_is_watched() {
     let started = Instant::now();
     d.tick(FIRST_TICK);
     let tick_took = started.elapsed();
+    // Only a guard against a hang. A near-empty store copies in under a
+    // millisecond (below), so time can't tell an inline backup from one on
+    // the crew -- the registration check after this is the proof. 2 s was
+    // crossed by a fresh daemon's first tick on a busy Windows laptop
+    // (2.29 s, 6 Oct 2026; it passes alone).
     assert!(
-        tick_took < Duration::from_secs(2),
+        tick_took < Duration::from_secs(10),
         "starting a backup must not itself make the tick slow, took {tick_took:?}"
     );
 

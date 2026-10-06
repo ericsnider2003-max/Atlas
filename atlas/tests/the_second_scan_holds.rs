@@ -1056,10 +1056,15 @@ fn the_friends_door_opens_once_its_port_is_free() {
     // shut for the whole session. It is tried again once a minute.
     let blocker = std::net::TcpListener::bind(("::", 0)).or_else(|_| std::net::TcpListener::bind(("0.0.0.0", 0))).unwrap();
     let port = blocker.local_addr().unwrap().port();
+    // The IPv4 side too: on Windows an IPv6 socket holds only IPv6, and the
+    // door rightly opened on the free IPv4 side (6 Oct 2026). Where IPv6
+    // already holds both (Linux), this second bind fails and isn't needed.
+    let blocker_v4 = std::net::TcpListener::bind(("0.0.0.0", port)).ok();
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, story_or_islands(), "friends-door").with_signal_door_later(port, Vec::new());
     d.open_signal_door_again(100);
     drop(blocker);
+    drop(blocker_v4);
     d.open_signal_door_again(120);
     assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "tried again before a minute was up");
     d.open_signal_door_again(161);
