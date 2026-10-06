@@ -622,7 +622,7 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
             };
             let phrase = value("--key")
                 .map(|k| k.to_string())
-                .or_else(|| value("--card").and_then(&from_card))
+                .or_else(|| value("--card").and_then(|p| from_card(p)))
                 .or_else(|| {
                     let kept: sync::KeptKey = store.load(sync::KEY_FILE);
                     kept.is_set().then(|| kept.phrase().unwrap_or_default())

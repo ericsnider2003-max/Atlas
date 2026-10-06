@@ -246,12 +246,28 @@ pub fn sweep_old_test_scratch(dir: &Path, now: std::time::SystemTime) -> usize {
 /// A cargo test binary (`target/<profile>/deps/<name>-<hash>`) that found its
 /// install root by climbing out of `target/`. Never true for an installed
 /// Atlas or for `ATLAS_HOME`.
+/// Running as one of Atlas's own tests (`is_a_test_binary`): for work Atlas
+/// would start on the machine by its own choice and a test daemon must not.
+pub fn under_test() -> bool {
+    under_the_test_harness()
+}
+
 fn under_the_test_harness() -> bool {
-    how() == Chosen::AboveTheProgram
-        && std::env::current_exe()
-            .ok()
-            .and_then(|e| e.parent().and_then(|d| d.file_name()).map(|n| n == "deps"))
-            .unwrap_or(false)
+    std::env::current_exe().map(|e| is_a_test_binary(how(), &e)).unwrap_or(false)
+}
+
+/// A test binary: run from cargo's `deps` folder, with no `ATLAS_HOME`
+/// saying where to keep data.
+///
+/// It required the root to have been found *above* the program, which is
+/// only so when the build folder is inside the checkout. Built anywhere else
+/// (`CARGO_TARGET_DIR`, a shared cache) the root is found where you're
+/// standing instead, the check said "not a test", and the tests wrote the
+/// checkout's own `data/`: a test that handed Atlas over left it handed over
+/// for every test after it (5 Oct 2026). An installed Atlas never runs from a
+/// folder called `deps`; `ATLAS_HOME` is still obeyed.
+fn is_a_test_binary(chosen: Chosen, exe: &Path) -> bool {
+    chosen != Chosen::Told && exe.parent().and_then(|d| d.file_name()).is_some_and(|n| n == "deps")
 }
 
 /// `data/state` — the store root: notes, the tray, the vault, peer tokens.
@@ -425,6 +441,18 @@ pub fn sweep_run_scratch(temp: &Path, prefix: &str, mine: u32, stale_secs: u64) 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_test_binary_is_known_by_its_folder_wherever_the_build_is() {
+        let in_tree = Path::new("/src/atlas/target/debug/deps/all-1a2b");
+        let out_of_tree = Path::new("/cache/target/debug/deps/all-1a2b");
+        assert!(is_a_test_binary(Chosen::AboveTheProgram, in_tree));
+        // The case that wrote into the checkout: built outside it.
+        assert!(is_a_test_binary(Chosen::WhereYouAreStanding, out_of_tree));
+        // ATLAS_HOME is obeyed, and an installed Atlas is not a test.
+        assert!(!is_a_test_binary(Chosen::Told, out_of_tree));
+        assert!(!is_a_test_binary(Chosen::BesideTheProgram, Path::new("C:/Atlas/atlas.exe")));
+    }
     use super::*;
 
     #[test]

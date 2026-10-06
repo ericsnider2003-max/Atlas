@@ -86,12 +86,6 @@ use std::collections::{BTreeSet, HashSet};
 ///
 /// Sorted, so a diff reads as "these were cleared, these appeared".
 const NAME_COLLISION_ONLY: &[&str] = &[
-    // --- 5 Oct (audit Q1) -----------------------------------------------
-    // Reached only through the `kept!` / `heard!` macros (`$crate::unheard::
-    // hear(..)`, which `hear` uses to call `record`), at hundreds of sites
-    // across the tree; a name scan doesn't expand macros.
-    "unheard::hear",
-    "unheard::record",
     // --- 18 Sep ---------------------------------------------------------
     // `mesh::choose` joined this list when its only caller went. That caller
     // was in `Intent::Sync`, passed four hardcoded literals, and threw the
@@ -305,6 +299,11 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "tts::adjust",
     "tts::interpret",
     "tune::summary",
+    // 5 Oct (audit Q1): reached only through the `kept!` / `heard!` macros
+    // (`$crate::unheard::hear(..)`, which calls `record`); a name scan
+    // doesn't expand macros.
+    "unheard::hear",
+    "unheard::record",
     "unsub::judge",
     // 28 Sep 2026: its caller is `update_apply::update_tick` in the same
     // module, bare; `server::HubDoor::take_news` shares the name.

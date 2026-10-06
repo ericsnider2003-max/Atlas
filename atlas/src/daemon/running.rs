@@ -1754,7 +1754,7 @@ impl<'a> Daemon<'a> {
             // Cut by a sound that wasn't words -- a cough, a door, Atlas's own
             // voice coming back -- is no reason to stop: the rest is said
             // (29 Sep 2026: "Paused." and then nothing, over and over).
-            if over_it.as_deref().is_some_and(crate::voice::not_really_said) {
+            if over_it.as_deref().is_some_and(|w| crate::voice::not_really_said(w)) {
                 self.cut_in_by_voice = None;
                 self.unsaid = None;
                 let rest = d.remaining_text();

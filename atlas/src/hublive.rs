@@ -927,7 +927,7 @@ impl Daemon<'_> {
             .items
             .iter()
             .filter(|i| !i.done)
-            .map(crate::backlog::Backlog::phrase)
+            .map(|i| crate::backlog::Backlog::phrase(i))
             .collect();
         lines.extend(stopped.iter().cloned());
         let proposed: Vec<(String, String)> = self
@@ -2707,7 +2707,7 @@ impl Daemon<'_> {
                 let mut rows = Vec::new();
                 for b in &businesses {
                     for t in tasks.for_space(&crate::earned::Space::Business(b.clone())) {
-                        let due_day = t.due.map(crate::localclock::day_here);
+                        let due_day = t.due.map(|d| crate::localclock::day_here(d) as i64);
                         rows.push(crate::hubpages::TaskRow {
                             id: t.id,
                             what: t.description.clone(),

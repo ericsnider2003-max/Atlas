@@ -331,7 +331,7 @@ pub(super) fn run_clients(args: &[String]) {
             }
             _ => println!("atlas clients add <address> [name]"),
         },
-        Some("import") => match args.get(1).map(std::fs::read_to_string) {
+        Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
             Some(Ok(text)) => match list.import_vcf(&text, now) {
                 Ok((added, skipped, notes)) => {
                     keep(list.save(&store), "your clients");
@@ -690,7 +690,7 @@ pub(super) fn run_calendar(args: &[String]) {
         }
     }
     match args.first().map(|s| s.to_lowercase()).as_deref() {
-        Some("import") => match args.get(1).map(std::fs::read_to_string) {
+        Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
             Some(Ok(text)) => match cal.import_ics(&text, now, &zone) {
                 Ok((n, unknown)) => {
                     keep(cal.save(&store), "your calendar");

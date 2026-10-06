@@ -1571,7 +1571,7 @@ impl<'a> Daemon<'a> {
         let mode_cap = self
             .modes
             .verbosity_if_set()
-            .map(crate::modes::sentences_for)
+            .map(|v| crate::modes::sentences_for(v))
             .unwrap_or(usize::MAX);
         persona.max_spoken_sentences =
             persona.max_spoken_sentences.min(mode_cap).min(register.length()).max(1);
@@ -2172,7 +2172,7 @@ impl<'a> Daemon<'a> {
         persona.max_spoken_sentences = self.this_turn_cap.unwrap_or_else(|| {
             self.modes
                 .verbosity_if_set()
-                .map(crate::modes::sentences_for)
+                .map(|v| crate::modes::sentences_for(v))
                 .unwrap_or(usize::MAX)
                 .min(register.length())
                 .max(1)

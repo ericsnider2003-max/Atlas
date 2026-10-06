@@ -103,7 +103,7 @@ pub fn take() -> Vec<Unheard> {
 
 /// True when `e` is worth recording: everything except an `io::Error` saying
 /// the thing is already gone (a delete of a file that isn't there succeeded).
-pub fn worth_hearing<E: Display + 'static>(e: &E) -> bool {
+fn worth_hearing<E: Display + 'static>(e: &E) -> bool {
     match (e as &dyn std::any::Any).downcast_ref::<std::io::Error>() {
         Some(io) => io.kind() != std::io::ErrorKind::NotFound,
         None => true,

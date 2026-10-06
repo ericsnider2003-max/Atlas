@@ -32,6 +32,8 @@ struct Command {
     phrases: Vec<String>,
     #[serde(default)]
     takes_argument: bool,
+    #[serde(default)]
+    argument_optional: bool,
 }
 
 fn commands() -> Vec<Command> {
@@ -40,10 +42,22 @@ fn commands() -> Vec<Command> {
 }
 
 /// What to say for a command: its first phrase, with something to act on
-/// when it takes one.
+/// when it needs one -- of the kind it acts on, since "open the weather in
+/// paris" is rightly not understood. Said bare when the argument is optional.
 fn said(c: &Command) -> Option<String> {
     let p = c.phrases.first()?;
-    Some(if c.takes_argument { format!("{p} the weather in paris") } else { p.clone() })
+    if !c.takes_argument || c.argument_optional {
+        return Some(p.clone());
+    }
+    let arg = match c.intent.as_str() {
+        "open_app" | "close_app" | "focus_app" => "notepad",
+        "draft_post" => "twitter",
+        "set_mode" => "focus",
+        "change_group" => "Sam to the Friends group",
+        "name_this" => "mug",
+        _ => "the weather in paris",
+    };
+    Some(format!("{p} {arg}"))
 }
 
 fn daemon(tag: &str) -> (atlas::daemon::Daemon<'static>, std::path::PathBuf) {
@@ -93,12 +107,30 @@ fn every_command_is_understood_as_itself() {
     assert!(wrong.is_empty(), "{} command(s) not understood as themselves:\n{}", wrong.len(), wrong.join("\n"));
 }
 
+/// The install-wide state (handed over or not, pairing, the lock), cleared
+/// so each command starts from a fresh install: "hand over" said for real
+/// would otherwise leave every command after it talking to a guest's Atlas.
+///
+/// Only ever this test process's own folder. On 5 Oct this state was the
+/// checkout's real `data/state` whenever the build folder was outside the
+/// checkout (`roots::is_a_test_binary`), and this test left it handed over.
+/// So it checks rather than trusts, and refuses to touch anything else.
+fn fresh_install_state() {
+    let dir = atlas::roots::state_dir();
+    let ours = dir.components().any(|c| c.as_os_str().to_string_lossy().starts_with(&format!("atlas-test-{}", std::process::id())));
+    assert!(ours, "install state is {} -- not this test's own folder, so a command said here would change a real Atlas", dir.display());
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).expect("clear this test's install state");
+    }
+}
+
 #[test]
 fn every_command_answers_when_said() {
     let t = 1_790_500_000;
     let mut wrong = Vec::new();
     for c in commands() {
         let Some(s) = said(&c) else { continue };
+        fresh_install_state();
         let intent = c.intent.clone();
         let (tx, rx) = mpsc::channel();
         let words = s.clone();

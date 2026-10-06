@@ -808,3 +808,19 @@ fn a_rough_day_with_an_empty_list_offers_help_without_performing_concern() {
         "an empty backlog should give the quiet offer, got: {reply}"
     );
 }
+
+#[test]
+fn a_test_daemon_never_starts_a_mutation_sweep_of_the_checkout() {
+    // 5 Oct 2026: on a machine with cargo-mutants, every daemon a test built
+    // started a real `cargo mutants` over the checkout once its day had come
+    // round -- hours of builds, gigabytes in the temp folder, and the crew's
+    // slots gone from the work eight other tests were waiting on.
+    let (c, p) = (cfg(), plat());
+    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("no-sweep")), Proactive::new(ProactiveConfig::default()));
+    let t = atlas::store::now() + 3 * 24 * 3600;
+    for i in 0..5 {
+        d.tick(t + i * 1000);
+    }
+    let names: Vec<String> = d.crew.errands().into_iter().map(|e| e.name).collect();
+    assert!(!names.iter().any(|n| n.contains("mutation")), "a test daemon started {names:?}");
+}

@@ -532,7 +532,7 @@ impl<'a> Daemon<'a> {
             .people_known()
             .by_key
             .values()
-            .filter(|c| names_in(&c.name) || c.name.split_whitespace().next().is_some_and(&names_in))
+            .filter(|c| names_in(&c.name) || c.name.split_whitespace().next().is_some_and(|first| names_in(first)))
             .take(2)
             .map(|c| {
                 let notes: Vec<String> = c

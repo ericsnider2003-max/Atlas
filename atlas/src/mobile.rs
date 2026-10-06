@@ -268,7 +268,7 @@ pub unsafe extern "C" fn atlas_mobile_start(home: *const std::os::raw::c_char, p
     if home.is_null() {
         return -1;
     }
-    let Ok(home) = std::ffi::CStr::from_ptr(home).to_str().map(std::path::PathBuf::from) else { return -2 };
+    let Ok(home) = std::ffi::CStr::from_ptr(home).to_str().map(|s| std::path::PathBuf::from(s)) else { return -2 };
     let before = crate::mobile::starts();
     match crate::mobile::start_once(home, port, std::time::Duration::from_millis(START_WAIT_MS)) {
         Started::Running(_) => 0,

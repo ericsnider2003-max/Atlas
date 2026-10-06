@@ -717,7 +717,11 @@ impl<'a> Daemon<'a> {
         if t < self.next_sweep_look {
             return;
         }
-        if self.rehearsal || !self.tools_cfg().self_work.enabled {
+        // Nor in a test (5 Oct 2026): every daemon a test built, on a machine
+        // with cargo-mutants, started a real sweep of the checkout -- hours of
+        // rebuilding the crate, gigabytes of copies in the temp folder, and
+        // the crew's slots taken from the work the test was waiting on.
+        if self.rehearsal || !self.tools_cfg().self_work.enabled || crate::roots::under_test() {
             self.next_sweep_look = t + 900;
             return;
         }

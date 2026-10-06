@@ -308,7 +308,7 @@ fn phrase_overlap(a: &str, b: &str) -> f32 {
             .split_whitespace()
             .filter(|w| !NOT_DECIDING.contains(w))
             // A closure, not `.map(stem)`: the guards find a call by `name(`.
-            .map(crate::stemmer::stem)
+            .map(|w| crate::stemmer::stem(w))
             .collect()
     };
     let (x, y) = (bag(a), bag(b));
