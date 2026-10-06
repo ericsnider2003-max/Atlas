@@ -46,7 +46,7 @@ fn said(c: &Command) -> Option<String> {
     Some(if c.takes_argument { format!("{p} the weather in paris") } else { p.clone() })
 }
 
-fn daemon(tag: &str) -> atlas::daemon::Daemon<'static> {
+fn daemon(tag: &str) -> (atlas::daemon::Daemon<'static>, std::path::PathBuf) {
     let cfg: &'static atlas::config::Config = Box::leak(Box::new(atlas::config::Config::load(Path::new("config")).expect("config")));
     let plat = Box::leak(Box::new(atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
         id: 1,
@@ -59,13 +59,14 @@ fn daemon(tag: &str) -> atlas::daemon::Daemon<'static> {
     let dir = std::env::temp_dir().join(format!("atlas-e2e-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("temp dir");
-    atlas::daemon::Daemon::new(
+    let d = atlas::daemon::Daemon::new(
         cfg,
         plat,
         None,
-        atlas::store::Store::new(dir),
+        atlas::store::Store::new(dir.clone()),
         atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
-    )
+    );
+    (d, dir)
 }
 
 #[test]
@@ -105,8 +106,11 @@ fn every_command_answers_when_said() {
             .name(format!("e2e-{intent}"))
             .spawn(move || {
                 let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut d = daemon(&intent);
-                    d.turn(&words, t)
+                    let (mut d, dir) = daemon(&intent);
+                    let reply = d.turn(&words, t);
+                    drop(d);
+                    let _ = std::fs::remove_dir_all(&dir);
+                    reply
                 }));
                 let _ = tx.send(r.map_err(|p| p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default()));
             })

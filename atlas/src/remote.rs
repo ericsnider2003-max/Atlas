@@ -288,7 +288,7 @@ pub const ANSWER_PREFIX: &str = "answer:";
 /// words don't hand anything to the laptop.
 pub fn handed_over(said: &str) -> Option<String> {
     let s = said.trim().trim_end_matches(['.', '!', '?']).trim();
-    let l = s.to_lowercase();
+    let l = s.to_ascii_lowercase();
     const LEADS: &[&str] = &[
         "ask the laptop to ", "ask my laptop to ", "ask the computer to ", "ask my computer to ",
         "have the laptop ", "have my laptop ", "get the laptop to ", "get my laptop to ",

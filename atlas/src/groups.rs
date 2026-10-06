@@ -622,16 +622,16 @@ pub fn views(store: &Store, peer_dir: &std::path::Path) -> (Vec<View>, Vec<Strin
 /// "let Maya post in the Friends group"
 pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)> {
     let t: String = said.trim().trim_end_matches(['.', '!', '?']).to_string();
-    let lower = t.to_lowercase();
+    let lower = t.to_ascii_lowercase();
     let group_of = |g: &str| -> Option<String> {
         let g = g.trim();
-        let g = if g.to_lowercase().starts_with("the ") { &g[4..] } else { g };
+        let g = if g.to_ascii_lowercase().starts_with("the ") { &g[4..] } else { g };
         let g = g.strip_suffix(" group").unwrap_or(g).trim();
         (!g.is_empty()).then(|| g.to_string())
     };
     let cut = |from: usize, sep: &str| -> Option<(String, String)> {
         let rest = &t[from..];
-        let at = rest.to_lowercase().find(sep)?;
+        let at = rest.to_ascii_lowercase().find(sep)?;
         let who = rest[..at].trim().to_string();
         let tail = rest[at + sep.len()..].trim().to_string();
         // A person is a name, not a sentence: "add milk to the list" has one
@@ -640,7 +640,7 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
     };
     if let Some(from) = lower.strip_prefix("add ").map(|_| 4) {
         let (who, tail) = cut(from, " to ")?;
-        let (group, role) = match tail.to_lowercase().find(" as a") {
+        let (group, role) = match tail.to_ascii_lowercase().find(" as a") {
             Some(at) => (tail[..at].to_string(), tail[at..].to_lowercase()),
             None => (tail.clone(), String::new()),
         };

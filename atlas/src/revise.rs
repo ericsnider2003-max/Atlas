@@ -378,7 +378,7 @@ pub fn wanted_in(said: &str) -> Option<String> {
     // opinion parser had it with `" for "` and a seat saying "For -- ship it"
     // was recorded as Against. A word-boundary marker needs a boundary that
     // exists at position 0, and the start of the string is one.
-    let lower = format!(" {} ", said.to_lowercase());
+    let lower = format!(" {} ", said.to_ascii_lowercase());
     for marker in AFTER {
         if let Some(at) = lower.find(marker) {
             // Back into the original string: the pad shifted everything by one.

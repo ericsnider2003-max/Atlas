@@ -65,7 +65,7 @@ pub fn language_named(word: &str) -> Option<&'static str> {
 /// this say in English": (target language, text if given inline).
 pub fn read(said: &str) -> Option<(&'static str, Option<String>)> {
     let s = said.trim();
-    let low = s.to_lowercase();
+    let low = s.to_ascii_lowercase();
     if !(low.starts_with("translate") || low.starts_with("what does this say in") || low.starts_with("say this in")) {
         return None;
     }

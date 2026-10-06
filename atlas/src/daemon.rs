@@ -3007,7 +3007,7 @@ pub fn parse_offset(raw: &str) -> i16 {
     // hours as "+0", failed, took 0 -- and then read "50" as the minutes and
     // returned a real-looking offset of fifty minutes. A parser that cannot
     // fail will always prefer a wrong answer to no answer.
-    let digits = &raw[1..5];
+    let Some(digits) = raw.get(1..5) else { return 0 };
     if !digits.bytes().all(|b| b.is_ascii_digit()) {
         return 0;
     }

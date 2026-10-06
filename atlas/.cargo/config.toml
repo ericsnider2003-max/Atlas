@@ -4,3 +4,17 @@
 # "noon" means noon. Only affects `cargo test`/`cargo run`; the built program
 # reads the machine's own zone. See `src/localclock.rs`.
 ATLAS_CLOCK_OFFSET = "0"
+
+# Tests make hundreds of scratch folders and few remove them (18 runs left
+# 11,452 folders, 12 GB, in the system temp dir: ledger Q21). Under cargo
+# they go in atlas/scratch instead, which `roots::data_home` clears of
+# earlier runs' leftovers. TMP and TEMP are what Windows reads, TMPDIR what
+# Linux and macOS read; `force` because Windows always has them.
+#
+# A folder that is in the repo (its .gitkeep is), not target/tmp: [env]
+# reaches every cargo command, the compiler and linker included, and a
+# fresh checkout has no target/tmp -- the laptop's release build failed with
+# "Cannot create temporary file" (5 Oct 2026). Its contents are ignored.
+TMPDIR = { value = "scratch", relative = true, force = true }
+TMP = { value = "scratch", relative = true, force = true }
+TEMP = { value = "scratch", relative = true, force = true }

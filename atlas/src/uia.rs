@@ -327,12 +327,12 @@ pub fn cannot_be_undone(button: &str) -> bool {
 /// "click Export in Excel" / "press the Save button" → ("Export", Some("Excel")).
 pub fn button_request(said: &str) -> Option<(String, Option<String>)> {
     let t = said.trim();
-    let lower = t.to_lowercase();
+    let lower = t.to_ascii_lowercase();
     let start = ["click the", "press the", "click", "press", "hit the", "hit", "tap the", "tap"]
         .iter()
         .find_map(|p| lower.find(p).map(|i| i + p.len()))?;
     let rest = t[start..].trim();
-    let (button, app) = match rest.to_lowercase().rfind(" in ") {
+    let (button, app) = match rest.to_ascii_lowercase().rfind(" in ") {
         Some(i) => (rest[..i].trim().to_string(), Some(rest[i + 4..].trim().to_string())),
         None => (rest.to_string(), None),
     };

@@ -42,7 +42,7 @@ jobs:
       ATLAS_BUILD_NUMBER: ${{ github.run_number }}
       ATLAS_VERSION: 0.1.${{ github.run_number }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Is signing set up?
         shell: bash
@@ -64,7 +64,7 @@ jobs:
       # The Rust build cached by Cargo.lock and the toolchain -- not by the
       # source (28 Sep 2026: a key with every source file's hash in it missed
       # on every change, so the cache never helped a rebuild).
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: atlas -> target
           key: windows-msvc
@@ -75,6 +75,9 @@ jobs:
         shell: bash
         run: |
           rustup target add x86_64-pc-windows-msvc
+          # The runner's folders aren't written into atlas.exe's messages
+          # (ledger Q20): source paths read atlas/..., crates cargo/...
+          export RUSTFLAGS="--remap-path-prefix=$(pwd)=atlas --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=cargo"
           cargo build --release --locked --target x86_64-pc-windows-msvc
           mkdir -p ../dist
           cp target/x86_64-pc-windows-msvc/release/atlas.exe ../dist/
@@ -96,7 +99,7 @@ jobs:
 
       - name: Sign it
         if: env.SIGN == '1'
-        uses: azure/artifact-signing-action@v2
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -150,7 +153,7 @@ jobs:
           .\dist\atlas.exe kokoro-check
           if ($LASTEXITCODE -ne 0) { Write-Warning "Kokoro didn't speak on Windows (see above)"; exit 1 }
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: Atlas-Windows-${{ env.ATLAS_VERSION }}-${{ github.run_number }}${{ env.SIGN != '1' && '-unsigned' || '' }}
           path: dist/
@@ -167,7 +170,7 @@ jobs:
           mkdir -p friend
           cp dist/atlas.exe "friend/Atlas Setup.exe"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: Atlas-Windows-Setup-${{ env.ATLAS_VERSION }}-${{ github.run_number }}${{ env.SIGN != '1' && '-unsigned' || '' }}
           path: friend/Atlas Setup.exe

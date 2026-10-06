@@ -663,7 +663,7 @@ fn first_sentence(text: &str) -> String {
 
 /// Whatever the seat said after "change my mind", where it said anything.
 fn after_phrase(text: &str, phrase: &str) -> Option<String> {
-    let at = text.to_lowercase().find(phrase)?;
+    let at = text.to_ascii_lowercase().find(phrase)?;
     let rest = text[at + phrase.len()..].trim_start_matches([':', ' ', '-', '\n']).trim();
     let line = rest.lines().next()?.trim();
     if line.is_empty() {

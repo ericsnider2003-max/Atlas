@@ -181,8 +181,11 @@ fn filters_of(dict: &str) -> Vec<String> {
     let Some(i) = dict.find("/Filter") else { return vec![] };
     let rest = &dict[i + 7..];
     let rest = rest.trim_start();
+    // By character: `/Filter` last in the dictionary left nothing to skip,
+    // and a byte the lossy decoding turned into a 3-byte replacement
+    // character split mid-character (both panicked; found 5 Oct 2026).
     let span = if rest.starts_with('[') { &rest[..rest.find(']').unwrap_or(rest.len())] } else {
-        let n = rest[1..].find(|c: char| c == '/' || c == '>' || c.is_whitespace()).map_or(rest.len(), |n| n + 1);
+        let n = rest.char_indices().skip(1).find(|&(_, c)| c == '/' || c == '>' || c.is_whitespace()).map_or(rest.len(), |(i, _)| i);
         &rest[..n]
     };
     span.split('/').skip(1).map(|f| f.trim_matches(|c: char| c.is_whitespace() || c == ']').to_string()).collect()

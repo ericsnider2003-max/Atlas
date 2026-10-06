@@ -61,7 +61,7 @@ jobs:
       ATLAS_BUILD_NUMBER: ${{ github.run_number }}
       ATLAS_VERSION: 0.1.${{ github.run_number }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Say what's missing, before spending Mac minutes
         env:
@@ -88,15 +88,19 @@ jobs:
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
           chmod 600 "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
 
+      # A known Python, so the hash-pinned packages below have wheels for it.
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
       - name: Apple's side of signing, checked before the long build
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          # Pinned (audit Q20): this step holds the App Store key, so the code
-          # it runs is chosen, not whatever was newest that day.
-          python3 -m pip install --quiet --break-system-packages pyjwt==2.15.1 cryptography==50.0.2 2>/dev/null \
-            || python3 -m pip install --quiet pyjwt==2.15.1 cryptography==50.0.2
+          # Exactly these files and no others (ledger Q20): this step holds
+          # the App Store Connect key, so nothing unpinned runs beside it.
+          python3 -m pip install --quiet --require-hashes --only-binary=:all: -r atlas/mobile/ios/requirements-signing.txt
           # The phones Atlas collected (devices.txt), registered with Apple
           # first, so the profiles this build makes include them.
           ASC_KEY_PATH="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" python3 atlas/mobile/ios/register_devices.py atlas/mobile/ios/devices.txt
@@ -110,7 +114,7 @@ jobs:
       # a key hashing every source file missed on every change). Saved even
       # when a later step fails, so a signing failure doesn't throw away the
       # Mac minutes the core took.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         if: env.CHECK_ONLY != '1'
         with:
           workspaces: atlas -> target
@@ -280,7 +284,7 @@ jobs:
           rm -rf "$RUNNER_TEMP/keys"
           security delete-keychain "$RUNNER_TEMP/atlas.keychain-db" 2>/dev/null || true
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: env.CHECK_ONLY != '1'
         with:
           name: Atlas-iOS-${{ env.ATLAS_VERSION }}-${{ github.run_number }}

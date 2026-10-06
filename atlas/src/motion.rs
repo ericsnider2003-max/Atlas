@@ -731,7 +731,7 @@ fn main_colour(svg: &str) -> Option<String> {
 
 /// Replace one colour everywhere it's used as a paint, case-insensitively.
 fn swap_colour(svg: &str, from: &str, to: &str) -> String {
-    let lower = svg.to_lowercase();
+    let lower = svg.to_ascii_lowercase();
     let mut out = String::with_capacity(svg.len());
     let mut last = 0;
     for (i, _) in lower.match_indices(from) {
@@ -752,7 +752,7 @@ fn swap_colour(svg: &str, from: &str, to: &str) -> String {
 /// Scale the canvas: the root `width`/`height`, with a `viewBox` added first
 /// if there isn't one, so the drawing scales with it.
 fn scale_canvas(svg: &str, k: f32) -> Option<(String, (u32, u32))> {
-    let lower = svg.to_lowercase();
+    let lower = svg.to_ascii_lowercase();
     let (w, h) = declared_size(&lower)?;
     let (nw, nh) = (((w as f32) * k).round() as u32, ((h as f32) * k).round() as u32);
     let start = lower.find("<svg")?;
@@ -762,7 +762,7 @@ fn scale_canvas(svg: &str, k: f32) -> Option<(String, (u32, u32))> {
         head.push_str(&format!(" viewBox=\"0 0 {w} {h}\""));
     }
     let set = |head: &str, attr: &str, v: u32| -> String {
-        let l = head.to_lowercase();
+        let l = head.to_ascii_lowercase();
         match l.find(&format!(" {attr}=\"")) {
             Some(i) => {
                 let vs = i + attr.len() + 3;

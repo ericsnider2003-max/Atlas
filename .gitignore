@@ -41,3 +41,7 @@ atlas/mobile/ios/*.xcodeproj/
 
 # Written by Atlas on each machine (Settings page); never shipped.
 atlas/config/settings.yaml
+# Scratch for everything cargo runs here (.cargo/config.toml, ledger Q21);
+# only the placeholder that keeps the folder in every checkout is tracked.
+atlas/scratch/*
+!atlas/scratch/.gitkeep

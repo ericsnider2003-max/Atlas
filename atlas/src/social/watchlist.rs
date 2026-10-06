@@ -104,7 +104,7 @@ fn word(s: &str) -> String {
 /// What you said, as the sources to watch. Refuses TikTok, Instagram and X
 /// with the reason.
 pub fn parse_target(said: &str, cfg: &super::SocialConfig) -> Result<Vec<Target>, String> {
-    let low = said.to_lowercase();
+    let low = said.to_ascii_lowercase();
     let rest = [
         "start watching ",
         "keep an eye on ",
@@ -124,7 +124,7 @@ pub fn parse_target(said: &str, cfg: &super::SocialConfig) -> Result<Vec<Target>
         .find_map(|p| low.find(p).map(|i| said[i + p.len()..].trim().to_string()))
         .unwrap_or_else(|| said.trim().to_string());
     let r = rest.trim().trim_end_matches(['.', '?', '!']).to_string();
-    let rl = r.to_lowercase();
+    let rl = r.to_ascii_lowercase();
     for (site, name) in [("tiktok", "TikTok"), ("instagram", "Instagram"), ("twitter", "X"), ("x.com", "X"), (" on x", "X")] {
         if rl.contains(site) || low.ends_with(site) {
             return Err(format!("I can't watch {name} on a schedule. {}", super::onepage::WHY_NO_SCHEDULE));

@@ -29,6 +29,45 @@ impl<'a> Daemon<'a> {
     /// making them all handle it would mean sixteen new ways to get it wrong.
     /// `tick` reports the transition once; `persist_failures` stays readable
     /// so `doctor` and the hub can report the standing state.
+    /// Take what a command or another Atlas wrote to these records since this
+    /// one last read or saved them (5 Oct 2026, Q13). `atlas calendar import`
+    /// or `atlas access` run beside a running Atlas wrote their file, and the
+    /// daemon's next `persist` put its own older copy back: the imported
+    /// invite was gone. Checked at the start of every turn and tick, a stat
+    /// per record. The records here are the ones something outside the daemon
+    /// writes; `Store::save` keeps the other side's copy for the rest.
+    pub(super) fn take_outside_changes(&mut self) -> Vec<&'static str> {
+        let mut took = Vec::new();
+        if self.store.changed_elsewhere("calendar") {
+            self.calendar = crate::calendar::Calendar::load(&self.store);
+            took.push("calendar");
+        }
+        if self.store.changed_elsewhere(crate::signin::Access::RECORD) {
+            self.access = crate::signin::Access::load(&self.store);
+            took.push("site access");
+        }
+        if self.store.changed_elsewhere("posts") {
+            self.publisher = Publisher::load(&self.store);
+            took.push("posts");
+        }
+        if self.store.changed_elsewhere("backlog") {
+            self.backlog = Backlog::load(&self.store);
+            took.push("backlog");
+        }
+        if self.store.changed_elsewhere("workshop") {
+            self.workshop = crate::workshop::Workshop::load(&self.store);
+            took.push("workshop");
+        }
+        if self.store.changed_elsewhere("person") {
+            self.person = crate::person::Person::load(&self.store);
+            took.push("person");
+        }
+        for what in &took {
+            self.log.info(&format!("{what} was changed outside Atlas; read it again before going on"));
+        }
+        took
+    }
+
     pub fn persist(&mut self) {
         fn note(
             failed: &mut Vec<(&'static str, String)>,

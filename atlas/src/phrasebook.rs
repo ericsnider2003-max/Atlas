@@ -449,7 +449,7 @@ pub fn asked_about_phrasebook(said: &str) -> Option<Asked> {
 /// car, not about a sentence of yours.
 pub fn meant_instead(said: &str) -> Option<String> {
     let t = said.trim();
-    let low = t.to_lowercase();
+    let low = t.to_ascii_lowercase();
     // "Atlas," and a "no" in front are the same correction.
     let mut at = 0;
     for lead in ["atlas,", "atlas", "no no,", "no no", "no,", "no", "nope,", "nope", "sorry,", "sorry"] {

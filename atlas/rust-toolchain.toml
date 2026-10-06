@@ -1,6 +1,0 @@
-# One toolchain for the laptop, CI and every chat (audit Q20): each clippy
-# release adds lints, so "clean" has to mean clean on the same compiler.
-# Eric's laptop is on 1.98.1. Move it on purpose, in its own commit.
-[toolchain]
-channel = "1.98.1"
-components = ["clippy", "rustfmt"]

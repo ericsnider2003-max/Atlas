@@ -83,7 +83,7 @@ pub(crate) fn parse_rfc2822(s: &str) -> Option<u64> {
     let sec: i64 = t.next().unwrap_or("0").parse().ok()?;
     // Every field within a real date and time before any arithmetic: a mail
     // or feed from anywhere can say year 2022022022022026, which overflowed
-    // the sum below (found by tests/fuzzing_the_readers.rs).
+    // the sum below (found by fuzzing a feed date, tests/parsers_survive_garbage.rs).
     if !(1..=9999).contains(&year) || !(1..=31).contains(&day) || !(0..24).contains(&hour) || !(0..60).contains(&min) || !(0..=60).contains(&sec) {
         return None;
     }

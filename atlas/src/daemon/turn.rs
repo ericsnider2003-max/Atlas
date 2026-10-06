@@ -42,6 +42,7 @@ impl<'a> Daemon<'a> {
             return self.turn_unwatched(said, t, how);
         }
         self.watching_turn = true;
+        self.take_outside_changes();
         let (watch, mended) = self.watch_the_turn(said);
         let heard = mended.as_deref().unwrap_or(said);
         // What the turn adds goes to your other devices (item 16).
@@ -1041,7 +1042,7 @@ impl<'a> Daemon<'a> {
                 self.session.pending = Pending::Nothing;
                 // "Change it to …": your edit of the words, asked about again,
                 // and learned from (H13g).
-                let l = said.to_lowercase();
+                let l = said.to_ascii_lowercase();
                 if let Some(new) = ["change it to ", "make it read ", "make it ", "change the words to "]
                     .iter()
                     .find_map(|p| l.find(p).map(|i| said[i + p.len()..].trim().trim_matches('"').to_string()))

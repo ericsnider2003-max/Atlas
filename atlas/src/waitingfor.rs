@@ -140,7 +140,7 @@ fn sentences(text: &str) -> Vec<String> {
 /// "On Mon, 3 Mar 2026, Sam wrote:", Outlook's "-----Original Message-----"
 /// or its "From: … Sent: …" block, a phone's "Sent from my …".
 fn own_words(excerpt: &str) -> &str {
-    let low = excerpt.to_lowercase();
+    let low = excerpt.to_ascii_lowercase();
     let mut end = excerpt.len();
     if let Some(w) = low.find(" wrote:") {
         // Back to the "On …" that opens the attribution, if it's close by.
