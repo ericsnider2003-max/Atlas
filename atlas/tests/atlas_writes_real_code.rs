@@ -203,9 +203,10 @@ fn run_it_asks_first_and_names_what_will_run() {
     let file = dir.join("hello.py");
     // It leaves a mark when it runs, so "nothing ran" is checked, not read.
     std::fs::write(&file, "open('ran.txt', 'w').write('x')\nprint('hello')\n").unwrap();
-    atlas::build_it::LastBuild { path: file.to_string_lossy().into_owned(), lang: atlas::craft::Lang::Python, built: true }.keep();
+    let store = Store::new(tmp("run-store"));
+    atlas::build_it::LastBuild { path: file.to_string_lossy().into_owned(), lang: atlas::craft::Lang::Python, built: true }.keep(&store);
     let llm: Arc<dyn Llm> = Arc::new(MockLlm("ok".into()));
-    let mut d = Daemon::new(&c, &p, Some(llm), Store::new(tmp("run-store")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(&c, &p, Some(llm), store, Proactive::new(ProactiveConfig::default()));
     let reply = d.turn("run it", 100);
     if atlas::codetools::any_python(&atlas::roots::install_root()).is_some() {
         assert!(reply.contains("hello.py") && reply.contains("Say yes"), "asks first, naming the file: {reply}");

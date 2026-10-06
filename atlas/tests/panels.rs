@@ -171,6 +171,7 @@ fn a_panel_window_has_no_browser_furniture() {
     assert!(args.iter().any(|a| a.contains("--window-position=2160,0")));
     assert!(args.iter().any(|a| a.contains("--window-size=400,1392")));
     assert!(args.iter().any(|a| a.contains("panel-profile")), "never inherits your tabs");
+    assert!(args.iter().any(|a| a == "--disable-background-networking"), "a panel doesn't call Google on its own");
 }
 
 // ================= how it looks =================

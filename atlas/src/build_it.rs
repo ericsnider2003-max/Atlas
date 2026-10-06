@@ -1672,7 +1672,8 @@ pub fn python_dep_files() -> Vec<(String, String)> {
 }
 
 /// The last thing built: where it is and what it's written in, for "run it"
-/// (2 Oct 2026). Kept beside the builds.
+/// (2 Oct 2026). Kept in your own records (6 Oct 2026; it was one file per
+/// install, so two daemons -- or two tests -- each ran the other's build).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 pub struct LastBuild {
     pub path: String,
@@ -1682,22 +1683,15 @@ pub struct LastBuild {
 }
 
 impl LastBuild {
-    pub fn path() -> std::path::PathBuf {
-        crate::roots::data_sub("builds").join("last-build.json")
+    /// Its record in the store.
+    pub const RECORD: &'static str = "last_build";
+
+    pub fn keep(&self, store: &crate::store::Store) {
+        crate::kept!(store.save(LastBuild::RECORD, self));
     }
 
-    pub fn keep(&self) {
-        let p = LastBuild::path();
-        if let Some(d) = p.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        if let Ok(j) = serde_json::to_string(self) {
-            let _ = std::fs::write(p, j);
-        }
-    }
-
-    pub fn last() -> Option<LastBuild> {
-        serde_json::from_str(&std::fs::read_to_string(LastBuild::path()).ok()?).ok()
+    pub fn last(store: &crate::store::Store) -> Option<LastBuild> {
+        store.load::<Option<LastBuild>>(LastBuild::RECORD)
     }
 }
 

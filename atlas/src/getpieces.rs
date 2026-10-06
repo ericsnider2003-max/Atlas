@@ -1199,6 +1199,15 @@ fn slug(name: &str) -> String {
 /// and `ffplay` are found where Atlas put them — no system install, no PATH
 /// editing, and nothing outside Atlas's own folder changed.
 pub fn use_own_tools(root: &Path) {
+    // Never in a test (6 Oct 2026): this changes the whole process's
+    // environment. The setup walk's test ran it on a stand-in install whose
+    // ffmpeg.exe is the right size and empty, and from then on every test in
+    // the run that started ffmpeg got the stand-in -- Windows refused it as
+    // corrupt (os error 1392), failing photo editing and the camera. It also
+    // pointed CARGO_HOME/RUSTUP_HOME at the stand-in for every later test.
+    if crate::roots::under_test() {
+        return;
+    }
     // And the code checkers Atlas fetched for itself (`codetools`, 1 Oct
     // 2026), with Rust's two folders, which its programs read from the
     // environment.

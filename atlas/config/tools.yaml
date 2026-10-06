@@ -293,7 +293,11 @@ research:
   fetch:
     # --headless is a second, invisible Chrome. It does not touch your windows.
     command: "{browser}"
+    # Chrome's own calls home (sync, component updates, push, pings) off:
+    # only the page asked for is fetched (6 Oct 2026, ledger Q22).
     args: ["--headless=new", "--disable-gpu", "--dump-dom",
+           "--disable-background-networking", "--disable-component-update",
+           "--disable-sync", "--no-pings", "--metrics-recording-only",
            "--virtual-time-budget=4000", "{url}"]
 
 # Other programs' tools, over the Model Context Protocol (MCP). Atlas is the
@@ -587,7 +591,9 @@ browser:
     command: "{browser}"
     args: ["--headless=new", "--disable-gpu", "--remote-debugging-port=9222",
            "--user-data-dir=data/chrome-profile", "--no-first-run",
-           "--no-default-browser-check", "--disable-extensions"]
+           "--no-default-browser-check", "--disable-extensions",
+           "--disable-background-networking", "--disable-component-update",
+           "--disable-sync", "--no-pings", "--metrics-recording-only"]
 
 # Video editing. ffmpeg is CPU work with hardware decode, so this runs fine on
 # the Arc 140V where generation would not. Originals are never touched — every

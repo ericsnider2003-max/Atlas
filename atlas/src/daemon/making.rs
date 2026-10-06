@@ -340,6 +340,7 @@ impl<'a> Daemon<'a> {
         let ack_by = first.named_with(&coder_name);
         // Said only when what comes after the first is stronger than it.
         let then = matches!(first, crate::build_it::Writer::Local | crate::build_it::Writer::Coder).then(|| writers.get(1).map(|(w, _)| w.named())).flatten();
+        let store = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let mut sandbox = match crate::sandbox::Sandbox::create(&base, "build") {
                 Ok(s) => s,
@@ -391,7 +392,7 @@ impl<'a> Daemon<'a> {
                 match std::fs::write(&path, code) {
                     Ok(()) => {
                         said.push_str(&format!("\n\nSaved as {}, in {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), out_dir.display()));
-                        crate::build_it::LastBuild { path: path.to_string_lossy().into_owned(), lang, built: outcome.is_built() }.keep();
+                        crate::build_it::LastBuild { path: path.to_string_lossy().into_owned(), lang, built: outcome.is_built() }.keep(&store);
                         if crate::build_it::run_command(lang, &path, &[], None, Some("python")).is_some() {
                             said.push_str(" Say \"run it\" and I'll run it and tell you what it prints.");
                         }
@@ -431,6 +432,7 @@ impl<'a> Daemon<'a> {
         }
         let task = crate::coding_agent::task(desc, lang, &folder, fresh);
         let base = crate::roots::tmp_dir().join("builds");
+        let store = self.store.clone();
         let work: crew::Work = Box::new(move |_ctl| {
             let ran = crate::coding_agent::run(agent, &program, &folder, &task, 30 * 60);
             if !ran.finished {
@@ -463,7 +465,7 @@ impl<'a> Daemon<'a> {
                 crate::build_it::Check::Failed(out) => format!("It doesn't pass my checks yet: {}", opening_of(out)),
                 crate::build_it::Check::CannotCheck(missing) => format!("I couldn't check it: {missing} isn't installed on this computer."),
             };
-            crate::build_it::LastBuild { path: main.to_string_lossy().into_owned(), lang, built: matches!(check, crate::build_it::Check::Passed(_)) }.keep();
+            crate::build_it::LastBuild { path: main.to_string_lossy().into_owned(), lang, built: matches!(check, crate::build_it::Check::Passed(_)) }.keep(&store);
             Ok(format!(
                 "{} wrote it, in {}. {verdict} It says: {}\n\nSay \"run it\" and I'll run {} and tell you what it prints.",
                 agent.named(),
@@ -530,7 +532,7 @@ impl<'a> Daemon<'a> {
     /// it printed said back (2 Oct 2026). Output only lands in data/builds
     /// unless you asked for a folder, so this is the "now what" after a build.
     pub(super) fn run_build(&mut self, what: &str) -> String {
-        let Some(last) = crate::build_it::LastBuild::last() else {
+        let Some(last) = crate::build_it::LastBuild::last(&self.store) else {
             return "I haven't built anything to run yet — ask me to write something first.".into();
         };
         let path = std::path::PathBuf::from(&last.path);
@@ -1937,7 +1939,7 @@ impl<'a> Daemon<'a> {
     /// The most recent thing Atlas built, as code to explain.
     fn latest_build_code(&self) -> std::result::Result<(String, String), String> {
         // The one remembered as last, wherever you had it saved (2 Oct 2026).
-        if let Some(last) = crate::build_it::LastBuild::last() {
+        if let Some(last) = crate::build_it::LastBuild::last(&self.store) {
             let p = std::path::PathBuf::from(&last.path);
             if let Ok(code) = std::fs::read_to_string(&p) {
                 let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();

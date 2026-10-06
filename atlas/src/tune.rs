@@ -1680,7 +1680,10 @@ pub fn move_destination(said: &str) -> Option<std::path::PathBuf> {
     // "D:\Archive" is absolute on Windows only; it's recognised everywhere,
     // so a test on any machine reads it the same way.
     let windows_abs = raw.len() >= 3 && raw.as_bytes()[1] == b':' && (raw.as_bytes()[2] == b'\\' || raw.as_bytes()[2] == b'/');
-    (p.is_absolute() || windows_abs).then_some(p)
+    // And "/mnt/big/archive" the other way round: Windows doesn't call it
+    // absolute (no drive), but it is a folder named in full (6 Oct 2026).
+    let unix_abs = raw.starts_with('/');
+    (p.is_absolute() || windows_abs || unix_abs).then_some(p)
 }
 
 /// Whether files may go into `dest`: never into Windows, the program

@@ -415,7 +415,7 @@ fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("offloop")), Proactive::new(ProactiveConfig::default()));
     let t0 = Instant::now();
     let first = d.turn(FOUR, 1_790_740_000);
-    assert!(t0.elapsed() < Duration::from_millis(300), "the turn held the loop: {:?}", t0.elapsed());
+    assert!(t0.elapsed() < Duration::from_millis(300), "the turn held the loop: {:?} (this process's install is {:?})", t0.elapsed(), atlas::handover::Handover::load(&atlas::roots::install_state()).stance);
     assert!(first.starts_with("Working through that in"), "{first}");
     assert!(d.working_through_steps());
     // The hub, asked all the while: every page answered quickly.
@@ -582,7 +582,7 @@ fn two_parts_are_worked_out_at_the_same_time_on_both_slots() {
     // 30 Sep 2026: worked off the loop; the turn comes back at once and the
     // answers come through the ticks, together.
     let first = d.turn("write a haiku about rain and make up a name for my boat", 1_790_740_000);
-    assert!(started.elapsed() < Duration::from_millis(350), "the turn waited for the model: {:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_millis(350), "the turn waited for the model: {:?} (this process's install is {:?})", started.elapsed(), atlas::handover::Handover::load(&atlas::roots::install_state()).stance);
     assert_eq!(first, "Doing both at once: write a haiku about rain, and make up a name for my boat.");
     let said = tick_until_done(&mut d, 1_790_740_000, 20);
     let reply = said.last().map(|(l, _)| l.clone()).unwrap_or_default();

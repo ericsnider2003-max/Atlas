@@ -2917,10 +2917,17 @@ impl SignalListener {
         if let Ok(l) = TcpListener::bind(("::", port)) {
             listeners.push(l);
         }
-        // A second socket only for a fixed port: port 0 would pick a
-        // different number for it, and a door with two numbers is two doors.
-        if listeners.is_empty() || port != 0 {
-            match TcpListener::bind(("0.0.0.0", port)) {
+        // IPv4 on the same number. On port 0 that is the number the IPv6
+        // socket was given: a door with two numbers is two doors. Windows'
+        // IPv6 sockets don't take IPv4 (Linux's do), so skipping this for
+        // port 0 left the door unreachable at 127.0.0.1 there (6 Oct 2026:
+        // every friend-door test failed on Windows).
+        let v4_port = match (port, listeners.first()) {
+            (0, Some(l)) => l.local_addr().map(|a| a.port()).unwrap_or(0),
+            _ => port,
+        };
+        if listeners.is_empty() || v4_port != 0 {
+            match TcpListener::bind(("0.0.0.0", v4_port)) {
                 Ok(l) => listeners.push(l),
                 Err(e) if listeners.is_empty() => {
                     return Err(AtlasError::Platform(format!("could not open the signal door on {port}: {e}")))

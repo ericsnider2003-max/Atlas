@@ -737,6 +737,16 @@ mod through_the_daemon {
         Box::leak(Box::new(Config::load(Path::new("config")).unwrap()))
     }
 
+    /// With the vault shut and not opening on the sign-in, on every
+    /// platform: the page's "a key with the vault locked" path. On Windows a
+    /// new vault opens on the sign-in (5 Oct 2026), so the key was kept and
+    /// the test failed there (6 Oct).
+    fn cfg_vault_shut() -> &'static Config {
+        let mut c = Config::load(Path::new("config")).unwrap();
+        c.tools.as_mut().expect("tools").vault.open_on_this_login = false;
+        Box::leak(Box::new(c))
+    }
+
     #[test]
     fn the_schedules_ship_off_and_asking_works_without_them() {
         let c = cfg();
@@ -755,7 +765,7 @@ mod through_the_daemon {
     fn importing_then_asking_answers_from_the_data() {
         let p = plat();
         let dir = tmp("daemon");
-        let mut d = Daemon::new(cfg(), &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(cfg_vault_shut(), &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
         let before = d.execute(&Intent::Social("how did my last video do".into()));
         assert!(before.contains("no videos"), "{before}");
         let path = std::fs::canonicalize(fx("exports/youtube_studio")).unwrap();

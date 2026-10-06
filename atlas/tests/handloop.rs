@@ -318,7 +318,14 @@ fn losing_the_hand_does_not_kill_the_loop() {
         })
         .collect();
     let mut t = start(setup(frames, looks.clone(), noted));
-    std::thread::sleep(std::time::Duration::from_millis(250));
+    // Until it has looked a few times past the lost hands, not a fixed
+    // 250 ms: on a busy Windows laptop that wasn't enough to be scheduled
+    // four times (6 Oct 2026). A loop that died stays at its count and
+    // still fails, after the deadline.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while looks.load(Ordering::Relaxed) <= 3 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     t.stop();
     assert!(looks.load(Ordering::Relaxed) > 3, "it kept going");
 }

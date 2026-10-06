@@ -147,6 +147,8 @@ fn it_says_it_is_stopping() {
     // so a shutdown that says nothing is indistinguishable from a crash --
     // and this tree has a whole module (`crash`) built because that
     // distinction was impossible to make.
+    let _g = alone();
+    atlas::goodbye::reset_for_test();
     let (c, p) = (conf(), plat());
     let dir = tmp("said");
     let mut d = daemon(&c, &p, &dir);
@@ -165,6 +167,11 @@ fn stopping_twice_does_not_stop_twice() {
     // `shut_down`. Without the guard flag an orderly exit would write all
     // sixteen files twice and, on a full disk, report the same failure twice
     // -- which reads as two faults.
+    // What stopping says depends on the process-wide "asked twice" flag,
+    // which any test that asks Atlas to stop twice leaves set (6 Oct 2026:
+    // on Windows the first stop said nothing). Taken and cleared first.
+    let _g = alone();
+    atlas::goodbye::reset_for_test();
     let (c, p) = (conf(), plat());
     let dir = tmp("twice");
     let mut d = daemon(&c, &p, &dir);

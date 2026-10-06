@@ -297,7 +297,12 @@ fn the_steps_run_to_the_end_and_say_so() {
         token: "x".repeat(24),
     };
     let progress = std::sync::Arc::new(std::sync::Mutex::new(atlas::setupwin::Progress::new()));
+    let path_before = std::env::var_os("PATH");
     atlas::setupwin::walk_the_steps(&place, &progress, &Tools::default());
+    // The walk ends by putting the install's own tools on the search path;
+    // in a test that would be this stand-in's empty ffmpeg, for every test
+    // after it (getpieces::use_own_tools).
+    assert_eq!(std::env::var_os("PATH"), path_before, "the setup walk changed this test process's PATH");
     let p = progress.lock().unwrap();
     assert!(p.finished);
     assert_eq!(p.problems(), 0, "{:?}", p.steps);

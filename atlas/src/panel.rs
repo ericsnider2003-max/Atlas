@@ -257,6 +257,12 @@ pub fn window_args(url: &str, p: &Placement) -> Vec<String> {
         "--no-first-run".into(),
         "--disable-extensions".into(),
         "--disable-features=TranslateUI".into(),
+        // It shows Atlas's own page; none of Chrome's calls home (6 Oct 2026,
+        // ledger Q22).
+        "--disable-background-networking".into(),
+        "--disable-component-update".into(),
+        "--disable-sync".into(),
+        "--no-pings".into(),
     ]
 }
 

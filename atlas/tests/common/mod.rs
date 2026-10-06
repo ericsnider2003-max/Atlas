@@ -661,3 +661,26 @@ pub fn push_module(
         None => out.push((name, text)),
     }
 }
+
+/// A stand-in program that prints `text`, on any platform (6 Oct 2026).
+///
+/// Tests faked the search and fetch tools with `sh -c "echo '...'"`. Windows
+/// has no `sh`, so there the stand-in failed to start, research found "no
+/// sources", and the tests failed for a reason that had nothing to do with
+/// them. The text goes in a file and the file is printed (`cat`, or `cmd /C
+/// type`), because Windows quotes an argument with spaces and `echo` would
+/// print the quotes too.
+pub fn printing(text: &str) -> atlas::tools::ExternalTool {
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("atlas-printing-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder for the stand-in's text");
+    let file = dir.join(format!("{n}.txt"));
+    std::fs::write(&file, format!("{text}\n")).expect("the stand-in's text");
+    let file = file.display().to_string();
+    if cfg!(windows) {
+        atlas::tools::ExternalTool { command: "cmd".into(), args: vec!["/C".into(), "type".into(), file], ..Default::default() }
+    } else {
+        atlas::tools::ExternalTool { command: "cat".into(), args: vec![file], ..Default::default() }
+    }
+}

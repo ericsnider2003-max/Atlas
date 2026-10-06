@@ -141,6 +141,14 @@ impl Player {
             .arg("--no-first-run")
             .arg("--no-default-browser-check")
             .arg("--mute-audio")
+            // It plays a file from disk and nothing else: none of Chrome's
+            // own calls home (push, component updates, sync, pings). The test
+            // suite caught them reaching Google (6 Oct 2026, ledger Q22).
+            .arg("--disable-background-networking")
+            .arg("--disable-component-update")
+            .arg("--disable-sync")
+            .arg("--no-pings")
+            .arg("--metrics-recording-only")
             .arg("--remote-debugging-port=0")
             .arg(format!("--user-data-dir={}", profile.display()));
         // Chromium won't start its sandbox as root on Linux, which is where a

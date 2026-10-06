@@ -85,7 +85,12 @@ fn how_an_account_last_went_is_kept() {
 
 #[test]
 fn the_accounts_page_leads_with_connecting_and_walks_you_through_it() {
-    let c = Config::load(Path::new("config")).unwrap();
+    let mut c = Config::load(Path::new("config")).unwrap();
+    // The passphrase path, on every platform (6 Oct 2026). On Windows a new
+    // vault opens on the sign-in instead, so the form asked for nothing and
+    // the password below went to a real IMAP login at Gmail. That path is
+    // tests/connecting_is_one_button.rs's (with a test-only seal).
+    c.tools.as_mut().expect("tools").vault.open_on_this_login = false;
     let p = plat();
     let store = tmp("page");
     let mut d = Daemon::new(&c, &p, None, Store::new(store.clone()), Proactive::new(ProactiveConfig::default()));

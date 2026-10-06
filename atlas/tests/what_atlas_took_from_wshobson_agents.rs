@@ -239,16 +239,8 @@ fn research_says_a_made_up_figure_is_unconfirmed_and_files_it() {
         // check has its own tests.
         tools.research.pages_on_this_machine = true;
         tools.research.notes_dir = dir.join("notes").display().to_string();
-        tools.research.search = Some(atlas::tools::ExternalTool {
-            command: "sh".into(),
-            args: vec!["-c".into(), "echo 'http://example.test/tides'".into()],
-            ..Default::default()
-        });
-        tools.research.fetch = Some(atlas::tools::ExternalTool {
-            command: "sh".into(),
-            args: vec!["-c".into(), format!("echo '{}'", "Ventura high tide peaks at 12:40 today. ".repeat(10))],
-            ..Default::default()
-        });
+        tools.research.search = Some(crate::common::printing("http://example.test/tides"));
+        tools.research.fetch = Some(crate::common::printing(&"Ventura high tide peaks at 12:40 today. ".repeat(10)));
         tools.llm = Some(LlmConfig {
             tool: Default::default(),
             request: r#"{"model":"stub","prompt":"{user}"}"#.into(),

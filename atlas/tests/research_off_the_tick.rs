@@ -48,16 +48,8 @@ fn cfg_researching_locally() -> Config {
     // `example.test` is never looked up for real (it can't be), and the stub
     // fetch below goes nowhere; the public-address check has its own tests.
     tools.research.pages_on_this_machine = true;
-    tools.research.search = Some(atlas::tools::ExternalTool {
-        command: "sh".into(),
-        args: vec!["-c".into(), "echo 'http://example.test/tides'".into()],
-        ..Default::default()
-    });
-    tools.research.fetch = Some(atlas::tools::ExternalTool {
-        command: "sh".into(),
-        args: vec!["-c".into(), format!("echo '{}'", "Ventura tide information. ".repeat(20))],
-        ..Default::default()
-    });
+    tools.research.search = Some(crate::common::printing("http://example.test/tides"));
+    tools.research.fetch = Some(crate::common::printing(&"Ventura tide information. ".repeat(20)));
     tools.llm = Some(LlmConfig {
         tool: Default::default(),
         request: r#"{"model":"stub","prompt":"{user}"}"#.into(),
