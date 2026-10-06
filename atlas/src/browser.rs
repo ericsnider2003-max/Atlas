@@ -365,13 +365,15 @@ impl Browser {
 }
 
 /// The arguments for a window you sign in through yourself: the configured
-/// launch, without `--headless`, opening `url`. Same profile folder, so the
-/// sign-in you make there is the one Atlas's own browser uses afterwards
-/// (5 Oct 2026, Eric: "sign in once yourself" for the social sites).
-pub fn sign_in_window_args(launch_args: &[String], url: &str) -> Vec<String> {
+/// launch, without `--headless`, opening each of `urls` in a tab of one
+/// window. Same profile folder, so the sign-ins you make there are the ones
+/// Atlas's own browser uses afterwards (5 Oct 2026, Eric: "sign in once
+/// yourself" for the social sites, and a window per site, one after
+/// another, was "highly annoying").
+pub fn sign_in_window_args_for(launch_args: &[String], urls: &[String]) -> Vec<String> {
     let mut args: Vec<String> = launch_args.iter().filter(|a| !a.starts_with("--headless")).cloned().collect();
     args.push("--new-window".into());
-    args.push(url.to_string());
+    args.extend(urls.iter().cloned());
     args
 }
 
@@ -381,7 +383,7 @@ pub fn sign_in_window_args(launch_args: &[String], url: &str) -> Vec<String> {
 /// Started in the install folder, so the profile path in tools.yaml
 /// (`data/chrome-profile`) lands in Atlas's own data and not wherever the
 /// daemon happened to be started from.
-pub fn open_sign_in_window(cfg: &BrowserConfig, vars: &Vars, url: &str) -> Result<()> {
+pub fn open_sign_in_window(cfg: &BrowserConfig, vars: &Vars, urls: &[String]) -> Result<()> {
     if let Ok(b) = Browser::attach(cfg) {
         b.quit();
         let until = std::time::Instant::now() + Duration::from_secs(4);
@@ -397,7 +399,7 @@ pub fn open_sign_in_window(cfg: &BrowserConfig, vars: &Vars, url: &str) -> Resul
     }
     let (cmd, args) = tool.resolved(&vars);
     crate::tools::command(&cmd)
-        .args(sign_in_window_args(&args, url))
+        .args(sign_in_window_args_for(&args, urls))
         .current_dir(crate::roots::data_home())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

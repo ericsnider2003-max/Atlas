@@ -544,7 +544,7 @@ fn youtube_searches_are_budgeted_to_the_pacific_day_and_never_past_googles_hundr
 fn a_search_needs_a_key_and_budget_and_then_costs_two_calls() {
     let t = Target::YoutubeSearch { query: "video editing".into() };
     let none = Scripted::default();
-    assert!(watchlist::read_one(&none, &t, None, None, true, NOW).unwrap_err().why.contains("API key"));
+    assert!(watchlist::read_one(&none, &t, None, None, true, NOW).unwrap_err().why.contains("YouTube connected"));
     assert!(watchlist::read_one(&none, &t, None, Some("k"), false, NOW).unwrap_err().why.contains("budget"));
     assert!(none.asked.borrow().is_empty(), "nothing went out without a key or budget");
     let net = Scripted::with(vec![
@@ -645,6 +645,27 @@ fn the_youtube_data_api_is_three_calls_and_its_answer_is_read_whole() {
     assert!(net.asked.borrow()[0].1.contains("forHandle=%40jordanedits"));
     assert_eq!(apis::iso_duration("P1DT2H"), Some(93_600.0));
     assert_eq!(apis::iso_duration("nonsense"), None);
+}
+
+#[test]
+fn signed_in_with_google_youtube_needs_no_key_and_no_channel_typed() {
+    // 5 Oct 2026: Connect YouTube is the Google sign-in; its access token
+    // reads the channel you signed in as, so nothing is pasted or typed.
+    let net = Scripted::with(vec![
+        ok(r#"{"items":[{"id":"UCme","snippet":{"customUrl":"@jordanedits"},"statistics":{"viewCount":"5","subscriberCount":"1","videoCount":"0"},"contentDetails":{"relatedPlaylists":{"uploads":"UUme"}}}]}"#),
+        ok(r#"{"items":[]}"#),
+    ]);
+    let tok = format!("{}ya29.token", apis::BEARER);
+    let recs = apis::youtube_own(&net, &tok, "", NOW).unwrap();
+    assert_eq!(accounts(&recs)[0].handle, "@jordanedits");
+    let asked = net.asked.borrow();
+    assert!(asked[0].1.contains("mine=true"), "{}", asked[0].1);
+    assert!(asked.iter().all(|(_, path, _)| !path.contains("key=")), "no API key in any address");
+    assert!(asked.iter().all(|(_, _, h)| h.iter().any(|(k, v)| k == "Authorization" && v == "Bearer ya29.token")));
+    // A kept API key still goes in the address, and carries no header.
+    assert_eq!(apis::yt_query("AIza k"), "&key=AIza+k");
+    assert!(apis::yt_headers("AIza k").is_empty());
+    assert_eq!(apis::yt_query(&tok), "");
 }
 
 #[test]
@@ -1113,7 +1134,7 @@ fn live_public_sources_answer_through_atlass_own_reader() {
 fn the_sign_in_window_is_the_same_browser_without_headless() {
     let launch: Vec<String> = ["--headless=new", "--disable-gpu", "--remote-debugging-port=9222", "--user-data-dir=data/chrome-profile", "--no-first-run"]
         .iter().map(|s| s.to_string()).collect();
-    let a = atlas::browser::sign_in_window_args(&launch, "https://www.instagram.com/accounts/login/");
+    let a = atlas::browser::sign_in_window_args_for(&launch, &["https://www.instagram.com/accounts/login/".to_string()]);
     assert!(!a.iter().any(|x| x.starts_with("--headless")), "{a:?}");
     assert!(a.contains(&"--user-data-dir=data/chrome-profile".to_string()), "the same profile, so the sign-in is kept: {a:?}");
     assert_eq!(a.last().map(String::as_str), Some("https://www.instagram.com/accounts/login/"));

@@ -107,7 +107,13 @@ impl Daemon<'_> {
     /// the recovery key waiting to be shown, so it is shown this once.
     fn vault_section_live(&mut self) -> String {
         let nonce = self.shown_once.mark();
+        let opens_on_login = self.vault.sealed_to_this_login();
         let v = hub::VaultView {
+            opens_on_login,
+            needs_its_passphrase_once: !opens_on_login
+                && !self.vault.is_brand_new()
+                && self.tools_cfg().vault.open_on_this_login
+                && crate::loginseal::available(),
             has_passphrase: self.vault.has_a_passphrase(),
             has_recovery_key: self.vault.has_a_recovery_key(),
             handed_over: self.handed_over_now(),
@@ -199,6 +205,53 @@ impl Daemon<'_> {
                 },
                 Err(why) => why,
             },
+            "unlock" => {
+                // Once, for a vault made before it opened on your sign-in:
+                // the passphrase, or failing that the recovery key, and then
+                // the sign-in copy that means never again.
+                let typed = old.reveal();
+                let opened = self.vault.open(typed, now, &cfg).or_else(|e| if self.vault.has_a_recovery_key() { self.vault.open_with_recovery_key(typed, now, &cfg) } else { Err(e) });
+                match opened {
+                    Ok(()) => {
+                        let sealed = self.keep_sign_in_copy(now);
+                        if self.vault.sealed_to_this_login() {
+                            "Unlocked. From now on it opens with your Windows sign-in -- you won't be asked again.".to_string()
+                        } else {
+                            format!("Unlocked for now.{sealed}")
+                        }
+                    }
+                    Err(_) => "That isn't this vault's passphrase or recovery key. If you don't remember either, \"I don't remember either\" below starts a new one.".to_string(),
+                }
+            }
+            "fresh" => {
+                if handed {
+                    "Not while this machine is handed over.".to_string()
+                } else if self.vault.is_brand_new() || self.vault.sealed_to_this_login() {
+                    "This vault already opens with your Windows sign-in.".to_string()
+                } else {
+                    // Set aside, not deleted: if the passphrase comes back to
+                    // you, what was in it is still there.
+                    let aside = format!("{}-set-aside-{now}", crate::vault::Vault::FILE);
+                    match self.vault_home.save(&aside, &self.vault) {
+                        Err(e) => format!("I couldn't set the old vault aside ({e}), so nothing changed."),
+                        Ok(()) => {
+                            let before = std::mem::take(&mut self.vault);
+                            match self.vault_ready(now) {
+                                Ok(()) => {
+                                    self.log.info(&format!("new vault started on the Windows sign-in; the old one kept as {aside}"));
+                                    "A new vault is ready, and it opens with your Windows sign-in. The old one is set aside, \
+                                     not deleted. Press Connect on the Social and Accounts pages to bring your accounts back."
+                                        .to_string()
+                                }
+                                Err(e) => {
+                                    self.vault = before;
+                                    format!("I couldn't start a new one ({e}), so the old vault is still in place.")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             _ => "That isn't something the vault section does.".to_string(),
         };
         self.back_to_vault(said)
