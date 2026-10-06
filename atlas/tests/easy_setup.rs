@@ -307,7 +307,9 @@ fn the_steps_run_to_the_end_and_say_so() {
         assert_eq!(s.state, atlas::setupwin::StepState::Done("already here".into()), "{}", s.label);
     }
     // The firewall rule for your own devices is its own step; off Windows
-    // there's nothing to add, and it says so rather than asking.
+    // there's nothing to add, and it says so rather than asking. On Windows
+    // a test is never allowed to ask (doorrule::run_program): it reads as a
+    // No and the step says so, instead of a real prompt on the machine.
     assert_eq!(p.steps[pieces + 1].label, "Letting your own devices reach Atlas");
     assert!(matches!(&p.steps[pieces + 1].state, atlas::setupwin::StepState::Done(_)), "{:?}", p.steps[pieces + 1]);
     assert!(matches!(p.phone, atlas::setupwin::Phone::Why(_) | atlas::setupwin::Phone::Link { .. }));
