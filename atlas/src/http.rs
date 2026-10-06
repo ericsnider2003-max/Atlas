@@ -514,11 +514,12 @@ fn dechunk(src: &[u8]) -> String {
         // fixes this deliberately: including the partial tail would hand back
         // a half-page indistinguishable from a whole one, and you cannot tell
         // from the outside how much is missing.
-        if start + n > src.len() {
-            break;
-        }
-        out.extend_from_slice(&src[start..start + n]);
-        i = start + n;
+        // A size the sender chose: checked, so a huge one can't wrap round to
+        // a small number (fuzzing_the_readers: it panicked; a release build
+        // would have wrapped and read the wrong bytes).
+        let Some(end) = start.checked_add(n).filter(|end| *end <= src.len()) else { break };
+        out.extend_from_slice(&src[start..end]);
+        i = end;
         // Skip the CRLF that follows the chunk data.
         if src[i..].starts_with(b"\r\n") {
             i += 2;

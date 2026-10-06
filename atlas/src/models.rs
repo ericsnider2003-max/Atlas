@@ -2254,11 +2254,16 @@ fn chat_call_io(
                     eof = true;
                     break;
                 }
-                if pending.len() < eol + 2 + n + 2 {
+                // A size the server chose: checked, so a huge one can't wrap.
+                let Some(whole) = n.checked_add(eol + 4) else {
+                    eof = true;
+                    break;
+                };
+                if pending.len() < whole {
                     break;
                 }
                 body_bytes.extend_from_slice(&pending[eol + 2..eol + 2 + n]);
-                pending.drain(..eol + 2 + n + 2);
+                pending.drain(..whole);
             }
         } else {
             body_bytes.append(&mut pending);

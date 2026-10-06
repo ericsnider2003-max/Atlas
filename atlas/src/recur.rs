@@ -398,7 +398,10 @@ fn by_day_in_range(by_day: &[(Option<i32>, u32)], first: i64, len: i64) -> Vec<i
 
 fn parse_byday(d: &str) -> Result<(Option<i32>, u32), String> {
     let d = d.trim();
-    if d.len() < 2 {
+    // The weekday is the last two bytes; a non-ASCII character there would
+    // split it (a calendar from anywhere can send one: found by
+    // tests/fuzzing_the_readers.rs, which crashed here).
+    if d.len() < 2 || !d.is_char_boundary(d.len() - 2) {
         return Err(format!("BYDAY {d} is not a weekday"));
     }
     let (num, day) = d.split_at(d.len() - 2);
@@ -419,7 +422,9 @@ fn parse_byday(d: &str) -> Result<(Option<i32>, u32), String> {
 pub fn parse_ical_time(v: &str) -> Result<i64, String> {
     let v = v.trim().trim_end_matches('Z');
     let bad = || format!("'{v}' is not an iCalendar date");
-    if v.len() < 8 || !v[..8].bytes().all(|b| b.is_ascii_digit()) {
+    // ASCII first: a date is digits and a `T`, and the byte slices below would
+    // split a character otherwise (fuzzing_the_readers found one that did).
+    if !v.is_ascii() || v.len() < 8 || !v[..8].bytes().all(|b| b.is_ascii_digit()) {
         return Err(bad());
     }
     let y: i64 = v[0..4].parse().map_err(|_| bad())?;

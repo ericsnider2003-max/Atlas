@@ -233,6 +233,10 @@ windows = { version = "0.58", features = [
 name = "all"
 path = "tests/all.rs"
 [[test]]
+# Its own process, so a deep run (ATLAS_FUZZ_ROUNDS) can be started alone.
+name = "fuzzing_the_readers"
+path = "tests/fuzzing_the_readers.rs"
+[[test]]
 name = "the_self_test_never_starts_another_atlas"
 path = "tests/the_self_test_never_starts_another_atlas.rs"
 [[test]]

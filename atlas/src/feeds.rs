@@ -267,7 +267,7 @@ pub fn parse_date(s: &str) -> Option<u64> {
             hh = s.get(11..13)?.parse().ok()?;
             mm = s.get(14..16)?.parse().ok()?;
             ss = s.get(17..19)?.parse().ok()?;
-            let tz = s[19..].trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+            let tz = s.get(19..)?.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
             if tz.len() >= 6 && (tz.starts_with('+') || tz.starts_with('-')) {
                 let sign = if tz.starts_with('-') { -1 } else { 1 };
                 let oh: i64 = tz.get(1..3)?.parse().ok()?;
@@ -275,7 +275,7 @@ pub fn parse_date(s: &str) -> Option<u64> {
                 off = sign * (oh * 3600 + om * 60);
             }
         }
-        if !(1..=12).contains(&m) || d == 0 || d > 31 {
+        if !(1..=12).contains(&m) || d == 0 || d > 31 || !(0..24).contains(&hh) || !(0..60).contains(&mm) || !(0..=60).contains(&ss) {
             return None;
         }
         let t = crate::civil::days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss - off;
