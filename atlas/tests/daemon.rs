@@ -827,3 +827,16 @@ fn a_test_daemon_never_starts_a_mutation_sweep_of_the_checkout() {
     let last: u64 = Store::new(&dir).load("mutation_sweep_at");
     assert_eq!(last, 0, "a test daemon began a mutation sweep");
 }
+
+#[test]
+fn a_test_daemon_reads_the_mock_machine_for_room_not_the_real_one() {
+    // 6 Oct 2026: the crew's free memory came straight from the operating
+    // system, so on a laptop with 0.8 GB free (under the crew's 1 GB floor)
+    // every test that waits on the crew failed -- the work was correctly
+    // held, on a machine the test never meant to ask about.
+    let p = plat();
+    let room = (atlas::platform::Platform::crew_room(&p))();
+    let floor = atlas::crew::CrewConfig::default();
+    assert!(room.free_mb.is_some_and(|mb| mb > floor.keep_free_mb), "{room:?}");
+    assert!(!room.on_battery);
+}

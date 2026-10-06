@@ -396,12 +396,6 @@ pub(crate) fn addon_share_said(name: &str, group: Option<&(String, String)>, rea
     said
 }
 
-/// Free memory and power, for the crew's admission rules.
-fn crew_room() -> crew::Room {
-    let r = crate::health::read_machine();
-    let free_mb = (r.ram_total_gb > 0.0).then(|| ((r.ram_total_gb - r.ram_used_gb).max(0.0) * 1024.0) as u64);
-    crew::Room { free_mb, on_battery: r.on_battery, battery_percent: r.battery_percent }
-}
 
 /// One seat's model call, carried out of the crew errand so
 /// `take_crew_news` can record all five the same way the synchronous
@@ -1958,7 +1952,7 @@ impl<'a> Daemon<'a> {
                 cfg.tools.as_ref().map(|t| t.lifecycle.clone()).unwrap_or_default(),
                 keep_resident,
             )),
-            crew: Crew::with_limits(crew_limits).with_room(Box::new(crew_room)),
+            crew: Crew::with_limits(crew_limits).with_room(Box::new(plat.crew_room())),
             last_persist: 0,
             tools_resolved,
             long_work: watching::Watcher::load(&store_for_load),
