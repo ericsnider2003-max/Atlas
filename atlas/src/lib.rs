@@ -250,6 +250,7 @@ pub mod opportunity;
 pub mod hunt;
 pub mod hunting;
 pub mod bisect;
+pub mod scaffold;
 pub mod dash;
 pub mod decide;
 pub mod trace;

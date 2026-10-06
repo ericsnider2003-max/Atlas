@@ -240,6 +240,7 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
     if atlas::growth::asks_for_an_ability(phrase).is_some()
         || atlas::growth::answer(phrase).is_some()
         || atlas::growth::asks_for_the_list(phrase)
+        || atlas::growth::asks_to_set_up(phrase)
         || atlas::camwatch::asks(phrase).is_some()
         || atlas::callmute::asks(phrase).is_some()
     {

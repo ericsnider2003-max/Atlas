@@ -2017,3 +2017,73 @@ fn selftest_under_coverage(no_model: bool) {
     );
 }
 
+
+/// `atlas scaffold "<what it should do>" [--name <id>] [--source <dir>]`:
+/// the bookkeeping for a new ability, written into Atlas's source
+/// (`scaffold`) -- the module, its catalogue entry marked not built yet, its
+/// reason for being unwired, the module count, and docs/CAPABILITIES.md.
+pub(super) fn run_scaffold(args: &[String]) {
+    let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let mut skip = false;
+    let what: Vec<&str> = args
+        .iter()
+        .filter(|a| {
+            if skip {
+                skip = false;
+                return false;
+            }
+            if a.as_str() == "--name" || a.as_str() == "--source" {
+                skip = true;
+                return false;
+            }
+            true
+        })
+        .map(String::as_str)
+        .collect();
+    let what = what.join(" ");
+    if what.trim().is_empty() {
+        eprintln!("Say what it should do: atlas scaffold \"read my texts out loud\" [--name read_texts]");
+        std::process::exit(2);
+    }
+    let here = std::env::current_dir().unwrap_or_default();
+    let root = match value("--source") {
+        Some(s) => std::path::PathBuf::from(s),
+        None if here.join(atlas::scaffold::CATALOGUE).is_file() => here,
+        None => atlas::selfwork::source_root(&Default::default()).unwrap_or(here),
+    };
+    let t = atlas::store::now();
+    let (y, m, d) = atlas::hubpages::ymd((t / 86_400) as i64);
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let ask = atlas::scaffold::Ask {
+        id: value("--name").unwrap_or_else(|| atlas::scaffold::name_for(&what)),
+        what: what.clone(),
+        day: format!("{d} {} {y}", MONTHS[(m as usize).saturating_sub(1).min(11)]),
+    };
+    let plan = match atlas::scaffold::plan(&ask, |p| std::fs::read_to_string(root.join(p)).ok()) {
+        Ok(p) => p,
+        Err(why) => {
+            eprintln!("{why}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(why) = atlas::scaffold::apply(&root, &plan) {
+        eprintln!("{why}");
+        std::process::exit(1);
+    }
+    for c in &plan {
+        println!("{} {}", if c.before.is_none() { "new    " } else { "changed" }, c.path);
+    }
+    // The document is the catalogue's own answer, so it's regenerated from
+    // the source as it is now -- which takes a build of it. Said, not
+    // pretended, when there's no cargo to build with.
+    let mut regen = std::process::Command::new("cargo");
+    regen.args(["run", "-q", "--bin", "atlas", "--", "catalog", "--markdown"]).current_dir(&root);
+    match regen.output() {
+        Ok(o) if o.status.success() && !o.stdout.is_empty() => match std::fs::write(root.join("docs/CAPABILITIES.md"), &o.stdout) {
+            Ok(()) => println!("changed docs/CAPABILITIES.md (regenerated)"),
+            Err(e) => println!("couldn't write docs/CAPABILITIES.md ({e}) -- run `atlas catalog --markdown > docs/CAPABILITIES.md`"),
+        },
+        _ => println!("docs/CAPABILITIES.md not regenerated (no build here) -- run `cargo run -- catalog --markdown > docs/CAPABILITIES.md`"),
+    }
+    println!("{}", atlas::scaffold::left_to_do(&ask));
+}
