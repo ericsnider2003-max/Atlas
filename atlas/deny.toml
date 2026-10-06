@@ -13,21 +13,26 @@ targets = [
 
 [advisories]
 # A vulnerability always fails. An unmaintained or unsound crate fails too,
-# unless it is listed here with the reason and the upgrade that removes it.
-# Every one below arrives through two direct dependencies, not Atlas's own
-# choice: eframe 0.28 (egui's window toolkit) and wry 0.53 (the webview, whose
-# Linux path uses the GTK3 bindings). Ledger Q5 tracks the upgrades.
+# unless it is listed here with the reason.
+#
+# Checked target by target (6 Oct 2026, ledger Q5): cargo-deny and
+# `cargo tree --target all` join the conditions of different platforms, so
+# they show crates no Atlas build compiles. wry and eframe's accessibility are
+# Atlas dependencies on Windows only; GTK and the Linux accessibility stack
+# are theirs on Linux only. Two of these are in a real build -- ttf-parser
+# (every platform) and paste (Windows, at compile time) -- and eframe 0.36
+# removes both; that upgrade waits on Eric seeing Atlas's windows.
 ignore = [
-    # eframe 0.28 -> accesskit_unix -> zbus 3: gone with eframe >= 0.29 (zbus 4+).
-    { id = "RUSTSEC-2024-0388", reason = "derivative, via eframe 0.28's accessibility (zbus 3); gone when eframe is upgraded" },
-    { id = "RUSTSEC-2024-0384", reason = "instant, via eframe 0.28's accessibility (futures-lite 1); gone when eframe is upgraded" },
-    { id = "RUSTSEC-2024-0436", reason = "paste (a build-time macro), via eframe 0.28's Windows accessibility; gone when eframe is upgraded" },
-    { id = "RUSTSEC-2026-0192", reason = "ttf-parser, via egui's font rendering; replaced when egui moves off it" },
-    # wry 0.53 on Linux -> webkit2gtk -> gtk-rs 0.18 (GTK3), and its HTML parser.
-    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error (build-time), via wry's Linux GTK3 bindings (glib-macros 0.18); Linux only, not in the Windows build" },
-    { id = "RUSTSEC-2024-0429", reason = "glib 0.18 iterator unsoundness, via wry's Linux GTK3 bindings; Atlas never iterates glib containers; Linux only" },
-    { id = "RUSTSEC-2025-0057", reason = "fxhash, via wry's HTML parser (kuchikiki/selectors); a hash function, no data from outside reaches it as a key choice" },
-    { id = "RUSTSEC-2026-0097", reason = "rand 0.7, build-time only (phf_codegen inside selectors); the unsoundness needs a custom logger calling rand at run time" },
+    # In real builds; gone with eframe >= 0.36 (fonts move to skrifa/font-types).
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser (unmaintained), via egui's fonts: parses only the fonts Atlas ships; gone with eframe 0.36" },
+    { id = "RUSTSEC-2024-0436", reason = "paste (unmaintained, compile-time macro, nothing of it in atlas.exe), via eframe 0.28's Windows accessibility; gone with eframe 0.36" },
+    # In no Atlas build: Linux backends of Windows-only dependencies.
+    { id = "RUSTSEC-2024-0388", reason = "derivative: zbus 3 under accesskit_unix, eframe's Linux accessibility, which Atlas enables on Windows only" },
+    { id = "RUSTSEC-2024-0384", reason = "instant: futures-lite 1 under accesskit_unix, as above; not compiled for any Atlas target" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: glib-macros 0.18 under wry's Linux GTK3 backend; wry is a Windows-only dependency of Atlas" },
+    { id = "RUSTSEC-2024-0429", reason = "glib 0.18: wry's Linux GTK3 backend; wry is a Windows-only dependency of Atlas" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash: wry's Linux HTML handling (kuchikiki/selectors); not compiled for any Atlas target" },
+    { id = "RUSTSEC-2026-0097", reason = "rand 0.7: build-time, phf_codegen under the same selectors; not compiled for any Atlas target" },
 ]
 
 [licenses]
