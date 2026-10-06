@@ -208,7 +208,7 @@ pub const GOALS: &str = "goals";
 /// What a goal said out loud comes down to: the words after the phrase.
 pub fn goal_words(said: &str) -> String {
     let t = said.trim().trim_end_matches(['.', '!']);
-    let lower = t.to_lowercase();
+    let lower = t.to_ascii_lowercase();
     for p in ["my goal is to", "my goal is", "set a goal to", "set a goal", "new goal", "i worked on my goal",
               "made progress on", "i worked on", "drop the goal", "forget the goal", "i'm done with the goal",
               "im done with the goal"] {

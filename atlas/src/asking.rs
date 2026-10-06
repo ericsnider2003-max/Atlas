@@ -120,7 +120,7 @@ fn words(s: &str) -> Vec<String> {
 
 /// Split one utterance into the separate questions inside it.
 fn split_questions(said: &str) -> Vec<String> {
-    let lower = said.to_lowercase();
+    let lower = said.to_ascii_lowercase();
     for j in JOINS {
         if let Some(at) = lower.find(j) {
             let (a, b) = said.split_at(at);

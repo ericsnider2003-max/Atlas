@@ -421,7 +421,10 @@ fn zone_from_vtimezone(c: &Component) -> Option<(String, crate::tz::Zone)> {
         let field = |f: &str| r.split(';').find_map(|kv| kv.strip_prefix(f)).map(|v| v.to_string());
         let month: u32 = field("BYMONTH=")?.parse().ok()?;
         let byday = field("BYDAY=")?;
-        let (n, dd) = byday.split_at(byday.len() - 2);
+        // Checked: one letter underflowed, and a non-ASCII byte split a
+        // character (fuzzed, 5 Oct 2026).
+        let cut = byday.len().checked_sub(2).filter(|&c| byday.is_char_boundary(c))?;
+        let (n, dd) = byday.split_at(cut);
         let week: i32 = if n.is_empty() { 1 } else { n.parse().ok()? };
         let week = if week < 0 { 5 } else { week.clamp(1, 5) };
         let day = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"].iter().position(|d| *d == dd)?;

@@ -412,9 +412,9 @@ Call give_up if it can't be done in this app. Never guess at personal details."
 /// Atlas knows.
 pub fn app_and_goal(said: &str, apps: &[String]) -> (String, String) {
     let s = said.trim().trim_end_matches(['.', '!']);
-    let l = s.to_lowercase();
+    let l = s.to_ascii_lowercase();
     for a in apps {
-        let al = a.to_lowercase();
+        let al = a.to_ascii_lowercase();
         for lead in [format!("in {al}, "), format!("in {al} "), format!("use {al} to "), format!("open {al} and "), format!("go into {al} and ")] {
             if let Some(i) = l.find(&lead) {
                 let goal = format!("{}{}", &s[..i], &s[i + lead.len()..]).trim().trim_start_matches(',').trim().to_string();

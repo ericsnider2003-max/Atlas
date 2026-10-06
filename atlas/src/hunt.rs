@@ -498,7 +498,7 @@ fn pay_in(text: &str) -> Option<String> {
             }
         }
     }
-    let low = t.to_lowercase();
+    let low = t.to_ascii_lowercase();
     for cur in ["usd ", "eur ", "gbp "] {
         if let Some(i) = low.find(cur) {
             let rest: String = t[i..].chars().take(20).collect();

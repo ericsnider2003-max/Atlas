@@ -60,7 +60,7 @@ impl Texts {
 /// saying ...", "text Sam: ...". The person and the words, or `None`.
 pub fn text_asked(said: &str) -> Option<(String, String)> {
     let s = said.trim().trim_end_matches(['.', '!']);
-    let low = s.to_lowercase();
+    let low = s.to_ascii_lowercase();
     let leads = [
         "send a text message to ", "send a text to ", "send text to ", "shoot a text to ", "text message ", "can you text ",
         "please text ", "send ", "shoot ", "text ",

@@ -377,7 +377,7 @@ impl Daemon<'_> {
     }
 
     pub(crate) fn wd_clip_history(&mut self, said: &str, t: u64) -> String {
-        let low = said.to_lowercase();
+        let low = said.to_ascii_lowercase();
         let cfg = self.workday_cfg().clipboard_history;
         if low.contains("turn on") || low.contains("start keeping") || low.contains("switch on") {
             self.workday.clips_on = Some(true);

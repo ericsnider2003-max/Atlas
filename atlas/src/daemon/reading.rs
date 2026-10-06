@@ -231,7 +231,7 @@ impl<'a> Daemon<'a> {
         // "dig into X and write it up for me": the write-up is what research
         // does anyway, not part of what to look up (1 Oct 2026).
         let topic = {
-            let low = topic.to_lowercase();
+            let low = topic.to_ascii_lowercase();
             let cut = [" and write it up", " and write up", " and give me a write up", " and report back"]
                 .iter()
                 .filter_map(|p| low.find(p))

@@ -1259,7 +1259,7 @@ pub enum OneMessage {
 /// saying ...", "write back to Sam: ...". `None` for anything else.
 pub fn one_message_asked(said: &str) -> Option<OneMessage> {
     let s = said.trim().trim_end_matches(['.', '!', '?']);
-    let low = s.to_lowercase();
+    let low = s.to_ascii_lowercase();
     // "Send a reply to Jane saying ..." / "email back Jane saying ...":
     // the same as "reply to Jane saying ..." (research report, Stage 1 item
     // 8: it was taken as a new email, outside the conversation).
