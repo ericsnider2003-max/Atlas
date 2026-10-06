@@ -90,6 +90,7 @@ impl Resident {
                 .stderr(Stdio::null())
                 .spawn()
                 .ok()?;
+            crate::childjob::tie(&child);
             let mut stdin = child.stdin.take()?;
             let mut stdout = BufReader::new(child.stdout.take()?);
             let (tx, rx) = channel::<Ask>();

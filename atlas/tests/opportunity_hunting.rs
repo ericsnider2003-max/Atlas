@@ -527,6 +527,16 @@ fn the_morning_brief_carries_the_best_few_with_why_and_asks_once() {
     let items = atlas::hunting::brief_items(&mut d, NOW + 120);
     assert_eq!(items.len(), 3, "top_n as shipped: {items:#?}");
     assert!(items.iter().all(|i| i.subject.contains("uses your video")), "each says why: {items:#?}");
+
+    // 5 Oct 2026 (Eric: "the opportunities are spamming me"): the brief is
+    // built for the morning, every part-of-day hello and every welcome
+    // back. A find is volunteered once; the next brief has none of them.
+    let again = atlas::hunting::brief_items(&mut d, NOW + 3600);
+    let said_before: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
+    assert!(again.iter().all(|i| !said_before.contains(&i.id.as_str())), "the same finds said again: {again:#?}");
+    // Asking still lists them all.
+    let asked = d.turn("any opportunities?", NOW + 3700);
+    assert!(asked.contains("1."), "asking lists them: {asked}");
 }
 
 #[test]

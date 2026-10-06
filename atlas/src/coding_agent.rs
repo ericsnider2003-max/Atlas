@@ -147,6 +147,7 @@ fn run_with_stdin(program: &str, args: &[String], folder: &Path, input: &str, li
         Ok(ch) => ch,
         Err(e) => return Ran { finished: false, said: format!("{program} wouldn't start: {e}") },
     };
+    crate::childjob::tie(&child);
     if let Some(mut stdin) = child.stdin.take() {
         crate::heard!(stdin.write_all(input.as_bytes()));
     }

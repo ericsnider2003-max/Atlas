@@ -497,6 +497,7 @@ fn run(ffmpeg: &str, args: &[String], limit: std::time::Duration) -> Result<std:
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("I couldn't start ffmpeg ({e})"))?;
+    crate::childjob::tie(&child);
     let mut so = child.stdout.take();
     let mut se = child.stderr.take();
     let out_t = std::thread::spawn(move || {

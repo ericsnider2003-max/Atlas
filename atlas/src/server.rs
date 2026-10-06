@@ -1067,7 +1067,7 @@ pub fn route(r: &Request) -> Option<Action> {
             let what = get("what");
             match what.as_str() {
                 "back" => Some(Action::TakeBack { phrase: Secret::new(get("phrase")), nonce: get("nonce") }),
-                "set" | "change" | "recovery" => Some(Action::Vault {
+                "set" | "change" | "recovery" | "unlock" | "fresh" => Some(Action::Vault {
                     old: Secret::new(get("old")),
                     new: Secret::new(get("new")),
                     again: Secret::new(get("again")),

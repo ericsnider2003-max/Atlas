@@ -91,9 +91,31 @@ fn a_folder_first_then_the_work_is_the_work_in_that_folder() {
     assert!(matches!(p.parse(r"write a python script that renames photos and save it to D:\tools"), Intent::Build(_)));
 }
 
+/// The config with a coding agent switched on: it's off unless you turn it
+/// on (5 Oct 2026, Eric: "the point of Atlas is to not depend on 3rd
+/// parties").
+fn cfg_agent_on() -> Config {
+    let mut c = cfg();
+    if let Some(t) = c.tools.as_mut() {
+        t.build.coding_agent = atlas::build_it::AgentUse::Auto;
+    }
+    c
+}
+
+#[test]
+fn by_default_atlas_writes_it_itself_even_with_an_agent_installed() {
+    let (c, p) = (cfg(), plat());
+    let llm: Arc<dyn Llm> = Arc::new(MockLlm("```python\nprint('hi')\n```".into()));
+    let mut d = Daemon::new(&c, &p, Some(llm), Store::new(tmp("agent-default")), Proactive::new(ProactiveConfig::default()));
+    d.find_coding_agents_with_for_test(claude_only);
+    let reply = d.turn("write a python script that prints hello", 100);
+    assert!(!reply.contains("Claude Code"), "a third party was offered without being switched on: {reply}");
+    assert_eq!(reply.matches("Say yes").count(), 0, "asked about a hand-over that is off: {reply}");
+}
+
 #[test]
 fn an_installed_coding_agent_is_offered_first_and_a_no_still_gets_it_written() {
-    let (c, p) = (cfg(), plat());
+    let (c, p) = (cfg_agent_on(), plat());
     let llm: Arc<dyn Llm> = Arc::new(MockLlm("```python\nprint('hi')\n```".into()));
     let mut d = Daemon::new(&c, &p, Some(llm), Store::new(tmp("agent-ask")), Proactive::new(ProactiveConfig::default()));
     d.find_coding_agents_with_for_test(claude_only);
@@ -196,7 +218,7 @@ fn run_it_asks_first_and_names_what_will_run() {
 
 #[test]
 fn only_your_yes_hands_work_to_the_agent() {
-    let (c, p) = (cfg(), plat());
+    let (c, p) = (cfg_agent_on(), plat());
     let proj = tmp("yes-only");
     std::fs::write(proj.join("main.py"), "print(1)\n").unwrap();
     let llm: Arc<dyn Llm> = Arc::new(MockLlm("ok".into()));

@@ -761,22 +761,27 @@ fn a_tree_that_does_not_build_says_nothing_either_way() {
 }
 
 #[test]
-fn the_wait_for_a_proof_is_bounded() {
-    // This runs on the tick thread — the one that listens, answers, polls and
-    // refreshes the instance lock, whose staleness window is 150s. An
-    // unbounded `cargo test` here lets a second Atlas read the lock as
-    // abandoned and take it, and two of them then write the same state
-    // folder. Same reasoning as `workspace::BRINGUP_BUDGET_SECS`.
+fn the_wait_for_a_proof_is_bounded_and_long_enough_for_a_build() {
+    // It ran on the tick until 1 Oct 2026, and was held to two minutes so
+    // the instance lock (stale at 150s) stayed fresh. It runs on the crew
+    // now, and the two minutes stayed: on Eric's laptop a cold build of the
+    // tree is twenty to forty, so every proof was stopped unfinished and no
+    // self-repair got past it (5 Oct 2026). Bounded still -- a hung test
+    // must not hold a crew slot for ever -- but past a cold build.
     assert!(
-        atlas::selfwork::PROOF_BUDGET_SECS < 150,
-        "the proving test may run for {}s and the lock goes stale at 150s",
+        atlas::selfwork::PROOF_BUDGET_SECS >= 30 * 60,
+        "{}s doesn't build the tree cold on a laptop, so the proof would come back 'still running'",
         atlas::selfwork::PROOF_BUDGET_SECS
     );
-    assert!(
-        atlas::selfwork::PROOF_BUDGET_SECS >= 30,
-        "30s doesn't compile a test binary, so every proof would come back as \
-         'still running'"
-    );
+    assert!(atlas::selfwork::PROOF_BUDGET_SECS <= atlas::selfwork::SUITE_LIMIT_SECS);
+    // And never on the tick: every call is inside work handed to the crew.
+    let src = std::fs::read_to_string("src/daemon/on_itself.rs").unwrap();
+    for (i, _) in src.match_indices("selfwork::run_the_proof(") {
+        let before = &src[..i];
+        let work = before.rfind("crew::Work").unwrap_or(0);
+        let fn_start = before.rfind("\nfn ").max(before.rfind("    fn ")).unwrap_or(0);
+        assert!(work > fn_start || before[fn_start..].contains("fn prove_in("), "run_the_proof called outside crew work at byte {i}");
+    }
 }
 
 #[test]

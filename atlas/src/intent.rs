@@ -1538,7 +1538,11 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
 fn polite_rest(input: &str) -> Option<&str> {
     let t = input.trim().trim_end_matches(['?', '!', '.']).trim_end();
     let lower = t.to_ascii_lowercase();
-    for p in ["can you please ", "could you please ", "would you please ", "please can you ", "can you ", "could you ", "would you ", "will you ", "can u ", "please "] {
+    for p in ["can you please ", "could you please ", "would you please ", "please can you ", "can you ", "could you ", "would you ", "will you ", "can u ", "please ",
+        // "Ok correct the issues found" (Eric, 4 Oct 2026): a lead-in that
+        // changes nothing, kept off so the command underneath is read. Only
+        // taken when what's left is a command (see `parse_named`).
+        "ok so ", "ok, ", "ok ", "okay, ", "okay ", "alright, ", "alright ", "right, ", "now "] {
         if lower.starts_with(p) && t.len() > p.len() {
             let rest = t[p.len()..].trim_start();
             let rest = rest.strip_suffix(" please").unwrap_or(rest).trim();

@@ -248,19 +248,20 @@ fn every_derived_folder_hangs_off_the_one_root() {
     // — and it is right to: `data_sub` and `models_dir` reached by way of
     // `logs_dir` are two functions with one test between them, which is how a
     // wrong base goes unnoticed in whichever of the two nobody exercised.
-    // `data_home`: the install root, or this test process's own folder
-    // shaped like one (Q18) -- the shape is what's checked.
-    let r = atlas::roots::data_home();
-    assert_eq!(atlas::roots::data_dir(), r.join("data"));
-    assert_eq!(atlas::roots::state_dir(), r.join("data").join("state"));
-    assert_eq!(atlas::roots::logs_dir(), r.join("data").join("logs"));
-    assert_eq!(atlas::roots::notes_dir(), r.join("data").join("notes"));
-    assert_eq!(atlas::roots::backups_dir(), r.join("data").join("backups"));
-    assert_eq!(atlas::roots::trash_dir(), r.join("data").join("trash"));
-    assert_eq!(atlas::roots::tmp_dir(), r.join("data").join("tmp"));
-    // Models are read, never written by a test: always the real install's.
-    assert_eq!(atlas::roots::models_dir(), atlas::roots::install_root().join("models"));
-    assert_eq!(atlas::roots::data_sub("finance"), r.join("data").join("finance"));
+    // `data/` hangs off `data_home`: the install root in an install, a
+    // folder of the test process's own under the harness (Q18, 5 Oct 2026),
+    // so these compare against it rather than `install_root`.
+    let r = atlas::roots::install_root();
+    let h = atlas::roots::data_home();
+    assert_eq!(atlas::roots::data_dir(), h.join("data"));
+    assert_eq!(atlas::roots::state_dir(), h.join("data").join("state"));
+    assert_eq!(atlas::roots::logs_dir(), h.join("data").join("logs"));
+    assert_eq!(atlas::roots::notes_dir(), h.join("data").join("notes"));
+    assert_eq!(atlas::roots::backups_dir(), h.join("data").join("backups"));
+    assert_eq!(atlas::roots::trash_dir(), h.join("data").join("trash"));
+    assert_eq!(atlas::roots::tmp_dir(), h.join("data").join("tmp"));
+    assert_eq!(atlas::roots::models_dir(), r.join("models"));
+    assert_eq!(atlas::roots::data_sub("finance"), h.join("data").join("finance"));
     // `models/` is a sibling of `data/`, not a child of it. The installer
     // downloads into `<install>/models`; a `data/models` would be 4GB of
     // model files somewhere nothing looks.

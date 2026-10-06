@@ -194,8 +194,8 @@ fn the_things_worth_keeping_are_actually_where_atlas_puts_them() {
     // what it calls the state directory has to be the same relative path
     // `upgrade::YOURS` promises to preserve.
     let state = atlas::roots::state_dir();
-    // Where `data/` hangs: the install root, or under test this process's
-    // own folder shaped like an install (Q18); the relative path is the same.
+    // `data_home`: the install root in an install, the test process's own
+    // folder under the harness (Q18, 5 Oct 2026).
     let root = atlas::roots::data_home();
     let rel = state.strip_prefix(&root).expect("the state dir is not inside the install root");
     assert_eq!(

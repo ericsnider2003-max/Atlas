@@ -1376,6 +1376,7 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.research_note_help(raw))
             .or_else(|| self.later_words_help(raw, t))
             .or_else(|| self.drafts_help(raw))
+            .or_else(|| self.connect_help(raw))
             .or_else(|| self.one_message_help(raw))
             .or_else(|| self.text_help(raw))
             .or_else(|| self.move_window_help(raw))

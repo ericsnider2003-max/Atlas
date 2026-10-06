@@ -228,6 +228,7 @@ pub fn make(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, se
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("the picture maker wouldn't start: {e}"))?;
+    crate::childjob::tie(&child);
     let err = child.stderr.take().map(|mut e| {
         std::thread::spawn(move || {
             use std::io::Read;

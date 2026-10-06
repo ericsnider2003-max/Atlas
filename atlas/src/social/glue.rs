@@ -81,6 +81,23 @@ fn has(low: &str, any: &[&str]) -> bool {
 }
 
 impl Daemon<'_> {
+    /// Every site you sign in to yourself, in one window of Atlas's own
+    /// browser, a tab each: sign in to the ones you use, close the window.
+    /// What the Social page's one button and "sign me into my socials" do.
+    pub(crate) fn open_social_signins(&mut self) -> String {
+        let urls: Vec<String> = super::SIGN_IN_SITES.iter().map(|(_, d)| crate::webrun::login_url(d)).collect();
+        let bcfg = self.tools_cfg().browser.clone();
+        let vars = self.tools_cfg().vars.clone();
+        match crate::browser::open_sign_in_window(&bcfg, &vars, &urls) {
+            Ok(()) => format!(
+                "Atlas's browser is open with a tab for each site ({}). Sign in on the ones you use, the way you normally do, \
+                 and skip the rest; close the window when you're done. Atlas keeps those sign-ins.",
+                super::SIGN_IN_SITES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            ),
+            Err(e) => format!("Atlas's browser didn't open: {e}"),
+        }
+    }
+
     pub(crate) fn social_cfg(&self) -> SocialConfig {
         self.workday_cfg().social
     }
@@ -107,8 +124,13 @@ impl Daemon<'_> {
 
     /// A key from the vault: `Ok(None)` when it isn't there, `Err` when the
     /// vault is locked.
+    /// Your Google sign-in for YouTube, when there is one that still refreshes.
+    fn youtube_signin(&mut self, t: u64) -> Option<GoogleSignIn> {
+        self.social_secret(VAULT_YOUTUBE_OAUTH, t).ok().flatten().and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok()).filter(|g| !g.refresh_token.is_empty())
+    }
+
     fn social_secret(&mut self, name: &str, t: u64) -> Result<Option<String>, String> {
-        if self.vault.state() != crate::vault::State::Open {
+        if self.vault_ready(t).is_err() {
             return Err("the vault is locked".into());
         }
         Ok(self.vault.get(name, t).ok())
@@ -222,7 +244,7 @@ impl Daemon<'_> {
             Ok(x) => x,
             Err(e) => return e,
         };
-        let has_key = matches!(self.social_secret(VAULT_YOUTUBE_KEY, t), Ok(Some(_)));
+        let has_key = matches!(self.social_secret(VAULT_YOUTUBE_KEY, t), Ok(Some(_))) || self.youtube_signin(t).is_some();
         let search_without_key = targets.iter().any(|x| matches!(x, Target::YoutubeSearch { .. })) && !has_key;
         let added = match self.social_watch().add(targets, t) {
             Ok(a) => a,
@@ -234,7 +256,7 @@ impl Daemon<'_> {
         let kept = self.social_keep_watch();
         let mut s = format!("Watching {}.", added.join(" and "));
         if search_without_key {
-            s.push_str(" The YouTube side needs your API key (Social page) -- until then only Hacker News is read for it.");
+            s.push_str(" The YouTube side needs YouTube connected (Connect YouTube on the Social page) -- until then only Hacker News is read for it.");
         }
         s.push_str(if cfg.scan { " I'll read it on the next pass." } else { " Scanning on a schedule is off -- say \"what's trending\" to read it now, or turn on \"Watching others\" in Settings." });
         if let Err(e) = kept {
@@ -262,17 +284,29 @@ impl Daemon<'_> {
                 }
             }
         };
-        let yt_key = if cfg.youtube_channel.trim().is_empty() {
-            missing.push("YouTube (no channel set: workday.social.youtube_channel)".into());
-            None
-        } else {
-            secret(self, VAULT_YOUTUBE_KEY, "YouTube", &mut missing)
+        // YouTube: your Google sign-in is the way in (one Connect button);
+        // an API key, where one was kept before, still works.
+        let google = self.youtube_signin(t);
+        let kept_key = self.social_secret(VAULT_YOUTUBE_KEY, t).ok().flatten();
+        let yt_key = match (&kept_key, &google) {
+            (_, Some(_)) => kept_key.clone(),
+            (Some(_), None) if cfg.youtube_channel.trim().is_empty() => {
+                missing.push("YouTube (no channel set: workday.social.youtube_channel)".into());
+                None
+            }
+            (Some(_), None) => kept_key.clone(),
+            (None, None) => {
+                if cfg.youtube_analytics || !cfg.youtube_channel.trim().is_empty() {
+                    missing.push(if self.vault.state() == crate::vault::State::Open {
+                        "YouTube (not connected -- Connect YouTube on the Social page)".to_string()
+                    } else {
+                        "YouTube (the vault is locked)".to_string()
+                    });
+                }
+                None
+            }
         };
-        let google = if cfg.youtube_analytics {
-            secret(self, VAULT_YOUTUBE_OAUTH, "YouTube retention", &mut missing).and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok()).filter(|g| !g.refresh_token.is_empty())
-        } else {
-            None
-        };
+        let yt_wanted = yt_key.is_some() || google.is_some();
         let ig = if cfg.instagram { secret(self, VAULT_INSTAGRAM, "Instagram", &mut missing) } else { None };
         let ig_refresh_due = t.saturating_sub(self.social_watch().instagram_token_at) > 30 * 86_400;
         let threads = if cfg.threads { secret(self, VAULT_THREADS, "Threads", &mut missing) } else { None };
@@ -287,7 +321,7 @@ impl Daemon<'_> {
             missing.push("TikTok (the sign-in wasn't finished -- paste the address TikTok sent you to on the Social page)".into());
         }
         let bsky = cfg.bluesky_handle.trim().to_string();
-        if yt_key.is_none() && ig.is_none() && threads.is_none() && fb.is_none() && tiktok.is_none() && bsky.is_empty() {
+        if !yt_wanted && ig.is_none() && threads.is_none() && fb.is_none() && tiktok.is_none() && bsky.is_empty() {
             let why = if missing.is_empty() { "nothing is set up".to_string() } else { missing.join("; ") };
             return format!("There's no account I can read from its API yet: {why}. Imports from the platforms' own export files work without any of this.");
         }
@@ -298,7 +332,19 @@ impl Daemon<'_> {
         let work: crate::crew::Work = Box::new(move |ctl| {
             let net = Https;
             let mut out = Refreshed { missing, ..Default::default() };
-            if let Some(key) = &yt_key {
+            // Signed in and no key: the sign-in's access token reads the channel too.
+            let yt_auth = match (&yt_key, &google) {
+                (Some(k), _) => Some(k.clone()),
+                (None, Some(g)) => match apis::google_access(&net, g) {
+                    Ok(tok) => Some(format!("{}{tok}", apis::BEARER)),
+                    Err(e) => {
+                        out.missing.push(format!("YouTube ({e})"));
+                        None
+                    }
+                },
+                (None, None) => None,
+            };
+            if let Some(key) = &yt_auth {
                 match apis::youtube_own(&net, key, &channel, t) {
                     Ok(mut recs) => {
                         let n = recs.iter().filter(|r| matches!(r, Record::Post(_))).count();
@@ -407,6 +453,8 @@ impl Daemon<'_> {
     fn social_scan(&mut self, t: u64, asked: bool) -> Option<String> {
         let cfg = self.social_cfg();
         let yt_key = self.social_secret(VAULT_YOUTUBE_KEY, t).ok().flatten();
+        let google = if yt_key.is_none() { self.youtube_signin(t) } else { None };
+        let has_youtube = yt_key.is_some() || google.is_some();
         let every = cfg.scan_every_minutes.max(30);
         let pday = watchlist::pacific_day(t);
         let budget = cfg.youtube_searches_per_day;
@@ -419,7 +467,7 @@ impl Daemon<'_> {
         for i in picks {
             let search = matches!(w.list[i].target, Target::YoutubeSearch { .. });
             // A search spends today's budget only when there's a key to spend it with.
-            let may = search && yt_key.is_some() && w.quota.take(pday, budget);
+            let may = search && has_youtube && w.quota.take(pday, budget);
             // Marked later now, so a slow read isn't handed out twice.
             w.list[i].next_due = t + every * 60;
             jobs.push((w.list[i].target.clone(), w.list[i].last_modified.clone(), may));
@@ -429,6 +477,8 @@ impl Daemon<'_> {
             let net = Https;
             let mut gap = crate::ratelimit::Gcra::new(1, HOST_SPACING_MS, 1);
             let mut out: Vec<ScanOut> = Vec::new();
+            // Your Google sign-in stands in for an API key, fetched once a pass.
+            let yt_key = yt_key.or_else(|| google.as_ref().and_then(|g| apis::google_access(&net, g).ok()).map(|tok| format!("{}{tok}", apis::BEARER)));
             for (target, lm, may) in jobs {
                 if ctl.checkpoint() {
                     break;
@@ -538,8 +588,8 @@ impl Daemon<'_> {
     /// Google sign-in for YouTube Analytics: your browser, Google's page,
     /// back to a port on this machine.
     fn social_google(&mut self, client_id: &str, secret: &str, t: u64) -> String {
-        if self.vault.state() != crate::vault::State::Open {
-            return "Unlock the vault first -- the sign-in is kept there.".into();
+        if let Err(e) = self.vault_ready(t) {
+            return format!("Nothing was started: {e}.");
         }
         let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
             Ok(l) => l,
@@ -726,7 +776,11 @@ impl Daemon<'_> {
                         } else {
                             ""
                         };
-                        format!("Signed in to YouTube Analytics; retention comes with the next refresh.{lapse}")
+                        let mut on = String::new();
+                        if !self.social_cfg().own_refresh {
+                            on = format!(" {}", self.apply_setting("workday.social.own_refresh", "on"));
+                        }
+                        format!("YouTube is connected; your channel's numbers and retention come with the next refresh.{lapse}{on}")
                     }
                     Err(e) => format!("Google signed you in, but I couldn't keep it in the vault: {e}"),
                 })
@@ -796,6 +850,53 @@ impl Daemon<'_> {
 
     // ------------------------------------------------------------ the hub page
 
+    /// "Connect my YouTube": the Connect button, said.
+    pub(crate) fn connect_youtube(&mut self) -> String {
+        match crate::oauthlink::google_secret() {
+            Some(sec) => self.social_google(crate::oauthlink::GOOGLE_CLIENT_ID, &sec, crate::store::now()),
+            None => crate::oauthlink::NO_GOOGLE_SECRET.into(),
+        }
+    }
+
+    /// The Connect list: one row and one button per service (5 Oct 2026).
+    fn social_services(&self, cfg: &SocialConfig, listed: &[String]) -> Vec<page::Service> {
+        let has = |n: &str| listed.iter().any(|x| x == n);
+        let mut out = Vec::new();
+        let yt = has(VAULT_YOUTUBE_OAUTH) || has(VAULT_YOUTUBE_KEY);
+        out.push(page::Service {
+            name: "YouTube".into(),
+            state: if yt { "Connected".into() } else { "Not connected".into() },
+            connected: yt,
+            button: crate::oauthlink::google_secret().is_some().then(|| ("google".to_string(), if yt { "Connect again".to_string() } else { "Connect YouTube".to_string() })),
+            inner: String::new(),
+            note: if crate::oauthlink::google_secret().is_some() {
+                "Your channel's numbers and retention, through your Google sign-in.".into()
+            } else {
+                "This copy of Atlas was built without its Google sign-in, so this waits for one that has it.".into()
+            },
+        });
+        let handle = cfg.bluesky_handle.trim().trim_start_matches('@').to_string();
+        out.push(page::Service {
+            name: "Bluesky".into(),
+            state: if handle.is_empty() { "Not connected".into() } else { format!("Connected as @{handle}") },
+            connected: !handle.is_empty(),
+            button: Some(("bluesky-handle".into(), if handle.is_empty() { "Connect Bluesky".into() } else { "Change".into() })),
+            inner: format!("<label>Your handle <input name=handle value='{}' size=22 placeholder='you.bsky.social' required></label>", crate::hub::esc(&handle)),
+            note: "Your public numbers need only your handle.".into(),
+        });
+        out.push(page::Service {
+            name: "Instagram, TikTok, X, Facebook, LinkedIn, Reddit".into(),
+            state: "Through Atlas's own browser".into(),
+            connected: false,
+            button: Some(("browser-signin-all".into(), "Sign in to your accounts".into())),
+            inner: String::new(),
+            note: "One window opens with a tab for each site: sign in on the ones you use, skip the rest, close it. \
+                   Or just say \"sign me into my socials\"."
+                .into(),
+        });
+        out
+    }
+
     pub(crate) fn social_page(&mut self, said: Option<&str>) -> String {
         let t = crate::store::now();
         let cfg = self.social_cfg();
@@ -814,6 +915,7 @@ impl Daemon<'_> {
         let nothing_from = Platform::ALL.iter().filter(|p| !have.contains(p)).map(|p| p.name().to_string()).collect();
         let min = self.tools_ref().map(|x| x.content.min_posts_for_patterns).unwrap_or(8);
         let w = self.social_watch().clone();
+        let _ = self.vault_ready(t);
         let vault_open = self.vault.state() == crate::vault::State::Open;
         let listed: Vec<String> = self.vault.list().iter().map(|(n, _)| n.to_string()).collect();
         let kept = |n: &str| vault_open.then(|| listed.iter().any(|x| x == n));
@@ -826,7 +928,9 @@ impl Daemon<'_> {
         if !self.workday.social.last_missing.is_empty() {
             notice.push(format!("Last refresh couldn't read: {}.", self.workday.social.last_missing.join("; ")));
         }
+        let services = self.social_services(&cfg, &listed);
         let v = page::View {
+            services,
             notice: (!notice.is_empty()).then(|| notice.join(" ")),
             own_refresh: cfg.own_refresh,
             scan: cfg.scan,
@@ -889,12 +993,27 @@ impl Daemon<'_> {
                 };
                 let bcfg = self.tools_cfg().browser.clone();
                 let vars = self.tools_cfg().vars.clone();
-                match crate::browser::open_sign_in_window(&bcfg, &vars, &crate::webrun::login_url(domain)) {
+                match crate::browser::open_sign_in_window(&bcfg, &vars, &[crate::webrun::login_url(domain)]) {
                     Ok(()) => format!(
                         "{name} is open in Atlas's own browser window. Sign in there the way you normally do, codes included, then close the window. Atlas keeps that sign-in for reading your {name} pages."
                     ),
                     Err(e) => format!("Atlas's browser didn't open: {e}"),
                 }
+            }
+            "browser-signin-all" => self.open_social_signins(),
+            "bluesky-handle" => {
+                let h = field("handle").trim().trim_start_matches('@').to_string();
+                if h.is_empty() || h.contains(char::is_whitespace) || !h.contains('.') {
+                    return "That doesn't look like a Bluesky handle -- it's the part after the @, like you.bsky.social.".into();
+                }
+                let mut said = self.apply_setting("workday.social.bluesky_handle", &h);
+                if !self.social_cfg().own_refresh {
+                    said.push(' ');
+                    said.push_str(&self.apply_setting("workday.social.own_refresh", "on"));
+                }
+                said.push(' ');
+                said.push_str(&self.social_refresh(t, true));
+                said
             }
             "unwatch" => {
                 let gone = self.social_watch().remove(&field("which"));
@@ -925,6 +1044,7 @@ impl Daemon<'_> {
                 if secret.is_empty() {
                     return "Nothing to keep.".into();
                 }
+                let _ = self.vault_ready(t);
                 match self.vault.put(name, crate::vault::Kind::ApiKey, &secret, t) {
                     Ok(()) => match self.vault.save(&self.vault_home) {
                         Ok(()) => {
@@ -999,8 +1119,8 @@ impl Daemon<'_> {
         if key.is_empty() || secret.is_empty() || !redirect.starts_with("https://") {
             return "The client key, the client secret and the https redirect address your TikTok app registered are all needed.".into();
         }
-        if self.vault.state() != crate::vault::State::Open {
-            return "Unlock the vault first -- the sign-in is kept there.".into();
+        if let Err(e) = self.vault_ready(t) {
+            return format!("Nothing was started: {e}.");
         }
         let s = TikTokSignIn { client_key: key.into(), client_secret: secret.into(), redirect: redirect.into(), refresh_token: String::new(), state: crate::vault::short_code(16), obtained: 0 };
         let json = match serde_json::to_string(&s) {

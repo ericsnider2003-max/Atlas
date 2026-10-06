@@ -1090,6 +1090,13 @@ pub struct HuntState {
     /// Asked once what to look for.
     #[serde(default)]
     pub asked: bool,
+    /// Id -> when it was first put in a brief. A find is volunteered once
+    /// (5 Oct 2026, Eric: "the opportunities are spamming me"): the brief is
+    /// built for the morning, for every part-of-day hello and for every
+    /// welcome back, and each one read out the same top finds again. Asking
+    /// for them ("any opportunities?") still lists every one.
+    #[serde(default)]
+    pub briefed: BTreeMap<String, u64>,
 }
 
 pub const FILE: &str = "opportunities";
@@ -1193,6 +1200,26 @@ impl HuntState {
             .collect();
         v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.found.at.cmp(&a.0.found.at)));
         v.into_iter().take(n).map(|(r, _)| r).collect()
+    }
+
+    /// The best `n` not yet volunteered in a brief, marked as volunteered.
+    /// Marks older than a month are let go with the finds they were for.
+    pub fn take_unbriefed(&mut self, n: usize, now: u64) -> Vec<Ranked> {
+        let month = 30 * 86_400;
+        self.briefed.retain(|_, at| now.saturating_sub(*at) < month);
+        let briefed = &self.briefed;
+        let mut v: Vec<(&Ranked, f32)> = self
+            .shortlist
+            .iter()
+            .filter(|r| !briefed.contains_key(&r.found.id))
+            .filter_map(|r| freshness_of(&r.found, now).map(|f| (r, r.rank * (0.5 + 0.5 * f))))
+            .collect();
+        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.found.at.cmp(&a.0.found.at)));
+        let out: Vec<Ranked> = v.into_iter().take(n).map(|(r, _)| r.clone()).collect();
+        for r in &out {
+            self.briefed.insert(r.found.id.clone(), now);
+        }
+        out
     }
 
     pub fn find(&self, id: &str) -> Option<&Ranked> {

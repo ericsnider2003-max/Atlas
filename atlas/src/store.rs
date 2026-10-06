@@ -19,6 +19,104 @@ struct Envelope<T> {
     data: T,
 }
 
+/// What a file held that this version of Atlas doesn't know about (5 Oct
+/// 2026, Q12): fields a newer Atlas wrote. Reading drops them, since serde
+/// keeps only the fields a type has, and the next save wrote the file without
+/// them -- so going back to an older version (a rollback) and forward again
+/// lost whatever the newer one had added, silently.
+///
+/// Kept as the parts of the file the type couldn't account for, found by
+/// reading the file into the type, writing it back out, and comparing; and
+/// put back when the record is saved. Only keys the type has never heard
+/// of: one it knows and left out (an option you cleared) is never brought
+/// back. Lists are matched element by element through their `id` when they
+/// have one, else by position when the list is the same length; an element
+/// that's gone takes its unknown fields with it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Unknown {
+    /// An object's keys this version lacks, and what's unknown inside the
+    /// keys it has.
+    Keys(Vec<(String, serde_json::Value)>, Vec<(String, Unknown)>),
+    /// What's unknown inside a list's elements: (its `id`, its position,
+    /// the list's length then, what's unknown in it).
+    Items(Vec<(Option<serde_json::Value>, usize, usize, Unknown)>),
+}
+
+/// The parts of `raw` (what the file holds) that `known` (the same value
+/// after a round trip through this version's type) doesn't.
+pub fn unknown_part(raw: &serde_json::Value, known: &serde_json::Value) -> Option<Unknown> {
+    use serde_json::Value;
+    match (raw, known) {
+        (Value::Object(r), Value::Object(k)) => {
+            let mut new_keys = Vec::new();
+            let mut inner = Vec::new();
+            for (key, v) in r {
+                match k.get(key) {
+                    None => new_keys.push((key.clone(), v.clone())),
+                    Some(kv) => {
+                        if let Some(u) = unknown_part(v, kv) {
+                            inner.push((key.clone(), u));
+                        }
+                    }
+                }
+            }
+            (!new_keys.is_empty() || !inner.is_empty()).then_some(Unknown::Keys(new_keys, inner))
+        }
+        (Value::Array(r), Value::Array(k)) => {
+            let mut items = Vec::new();
+            for (i, rv) in r.iter().enumerate() {
+                let id = rv.get("id").cloned();
+                let counterpart = match &id {
+                    Some(id) => k.iter().find(|kv| kv.get("id") == Some(id)),
+                    None if r.len() == k.len() => k.get(i),
+                    None => None,
+                };
+                if let Some(u) = counterpart.and_then(|kv| unknown_part(rv, kv)) {
+                    items.push((id, i, r.len(), u));
+                }
+            }
+            (!items.is_empty()).then_some(Unknown::Items(items))
+        }
+        _ => None,
+    }
+}
+
+/// Put what was unknown back into `target` (what this version is saving).
+pub fn put_back_unknown(u: &Unknown, target: &mut serde_json::Value) {
+    use serde_json::Value;
+    match (u, target) {
+        (Unknown::Keys(new_keys, inner), Value::Object(t)) => {
+            for (k, v) in new_keys {
+                t.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            for (k, sub) in inner {
+                if let Some(tv) = t.get_mut(k) {
+                    put_back_unknown(sub, tv);
+                }
+            }
+        }
+        (Unknown::Items(items), Value::Array(t)) => {
+            let len_now = t.len();
+            for (id, i, len_then, sub) in items {
+                let el = match id {
+                    Some(id) => t.iter_mut().find(|e| e.get("id") == Some(id)),
+                    None if *len_then == len_now => t.get_mut(*i),
+                    None => None,
+                };
+                if let Some(el) = el {
+                    put_back_unknown(sub, el);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// What each record's file held that this version doesn't know, by path,
+/// from when this process last read it. Empty for nearly every record.
+static UNKNOWN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Unknown>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
 /// Is this `…/data/state/profiles`?
 fn ends_with_data_state_profiles(p: &Path) -> bool {
     let mut it = p.components().rev().filter_map(|c| c.as_os_str().to_str());
@@ -54,6 +152,28 @@ fn remember_written(path: &Path, hash: u64) {
         w.insert(path.to_path_buf(), (hash, m.len(), m.modified().ok()));
     }
     remember_seen(path, Some((m.len(), m.modified().ok())));
+}
+
+/// Note what the file at `path` (current format, `text`) holds that `T`
+/// doesn't know, for `save` to put back (Q12). Costs one more round trip
+/// through JSON per read, and records nothing in the usual case.
+fn remember_unknown<T: DeserializeOwned + Serialize>(path: &Path, text: &str) {
+    let raw = serde_json::from_str::<serde_json::Value>(text).ok().and_then(|v| v.get("data").cloned());
+    let known = serde_json::from_str::<Envelope<T>>(text).ok().and_then(|e| serde_json::to_value(&e.data).ok());
+    let unknown = match (raw, known) {
+        (Some(raw), Some(known)) => unknown_part(&raw, &known),
+        _ => None,
+    };
+    if let Ok(mut u) = UNKNOWN.lock().or_else(crate::crash::unpoison) {
+        match unknown {
+            Some(x) => {
+                u.insert(path.to_path_buf(), x);
+            }
+            None => {
+                u.remove(path);
+            }
+        }
+    }
 }
 
 /// A file's size and modified time, or `None` when it isn't there.
@@ -269,7 +389,7 @@ impl Store {
     ///
     /// Now: a file that exists and cannot be read is preserved before the
     /// default is returned, so the next save cannot land on it.
-    pub fn load<T: DeserializeOwned + Default>(&self, name: &str) -> T {
+    pub fn load<T: DeserializeOwned + Default + Serialize>(&self, name: &str) -> T {
         let path = self.path(name);
         // Taken before reading: a write between the two leaves this older
         // than the file, so the change is seen as someone else's, never missed.
@@ -294,6 +414,7 @@ impl Store {
         if let Ok(env) = serde_json::from_str::<Envelope<T>>(&text) {
             if env.schema == SCHEMA {
                 remember_seen(&path, stamp);
+                remember_unknown::<T>(&path, &text);
                 return env.data;
             }
             // A future or older shape. Keep it; do not silently overwrite.
@@ -352,7 +473,7 @@ impl Store {
     /// that isn't there is never kept, so it is looked for every time.
     pub fn load_kept<T>(&self, name: &str) -> T
     where
-        T: DeserializeOwned + Default + Clone + Send + Sync + 'static,
+        T: DeserializeOwned + Serialize + Default + Clone + Send + Sync + 'static,
     {
         let path = self.path(name);
         let stamp = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().ok()));
@@ -395,13 +516,22 @@ impl Store {
 
     fn save_unrecorded<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         let final_path = self.path(name);
-        let env = Envelope { schema: SCHEMA, data: value };
         // Never `unwrap_or_default` here: a value that won't serialize wrote
         // an empty file over the good one, atomically, and returned Ok -- the
         // next load set the empty file aside and the data was gone (Q3).
-        let body = serde_json::to_string_pretty(&env).map_err(|e| {
+        let bad = |e: serde_json::Error| {
             crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{name} couldn't be written as JSON: {e}")))
-        })?;
+        };
+        let unknown = UNKNOWN.lock().or_else(crate::crash::unpoison).ok().and_then(|u| u.get(&final_path).cloned());
+        let body = match unknown {
+            // What a newer Atlas wrote and this one doesn't know, put back (Q12).
+            Some(u) => {
+                let mut data = serde_json::to_value(value).map_err(bad)?;
+                put_back_unknown(&u, &mut data);
+                serde_json::to_string_pretty(&serde_json::json!({ "schema": SCHEMA, "data": data })).map_err(bad)?
+            }
+            None => serde_json::to_string_pretty(&Envelope { schema: SCHEMA, data: value }).map_err(bad)?,
+        };
 
         // Unchanged content is not written.
         //

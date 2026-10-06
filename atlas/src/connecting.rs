@@ -136,15 +136,23 @@ fn step_for(d: &mut Daemon, address: &str) -> String {
 }
 
 /// The vault's passphrase box, when the vault is shut and can't open itself.
+///
+/// Never asked for a new vault: one opens on your Windows sign-in (5 Oct
+/// 2026). Only a vault made before that, with no sign-in copy yet, asks --
+/// once.
 fn vault_field(d: &Daemon) -> String {
-    if d.vault.state() == crate::vault::State::Open || d.vault.sealed_to_this_login() {
+    let opens_itself = d.vault.state() == crate::vault::State::Open
+        || d.vault.sealed_to_this_login()
+        || (d.vault.is_brand_new() && d.tools_cfg().vault.open_on_this_login && crate::loginseal::available());
+    if opens_itself {
         return String::new();
     }
     if d.vault.has_a_passphrase() {
-        "<label>Your vault passphrase (it keeps the password sealed) \
+        "<label>Your vault passphrase -- once; after this it opens with your Windows sign-in \
          <input name=passphrase type=password autocomplete=current-password required></label>"
             .into()
     } else {
+        // Off Windows only: there's no sign-in to seal it to.
         "<label>Choose a vault passphrase -- a sentence of 12 characters or more. It seals every password \
          Atlas keeps; you'll need it again. <input name=passphrase type=password autocomplete=new-password required></label>"
             .into()
@@ -301,10 +309,8 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     let again = |said: &str| hub::back_with(&format!("{}#connect-next", Page::Accounts.href()), &format!("connect={}", crate::research::urlencode(&address)), said);
     // The vault first: there's no point proving a password that can't be kept.
     let now = crate::store::now();
-    if d.vault.state() != crate::vault::State::Open {
-        if let Err(e) = open_the_vault(d, fields, now) {
-            return again(&format!("Nothing was connected: {e}."));
-        }
+    if let Err(e) = open_the_vault(d, &field(fields, "passphrase"), now) {
+        return again(&format!("Nothing was connected: {e}."));
     }
     // Spaces in an app password are how Google shows it, not part of it.
     let password = if host.contains("gmail") { password.replace(' ', "") } else { password };
@@ -470,18 +476,66 @@ fn signin_button(d: &Daemon, p: Provider) -> String {
 /// Open the vault if it's shut (the token is kept there), then open the
 /// provider's page in the browser and wait on this machine for it to come back.
 fn start_signin(d: &mut Daemon, p: Provider, fields: &[(String, String)]) -> Reply {
+    match begin_signin(d, p, &field(fields, "passphrase")) {
+        Ok(said) | Err(said) => back(&said),
+    }
+}
+
+/// What "connect my Google calendar" / "connect my Outlook" / "sign me into
+/// my socials" asks for (5 Oct 2026, Eric: finding the right page and button
+/// was "overly complicated and highly annoying").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Connect {
+    Google,
+    /// Your channel's numbers, through the same Google sign-in.
+    Youtube,
+    Microsoft,
+    Socials,
+}
+
+/// Read a request to connect an account, said or typed. Only when the
+/// sentence is about connecting: "what's on my google calendar" isn't.
+pub fn connect_asked(said: &str) -> Option<Connect> {
+    let l = said.trim().trim_end_matches(['.', '!', '?']).to_ascii_lowercase();
+    let l = l.trim_start_matches("please ").trim_start_matches("can you ").trim_start_matches("atlas, ").trim();
+    let asks = ["connect ", "link ", "sign me in", "sign me into", "sign in to my", "sign into my", "sign in with ", "log me in", "log me into", "hook up ", "set up my "]
+        .iter()
+        .any(|p| l.starts_with(p));
+    if !asks {
+        return None;
+    }
+    if l.contains("youtube") && !l.contains("youtube studio") {
+        return Some(Connect::Youtube);
+    }
+    let social = ["social", "socials", "social media", "instagram", "tiktok", "facebook", "linkedin", "reddit", "twitter", "youtube studio"];
+    if social.iter().any(|w| l.contains(w)) || l.ends_with(" x") {
+        return Some(Connect::Socials);
+    }
+    if ["outlook", "microsoft", "hotmail", "live.com", "office 365", "office365"].iter().any(|w| l.contains(w)) {
+        return Some(Connect::Microsoft);
+    }
+    if l.contains("google") || l.contains("gmail calendar") || l.ends_with("my calendar") || l.ends_with("calendar") {
+        return Some(Connect::Google);
+    }
+    None
+}
+
+/// Start a provider's sign-in in your own browser. `Ok` and `Err` are both a
+/// sentence for you; the result is said again when you've finished there
+/// (`keep_signed_in`).
+pub(crate) fn begin_signin(d: &mut Daemon, p: Provider, passphrase: &str) -> Result<String, String> {
     if p == Provider::Google && oauthlink::google_secret().is_none() {
-        return back(oauthlink::NO_GOOGLE_SECRET);
+        return Err(oauthlink::NO_GOOGLE_SECRET.into());
     }
     let now = crate::store::now();
-    if d.vault.state() != crate::vault::State::Open {
-        if let Err(e) = open_the_vault(d, fields, now) {
-            return back(&format!("Nothing was started: {e}."));
-        }
+    // No passphrase asked for: the vault opens on your Windows sign-in. A
+    // passphrase is used only for a vault made before that, and only if given.
+    if let Err(e) = open_the_vault(d, passphrase, now) {
+        return Err(format!("Nothing was started: {e}."));
     }
     let first = match std::net::TcpListener::bind("127.0.0.1:0") {
         Ok(l) => l,
-        Err(e) => return back(&format!("I couldn't open a port for {} to come back to: {e}", p.name())),
+        Err(e) => return Err(format!("I couldn't open a port for {} to come back to: {e}", p.name())),
     };
     let port = first.local_addr().map(|a| a.port()).unwrap_or(0);
     let mut listeners = vec![first];
@@ -496,7 +550,7 @@ fn start_signin(d: &mut Daemon, p: Provider, fields: &[(String, String)]) -> Rep
     let state = crate::vault::short_code(24);
     let url = oauthlink::consent_url(p, &redirect, &state, &oauthlink::challenge(&verifier));
     if let Err(e) = d.plat.open_path(&url) {
-        return back(&format!("I couldn't open your browser for {}'s sign-in: {e}", p.name()));
+        return Err(format!("I couldn't open your browser for {}'s sign-in: {e}", p.name()));
     }
     let _ = d.store.save(SIGNIN_SAID, &format!("Waiting for {}'s sign-in in your browser...", p.name()));
     std::thread::spawn(move || {
@@ -507,9 +561,8 @@ fn start_signin(d: &mut Daemon, p: Provider, fields: &[(String, String)]) -> Rep
             q.push(got);
         }
     });
-    back(&format!(
-        "{}'s sign-in is open in your browser on this computer. Sign in there and allow access; this page shows \
-         the result when you come back.",
+    Ok(format!(
+        "{}'s sign-in is open in your browser. Pick your account and allow access; I'll say when it's connected.",
         p.name()
     ))
 }
@@ -565,6 +618,9 @@ fn keep_signed_in(d: &mut Daemon, now: u64) {
             Ok(s) => keep_sign_in(d, &s, now),
         };
         let _ = d.store.save(SIGNIN_SAID, &said);
+        // Said too, not only shown on the Connections page: a sign-in started
+        // by asking is finished in the browser, away from any page.
+        d.to_say_aloud.push(said);
     }
 }
 
@@ -578,9 +634,8 @@ pub fn keep_sign_in(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String
 
 fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     let name = oauthlink::vault_name(s.provider, &s.email);
-    if d.vault.state() != crate::vault::State::Open {
-        crate::heard!(d.vault.open_unattended(now));
-    }
+    // If it stays shut, the `put` below fails and says so.
+    crate::heard!(d.vault_ready(now));
     let kept = d
         .vault
         .put(&name, crate::vault::Kind::Login, &s.refresh_token, now)
@@ -623,7 +678,7 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
     if waiting.is_empty() {
         return;
     }
-    if d.vault.state() != crate::vault::State::Open && d.vault.open_unattended(now).is_err() {
+    if d.vault_ready(now).is_err() {
         crate::msoauth::keep_later(waiting);
         return;
     }
@@ -658,17 +713,20 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
     }
 }
 
-/// The vault opened for a connection: by itself when it is sealed to this
-/// login, otherwise with the passphrase typed in the form. One copy (audit
-/// Q3): connecting an account and starting a sign-in each had one.
-fn open_the_vault(d: &mut Daemon<'_>, fields: &[(String, String)], now: u64) -> Result<(), String> {
-    if d.vault.sealed_to_this_login() {
-        return d.vault.open_unattended(now);
-    }
-    let phrase = field(fields, "passphrase");
-    if phrase.is_empty() {
-        return Err("your vault is locked -- type its passphrase too".to_string());
+/// The vault opened for a connection: on your Windows sign-in when it can
+/// (`vault_ready`), else with a passphrase -- only for a vault made before
+/// that, and only if one was given -- after which it keeps a sign-in copy so
+/// it needn't be asked again. One copy (audit Q3): connecting an account and
+/// starting a sign-in each had one, and the 5 Oct no-passphrase change had to
+/// be made in both.
+fn open_the_vault(d: &mut Daemon<'_>, passphrase: &str, now: u64) -> Result<(), String> {
+    let Err(why) = d.vault_ready(now) else { return Ok(()) };
+    if passphrase.is_empty() {
+        return Err(why);
     }
     let cfg = d.tools_cfg().vault.clone();
-    d.vault.open(&phrase, now, &cfg)
+    d.vault.open(passphrase, now, &cfg)?;
+    // What it says is for the Accounts page; the connection's own answer follows.
+    d.keep_sign_in_copy(now);
+    Ok(())
 }

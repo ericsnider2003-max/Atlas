@@ -511,14 +511,39 @@ pub fn draft_fix(
         } else {
             format!("Approach to try: {instruction}\n")
         };
-        let user = format!(
-            "The symptom: {}\nThe cause: {}\nWhere it lives: {}\nThe test that must pass after: {}\n{approach}\nThe current contents of {}:\n```\n{}\n```\n\nReturn the complete corrected file.",
-            thought.symptom, thought.cause, thought.where_, thought.proof, file.path, file.content,
+        let diagnosis = format!(
+            "The symptom: {}\nThe cause: {}\nWhere it lives: {}\nThe test that must pass after: {}\n{approach}",
+            thought.symptom, thought.cause, thought.where_, thought.proof,
         );
-        // Drafting a self-fix is the hard task this whole subsystem exists for:
-        // escalate to the stronger model when one is configured.
-        let reply = llm.complete_hard(MEND_SYSTEM, &user).map_err(|e| e.to_string())?;
-        let fixed = crate::build_it::extract_code(&reply);
+        // A small file comes back whole. A big one can't: the model on this
+        // computer (a 7B coder, a few thousand tokens of room) was asked for
+        // the whole of a 2,000-line Rust file and could not give it back, so
+        // no self-fix of Atlas was ever drafted (5 Oct 2026). It gets the
+        // part of the file the diagnosis points at, and returns edits.
+        let lines = file.content.lines().count();
+        let fixed = if lines <= WHOLE_FILE_LINES {
+            let user = format!(
+                "{diagnosis}\nThe current contents of {}:\n```\n{}\n```\n\nReturn the complete corrected file.",
+                file.path, file.content,
+            );
+            // Drafting a self-fix is the hard task this whole subsystem exists
+            // for: escalate to the stronger model when one is configured.
+            let reply = llm.complete_hard(MEND_SYSTEM, &user).map_err(|e| e.to_string())?;
+            crate::build_it::extract_code(&reply)
+        } else {
+            let (from, excerpt) = excerpt_for(&file.content, &thought.where_, &thought.cause);
+            let user = format!(
+                "{diagnosis}\nPart of {} (from line {}, of {lines}):\n```\n{excerpt}\n```\n\nReturn your change as edit blocks.",
+                file.path,
+                from + 1,
+            );
+            let reply = llm.complete_hard(MEND_BY_EDITS_SYSTEM, &user).map_err(|e| e.to_string())?;
+            let blocks = edit_blocks(&reply);
+            if blocks.is_empty() {
+                return Err(format!("the model returned no edits for {}", file.path));
+            }
+            apply_edit_blocks(&file.content, &blocks).map_err(|why| format!("{} in {}", why, file.path))?
+        };
         if fixed.trim().is_empty() {
             return Err(format!("the model returned no code for {}", file.path));
         }
@@ -528,6 +553,113 @@ pub fn draft_fix(
         out.push(Edit { path: file.path.clone(), content: fixed, reason: thought.cause.clone() });
     }
     Ok(out)
+}
+
+/// Files up to this many lines go to the model whole and come back whole;
+/// past it, a part of the file goes and edits come back (`draft_fix`).
+pub const WHOLE_FILE_LINES: usize = 250;
+
+/// How much of a big file the model is shown around where the diagnosis
+/// points: a few thousand tokens, what a 7B coder on a laptop has room for.
+pub const EXCERPT_LINES: usize = 220;
+
+/// For a file too big to send whole.
+pub const MEND_BY_EDITS_SYSTEM: &str = "\
+You are fixing a fault in an existing program by editing one of its files. You \
+are given the diagnosis -- the symptom, the underlying cause, where it lives, \
+and the test that must pass once it's fixed -- and the part of the file where \
+the cause is. Change the cause itself, not the symptom downstream. Do NOT \
+weaken, delete, or edit any test to make things pass. Change as little as you \
+can. Reply ONLY with one or more edit blocks, exactly like this:\n\
+<<<<<<< SEARCH\n\
+lines copied exactly from the file, enough to be unique\n\
+=======\n\
+the lines to put in their place\n\
+>>>>>>> REPLACE\n\
+No explanation, no other text.";
+
+/// The part of a big file the diagnosis points at: the first line naming
+/// something the diagnosis names (a function, a type, a constant), with
+/// room either side. The start of the file when nothing matches. Returns
+/// the 0-based first line and the text.
+pub fn excerpt_for(content: &str, where_: &str, cause: &str) -> (usize, String) {
+    let lines: Vec<&str> = content.lines().collect();
+    let names: Vec<String> = format!("{where_} {cause}")
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|w| w.len() >= 4 && (w.contains('_') || w.chars().any(|c| c.is_uppercase()) && w.chars().any(|c| c.is_lowercase())))
+        .map(str::to_string)
+        .collect();
+    let hit = lines.iter().position(|l| {
+        let t = l.trim_start();
+        (t.starts_with("fn ") || t.starts_with("pub ") || t.starts_with("const ") || t.starts_with("struct ") || t.starts_with("enum ") || t.starts_with("impl"))
+            && names.iter().any(|n| l.contains(n.as_str()))
+    })
+    .or_else(|| lines.iter().position(|l| names.iter().any(|n| l.contains(n.as_str()))));
+    let from = hit.map(|h| h.saturating_sub(EXCERPT_LINES / 4)).unwrap_or(0);
+    let to = (from + EXCERPT_LINES).min(lines.len());
+    (from, lines[from..to].join("\n"))
+}
+
+/// The SEARCH/REPLACE blocks in a reply, in order.
+pub fn edit_blocks(reply: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut rest = reply;
+    while let Some(a) = rest.find("<<<<<<< SEARCH") {
+        let after = &rest[a + "<<<<<<< SEARCH".len()..];
+        let Some(mid) = after.find("\n=======") else { break };
+        let search = after[..mid].trim_start_matches(['\r', '\n']).to_string();
+        let after_mid = &after[mid + "\n=======".len()..];
+        let Some(end) = after_mid.find(">>>>>>> REPLACE") else { break };
+        let replace = after_mid[..end].trim_start_matches(['\r', '\n']).trim_end_matches([' ', '\t']).to_string();
+        let replace = replace.strip_suffix('\n').map(str::to_string).unwrap_or(replace);
+        let replace = replace.strip_suffix('\r').map(str::to_string).unwrap_or(replace);
+        out.push((search.trim_end_matches(['\r', '\n']).to_string(), replace));
+        rest = &after_mid[end + ">>>>>>> REPLACE".len()..];
+    }
+    out
+}
+
+/// Apply edit blocks to a file. Each SEARCH must match exactly one place --
+/// exactly, or line by line ignoring indentation and trailing space (what a
+/// small model gets wrong most). Nothing is guessed: a block that matches
+/// nowhere, or in two places, fails the whole draft and says which.
+pub fn apply_edit_blocks(content: &str, blocks: &[(String, String)]) -> Result<String, String> {
+    let mut text = content.to_string();
+    for (i, (search, replace)) in blocks.iter().enumerate() {
+        if search.trim().is_empty() {
+            return Err(format!("edit {} has nothing to search for", i + 1));
+        }
+        let exact = text.matches(search.as_str()).count();
+        if exact == 1 {
+            text = text.replacen(search.as_str(), replace, 1);
+            continue;
+        }
+        if exact > 1 {
+            return Err(format!("edit {} matches {exact} places", i + 1));
+        }
+        // Line by line, ignoring leading and trailing whitespace.
+        let want: Vec<&str> = search.lines().map(str::trim).collect();
+        let have: Vec<&str> = text.lines().collect();
+        let starts: Vec<usize> = (0..=have.len().saturating_sub(want.len()))
+            .filter(|&s| want.iter().enumerate().all(|(k, w)| have.get(s + k).is_some_and(|h| h.trim() == *w)))
+            .collect();
+        match starts.len() {
+            0 => return Err(format!("edit {} doesn't match the file", i + 1)),
+            1 => {
+                let s = starts[0];
+                let mut lines: Vec<String> = have[..s].iter().map(|l| l.to_string()).collect();
+                lines.extend(replace.lines().map(str::to_string));
+                lines.extend(have[s + want.len()..].iter().map(|l| l.to_string()));
+                let mut joined = lines.join("\n");
+                if text.ends_with('\n') {
+                    joined.push('\n');
+                }
+                text = joined;
+            }
+            n => return Err(format!("edit {} matches {n} places", i + 1)),
+        }
+    }
+    Ok(text)
 }
 
 /// How many lines differ between the files as they are and a candidate — the
@@ -572,12 +704,15 @@ pub enum ProofToday {
 
 /// How long the proving test may take before Atlas stops waiting.
 ///
-/// The same reasoning as `workspace::BRINGUP_BUDGET_SECS`, and for the same
-/// thread: this runs on the tick, which is what listens, answers, polls, and
-/// refreshes the instance lock. The staleness window is 150s, so an unbounded
-/// `cargo test` here would let a second Atlas read the lock as abandoned and
-/// take it.
-pub const PROOF_BUDGET_SECS: u64 = 120;
+/// It was two minutes, for a reason that stopped being true on 1 Oct 2026:
+/// this ran on the tick, which refreshes the instance lock. Both callers now
+/// run it on the crew (the proof check and `prove_in_a_copy`), and the tick
+/// keeps the lock fresh by itself. The two minutes stayed, and on Eric's
+/// laptop a cold build of the tree takes twenty to forty, so every proof
+/// came back "it was still running after 120 seconds, so I stopped it" and
+/// no self-repair ever got past it (5 Oct 2026). Long enough for a cold
+/// build; with the shared cache (`roots::build_cache`) only the first is.
+pub const PROOF_BUDGET_SECS: u64 = 40 * 60;
 
 /// How long the whole suite may take in a sandbox copy (`run_tests`).
 pub const SUITE_LIMIT_SECS: u64 = 45 * 60;
@@ -604,12 +739,14 @@ pub fn run_the_proof(
     let program = parts.next().unwrap_or("cargo");
     let mut cmd = crate::tools::command(program);
     cmd.args(parts).arg(filter).current_dir(root);
+    crate::sandbox::warm_cargo(&mut cmd, program, &[]);
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => return ProofToday::CouldNotRun(format!("could not start {program}: {e}")),
     };
+    crate::childjob::tie(&child);
     let output = drain(&mut child);
 
     let deadline = std::time::Instant::now()
@@ -1262,6 +1399,7 @@ fn run_bounded(
     cmd.args(parts).current_dir(dir);
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("could not start {program}: {e}"))?;
+    crate::childjob::tie(&child);
     let output = drain(&mut child);
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(budget_secs);
@@ -1379,4 +1517,46 @@ fn walk_home_for_source(home: &str) -> Option<std::path::PathBuf> {
         level = next;
     }
     None
+}
+
+#[cfg(test)]
+mod edits_for_a_big_file {
+    use super::*;
+
+    #[test]
+    fn an_exact_block_replaces_its_one_place() {
+        let file = "fn a() {\n    1\n}\nfn b() {\n    2\n}\n";
+        let reply = "<<<<<<< SEARCH\nfn b() {\n    2\n=======\nfn b() {\n    3\n>>>>>>> REPLACE\n";
+        let blocks = edit_blocks(reply);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(apply_edit_blocks(file, &blocks).unwrap(), "fn a() {\n    1\n}\nfn b() {\n    3\n}\n");
+    }
+
+    #[test]
+    fn indentation_a_small_model_got_wrong_still_matches() {
+        let file = "impl X {\n        fn go(&self) -> u32 {\n            7\n        }\n}\n";
+        let blocks = vec![("fn go(&self) -> u32 {\n    7".to_string(), "        fn go(&self) -> u32 {\n            8".to_string())];
+        assert_eq!(apply_edit_blocks(file, &blocks).unwrap(), "impl X {\n        fn go(&self) -> u32 {\n            8\n        }\n}\n");
+    }
+
+    #[test]
+    fn a_block_that_matches_nowhere_or_twice_fails_rather_than_guessing() {
+        let file = "x = 1\nx = 1\n";
+        assert!(apply_edit_blocks(file, &[("x = 1".into(), "x = 2".into())]).unwrap_err().contains("2 places"));
+        assert!(apply_edit_blocks(file, &[("y = 1".into(), "y = 2".into())]).unwrap_err().contains("doesn't match"));
+    }
+
+    #[test]
+    fn the_excerpt_is_where_the_diagnosis_points() {
+        let mut file = String::new();
+        for i in 0..1000 {
+            file.push_str(&format!("// line {i}\n"));
+        }
+        file.push_str("pub fn reconcile_at(now: u64) {}\n");
+        let (from, text) = excerpt_for(&file, "health::Reporter::reconcile_at", "");
+        assert!(text.contains("pub fn reconcile_at"));
+        assert!(from > 900 && text.lines().count() <= EXCERPT_LINES);
+        // Nothing named: the start of the file.
+        assert_eq!(excerpt_for(&file, "somewhere", "").0, 0);
+    }
 }

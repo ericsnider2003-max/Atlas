@@ -155,6 +155,7 @@ impl Player {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| format!("couldn't start the browser ({}): {e}", browser.display()))?;
+        crate::childjob::tie(&child);
         let mut child = Some(child);
         let fail = |child: &mut Option<std::process::Child>, why: String| -> Result<Player, String> {
             if let Some(mut c) = child.take() {

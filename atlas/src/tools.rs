@@ -277,6 +277,7 @@ impl ExternalTool {
                      The Connections page shows what's missing."
                 ))
             })?;
+        crate::childjob::tie(&child);
 
         let limit = std::time::Duration::from_secs(if self.timeout_secs == 0 {
             default_timeout()

@@ -426,7 +426,7 @@ impl Watch {
 
 // ---------------------------------------------------------------- reading one
 
-/// Read one source. `yt_key` is the YouTube API key when there is one;
+/// Read one source. `yt_key` is the YouTube API key, or your Google sign-in (`apis::BEARER`), when there is one;
 /// `may_search` says today's search budget has room (taken by the caller).
 pub fn read_one(net: &dyn Net, t: &Target, last_modified: Option<&str>, yt_key: Option<&str>, may_search: bool, now: u64) -> Result<Fetched, Failed> {
     let fail = |why: String| Failed { why, retry_after: None };
@@ -444,19 +444,19 @@ pub fn read_one(net: &dyn Net, t: &Target, last_modified: Option<&str>, yt_key: 
             (t.host(), format!("/feeds/videos.xml?channel_id={}", enc(&id)), true)
         }
         Target::YoutubeSearch { query } => {
-            let Some(key) = yt_key else { return Err(fail("YouTube search needs your API key (Social page)".into())) };
+            let Some(key) = yt_key else { return Err(fail("YouTube search needs YouTube connected (Social page)".into())) };
             if !may_search {
                 return Err(Failed { why: "today's YouTube search budget is spent".into(), retry_after: Some(3600) });
             }
             let week_ago = now.saturating_sub(7 * 86_400);
             let c = crate::civil::Civil::from_local(week_ago as i64);
             let after = format!("{:04}-{:02}-{:02}T00:00:00Z", c.year, c.month, c.day);
-            let r = check(net.get(&t.host(), &format!("/youtube/v3/search?part=snippet&type=video&order=viewCount&maxResults=10&publishedAfter={}&q={}&key={}", enc(&after), enc(query), enc(key)), &[]))?;
+            let r = check(net.get(&t.host(), &format!("/youtube/v3/search?part=snippet&type=video&order=viewCount&maxResults=10&publishedAfter={}&q={}{}", enc(&after), enc(query), super::apis::yt_query(key)), &super::apis::yt_headers(key)))?;
             let v: Value = serde_json::from_str(&r.body).map_err(|e| fail(format!("YouTube search didn't read: {e}")))?;
             let ids: Vec<&str> = v.get("items").and_then(|i| i.as_array()).into_iter().flatten().filter_map(|i| i.pointer("/id/videoId").and_then(|x| x.as_str())).collect();
             let mut items = Vec::new();
             if !ids.is_empty() {
-                let r = check(net.get(&t.host(), &format!("/youtube/v3/videos?part=statistics,snippet&id={}&key={}", ids.join(","), enc(key)), &[]))?;
+                let r = check(net.get(&t.host(), &format!("/youtube/v3/videos?part=statistics,snippet&id={}{}", ids.join(","), super::apis::yt_query(key)), &super::apis::yt_headers(key)))?;
                 let v: Value = serde_json::from_str(&r.body).map_err(|e| fail(format!("YouTube videos didn't read: {e}")))?;
                 for it in v.get("items").and_then(|i| i.as_array()).into_iter().flatten() {
                     let s = it.get("statistics");
@@ -529,7 +529,7 @@ fn check(r: Result<Reply, String>) -> Result<Reply, Failed> {
 fn resolve_channel(net: &dyn Net, handle: &str, yt_key: Option<&str>) -> Result<String, String> {
     let h = handle.trim_start_matches('@');
     if let Some(key) = yt_key {
-        let r = net.get("www.googleapis.com", &format!("/youtube/v3/channels?part=id&forHandle=%40{}&key={}", crate::research::urlencode(h), crate::research::urlencode(key)), &[])?;
+        let r = net.get("www.googleapis.com", &format!("/youtube/v3/channels?part=id&forHandle=%40{}{}", crate::research::urlencode(h), super::apis::yt_query(key)), &super::apis::yt_headers(key))?;
         if let Some(id) = serde_json::from_str::<Value>(&r.body).ok().and_then(|v| v.pointer("/items/0/id").and_then(|x| x.as_str()).map(str::to_string)) {
             return Ok(id);
         }

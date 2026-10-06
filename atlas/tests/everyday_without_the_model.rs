@@ -30,6 +30,9 @@ fn everyday_sentences_reach_their_command_without_the_model() {
         ("any new mail today", "mail"),
         ("how did my last youtube video do", "social"),
         ("go into focus", "set_mode"),
+        ("Ok correct the issues found", "work_on_yourself"),
+        ("Correct the issues found in the self test", "work_on_yourself"),
+        ("fix the problems you found", "work_on_yourself"),
     ] {
         assert_eq!(reached(&p, s).as_deref(), Some(want), "{s}");
     }
@@ -59,3 +62,4 @@ fn the_file_asked_for_is_kept() {
         other => panic!("{other:?}"),
     }
 }
+

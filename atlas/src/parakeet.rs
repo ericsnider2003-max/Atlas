@@ -122,6 +122,7 @@ fn ensure_running(files: &Files, port: u16) -> Result<()> {
             cmd.current_dir(dir);
         }
         let child = cmd.spawn().map_err(|e| AtlasError::Platform(format!("couldn't start the hearing server: {e}")))?;
+        crate::childjob::tie(&child);
         *g = Some(child);
     }
     drop(g);

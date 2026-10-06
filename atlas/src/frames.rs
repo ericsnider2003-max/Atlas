@@ -107,6 +107,7 @@ impl Rolling {
             .stdin(Stdio::null())
             .spawn()
             .map_err(|e| AtlasError::Platform(format!("couldn't open the camera: {e}")))?;
+        crate::childjob::tie(&child);
 
         Ok(Rolling {
             child,

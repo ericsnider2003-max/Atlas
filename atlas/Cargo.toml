@@ -237,6 +237,11 @@ windows = { version = "0.58", features = [
 [[test]]
 name = "all"
 path = "tests/all.rs"
+# Its own process: it turns on the test-only sign-in seal for the whole
+# process (ATLAS_TEST_LOGINSEAL), which tests in `all` must not see.
+[[test]]
+name = "connecting_is_one_button"
+path = "tests/connecting_is_one_button.rs"
 [[test]]
 # Its own process: one fresh daemon per command, each on its own thread.
 name = "every_command_end_to_end"

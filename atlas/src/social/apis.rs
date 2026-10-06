@@ -1,7 +1,7 @@
 //! The free official APIs for your own accounts: what to ask, and what the
 //! answer means.
 //!
-//! - **YouTube Data API v3** (an API key, free): your channel's subscriber
+//! - **YouTube Data API v3** (your Google sign-in, or an API key; free): your channel's subscriber
 //!   and video counts and each video's views, likes and comments.
 //!   `channels.list`, `playlistItems.list` and `videos.list` cost one unit
 //!   each against 10,000 a day, so a daily refresh is three or four.
@@ -144,13 +144,47 @@ pub fn rfc3339(s: &str) -> Option<u64> {
 
 // ---------------------------------------------------------------- YouTube
 
+/// What a YouTube "key" holds when it is really your Google sign-in's
+/// access token rather than an API key: `"Bearer "` and the token. Signing
+/// in with Google is the one step a person takes (5 Oct 2026: pasting an
+/// API key made in Google's developer console is not something anyone
+/// setting up an assistant should be asked to do), so the same reads take
+/// either.
+pub const BEARER: &str = "Bearer ";
+
+/// The `&key=` part of a Data API address: empty for a sign-in.
+pub fn yt_query(key: &str) -> String {
+    if key.starts_with(BEARER) {
+        String::new()
+    } else {
+        format!("&key={}", enc(key))
+    }
+}
+
+/// The headers a Data API call carries: the sign-in, when it is one.
+pub fn yt_headers(key: &str) -> Vec<(&'static str, &str)> {
+    if key.starts_with(BEARER) {
+        vec![("Authorization", key)]
+    } else {
+        Vec::new()
+    }
+}
+
 /// Your channel and its latest videos, from the Data API. Four units.
 pub fn youtube_own(net: &dyn Net, key: &str, channel: &str, now: u64) -> Result<Vec<Record>, String> {
     let host = "www.googleapis.com";
     let who = channel.trim();
-    let sel = if who.starts_with("UC") && !who.contains('@') { format!("id={}", enc(who)) } else { format!("forHandle={}", enc(&format!("@{}", who.trim_start_matches('@')))) };
-    let ch = json_of(net.get(host, &format!("/youtube/v3/channels?part=statistics,contentDetails,snippet&{sel}&key={}", enc(key)), &[])?, "YouTube (your channel)")?;
-    let item = ch.pointer("/items/0").ok_or_else(|| format!("YouTube has no channel {who}"))?;
+    // Signed in with no channel named: the channel is the one you signed in as.
+    let sel = if who.is_empty() && key.starts_with(BEARER) {
+        "mine=true".to_string()
+    } else if who.starts_with("UC") && !who.contains('@') {
+        format!("id={}", enc(who))
+    } else {
+        format!("forHandle={}", enc(&format!("@{}", who.trim_start_matches('@'))))
+    };
+    let (q, h) = (yt_query(key), yt_headers(key));
+    let ch = json_of(net.get(host, &format!("/youtube/v3/channels?part=statistics,contentDetails,snippet&{sel}{q}"), &h)?, "YouTube (your channel)")?;
+    let item = ch.pointer("/items/0").ok_or_else(|| if who.is_empty() { "your Google sign-in has no YouTube channel".to_string() } else { format!("YouTube has no channel {who}") })?;
     let stats = item.get("statistics").cloned().unwrap_or(Value::Null);
     let handle = item.pointer("/snippet/customUrl").and_then(|v| v.as_str()).unwrap_or(who).to_string();
     let hidden = stats.get("hiddenSubscriberCount").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -166,7 +200,7 @@ pub fn youtube_own(net: &dyn Net, key: &str, channel: &str, now: u64) -> Result<
         m: Metrics { views: stats.get("viewCount").and_then(n), ..Default::default() },
     })];
     let uploads = item.pointer("/contentDetails/relatedPlaylists/uploads").and_then(|v| v.as_str()).ok_or("YouTube didn't say where your uploads are")?;
-    let pl = json_of(net.get(host, &format!("/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId={}&key={}", enc(uploads), enc(key)), &[])?, "YouTube (your uploads)")?;
+    let pl = json_of(net.get(host, &format!("/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId={}{q}", enc(uploads)), &h)?, "YouTube (your uploads)")?;
     let ids: Vec<String> = pl
         .get("items")
         .and_then(|v| v.as_array())
@@ -177,7 +211,7 @@ pub fn youtube_own(net: &dyn Net, key: &str, channel: &str, now: u64) -> Result<
     if ids.is_empty() {
         return Ok(out);
     }
-    let vids = json_of(net.get(host, &format!("/youtube/v3/videos?part=statistics,contentDetails,snippet&id={}&key={}", ids.join(","), enc(key)), &[])?, "YouTube (your videos)")?;
+    let vids = json_of(net.get(host, &format!("/youtube/v3/videos?part=statistics,contentDetails,snippet&id={}{q}", ids.join(",")), &h)?, "YouTube (your videos)")?;
     out.extend(youtube_videos(&vids, now, "the YouTube Data API"));
     Ok(out)
 }
@@ -365,7 +399,7 @@ pub fn google_access(net: &dyn Net, s: &GoogleSignIn) -> Result<String, String> 
     );
     let r = net.post_form("oauth2.googleapis.com", "/token", &form)?;
     if r.body.contains("invalid_grant") {
-        return Err("Google no longer accepts the YouTube Analytics sign-in -- it lapses after seven days while your app is in Testing, or access was removed. Sign in again from the Social page.".into());
+        return Err("Google no longer accepts the YouTube sign-in -- it lapses after seven days while the Google app is in Testing, or access was removed. Connect YouTube again on the Social page.".into());
     }
     let v = json_of(r, "Google sign-in")?;
     v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Google gave no access token".into())

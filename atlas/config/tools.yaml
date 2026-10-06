@@ -486,9 +486,11 @@ uia:
 # Codex (`codex`) is installed on this computer, offer it the code you ask
 # for -- `auto` -- or never -- `off`. `agent_asks_first`: ask before each new
 # build goes to it; a change to one of your own projects is always asked
-# about. Atlas runs its own checks on whatever the agent writes.
+# about. Atlas runs its own checks on whatever the agent writes. Off unless
+# you turn it on (5 Oct 2026): those are other companies' paid services, and
+# Atlas's own coding model is what writes code by default.
 build:
-  coding_agent: auto
+  coding_agent: off
   agent_asks_first: true
 
 # Atlas's own model layer — no Ollama in the path.
@@ -1744,10 +1746,10 @@ vault:
   enabled: false
   lock_after_mins: 15
   lock_on_screen_lock: true
-  # Seal a copy of the vault's key to your Windows sign-in, so scheduled mail
-  # checks can open it while you're signed in. Logins and API keys only —
-  # never authenticator seeds or recovery codes. Windows only.
-  open_on_this_login: false
+  # The vault opens with your Windows sign-in, so there's no passphrase to
+  # type or remember (on since 5 Oct 2026). Sign-ins and API keys only —
+  # authenticator seeds and recovery codes still need a passphrase. Windows only.
+  open_on_this_login: true
   # kdf_rounds was here, with a comment promising what the number bought you.
   # Both were wrong: the vault uses Argon2id, whose cost is memory and passes
   # rather than a round count, and nothing had read the number since that

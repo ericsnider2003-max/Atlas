@@ -303,6 +303,7 @@ impl Standby {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| format!("the typing box wouldn't start: {e}"))?;
+        crate::childjob::tie(&child);
         let out = child.stdout.take().ok_or("the typing box gave nothing to read")?;
         let input = child.stdin.take().ok_or("the typing box can't be reached")?;
         std::thread::spawn(move || {
