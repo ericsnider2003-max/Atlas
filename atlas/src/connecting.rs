@@ -302,18 +302,7 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     // The vault first: there's no point proving a password that can't be kept.
     let now = crate::store::now();
     if d.vault.state() != crate::vault::State::Open {
-        let opened = if d.vault.sealed_to_this_login() {
-            d.vault.open_unattended(now)
-        } else {
-            let phrase = field(fields, "passphrase");
-            if phrase.is_empty() {
-                Err("your vault is locked -- type its passphrase too".to_string())
-            } else {
-                let cfg = d.tools_cfg().vault.clone();
-                d.vault.open(&phrase, now, &cfg)
-            }
-        };
-        if let Err(e) = opened {
+        if let Err(e) = open_the_vault(d, fields, now) {
             return again(&format!("Nothing was connected: {e}."));
         }
     }
@@ -486,18 +475,7 @@ fn start_signin(d: &mut Daemon, p: Provider, fields: &[(String, String)]) -> Rep
     }
     let now = crate::store::now();
     if d.vault.state() != crate::vault::State::Open {
-        let opened = if d.vault.sealed_to_this_login() {
-            d.vault.open_unattended(now)
-        } else {
-            let phrase = field(fields, "passphrase");
-            if phrase.is_empty() {
-                Err("your vault is locked -- type its passphrase too".to_string())
-            } else {
-                let cfg = d.tools_cfg().vault.clone();
-                d.vault.open(&phrase, now, &cfg)
-            }
-        };
-        if let Err(e) = opened {
+        if let Err(e) = open_the_vault(d, fields, now) {
             return back(&format!("Nothing was started: {e}."));
         }
     }
@@ -678,4 +656,19 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
             d.log.warn(&format!("a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"));
         }
     }
+}
+
+/// The vault opened for a connection: by itself when it is sealed to this
+/// login, otherwise with the passphrase typed in the form. One copy (audit
+/// Q3): connecting an account and starting a sign-in each had one.
+fn open_the_vault(d: &mut Daemon<'_>, fields: &[(String, String)], now: u64) -> Result<(), String> {
+    if d.vault.sealed_to_this_login() {
+        return d.vault.open_unattended(now);
+    }
+    let phrase = field(fields, "passphrase");
+    if phrase.is_empty() {
+        return Err("your vault is locked -- type its passphrase too".to_string());
+    }
+    let cfg = d.tools_cfg().vault.clone();
+    d.vault.open(&phrase, now, &cfg)
 }

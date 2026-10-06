@@ -233,25 +233,7 @@ fn half_n_logdet(frames: &[&[f32; crate::mfcc::CEPS]]) -> Option<f64> {
         }
     }
     // Cholesky; log|Σ| is twice the sum of the log diagonal.
-    let mut l = vec![[0f64; D]; D];
-    let mut logdet = 0.0;
-    for i in 0..D {
-        for j in 0..=i {
-            let mut s = cov[i][j] / n as f64;
-            for k in 0..j {
-                s -= l[i][k] * l[j][k];
-            }
-            if i == j {
-                if s <= 1e-12 {
-                    return None;
-                }
-                l[i][i] = s.sqrt();
-                logdet += 2.0 * l[i][i].ln();
-            } else {
-                l[i][j] = s / l[j][j];
-            }
-        }
-    }
+    let (_, logdet) = cholesky(&cov, |i, j| cov[i][j] / n as f64)?;
     Some(n as f64 / 2.0 * logdet)
 }
 
@@ -284,27 +266,9 @@ fn fit_voice(frames: &[&[f32; crate::mfcc::CEPS]]) -> Option<Voice> {
             }
         }
     }
-    let mut l = vec![[0f64; D]; D];
-    let mut logdet = 0.0;
-    for i in 0..D {
-        for j in 0..=i {
-            // A little floor on the diagonal: a few seconds of speech is a
-            // thin estimate of nineteen dimensions.
-            let mut s = cov[i][j] + if i == j { 1e-3 } else { 0.0 };
-            for k in 0..j {
-                s -= l[i][k] * l[j][k];
-            }
-            if i == j {
-                if s <= 1e-12 {
-                    return None;
-                }
-                l[i][i] = s.sqrt();
-                logdet += 2.0 * l[i][i].ln();
-            } else {
-                l[i][j] = s / l[j][j];
-            }
-        }
-    }
+    // A little floor on the diagonal: a few seconds of speech is a thin
+    // estimate of nineteen dimensions.
+    let (l, logdet) = cholesky(&cov, |i, j| cov[i][j] + if i == j { 1e-3 } else { 0.0 })?;
     Some(Voice { mean, chol: l, half_logdet: logdet / 2.0 })
 }
 
@@ -377,17 +341,7 @@ pub fn split_strangers(samples: &[i16], rate: u32, lines: Vec<Line>, margin: f64
             out[i].speaker = format!("\u{1}stranger {fresh}");
         }
     }
-    let mut order: Vec<String> = Vec::new();
-    for l in &out {
-        if l.speaker != "You" && l.speaker != "Someone" && !order.contains(&l.speaker) {
-            order.push(l.speaker.clone());
-        }
-    }
-    for l in out.iter_mut() {
-        if let Some(k) = order.iter().position(|x| x == &l.speaker) {
-            l.speaker = format!("Speaker {}", k + 2);
-        }
-    }
+    number_the_speakers(&mut out);
     out
 }
 
@@ -466,17 +420,7 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
         fresh += 1;
         out[i].speaker = format!("\u{1}new {fresh}");
     }
-    let mut order: Vec<String> = Vec::new();
-    for l in &out {
-        if l.speaker != "You" && l.speaker != "Someone" && !order.contains(&l.speaker) {
-            order.push(l.speaker.clone());
-        }
-    }
-    for l in out.iter_mut() {
-        if let Some(k) = order.iter().position(|x| x == &l.speaker) {
-            l.speaker = format!("Speaker {}", k + 2);
-        }
-    }
+    number_the_speakers(&mut out);
     out
 }
 
@@ -573,4 +517,47 @@ pub fn merge_same_voices(samples: &[i16], rate: u32, lines: Vec<Line>, lambda: f
         }
     }
     out
+}
+
+/// Everyone but you and "Someone" renamed "Speaker 2", "Speaker 3"... in the
+/// order they first speak. One copy (audit Q3).
+fn number_the_speakers(out: &mut [Line]) {
+    let mut order: Vec<String> = Vec::new();
+    for l in out.iter() {
+        if l.speaker != "You" && l.speaker != "Someone" && !order.contains(&l.speaker) {
+            order.push(l.speaker.clone());
+        }
+    }
+    for l in out.iter_mut() {
+        if let Some(k) = order.iter().position(|x| x == &l.speaker) {
+            l.speaker = format!("Speaker {}", k + 2);
+        }
+    }
+}
+
+/// The Cholesky factor of a symmetric matrix whose lower-triangle entries are
+/// `entry(i, j)`, with log|Σ| (twice the sum of the log diagonal). `None`
+/// when it isn't positive definite. One copy (audit Q3): the change score and
+/// a voice's model each had one.
+fn cholesky<const D: usize>(_shape: &[[f64; D]], entry: impl Fn(usize, usize) -> f64) -> Option<(Vec<[f64; D]>, f64)> {
+    let mut l = vec![[0f64; D]; D];
+    let mut logdet = 0.0;
+    for i in 0..D {
+        for j in 0..=i {
+            let mut s = entry(i, j);
+            for k in 0..j {
+                s -= l[i][k] * l[j][k];
+            }
+            if i == j {
+                if s <= 1e-12 {
+                    return None;
+                }
+                l[i][i] = s.sqrt();
+                logdet += 2.0 * l[i][i].ln();
+            } else {
+                l[i][j] = s / l[j][j];
+            }
+        }
+    }
+    Some((l, logdet))
 }

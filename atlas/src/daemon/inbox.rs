@@ -373,18 +373,11 @@ impl<'a> Daemon<'a> {
                 if ctl.checkpoint() {
                     break;
                 }
-                let host = if !account.imap_host.is_empty() {
-                    account.imap_host.clone()
-                } else {
-                    match crate::mail::Provider::from_address(&account.address).imap_host() {
-                        Some(h) => h.to_string(),
-                        None => {
-                            failures.push(format!(
-                                "{}: unrecognised provider, needs imap_host set explicitly",
-                                account.name
-                            ));
-                            continue;
-                        }
+                let host = match account.imap_server() {
+                    Ok(h) => h,
+                    Err(why) => {
+                        failures.push(why);
+                        continue;
                     }
                 };
                 // An Outlook/Microsoft 365 account with `oauth` off
@@ -618,18 +611,11 @@ impl<'a> Daemon<'a> {
                 if ctl.checkpoint() {
                     break;
                 }
-                let host = if !account.imap_host.is_empty() {
-                    account.imap_host.clone()
-                } else {
-                    match crate::mail::Provider::from_address(&account.address).imap_host() {
-                        Some(h) => h.to_string(),
-                        None => {
-                            failures.push(format!(
-                                "{}: unrecognised provider, needs imap_host set explicitly",
-                                account.name
-                            ));
-                            continue;
-                        }
+                let host = match account.imap_server() {
+                    Ok(h) => h,
+                    Err(why) => {
+                        failures.push(why);
+                        continue;
                     }
                 };
                 let messages = match connect_and_fetch_since(

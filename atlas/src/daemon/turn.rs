@@ -1355,10 +1355,11 @@ impl<'a> Daemon<'a> {
         reply
     }
 
-    /// Everything Atlas can answer from what it already holds, before any
-    /// model: reminders (B3), what you've said you want (B2), a correction or
-    /// fact you've stated, your notes, and the rest. `None` when none of it does.
-    fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
+    /// The helpers both `answer_locally` and `answer_before_the_model` ask
+    /// first, in this order. One list (audit Q3): it was written out twice,
+    /// and a helper added to one and not the other answered in one path and
+    /// went unheard in the other.
+    fn asked_of_a_helper(&mut self, raw: &str, t: u64) -> Option<String> {
         self.keeping_track(raw, t)
             .or_else(|| self.writing_help(raw))
             .or_else(|| self.check_writing_help(raw))
@@ -1384,6 +1385,13 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.note_asked(raw, t))
             .or_else(|| self.weather_help(raw))
             .or_else(|| self.remind_help(raw, t))
+    }
+
+    /// Everything Atlas can answer from what it already holds, before any
+    /// model: reminders (B3), what you've said you want (B2), a correction or
+    /// fact you've stated, your notes, and the rest. `None` when none of it does.
+    fn answer_locally(&mut self, raw: &str, t: u64) -> Option<String> {
+        self.asked_of_a_helper(raw, t)
             .or_else(|| self.spot_opportunity(raw))
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.answer_from_notes(raw, t))
@@ -1407,31 +1415,7 @@ impl<'a> Daemon<'a> {
     /// (`notes_as_hints`) instead of answering on their own -- a note that
     /// shared one word with "what should I eat" was the whole reply.
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
-        self.keeping_track(raw, t)
-            .or_else(|| self.writing_help(raw))
-            .or_else(|| self.check_writing_help(raw))
-            .or_else(|| crate::hunting::fit_asked(self, raw))
-            .or_else(|| crate::hunting::applied_asked(self, raw, t))
-            .or_else(|| self.phone_online_help(raw))
-            .or_else(|| self.askdocs_help(raw))
-            .or_else(|| self.wrapup_help(raw, t))
-            .or_else(|| self.worksession_help(raw, t))
-            .or_else(|| self.why_moved_help(raw, t))
-            .or_else(|| self.studio_help(raw, t))
-            .or_else(|| self.noticed_help(raw, t))
-            .or_else(|| self.research_note_help(raw))
-            .or_else(|| self.later_words_help(raw, t))
-            .or_else(|| self.drafts_help(raw))
-            .or_else(|| self.one_message_help(raw))
-            .or_else(|| self.text_help(raw))
-            .or_else(|| self.move_window_help(raw))
-            .or_else(|| self.improvements_help(raw))
-            .or_else(|| self.compose_help(raw))
-            .or_else(|| self.progress_help(raw))
-            .or_else(|| self.unsubscribe_help(raw))
-            .or_else(|| self.note_asked(raw, t))
-            .or_else(|| self.weather_help(raw))
-            .or_else(|| self.remind_help(raw, t))
+        self.asked_of_a_helper(raw, t)
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.exact_fact(raw, t))
             .or_else(|| if opens_with_ways(raw) { self.ways_in_help(raw) } else { None })

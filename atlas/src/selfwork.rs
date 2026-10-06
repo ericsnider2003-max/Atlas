@@ -650,7 +650,7 @@ pub fn run_the_proof(
 /// both runs below waited on the process with its pipes unread, so a build
 /// that printed more than the pipe holds -- any real cargo run -- blocked on
 /// writing and sat there until the budget killed it).
-fn drain(child: &mut std::process::Child) -> impl FnOnce() -> String {
+pub(crate) fn drain(child: &mut std::process::Child) -> impl FnOnce() -> String {
     use std::io::Read;
     let take = |r: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {

@@ -43,21 +43,8 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // one-off command while --daemon is already running in the background is
     // exactly the kind of thing Atlas should still answer, and locking that
     // out too would make the CLI useless whenever the daemon is up.
-    let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
-    // Patiently: a lock that reads abandoned may be an Atlas that was only
-    // asleep with the laptop and is about to beat (`onlyone::WOKE_GRACE_SECS`).
-    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
-        Err(why) => {
-            eprintln!("{why}");
-            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
-            leave(1);
-        }
-        Ok(found) => {
-            if !matches!(found, atlas::onlyone::Found::Free) {
-                println!("{}", found.plain());
-            }
-        }
-    }
+    // Held to the end of this function: dropping it is what lets another Atlas start.
+    let _only = take_the_one_lock();
 
     // The words on the desktop while Atlas speaks (`overlaywin`). Always
     // started on Windows: it reads its own switch every few seconds, so
@@ -516,21 +503,8 @@ pub(super) fn voice_loop(
     // writing the whole thing back means the second quietly erasing whatever
     // the first learned. Before this, `atlas --voice` touched almost no state,
     // so it did not need the lock; it does now.
-    let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
-    // Patiently: a lock that reads abandoned may be an Atlas that was only
-    // asleep with the laptop and is about to beat (`onlyone::WOKE_GRACE_SECS`).
-    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
-        Err(why) => {
-            eprintln!("{why}");
-            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
-            leave(1);
-        }
-        Ok(found) => {
-            if !matches!(found, atlas::onlyone::Found::Free) {
-                println!("{}", found.plain());
-            }
-        }
-    }
+    // Held to the end of this function: dropping it is what lets another Atlas start.
+    let _only = take_the_one_lock();
 
     // The real door, at last.
     //
@@ -753,4 +727,25 @@ pub(super) fn dash_bodies() -> Vec<(atlas::dash::Card, String)> {
             )
         })
         .collect()
+}
+
+/// The single-instance lock, taken patiently: a lock that reads abandoned
+/// may be an Atlas that was only asleep with the laptop and is about to beat
+/// (`onlyone::WOKE_GRACE_SECS`). Says who held it; leaves when it can't be
+/// had. One copy (audit Q3): the daemon and `--voice` each had one.
+fn take_the_one_lock() -> atlas::onlyone::OnlyOne {
+    let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
+    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
+        Err(why) => {
+            eprintln!("{why}");
+            atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
+            leave(1);
+        }
+        Ok(found) => {
+            if !matches!(found, atlas::onlyone::Found::Free) {
+                println!("{}", found.plain());
+            }
+        }
+    }
+    only
 }

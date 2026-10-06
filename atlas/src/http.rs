@@ -191,27 +191,28 @@ pub fn https_get(host: &str, path: &str, timeout: Duration) -> Result<Response> 
     https_get_with(host, path, &[], timeout)
 }
 
+/// A TLS connection to `name:port`, verified the system's way and never
+/// turned down, with `timeout` on connecting, reading and writing. The one
+/// place it is set up (audit Q3: three functions had their own copy).
+fn tls_to(name: &str, port: u16, timeout: Duration) -> Result<native_tls::TlsStream<TcpStream>> {
+    use std::net::ToSocketAddrs;
+    let addr = (name, port)
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut a| a.next())
+        .ok_or_else(|| AtlasError::Platform(format!("cannot resolve {name}")))?;
+    let tcp = TcpStream::connect_timeout(&addr, timeout).map_err(|e| AtlasError::Platform(format!("connect {name}: {e}")))?;
+    tcp.set_read_timeout(Some(timeout))?;
+    tcp.set_write_timeout(Some(timeout))?;
+    let connector = native_tls::TlsConnector::new().map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
+    connector.connect(name, tcp).map_err(|e| AtlasError::Platform(format!("TLS to {name}: {e}")))
+}
+
 /// `https_get` with extra request headers -- a `User-Agent` that says who is
 /// asking, which Reddit answers and a bare request gets refused with 429
 /// (the opportunity hunter, 29 Sep 2026). Same verification rules.
 pub fn https_get_with(host: &str, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Response> {
-    use std::net::ToSocketAddrs;
-    let addr = format!("{host}:443")
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut a| a.next())
-        .ok_or_else(|| AtlasError::Platform(format!("cannot resolve {host}")))?;
-
-    let tcp = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| AtlasError::Platform(format!("connect {host}: {e}")))?;
-    tcp.set_read_timeout(Some(timeout))?;
-    tcp.set_write_timeout(Some(timeout))?;
-
-    let connector = native_tls::TlsConnector::new()
-        .map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
-    let mut s = connector
-        .connect(host, tcp)
-        .map_err(|e| AtlasError::Platform(format!("TLS to {host}: {e}")))?;
+    let mut s = tls_to(host, 443, timeout)?;
 
     let mut req = build_request("GET", host, path, None);
     let at = req.find("\r\n").map(|i| i + 2).unwrap_or(0);
@@ -232,25 +233,11 @@ pub fn https_get_with(host: &str, path: &str, headers: &[(&str, &str)], timeout:
 /// only speaks https (a public ntfy, or your own behind a certificate). Same
 /// verification rules as `https_get`: the system's, never turned down.
 pub fn https_post_json(host: &str, path: &str, body: &str, token: Option<&str>, timeout: Duration) -> Result<Response> {
-    use std::net::ToSocketAddrs;
     let (name, port) = match host.rsplit_once(':') {
         Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => (h, p.parse::<u16>().unwrap_or(443)),
         _ => (host, 443),
     };
-    let addr = (name, port)
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut a| a.next())
-        .ok_or_else(|| AtlasError::Platform(format!("cannot resolve {name}")))?;
-    let tcp = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| AtlasError::Platform(format!("connect {name}: {e}")))?;
-    tcp.set_read_timeout(Some(timeout))?;
-    tcp.set_write_timeout(Some(timeout))?;
-    let connector = native_tls::TlsConnector::new()
-        .map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
-    let mut s = connector
-        .connect(name, tcp)
-        .map_err(|e| AtlasError::Platform(format!("TLS to {name}: {e}")))?;
+    let mut s = tls_to(name, port, timeout)?;
     let mut req = build_request("POST", name, path, Some(body));
     if let Some(t) = token {
         let at = req.find("\r\n").map(|i| i + 2).unwrap_or(0);
@@ -290,21 +277,7 @@ pub fn https_call_bytes(
     body: Option<(&str, &[u8])>,
     timeout: Duration,
 ) -> Result<(Response, Vec<(String, String)>)> {
-    use std::net::ToSocketAddrs;
-    let addr = format!("{host}:443")
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut a| a.next())
-        .ok_or_else(|| AtlasError::Platform(format!("cannot resolve {host}")))?;
-    let tcp = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| AtlasError::Platform(format!("connect {host}: {e}")))?;
-    tcp.set_read_timeout(Some(timeout))?;
-    tcp.set_write_timeout(Some(timeout))?;
-    let connector = native_tls::TlsConnector::new()
-        .map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
-    let mut s = connector
-        .connect(host, tcp)
-        .map_err(|e| AtlasError::Platform(format!("TLS to {host}: {e}")))?;
+    let mut s = tls_to(host, 443, timeout)?;
     let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: */*\r\n");
     for (k, v) in headers {
         // A header value with a line break in it is a second header someone

@@ -620,8 +620,10 @@ pub fn downloads_and_desktop() -> Vec<PathBuf> {
     out
 }
 
+/// A Windows known folder (Desktop, Downloads...) by its id. The one copy:
+/// `organize` uses it too (audit Q3).
 #[cfg(windows)]
-fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
+pub(crate) fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
     use windows::Win32::System::Com::CoTaskMemFree;
     use windows::Win32::UI::Shell::{SHGetKnownFolderPath, KF_FLAG_DEFAULT};
     // SAFETY: the returned buffer is read once and freed with CoTaskMemFree.

@@ -161,6 +161,19 @@ pub struct Account {
 }
 
 impl Account {
+
+    /// The IMAP server to read this account from: the one set on it, or the
+    /// provider's own. `Err` says why there isn't one (one place since audit
+    /// Q3; the mail check and the clear-out each had a copy).
+    pub fn imap_server(&self) -> Result<String, String> {
+        if !self.imap_host.is_empty() {
+            return Ok(self.imap_host.clone());
+        }
+        Provider::from_address(&self.address)
+            .imap_host()
+            .map(str::to_string)
+            .ok_or_else(|| format!("{}: unrecognised provider, needs imap_host set explicitly", self.name))
+    }
     /// The account name to hand Himalaya.
     pub fn for_himalaya(&self) -> &str {
         if self.himalaya_account.trim().is_empty() { &self.name } else { &self.himalaya_account }

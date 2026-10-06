@@ -91,12 +91,11 @@ pub struct Devices {
 
 impl Devices {
     pub fn load(state_dir: &Path) -> Devices {
-        std::fs::read(state_dir.join(FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        crate::store::read_json(&state_dir.join(FILE))
     }
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(state_dir)?;
-        crate::store::write_whole(&state_dir.join(FILE), &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
+        crate::store::write_json(&state_dir.join(FILE), self)
     }
 
     /// One address per device: a new one replaces the old (iOS changes it

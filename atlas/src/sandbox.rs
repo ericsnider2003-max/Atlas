@@ -338,7 +338,6 @@ pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, 
 }
 
 fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration) -> Ran {
-    use std::io::Read;
     let mut c = crate::tools::command(cmd);
     c.args(args).current_dir(dir).stdin(std::process::Stdio::null());
     for (k, v) in env {
@@ -349,26 +348,13 @@ fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path
         Ok(ch) => ch,
         Err(e) => return Ran::NoStart(e.to_string()),
     };
-    let take = |r: Option<Box<dyn Read + Send>>| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            if let Some(mut r) = r {
-                crate::heard!(r.read_to_end(&mut buf));
-            }
-            buf
-        })
-    };
-    let out = take(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
-    let err = take(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
-    let text = move |out: std::thread::JoinHandle<Vec<u8>>, err: std::thread::JoinHandle<Vec<u8>>| {
-        let mut t = String::from_utf8_lossy(&out.join().unwrap_or_default()).to_string();
-        t.push_str(&String::from_utf8_lossy(&err.join().unwrap_or_default()));
-        t
-    };
+    // Read on their own threads so a chatty program can't fill a pipe and
+    // stall (`selfwork::drain`, the one copy since audit Q3).
+    let text = crate::selfwork::drain(&mut child);
     let deadline = std::time::Instant::now() + limit;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => return Ran::Finished { passed: status.success(), text: text(out, err) },
+            Ok(Some(status)) => return Ran::Finished { passed: status.success(), text: text() },
             Ok(None) => {}
             Err(e) => return Ran::NoStart(format!("lost track of it: {e}")),
         }
@@ -378,7 +364,7 @@ fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path
             // The readers are not joined: something the program started may
             // still hold the pipes open, and waiting on them is the hang this
             // limit exists to prevent. They end when the pipes close.
-            drop((out, err));
+            drop(text);
             return if stopping { Ran::Stopped } else { Ran::TooLong { text: String::new() } };
         }
         std::thread::sleep(std::time::Duration::from_millis(100));

@@ -376,31 +376,7 @@ pub fn may_send(account: &str, now_ms: u64) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
-
-    struct Scripted {
-        replies: Cursor<Vec<u8>>,
-        sent: Vec<u8>,
-    }
-    impl Scripted {
-        fn new(script: &str) -> Scripted {
-            Scripted { replies: Cursor::new(script.as_bytes().to_vec()), sent: Vec::new() }
-        }
-    }
-    impl Read for Scripted {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            self.replies.read(buf)
-        }
-    }
-    impl Write for Scripted {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.sent.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
+    use crate::imap::tests::Scripted;
 
     #[test]
     fn a_single_line_reply_is_read_correctly() {
