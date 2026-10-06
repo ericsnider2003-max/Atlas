@@ -168,10 +168,10 @@ pub fn what_broke(repo: &Path, test: &[String], look_back: usize, limit_secs: u6
     let mut commits: Vec<String> = listed.lines().map(str::to_string).collect();
     commits.reverse();
     let base = crate::roots::tmp_dir().join("selffix");
-    let _ = std::fs::create_dir_all(&base);
+    let _ = std::fs::create_dir_all(&base); // unheard-ok: the worktree add below fails, and says so, if it couldn't be made
     let dir = base.join(format!("bisect-{}", std::process::id()));
-    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]);
-    let _ = std::fs::remove_dir_all(&dir);
+    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]); // unheard-ok: clearing a leftover from an earlier run; usually there is none
+    let _ = std::fs::remove_dir_all(&dir); // unheard-ok: as above
     git(repo, &["worktree", "add", "--detach", &dir.to_string_lossy(), "HEAD"])?;
     // The crate may sit in a folder of the repo (Atlas's is `atlas/`): the
     // test runs where it does in the checkout you gave.
@@ -189,8 +189,8 @@ pub fn what_broke(repo: &Path, test: &[String], look_back: usize, limit_secs: u6
         let (passed, out) = crate::sandbox::run_within(program, &args, &[], &run_in, limit_secs, 20_000);
         verdict_of_run(passed, &out)
     });
-    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]);
-    let _ = std::fs::remove_dir_all(&dir);
+    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]); // unheard-ok: tidying up; a leftover is removed by the next run's first step
+    let _ = std::fs::remove_dir_all(&dir); // unheard-ok: as above
     Ok(outcome)
 }
 
