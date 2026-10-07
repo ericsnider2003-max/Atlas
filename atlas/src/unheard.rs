@@ -152,6 +152,23 @@ macro_rules! heard {
 mod tests {
     use super::*;
 
+    // Q8 mutation baseline (6 Oct 2026): the log line could be blank, or
+    // count a single failure as "(1 times)", without a test noticing.
+    #[test]
+    fn the_log_line_names_the_place_and_counts_only_repeats() {
+        let mut u = Unheard {
+            cost: Cost::Logged,
+            module: "atlas::yourchanges",
+            line: 42,
+            doing: "std::fs::write(&p, b)",
+            error: "denied".into(),
+            times: 1,
+        };
+        assert_eq!(u.line(), "yourchanges:42 std::fs::write(&p, b) failed: denied");
+        u.times = 2;
+        assert_eq!(u.line(), "yourchanges:42 std::fs::write(&p, b) failed (2 times): denied");
+    }
+
     // One test touches the shared list, so parallel tests can't race on it.
     #[test]
     fn failures_are_kept_counted_and_taken_once() {
