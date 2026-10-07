@@ -374,6 +374,36 @@ pub fn holds_something_private(text: &str) -> bool {
     scrub.say().is_some()
 }
 
+// ---------------------------------------------------------------------------
+// Google's data stays on this computer (6 Oct 2026, for Google's OAuth
+// verification: the API Services User Data Policy's "Limited Use").
+//
+// What Atlas reads from Google -- your calendar, your YouTube numbers -- ends
+// up in its replies, and its replies go back into the conversation the model
+// reads. So marking prompts one by one can't keep it in: the only guarantee
+// is at the doors out. While anything from Google is held, nothing goes to a
+// third party's model -- the free online ones, or Muse doing the hard work in
+// the background. Your own second model (`llm_secondary`) still can: that's
+// a server you run. A question you put to Muse yourself ("ask Muse ...")
+// still goes, because it carries only your own words.
+// ---------------------------------------------------------------------------
+
+static GOOGLE_DATA_HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set by the daemon from what it holds: a Google calendar, a Google
+/// sign-in for YouTube, events read from Google.
+pub fn set_google_data_held(held: bool) {
+    GOOGLE_DATA_HELD.store(held, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn google_data_held() -> bool {
+    GOOGLE_DATA_HELD.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Said when a third party's model would have been asked.
+pub const GOOGLE_STAYS_HERE: &str = "a Google account is connected, and what Atlas reads from Google stays on \
+     this computer, so nothing goes to an online model while it is";
+
 /// A local-first model with an optional stronger fallback.
 ///
 /// This is how the project's "offline-first, online-secondary" rule is made
@@ -425,6 +455,10 @@ impl FallbackLlm {
     /// The secondary, if it is configured and the breaker lets a call out.
     fn try_secondary(&self, system: &str, user: &str) -> Option<Result<String>> {
         let s = self.secondary.as_ref()?;
+        // Only your own second model while Google's data is held.
+        if google_data_held() && !self.hard_first {
+            return None;
+        }
         let now = now_ms();
         let allowed = self.breaker.lock().or_else(crate::crash::unpoison).map(|mut b| b.allow(now)).unwrap_or(true);
         if !allowed {
@@ -459,6 +493,9 @@ impl FallbackLlm {
     /// the breaker the same way.
     fn try_secondary_long(&self, system: &str, user: &str, max_tokens: u32) -> Option<Result<LongReply>> {
         let s = self.secondary.as_ref()?;
+        if google_data_held() && !self.hard_first {
+            return None;
+        }
         let now = now_ms();
         if !self.breaker.lock().or_else(crate::crash::unpoison).map(|mut b| b.allow(now)).unwrap_or(true) {
             return None;

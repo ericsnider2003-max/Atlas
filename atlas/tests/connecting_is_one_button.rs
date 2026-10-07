@@ -133,51 +133,99 @@ fn the_social_page_leads_with_one_connect_list_and_hides_the_paste_boxes() {
 }
 
 #[test]
-fn an_old_vault_asks_once_and_can_be_started_afresh() {
+fn an_old_vault_is_never_a_chore_on_the_page() {
     stand_in();
+    // Off Windows (or handed over), where it can't move: asked once, and no
+    // "start again" chore folded away under it (6 Oct 2026).
     let v = atlas::hub::VaultView { needs_its_passphrase_once: true, has_passphrase: true, nonce: "n".into(), ..Default::default() };
     let html = atlas::hub::vault_section(&v);
-    assert!(html.contains("Unlock it this once") && html.contains("Start a new vault"), "{html}");
-    let v = atlas::hub::VaultView { opens_on_login: true, nonce: "n".into(), ..Default::default() };
+    assert!(html.contains("Unlock it this once"), "{html}");
+    assert!(!html.contains("Start a new vault") && !html.contains("value=fresh"), "{html}");
+    // Moved on: it opens on the sign-in, and the old one is named, not lost.
+    let v = atlas::hub::VaultView { opens_on_login: true, set_aside: vec!["atlas-release-key".into()], nonce: "n".into(), ..Default::default() };
     let html = atlas::hub::vault_section(&v);
     assert!(html.contains("nothing to type"), "{html}");
+    assert!(html.contains("Your old vault") && html.contains("atlas-release-key") && html.contains("value=bring"), "{html}");
+    let v = atlas::hub::VaultView { opens_on_login: true, nonce: "n".into(), ..Default::default() };
+    let html = atlas::hub::vault_section(&v);
+    assert!(!html.contains("Your old vault"), "nothing set aside, nothing said: {html}");
     let shown = &html[..html.find("<details").expect("the passphrase is folded away")];
     assert!(!shown.contains("type=password"), "no passphrase box in sight: {shown}");
 }
 
-#[test]
-fn starting_afresh_sets_the_old_vault_aside_and_opens_on_the_sign_in() {
-    stand_in();
-    let (dir, p) = daemon("fresh");
-    let store = Store::new(dir.clone());
-    // A vault made the old way: a passphrase nobody remembers, no sign-in copy.
-    let mut old = Vault::default();
-    old.open("the passphrase that was forgotten long ago", 1, &cheap()).unwrap();
-    old.put("gmail", Kind::Login, "pw", 1).unwrap();
-    old.lock();
-    old.save(&store).unwrap();
-    let c = Config::load(Path::new("config")).unwrap();
-    let mut d = Daemon::new(&c, &p, None, store, Proactive::new(ProactiveConfig::default()));
-    let page = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Accounts)).body;
-    assert!(page.contains("Unlock it this once"), "the old vault asks once");
-    let at = page.find("value=fresh>").expect("the start-afresh form");
-    let nonce = page[at..].split("name=nonce value=\"").nth(1).and_then(|r| r.split('"').next()).unwrap().to_string();
-    let r = atlas::hublive::reply(
-        &mut d,
+fn nonce_for(page: &str, what: &str) -> String {
+    let at = page.find(&format!("value={what}>")).unwrap_or_else(|| panic!("the {what} form in {page}"));
+    page[at..].split("name=nonce value=\"").nth(1).and_then(|r| r.split('"').next()).unwrap().to_string()
+}
+
+fn post_to_vault(d: &mut Daemon, what: &str, old: &str, nonce: String) -> u16 {
+    atlas::hublive::reply(
+        d,
         atlas::server::Action::Vault {
-            what: "fresh".into(),
-            old: atlas::server::Secret::new(String::new()),
+            what: what.into(),
+            old: atlas::server::Secret::new(old.to_string()),
             new: atlas::server::Secret::new(String::new()),
             again: atlas::server::Secret::new(String::new()),
             nonce,
         },
-    );
-    assert_eq!(r.status, 303);
+    )
+    .status
+}
+
+#[test]
+fn an_old_vault_moves_to_the_sign_in_by_itself_and_nothing_is_lost() {
+    stand_in();
+    let (dir, p) = daemon("moves");
+    let store = Store::new(dir.clone());
+    // A vault made the old way: a passphrase nobody remembers, no sign-in
+    // copy -- and in it, the one thing that can't be made again.
+    let phrase = "the passphrase that was forgotten long ago";
+    let mut old = Vault::default();
+    old.open(phrase, 1, &cheap()).unwrap();
+    old.put("gmail", Kind::Login, "pw", 1).unwrap();
+    old.put(atlas::release::RELEASE_KEY_NAME, Kind::ApiKey, &"ab".repeat(32), 1).unwrap();
+    old.lock();
+    old.save(&store).unwrap();
+    let bytes_before = std::fs::read(dir.join("vault.json")).unwrap();
+    let c = Config::load(Path::new("config")).unwrap();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+
+    // Nothing pressed: looking at the page is enough.
     let page = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Accounts)).body;
-    assert!(page.contains("A new vault is ready"), "said what happened");
-    assert!(page.contains("nothing to type"), "and it opens on the sign-in now");
-    let aside: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains("set-aside")).collect();
-    assert_eq!(aside.len(), 1, "the old vault is set aside, not deleted");
+    assert!(!page.contains("Unlock it this once"), "no question asked");
+    assert!(page.contains("nothing to type"), "it opens on the sign-in now");
+    assert!(page.contains("Your old vault") && page.contains("gmail"), "and the old one is named");
+    assert_eq!(std::fs::read(dir.join("vault-set-aside.json")).unwrap(), bytes_before, "set aside byte for byte");
+    let now_here = Vault::load(&store);
+    assert!(now_here.sealed_to_this_login() && !now_here.has_a_passphrase());
+    assert_eq!(now_here.set_aside, vec!["gmail".to_string(), atlas::release::RELEASE_KEY_NAME.to_string()]);
+
+    // A second release key would strand every copy handed out.
+    let mut v = Vault::load(&store);
+    v.open_unattended(2).unwrap();
+    assert_eq!(atlas::release::make_release_key(&mut v, 2).unwrap_err(), atlas::release::IN_THE_OLD_VAULT);
+
+    // The wrong passphrase brings nothing.
+    let n = nonce_for(&page, "bring");
+    assert_eq!(post_to_vault(&mut d, "bring", "not the passphrase at all, sorry", n), 303);
+    let page = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Accounts)).body;
+    assert!(page.contains("isn&#39;t the old vault") || page.contains("isn't the old vault"), "{page}");
+    assert!(dir.join("vault-set-aside.json").exists());
+
+    // The right one brings everything across, and retires the old file.
+    let n = nonce_for(&page, "bring");
+    assert_eq!(post_to_vault(&mut d, "bring", phrase, n), 303);
+    let page = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Accounts)).body;
+    assert!(page.contains("Brought across: gmail"), "{page}");
+    assert!(!page.contains("Your old vault"));
+    let mut v = Vault::load(&store);
+    assert!(v.set_aside.is_empty());
+    v.open_unattended(3).unwrap();
+    assert_eq!(v.get("gmail", 3).unwrap(), "pw");
+    assert_eq!(v.get(atlas::release::RELEASE_KEY_NAME, 3).unwrap(), "ab".repeat(32));
+    assert!(!dir.join("vault-set-aside.json").exists());
+    let retired = std::fs::read_dir(&dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("vault-set-aside-brought-in-")).count();
+    assert_eq!(retired, 1, "kept, under another name, never deleted");
     let _ = std::fs::remove_dir_all(dir);
 }
 

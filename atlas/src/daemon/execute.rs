@@ -2874,7 +2874,7 @@ impl<'a> Daemon<'a> {
     /// finish or be called off — said so, rather than claimed paused.
     pub(super) const HOLDS_AT_A_SAFE_POINT: &'static [&'static str] = &[
         "research", "council", "build", "improve", "mail", "unsubscribe", "outreach",
-        "outlook-connect", "search-check",
+        "outlook-connect", "search-check", "video",
     ];
 }
 

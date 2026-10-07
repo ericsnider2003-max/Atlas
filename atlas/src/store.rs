@@ -659,6 +659,17 @@ impl Store {
     pub fn exists(&self, name: &str) -> bool {
         self.path(name).is_file()
     }
+
+    /// File a record under another name, byte for byte (`vault::bring_in_set_aside`
+    /// retiring the old vault). Refuses to replace one already there.
+    pub fn file_as(&self, name: &str, new_name: &str) -> Result<()> {
+        let to = self.path(new_name);
+        if to.exists() {
+            return Err(crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{new_name} is already there"))));
+        }
+        std::fs::rename(self.path(name), to)?;
+        Ok(())
+    }
 }
 
 pub fn now() -> u64 {

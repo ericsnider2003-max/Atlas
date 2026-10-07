@@ -204,7 +204,11 @@ impl<'a> Daemon<'a> {
             return;
         }
         if !self.vault.sealed_to_this_login() {
-            return;
+            // An old passphrase vault: moved on, so scheduled work doesn't
+            // wait on a passphrase nobody remembers.
+            if self.vault.is_brand_new() || !crate::loginseal::available() || self.move_vault_to_sign_in(now).is_err() {
+                return;
+            }
         }
         if let Err(why) = self.vault.open_unattended(now) {
             self.log.warn(&format!("couldn't open the vault on your sign-in: {why}"));
@@ -216,9 +220,9 @@ impl<'a> Daemon<'a> {
     /// 5 Oct 2026: every Connect button stopped at "unlock the vault first",
     /// and the passphrase it wanted was one nobody remembers. So: open it on
     /// your Windows sign-in; a brand-new vault starts that way with no
-    /// passphrase at all. Only a vault made before this, which no sign-in
-    /// copy was ever sealed for, still needs its passphrase -- once, after
-    /// which it opens on your sign-in too (`keep_sign_in_copy`).
+    /// passphrase at all. A vault made before this is moved on to your
+    /// sign-in by itself (`vault::move_to_sign_in`, 6 Oct 2026), the old one
+    /// set aside as it was.
     pub(crate) fn vault_ready(&mut self, now: u64) -> std::result::Result<(), String> {
         if self.vault.state() == crate::vault::State::Open {
             return Ok(());
@@ -226,7 +230,15 @@ impl<'a> Daemon<'a> {
         if self.vault.sealed_to_this_login() {
             return self.vault.open_unattended(now);
         }
-        if self.vault.is_brand_new() && self.tools_cfg().vault.open_on_this_login {
+        if !self.tools_cfg().vault.open_on_this_login {
+            return Err(crate::vault::OLD_VAULT.into());
+        }
+        if !self.vault.is_brand_new() {
+            // Made before it opened on your sign-in: moved on, with nothing
+            // to type, the old one set aside as it is (6 Oct 2026).
+            return self.move_vault_to_sign_in(now);
+        }
+        {
             self.vault.start_on_this_login(now)?;
             if let Err(e) = self.vault.save(&self.vault_home) {
                 // Not on disk, so not started: back to what is.
@@ -236,7 +248,30 @@ impl<'a> Daemon<'a> {
             self.log.info("vault started on your Windows sign-in");
             return Ok(());
         }
-        Err(crate::vault::OLD_VAULT.into())
+    }
+
+    /// `vault::move_to_sign_in`, for the vault this daemon holds. An open old
+    /// vault is moved too -- the key it holds is simply not the new one's.
+    pub(crate) fn move_vault_to_sign_in(&mut self, now: u64) -> std::result::Result<(), String> {
+        // Taking a handed-over machine back is proved with the passphrase;
+        // a vault without one would let whoever has it "prove" it.
+        if self.handed_over_now() {
+            return Err(crate::vault::OLD_VAULT.into());
+        }
+        match crate::vault::move_to_sign_in(&self.vault_home, &self.vault, now) {
+            Ok(fresh) => {
+                self.log.info(&format!(
+                    "the vault now opens with your Windows sign-in; the old passphrase vault is set aside as it was ({} in it)",
+                    fresh.set_aside.len()
+                ));
+                self.vault = fresh;
+                Ok(())
+            }
+            Err(why) => {
+                self.log.warn(&format!("couldn't move the vault to your sign-in: {why}"));
+                Err(format!("{} ({why})", crate::vault::OLD_VAULT))
+            }
+        }
     }
 
     /// Update the contact book from the messages just read, and say what is

@@ -523,6 +523,8 @@ mod sync_never_holds_the_loop;
 mod older_atlas_keeps_newer_fields;
 #[path = "two_writers.rs"]
 mod two_writers;
+#[path = "watching_a_video.rs"]
+mod watching_a_video;
 #[path = "parsers_survive_garbage.rs"]
 mod parsers_survive_garbage;
 #[path = "test_scratch_is_cleared.rs"]

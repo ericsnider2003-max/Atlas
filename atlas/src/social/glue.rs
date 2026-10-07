@@ -770,6 +770,7 @@ impl Daemon<'_> {
                 let json = serde_json::to_string(&s).ok()?;
                 Some(match self.vault.put(VAULT_YOUTUBE_OAUTH, crate::vault::Kind::ApiKey, &json, t) {
                     Ok(()) => {
+                        crate::connecting::note_google_data(self);
                         crate::kept!(self.vault.save(&self.vault_home));
                         let lapse = if self.social_cfg().google_app_in_testing {
                             " While your Google app is in Testing, Google ends this sign-in after seven days; publishing the app (unverified is fine for your own use) stops that."

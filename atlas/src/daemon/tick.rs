@@ -609,7 +609,22 @@ impl<'a> Daemon<'a> {
         // way one thing at a time, and not again for a week.
         self.tick_laps.mark("queued work and backlog");
         let hcfg = self.health_cfg();
-        let findings = assess_machine(&self.readings(), &hcfg);
+        let mut findings = assess_machine(&self.readings(), &hcfg);
+        // Atlas's own model, loading, is not news about your machine (6 Oct
+        // 2026): it was started, and seconds later "Memory is nearly full"
+        // was said aloud, about the memory Atlas had just taken itself. Held
+        // while it loads; said after that with what's holding it.
+        let model_loading = self.model_started.is_some_and(|s| s.elapsed() < MODEL_LOAD_SETTLES);
+        let model_running = self.helpers.is_running("model-server");
+        findings.retain(|f| !(model_loading && f.id == "ram"));
+        if model_running {
+            for f in findings.iter_mut().filter(|f| f.id == "ram") {
+                f.say = format!(
+                    "{} Part of that is my language model, which I let go once it's been idle a while.",
+                    f.say
+                );
+            }
+        }
         self.health.reconcile_at(&findings, t);
         let quiet = signals.idle_secs > 60 && !self.session.is_waiting();
         if let Some(f) = self.health.next(&findings, quiet, &hcfg, t) {
@@ -1221,6 +1236,8 @@ impl<'a> Daemon<'a> {
             }
         }
 
+        self.tick_laps.mark("the self-audit");
+
         if t.saturating_sub(self.last_tidy) >= 3600 {
             self.last_tidy = t;
             // Atlas's own things, fixed without asking (E1).
@@ -1364,6 +1381,7 @@ impl<'a> Daemon<'a> {
         // into the room once and lost if you'd stepped away). At the machine,
         // said as before; away, it goes the way any note does -- the phone,
         // a notification, or held for when you're back.
+        self.tick_laps.mark("the hourly tidy");
         let news = self.take_crew_news(t);
         // Kept in the conversation either way, so "what did you find?" has
         // an answer (`Thread::messages` shows the model these).
@@ -1513,6 +1531,7 @@ impl<'a> Daemon<'a> {
         // to interrupt still belongs in the log, and a check that only ran on
         // the ticks Atlas may speak would go unrun for a whole focus session.
         // What it finds is held for the raise at the end of the tick.
+        self.tick_laps.mark("news, the brief and the wrap");
         if t.saturating_sub(self.last_index_check) >= 3600 {
             self.last_index_check = t;
             let d = self.index_drift();
@@ -1525,6 +1544,7 @@ impl<'a> Daemon<'a> {
         }
 
         // Should Atlas speak first?
+        self.tick_laps.mark("the index");
         if !self.modes.may_interrupt(false) {
             self.persist_after(t, !out.is_empty());
             return out;
@@ -2956,3 +2976,7 @@ impl Daemon<'_> {
     }
 }
 
+
+/// How long after the model server starts its memory is still settling: the
+/// memory finding waits this out rather than reporting Atlas's own load.
+const MODEL_LOAD_SETTLES: std::time::Duration = std::time::Duration::from_secs(180);

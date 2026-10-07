@@ -77,6 +77,7 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.connect_help(raw))
             .or_else(|| self.muse_help(raw))
             .or_else(|| self.think_hard_help(raw))
+            .or_else(|| self.watch_video_help(raw, t))
             .or_else(|| self.one_message_help(raw))
             .or_else(|| self.text_help(raw))
             .or_else(|| self.move_window_help(raw))

@@ -187,7 +187,16 @@ fn engine(root: &Path) -> Result<&'static Engine, String> {
             } else {
                 None
             };
-            let npu = plugin.is_some() && npu_devices(&env).next().is_some();
+            // An engine that has crashed Atlas is never used again
+            // (`crashed_atlas`): Eric's laptop, 2 Oct to 6 Oct 2026, seven
+            // crashes, every one an access violation inside
+            // openvino_intel_npu_compiler.dll -- in Atlas's own process, so
+            // the whole of Atlas went with it.
+            let crashed = crashed_atlas(&verdicts(), &engine_version());
+            if let Some(why) = &crashed {
+                crate::outln!("the NPU stays off: {why}. Search and voice ID run on the processor.");
+            }
+            let npu = crashed.is_none() && plugin.is_some() && npu_devices(&env).next().is_some();
             Ok(Engine { env, npu, _plugin: plugin })
         })
         .as_ref()
@@ -264,6 +273,70 @@ fn fixed_copy(model: &Path, shapes: &[(String, Vec<i64>)]) -> Option<PathBuf> {
 fn verdict_key(model: &Path, shapes: &[(String, Vec<i64>)]) -> String {
     let version = npu_piece().map(|p| p.sha256.get(..12).unwrap_or("").to_string()).unwrap_or_default();
     format!("{}|{}|{version}", model.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(), reshape_value(shapes))
+}
+
+/// The NPU engine's version, as the verdicts key it.
+fn engine_version() -> String {
+    npu_piece().map(|p| p.sha256.get(..12).unwrap_or("").to_string()).unwrap_or_default()
+}
+
+/// The verdict that turns the NPU off for this engine: it took Atlas down.
+fn crash_key(version: &str) -> String {
+    format!("crashed|{version}")
+}
+
+/// Why the NPU must stay off, when it has crashed Atlas with this engine:
+/// a compile that never finished (`COMPILING` left behind by a process that
+/// died), or a crash Windows recorded in the NPU compiler. `None` when
+/// neither. Checked before the engine is used, every start.
+pub fn crashed_atlas(v: &std::collections::BTreeMap<String, String>, version: &str) -> Option<String> {
+    if let Some(when) = v.get(&crash_key(version)) {
+        return Some(format!("its compiler crashed Atlas ({when})"));
+    }
+    let marker = cache_dir().join(COMPILING);
+    let mut why = None;
+    if let Ok(text) = std::fs::read_to_string(&marker) {
+        why = Some(format!("Atlas stopped while compiling {} for it", text.trim()));
+    } else if let Some(when) = windows_saw_the_compiler_crash() {
+        why = Some(format!("Windows recorded Atlas crashing in its compiler on {when}"));
+    }
+    let why = why?;
+    let mut v = v.clone();
+    v.insert(crash_key(version), why.clone());
+    crate::heard!(std::fs::create_dir_all(cache_dir()));
+    crate::kept!(std::fs::write(cache_dir().join("verdicts.json"), serde_json::to_vec_pretty(&v).unwrap_or_default()));
+    crate::heard!(std::fs::remove_file(&marker));
+    Some(why)
+}
+
+/// Left in the cache while a model compiles for the NPU, removed when it
+/// has: a process that dies in the compiler leaves it behind.
+const COMPILING: &str = "compiling.now";
+
+/// When Windows last recorded atlas.exe crashing inside the NPU compiler
+/// (Application log, event 1000), from `wevtutil`. Windows only.
+fn windows_saw_the_compiler_crash() -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let out = crate::tools::command("wevtutil")
+        .args(["qe", "Application", "/q:*[System[(EventID=1000)]]", "/c:50", "/rd:true", "/f:text"])
+        .output()
+        .ok()?;
+    crash_in_compiler(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// The date of the newest event in `wevtutil`'s text that is atlas.exe
+/// faulting in the OpenVINO NPU compiler.
+pub fn crash_in_compiler(events: &str) -> Option<String> {
+    events.split("Event[").find_map(|e| {
+        let ours = e.contains("Faulting application name: atlas.exe") && e.to_lowercase().contains("openvino_intel_npu_compiler");
+        if !ours {
+            return None;
+        }
+        let date = e.lines().find_map(|l| l.trim().strip_prefix("Date:")).map(|d| d.trim().to_string()).unwrap_or_else(|| "a recent day".into());
+        Some(date)
+    })
 }
 
 fn verdicts() -> std::collections::BTreeMap<String, String> {
@@ -378,7 +451,18 @@ impl Session {
         // file itself (`onnxfix`): measured on the laptop, the NPU compiler
         // ignored both the provider's reshape and the runtime's overrides.
         let file = if on == Where::Npu { fixed_copy(model, shapes).unwrap_or_else(|| model.to_path_buf()) } else { model.to_path_buf() };
-        let s = b.commit_from_file(&file).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()))?;
+        // The NPU compile is where Atlas crashed (`crashed_atlas`): a marker
+        // while it runs, so a process that dies in it turns the NPU off for
+        // the next start instead of crashing again.
+        let marker = cache_dir().join(COMPILING);
+        if on == Where::Npu {
+            crate::kept!(std::fs::write(&marker, verdict_key(model, shapes)));
+        }
+        let s = b.commit_from_file(&file).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()));
+        if on == Where::Npu {
+            crate::heard!(std::fs::remove_file(&marker));
+        }
+        let s = s?;
         Ok(Session { s: Mutex::new(s), on })
     }
 
@@ -519,4 +603,35 @@ pub fn check(root: &Path) -> String {
         out.push("Voice ID: the voice model isn't downloaded, so there's nothing to measure".into());
     }
     out.join("\n")
+}
+
+#[cfg(test)]
+mod a_crash_turns_it_off {
+    use super::*;
+
+    #[test]
+    fn windows_record_of_the_compiler_crash_is_read() {
+        let log = "Event[0]:\r\n  Log Name: Application\r\n  Date: 2026-10-06T07:34:49.000\r\n  Event ID: 1000\r\n  Description: \r\nFaulting application name: atlas.exe, version: 0.1.0.0\r\nFaulting module name: openvino_intel_npu_compiler.dll, version: 2026.3.0.1\r\nException code: 0xc0000005\r\n\r\nEvent[1]:\r\n  Date: 2026-10-05T01:00:00.000\r\nFaulting application name: chrome.exe\r\n";
+        assert_eq!(crash_in_compiler(log).as_deref(), Some("2026-10-06T07:34:49.000"));
+        assert_eq!(crash_in_compiler("Event[0]:\r\nFaulting application name: atlas.exe\r\nFaulting module name: ntdll.dll\r\n"), None);
+        assert_eq!(crash_in_compiler(""), None);
+    }
+
+    #[test]
+    fn a_compile_that_never_finished_turns_the_npu_off_and_it_stays_off() {
+        // `cache_dir` is under the test process's own data folder.
+        let _ = std::fs::create_dir_all(cache_dir());
+        std::fs::write(cache_dir().join(COMPILING), "encoder.onnx|ids[1,16]|abc").unwrap();
+        let why = crashed_atlas(&Default::default(), "testversion").expect("off");
+        assert!(why.contains("encoder.onnx"), "{why}");
+        assert!(!cache_dir().join(COMPILING).exists(), "the marker is spent");
+        // Kept: the next start reads the verdict, with no marker left.
+        assert!(crashed_atlas(&verdicts(), "testversion").is_some());
+        // A new engine version is tried afresh.
+        let mut v = verdicts();
+        v.remove(&crash_key("testversion"));
+        if !cfg!(windows) {
+            assert!(crashed_atlas(&v, "newversion").is_none());
+        }
+    }
 }

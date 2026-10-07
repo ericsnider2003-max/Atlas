@@ -248,6 +248,9 @@ impl Daemon<'_> {
         if !self.vault.has_a_passphrase() && field_of(f, "again").unwrap_or_default() != phrase {
             return Err("The two passphrases were different, so nothing was made. Try again.".into());
         }
+        if self.vault.set_aside.iter().any(|n| n == crate::release::RELEASE_KEY_NAME) {
+            return Err(crate::release::IN_THE_OLD_VAULT.into());
+        }
         let now = crate::store::now();
         self.vault.open(&phrase, now, &self.tools_cfg().vault)?;
         let made = crate::release::make_release_key(&mut self.vault, now)?;

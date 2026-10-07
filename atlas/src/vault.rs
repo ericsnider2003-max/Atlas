@@ -264,6 +264,11 @@ pub struct Vault {
     /// paper away from the situation this was built to prevent.
     #[serde(skip)]
     opened_with: Option<How>,
+    /// What's in the old vault set aside by `move_to_sign_in`, by name: still
+    /// locked, still yours, and read without opening it. Never serialised --
+    /// filled from the set-aside file by `load`.
+    #[serde(skip)]
+    pub set_aside: Vec<String>,
 }
 
 /// Words a guesser aiming at this vault would try first.
@@ -783,7 +788,9 @@ impl Vault {
     /// What is readable is the salt and the check value, and both are meant
     /// to be.
     pub fn load(state: &crate::store::Store) -> Vault {
-        state.load(Self::FILE)
+        let mut v: Vault = state.load(Self::FILE);
+        v.set_aside = names_set_aside(state);
+        v
     }
 
     /// Write it back. Called after anything that changes what is stored --
@@ -1536,7 +1543,116 @@ pub fn make_recovery_key(v: &mut Vault, phrase: &str, cfg: &VaultConfig, now: u6
     made
 }
 
-/// Said when the vault is one made before it opened on your sign-in.
-pub const OLD_VAULT: &str = "your vault is one made before Atlas opened it with your Windows sign-in, so it \
-     still wants the passphrase you chose then -- once, on the Accounts page, and never again after. If you don't \
-     remember it, \"Start a new vault\" there sets one up that needs nothing (you'd connect your accounts again)";
+/// Said when the vault is one made before it opened on your sign-in and
+/// couldn't be moved on (`move_to_sign_in` failed, or this isn't Windows).
+pub const OLD_VAULT: &str = "your vault is one made before Atlas opened it with your Windows sign-in, and I couldn't \
+     move it on to your sign-in, so it still wants the passphrase you chose then";
+
+/// Where an old passphrase vault is kept once Atlas has moved on from it:
+/// byte for byte as it was, still locked. Never deleted by Atlas.
+pub const SET_ASIDE: &str = "vault-set-aside";
+
+/// The names in the set-aside vault, readable without opening it (as
+/// `Vault::list` is). Empty when there isn't one.
+fn names_set_aside(state: &crate::store::Store) -> Vec<String> {
+    if !state.exists(SET_ASIDE) {
+        return Vec::new();
+    }
+    let old: Vault = state.load(SET_ASIDE);
+    old.secrets.iter().map(|s| s.name.clone()).collect()
+}
+
+/// Move on from a vault made before Atlas opened it on your sign-in, with
+/// nothing to type and nothing lost.
+///
+/// 6 Oct 2026. The first answer to "I'll never remember that passphrase" was
+/// a button, "Start a new vault", tucked under "I don't remember either" --
+/// a chore, and one that left whatever was in the old vault behind. This is
+/// what it should have been: the old vault is set aside exactly as it is
+/// (still locked, still yours, never deleted), a new one that opens on your
+/// Windows sign-in takes its place, and everything carries on. What was in
+/// the old one is still listed by name, and comes across the day you type
+/// its passphrase or recovery key (`bring_in_set_aside`) -- which only
+/// matters for something you can't make again by pressing Connect, like a
+/// release key.
+///
+/// Returns the new vault, open, already written. The current file is only
+/// replaced after the old one is safely set aside; if anything fails,
+/// nothing on disk has changed except, at most, a copy of the old vault.
+pub fn move_to_sign_in(state: &crate::store::Store, old: &Vault, now: u64) -> Result<Vault, String> {
+    if old.is_brand_new() || old.sealed_to_this_login() {
+        return Err("this vault already opens with your sign-in".into());
+    }
+    if state.exists(SET_ASIDE) {
+        // One set aside already. Only carry on if it is this same vault (an
+        // earlier move that set it aside and then couldn't write the new
+        // one); never overwrite a different one.
+        let there: Vault = state.load(SET_ASIDE);
+        if there.salt != old.salt || there.check != old.check {
+            return Err("there's already an older vault set aside, so I left this one as it is".into());
+        }
+    }
+    let mut fresh = Vault::default();
+    fresh.start_on_this_login(now)?;
+    state.save(SET_ASIDE, old).map_err(|e| format!("I couldn't set the old vault aside: {e}"))?;
+    fresh.save(state).map_err(|e| format!("I couldn't write the new vault: {e}"))?;
+    fresh.set_aside = names_set_aside(state);
+    Ok(fresh)
+}
+
+/// Bring what's in the set-aside vault into this one, with the old
+/// passphrase or recovery key. Returns the names brought across.
+///
+/// Nothing in this vault is overwritten: a name already here comes across as
+/// "<name> (from the old vault)". The old file is then renamed, not deleted.
+pub fn bring_in_set_aside(
+    state: &crate::store::Store,
+    into: &mut Vault,
+    typed: &str,
+    cfg: &VaultConfig,
+    now: u64,
+) -> Result<Vec<String>, String> {
+    if !state.exists(SET_ASIDE) {
+        return Err("there's no old vault set aside".into());
+    }
+    if into.state() != State::Open {
+        return Err("the vault is locked".into());
+    }
+    let mut old: Vault = state.load(SET_ASIDE);
+    // A vault with no passphrase would *take* whatever was typed as its new
+    // one; that isn't opening it.
+    if !old.has_a_passphrase() && !old.has_a_recovery_key() {
+        return Err("the old vault has no passphrase to open it with".into());
+    }
+    let opened = old
+        .open(typed, now, cfg)
+        .or_else(|e| if old.has_a_recovery_key() { old.open_with_recovery_key(typed, now, cfg) } else { Err(e) });
+    if opened.is_err() {
+        return Err("That isn't the old vault's passphrase or recovery key.".into());
+    }
+    let mut brought = Vec::new();
+    let mut stays = 0;
+    let names: Vec<(String, Kind)> = old.list().iter().map(|(n, k)| (n.to_string(), *k)).collect();
+    for (name, kind) in names {
+        // Authenticator seeds and recovery codes never open on a sign-in
+        // alone, so into a vault without a passphrase they don't go: they
+        // stay in the old one, which then stays set aside.
+        if into.opens_on_login_only() && !kind.usable_unattended() {
+            stays += 1;
+            continue;
+        }
+        let value = old.get(&name, now)?;
+        let here = if into.list().iter().any(|(n, _)| *n == name) { format!("{name} (from the old vault)") } else { name };
+        into.put(&here, kind, &value, now)?;
+        brought.push(here);
+    }
+    old.lock();
+    into.save(state).map_err(|e| format!("I opened it but couldn't write the vault ({e}), so nothing moved."))?;
+    if stays == 0 {
+        state
+            .file_as(SET_ASIDE, &format!("{SET_ASIDE}-brought-in-{now}"))
+            .map_err(|e| format!("Brought across, but I couldn't file the old copy away: {e}"))?;
+    }
+    into.set_aside = names_set_aside(state);
+    Ok(brought)
+}

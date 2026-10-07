@@ -693,6 +693,12 @@ pub struct Calendar {
 const FILE: &str = "calendar";
 
 impl Calendar {
+    /// Is anything here read from Google (`oauthlink::calendar_ics` gives
+    /// those events uids starting `google-`)?
+    pub fn holds_google_events(&self) -> bool {
+        self.events.iter().any(|e| e.phone_key.as_deref().is_some_and(|k| k.starts_with("ics:google-")))
+    }
+
     pub fn load(store: &crate::store::Store) -> Calendar {
         store.load::<Calendar>(FILE)
     }

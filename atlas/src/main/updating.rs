@@ -547,6 +547,10 @@ pub(super) fn run_release(args: &[String]) {
             let seed = match vault.get(RELEASE_KEY_NAME, now) {
                 Ok(s) => release::seed_from_hex(&s),
                 Err(why) => {
+                    if vault.set_aside.iter().any(|n| n == RELEASE_KEY_NAME) {
+                        println!("{}", release::IN_THE_OLD_VAULT);
+                        return;
+                    }
                     println!("{why} -- `atlas release keygen` makes the key.");
                     return;
                 }

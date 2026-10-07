@@ -291,6 +291,10 @@ static NPU_JUDGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 #[cfg(feature = "onnx")]
 static ON_NPU: std::sync::Mutex<Option<Option<(crate::npu::Session, String)>>> = std::sync::Mutex::new(None);
 
+/// The NPU's copy is being opened, on its own thread.
+#[cfg(feature = "onnx")]
+static NPU_OPENING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The voice embedding from the NPU, or `None` to use `tract`.
 #[cfg(feature = "onnx")]
 fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
@@ -298,20 +302,36 @@ fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
     if !crate::npu::npu_ready(root) {
         return None;
     }
-    let mut g = ON_NPU.lock().or_else(crate::crash::unpoison).ok()?;
+    let g = ON_NPU.lock().or_else(crate::crash::unpoison).ok()?;
     if g.is_none() {
-        let model = models_dir.join(FILE);
-        let opened = crate::npu::Session::input_names(root, &model).ok().and_then(|names| {
-            let name = names.first()?.clone();
-            match crate::npu::Session::open(root, &model, &[(name.clone(), vec![1, WINDOW as i64, BINS as i64])], crate::npu::Where::Npu) {
-                Ok(s) => Some((s, name)),
-                Err(why) => {
-                    crate::outln!("telling voices apart stays on the processor: {why}");
-                    None
+        // Opened on a thread of its own (6 Oct 2026): the first open
+        // compiles the model for the NPU, which took the better part of a
+        // minute on the laptop, and this runs on whatever asked -- the loop,
+        // during a call -- so the hub and everything else waited with it.
+        // The processor answers until the NPU is ready.
+        drop(g);
+        if !NPU_OPENING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let (root, model) = (root.to_path_buf(), models_dir.join(FILE));
+            let spawned = std::thread::Builder::new().name("atlas-voices-npu".into()).spawn(move || {
+                let opened = crate::npu::Session::input_names(&root, &model).ok().and_then(|names| {
+                    let name = names.first()?.clone();
+                    match crate::npu::Session::open(&root, &model, &[(name.clone(), vec![1, WINDOW as i64, BINS as i64])], crate::npu::Where::Npu) {
+                        Ok(s) => Some((s, name)),
+                        Err(why) => {
+                            crate::outln!("telling voices apart stays on the processor: {why}");
+                            None
+                        }
+                    }
+                });
+                if let Ok(mut g) = ON_NPU.lock().or_else(crate::crash::unpoison) {
+                    *g = Some(opened);
                 }
+            });
+            if spawned.is_err() {
+                NPU_OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
             }
-        });
-        *g = Some(opened);
+        }
+        return None;
     }
     let (s, name) = g.as_ref()?.as_ref()?;
     let mut sum = vec![0f32; DIMS];

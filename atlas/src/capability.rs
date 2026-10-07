@@ -349,7 +349,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "phrasebook", what: "learn the words you use for things from being corrected -- \"no, I meant open Spotify\" -- and do what you meant next time without guessing; \"what have you learned about how I talk\" lists them and \"forget that phrase\" drops one", area: Thinking, state: Untested, needs: None, offline: true, added: 45, runs: &[Needs::JustThinking], modules: &["phrasebook"] },
         Capability { id: "misses", what: "keep a list of what it got wrong -- not understood, asked back, corrected, undone or misheard -- and read the week's back with how well it's been hearing you (\"what did you misunderstand this week\"); a mishearing you correct twice is put right from then on", area: Itself, state: Untested, needs: None, offline: true, added: 45, runs: &[Needs::JustThinking], modules: &["misses"] },
         Capability { id: "growth", what: "take down a new ability you ask me for -- \"I want you to be able to ...\" -- say what I already do that looks like it, keep it for your yes, and list it on the Improvements page", area: Itself, state: Working, needs: None, offline: true, added: 44, runs: &[Needs::Files], modules: &["growth"] },
-        Capability { id: "picture_talk", what: "say what a chart, your screen or a photo shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk"] },
+        Capability { id: "picture_talk", what: "say what a chart, your screen, a photo or a video shows, with a model on this laptop", area: Seeing, state: Untested, needs: Some("the picture reader, which setup fetches"), offline: true, added: 31, runs: &[Needs::Files], modules: &["picture_talk", "watchvideo"] },
         Capability { id: "vault", what: "keep a password, and hand it back when you ask", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files, Needs::RealEncryption], modules: &["vault", "credentials"] },
         Capability { id: "recovery", what: "get you back in when you've lost the way in", area: Keeping, state: Working, needs: None, offline: true, added: 29, runs: &[Needs::Files], modules: &["recovery", "codes"] },
         Capability { id: "sync", what: "carry what you've done to your other devices", area: Keeping, state: Untested, needs: Some("a second device"), offline: true, added: 29, runs: &[Needs::Files], modules: &["sync", "cloudsync", "courier", "hlc", "transport"] },
@@ -1579,7 +1579,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 6 Oct 2026: + `scaffold` (Chat A, the bookkeeping for a new ability) = 484.
 // 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
 // ("think hard about": several tries, the best of them) = 486.
-pub const MODULES_IN_TREE: usize = 486;
+// 6 Oct 2026: + `watchvideo` ("watch this video", on this computer) = 487.
+pub const MODULES_IN_TREE: usize = 487;
 
 /// Every module no capability claims, and why it is not one.
 ///

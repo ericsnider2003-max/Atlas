@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas Personal AI Assistant — Privacy Policy</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<nav><a href="../">Atlas</a><a href="./">Privacy policy</a><a href="../terms/">Terms</a></nav>
+<h1>Atlas Personal AI Assistant — Privacy Policy</h1>
+<p class="muted">Last updated: 6 October 2026</p>
+
+<p>Atlas is a personal assistant that runs on your own Windows computer, with apps for iPhone and Android. There is no Atlas account and no Atlas server: nothing you say to Atlas, and nothing it keeps, is ever received by the developer.</p>
+
+<h2>What Atlas keeps, and where</h2>
+<p>Your reminders, notes, the facts you tell it, your conversations, its copy of your calendar and mail, and the numbers it keeps for your accounts are stored in Atlas's own folder on your computer, and in the app's own storage on your phone. Uninstalling Atlas and deleting its folder deletes them.</p>
+<p>Passwords, keys and sign-ins are kept in an encrypted vault on your computer. On Windows the vault's key is sealed to your Windows sign-in, so it opens without a separate password and only for your Windows account on that computer.</p>
+<p>Atlas can keep your own devices in step — your computer and your phone — by sending your data directly between them, encrypted, over your own network. It does not pass through any server of the developer's.</p>
+
+<h2>Google user data</h2>
+<p>If you choose to connect your Google account, Atlas asks Google for permission to:</p>
+<ul>
+<li><b>See your email address</b> (<code>openid</code>, <code>email</code>) — to label the connection with the right account.</li>
+<li><b>Read your Google Calendar</b> (<code>calendar.readonly</code>) — to show your schedule, remind you of events and answer "what's on today". Atlas cannot change or delete events.</li>
+<li><b>Read your YouTube channel and its analytics</b> (<code>youtube.readonly</code>, <code>yt-analytics.readonly</code>) — to show your own channel's subscribers, views and audience retention, and keep a daily history of them.</li>
+</ul>
+<p><b>How it is used.</b> This data is used only to provide those features to you, on your own devices. The sign-in Google gives Atlas is kept in the encrypted vault on your computer; the events and numbers are kept in Atlas's folder there.</p>
+<p><b>How it is not used.</b> Data received from Google is:</p>
+<ul>
+<li>never sent to the developer or to any server of Atlas's;</li>
+<li>never sold, and never used for advertising;</li>
+<li>never sent to an online AI service. While a Google account is connected, Atlas does not send anything to the free online AI services or to Muse Spark described below, because its conversation can contain what it read from Google;</li>
+<li>never used to train or improve any AI model;</li>
+<li>never read by people, except by you.</li>
+</ul>
+<p>The only exception is a second language model <i>you</i> set up and run yourself and point Atlas at; your data goes there only because you configured it.</p>
+<p>Atlas's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+<p><b>Removing access.</b> Press Disconnect on Atlas's Accounts page, or remove Atlas at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. Deleting Atlas's folder deletes everything it kept from Google.</p>
+
+<h2>Microsoft and other mail</h2>
+<p>If you connect a Microsoft account, Atlas asks to read and send your Outlook mail (IMAP and SMTP) and to read your calendar, so it can read your mail to you, send replies you approve, and show your schedule. Other mail accounts connect with an app password you create at your provider. Mail is kept on your computer. Atlas never sends mail without your approval.</p>
+
+<h2>Social accounts</h2>
+<ul>
+<li><b>Signing in through Atlas's own browser.</b> For sites without a suitable connection (such as Instagram, TikTok, X, Facebook, LinkedIn and Reddit), you can sign in yourself in a browser window Atlas opens. The sign-in is kept in that browser's profile on your computer, and Atlas uses it to read your own pages. You type your password on the site itself; Atlas does not record it.</li>
+<li><b>Posting.</b> Atlas posts only what you have approved, when you approved it.</li>
+<li><b>Bluesky</b> is read through its public service, and posting uses an app password you create.</li>
+</ul>
+
+<h2>Language models</h2>
+<ul>
+<li><b>On your computer.</b> Atlas's own model runs on your computer, and questions go there first.</li>
+<li><b>Free online models, only as a fallback.</b> When the model on your computer can't answer, Atlas can ask free online AI services (Kilo, Pollinations, OVHcloud). Before anything is sent, keys, card and account numbers, email addresses and phone numbers are replaced with placeholders. These services may keep what they receive. This fallback can be turned off in Settings ("Online models"), and it is never used while a Google account is connected. On the phone it is used only after you say yes.</li>
+<li><b>Muse Spark (optional).</b> If you connect your own Meta Model API key, Atlas can send work to Meta's Muse Spark model, billed to your Meta account, up to a monthly limit you set. Meta's own terms apply to what it receives. While a Google account is connected, only questions you address to Muse yourself ("ask Muse …") are sent, and they carry only your own words.</li>
+</ul>
+
+<h2>Other services Atlas contacts</h2>
+<ul>
+<li><b>Web search</b>, when you ask Atlas to look something up: your search words go to DuckDuckGo, and Atlas reads the pages it finds.</li>
+<li><b>Weather</b>, when you ask: your town goes to Open-Meteo; if you haven't set one, Atlas asks ipapi.co roughly where your internet connection is.</li>
+<li><b>Model files</b> are downloaded from Hugging Face, and Atlas's own files from GitHub. Nothing about you is sent.</li>
+<li><b>Mail settings.</b> When you type an email address to connect, its domain (the part after the @) may be looked up in Mozilla Thunderbird's public list of mail servers.</li>
+<li><b>Notifications to your phone</b> go through Apple's push service (iPhone) or your phone's web push service (Android), carrying only the notification itself.</li>
+<li><b>Public sources you choose to watch</b> — YouTube channels, Bluesky accounts, subreddits, Mastodon hashtags, Hacker News — are read from their public feeds. Nothing about you is sent.</li>
+</ul>
+
+<h2>Voice, microphone and camera</h2>
+<p>Speech recognition and Atlas's voice run on your own devices; your voice is not sent anywhere. The microphone and camera are used only while you're talking to Atlas or asking it to look at something.</p>
+
+<h2>No tracking</h2>
+<p>Atlas has no analytics, no advertising and no third-party tracking. It does not sell or share your data.</p>
+
+<h2>Children</h2>
+<p>Atlas is not directed at children under 13.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, the new version will be posted here with a new date.</p>
+
+<hr>
+<p>Questions: <a href="mailto:ericsnider2003@gmail.com">ericsnider2003@gmail.com</a></p>
+</main>
+</body>
+</html>

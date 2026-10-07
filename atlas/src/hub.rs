@@ -816,6 +816,8 @@ pub struct VaultView {
     pub opens_on_login: bool,
     /// Made before that, with a passphrase and no sign-in copy yet.
     pub needs_its_passphrase_once: bool,
+    /// What's in the old vault set aside by `vault::move_to_sign_in`, by name.
+    pub set_aside: Vec<String>,
     pub has_passphrase: bool,
     pub has_recovery_key: bool,
     pub handed_over: bool,

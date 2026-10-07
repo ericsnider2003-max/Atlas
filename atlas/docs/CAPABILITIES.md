@@ -268,7 +268,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | notice what window you're in | built, never run for real | `watch` `watching` | ready | catch | catch | **no** | catch | **no** |
 | name what's in front of the camera, and tell faces apart | built, never run for real | `vision` `frames` `camera_ask` | ready | catch | ready | would | would | catch |
 | watch you for a while and say when something changes, keeping nothing | built, never run for real | `camwatch` | ready | catch | ready | would | would | catch |
-| say what a chart, your screen or a photo shows, with a model on this laptop | built, never run for real | `picture_talk` | ready | ready | ready | catch | would | catch |
+| say what a chart, your screen, a photo or a video shows, with a model on this laptop | built, never run for real | `picture_talk` `watchvideo` | ready | ready | ready | catch | would | catch |
 | follow your hand and move things with it | built, never run for real | `handloop` `handtrack` `handshape` `frames` `handweight` | ready | catch | ready | would | would | catch |
 | copy the text off the window in front, read on this machine by Windows' own recognizer, and warn you if it holds something secret | built, never run for real | `screentext` | ready | catch | catch | **no** | catch | **no** |
 | read an open window's controls and text without a screenshot -- even one that isn't in front -- and press a button you name | built, never run for real | `uia` | ready | catch | catch | **no** | catch | **no** |
@@ -366,4 +366,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-247 things, across 437 of 486 source files. The other 49 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+247 things, across 438 of 487 source files. The other 49 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

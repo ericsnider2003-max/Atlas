@@ -196,6 +196,8 @@ pub const NEEDS_A_RESTART: &[&str] = &[
     // Both are flags on the model server's command line, read when it starts.
     "models.draft",
     "models.speculate",
+    // The model chain is built when Atlas starts (`models::connection`).
+    "models.online_second",
     "identity.enabled",
     "identity.trusted_devices",
     // The icon is put up once, when the background Atlas starts.
@@ -454,6 +456,10 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
             "A local endpoint so you can reach Atlas from another device.",
             "Loopback only, token required. Reaching it from your phone needs a VPN.",
             t.server.enabled, Sensitive, "Reaching outside this machine"),
+        toggle("models.online_second", "Online models",
+            "When the model on this computer can't answer, ask free online AI services (Kilo, Pollinations, OVHcloud) instead.",
+            "Keys, card numbers, email addresses and phone numbers are swapped for placeholders first. Never used while a Google account is connected.",
+            t.models.online_second, Sensitive, "Your accounts and secrets"),
         toggle("research.enabled", "Web research",
             "Look things up and write them into a note.",
             "The only thing here that leaves your machine.",
