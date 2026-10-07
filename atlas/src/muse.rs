@@ -362,7 +362,9 @@ impl Llm for MuseFirst {
     }
 
     fn complete_hard(&self, system: &str, user: &str) -> Result<String> {
-        if ready(crate::store::now()) {
+        // The hard work carries the conversation, which can carry what Atlas
+        // read from Google: not to Muse while that's held.
+        if ready(crate::store::now()) && !crate::brain::google_data_held() {
             if let Ok(t) = self.muse.complete(system, user) {
                 return Ok(t);
             }
@@ -371,7 +373,9 @@ impl Llm for MuseFirst {
     }
 
     fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
-        if ready(crate::store::now()) {
+        // The hard work carries the conversation, which can carry what Atlas
+        // read from Google: not to Muse while that's held.
+        if ready(crate::store::now()) && !crate::brain::google_data_held() {
             if let Ok(r) = self.muse.complete_long(system, user, max_tokens) {
                 return Ok(r);
             }

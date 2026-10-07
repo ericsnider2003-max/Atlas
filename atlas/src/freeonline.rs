@@ -142,6 +142,9 @@ impl FreeOnline {
         if crate::phonemode::on() && !crate::phonemode::online_ok() {
             return Err(crate::error::AtlasError::Platform(crate::phonemode::ASK_ONLINE.into()));
         }
+        if crate::brain::google_data_held() {
+            return Err(crate::error::AtlasError::Platform(crate::brain::GOOGLE_STAYS_HERE.into()));
+        }
         // Scrubbed here as well as in `FallbackLlm`: with no model on this
         // machine this is the only model, and nothing else scrubs for it.
         let mut scrub = crate::redact::Scrubber::default();

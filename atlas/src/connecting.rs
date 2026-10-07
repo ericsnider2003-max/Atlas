@@ -398,6 +398,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
     keep_signed_in(d, now);
     keep_rotated(d, now);
     keep_muse(d, now);
+    note_google_data(d);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     if links.is_empty() {
         return;
@@ -671,6 +672,7 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     };
     links.push(CalendarLink { name: label, url: key, ..Default::default() });
     let _ = d.store.save(connect::CALENDAR_LINKS, &links);
+    note_google_data(d);
     if s.provider == Provider::Google {
         return format!("Connected {}'s Google Calendar. Its events appear on your calendar within a minute.", s.email);
     }
@@ -885,4 +887,14 @@ fn open_the_vault(d: &mut Daemon<'_>, passphrase: &str, now: u64) -> Result<(), 
     // What it says is for the Accounts page; the connection's own answer follows.
     d.keep_sign_in_copy(now);
     Ok(())
+}
+
+/// Does Atlas hold anything read from Google? Then nothing goes to a third
+/// party's model (`brain::google_data_held`).
+pub fn note_google_data(d: &mut Daemon) {
+    let links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
+    let held = links.iter().any(|l| matches!(oauthlink::parse_calendar_key(&l.url), Some((Provider::Google, _))))
+        || d.vault.list().iter().any(|(n, _)| *n == crate::social::VAULT_YOUTUBE_OAUTH || n.starts_with(&oauthlink::vault_name(Provider::Google, "")))
+        || d.calendar.holds_google_events();
+    crate::brain::set_google_data_held(held);
 }
