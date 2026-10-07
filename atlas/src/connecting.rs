@@ -179,6 +179,18 @@ fn light(h: Option<connect::Health>) -> String {
     }
 }
 
+/// The one fix for a refused sign-in: sign in again, on the row itself.
+/// Not read again until then (`connect::read_due`, `sign_in_refused`).
+fn again(d: &Daemon, p: Provider) -> String {
+    format!(
+        "<span class='tag bad'>Needs you</span> <form method=post action='/hub/connect' class=inline>\
+         <input type=hidden name=what value=oauth><input type=hidden name=provider value={}>{}\
+         <button class=primary>Sign in again</button></form>",
+        p.key(),
+        vault_field(d)
+    )
+}
+
 fn disconnect(kind: &str, id: &str) -> String {
     format!(
         "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=disconnect>\
@@ -198,8 +210,10 @@ fn connected_list(d: &mut Daemon) -> String {
     let mut out = String::from("<h3>Connected</h3><ul class=connected>");
     for a in &accounts {
         let ours = mine.iter().any(|m| m.address.eq_ignore_ascii_case(&a.address));
+        // A refused Microsoft sign-in: one button to fix it, on its own row.
+        let fix = if a.oauth && connect::sign_in_refused(&d.store, &a.address) { again(d, Provider::Microsoft) } else { String::new() };
         out.push_str(&format!(
-            "<li><b>{}</b> mail {} {}</li>",
+            "<li><b>{}</b> mail {} {fix} {}</li>",
             esc(&a.address),
             light(connect::health_of(&d.store, &a.address)),
             if ours { disconnect("mail", &a.address) } else { "<span class=note>(listed in tools.yaml)</span>".to_string() }
@@ -207,7 +221,11 @@ fn connected_list(d: &mut Daemon) -> String {
     }
     for l in &links {
         let h = (l.last_read > 0).then(|| connect::Health { at: l.last_read, ok: l.last_ok, said: l.last_said.clone() });
-        out.push_str(&format!("<li><b>{}</b> calendar {} {}</li>", esc(&l.name), light(h), disconnect("calendar", &l.url)));
+        let fix = match oauthlink::parse_calendar_key(&l.url) {
+            Some((p, _)) if l.needs_signin => again(d, p),
+            _ => String::new(),
+        };
+        out.push_str(&format!("<li><b>{}</b> calendar {} {fix} {}</li>", esc(&l.name), light(h), disconnect("calendar", &l.url)));
     }
     if !d.tools_cfg().mail.enabled && !accounts.is_empty() {
         out.push_str("<li class=note>Reading mail is switched off in Settings, so these aren't being read.</li>");
@@ -261,8 +279,13 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                             .load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS)
                             .iter()
                             .any(|l| l.url == oauthlink::calendar_key(Provider::Microsoft, &id));
+                        let signed_in = !calendar_uses_it && d.vault.secrets.iter().any(|s| s.name == token);
+                        let also = if signed_in { taken_back(d, Provider::Microsoft, None) } else { String::new() };
                         d.vault.secrets.retain(|s| s.name != connect::vault_name(&id) && (calendar_uses_it || s.name != token));
                         crate::kept!(d.vault.save(&crate::roots::install_state()));
+                        if signed_in {
+                            return back(&format!("Disconnected {id}, and its sign-in is gone from the vault.{also}"));
+                        }
                         back(&format!("Disconnected {id}, and its password is gone from the vault. You can also delete the app password at your provider."))
                     }
                     Ok(false) => back(&format!("{id} is listed in tools.yaml, so it's taken off there.")),
@@ -272,6 +295,7 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
                     links.retain(|l| l.url != id);
                     // A sign-in's token goes with its calendar, unless Outlook mail still uses it.
+                    let mut also = String::new();
                     if let Some((p, email)) = oauthlink::parse_calendar_key(&id) {
                         let mail_uses_it = d
                             .store
@@ -279,12 +303,14 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                             .iter()
                             .any(|a| a.password_from_vault == oauthlink::vault_name(p, &email));
                         if !mail_uses_it {
+                            let token = d.vault.get(&oauthlink::vault_name(p, &email), crate::store::now()).ok();
                             d.vault.secrets.retain(|s| s.name != oauthlink::vault_name(p, &email));
                             crate::kept!(d.vault.save(&crate::roots::install_state()));
+                            also = taken_back(d, p, token);
                         }
                     }
                     match d.store.save(connect::CALENDAR_LINKS, &links) {
-                        Ok(()) => back("That calendar won't be read again. Its events already here stay until you remove them."),
+                        Ok(()) => back(&format!("That calendar won't be read again. Its events already here stay until you remove them.{also}")),
                         Err(e) => back(&format!("I couldn't keep that: {e}")),
                     }
                 }
@@ -292,6 +318,37 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
             }
         }
         _ => back("That button isn't wired to anything, so nothing changed."),
+    }
+}
+
+/// After a sign-in's token is out of the vault: take the permission back at
+/// the provider too, where Atlas can (N5). Google ends a grant on request,
+/// unless the YouTube sign-in rides the same one; Microsoft gives an app like
+/// Atlas no way to end its own, so its page is named. Says what was done.
+fn taken_back(d: &mut Daemon, p: Provider, token: Option<String>) -> String {
+    match p {
+        Provider::Microsoft => {
+            format!(" To take back Microsoft's permission too: {} (Microsoft doesn't let Atlas do that part).", oauthlink::MICROSOFT_PERMISSIONS)
+        }
+        Provider::Google => {
+            let Some(token) = token else { return String::new() };
+            crate::connect::forget_access(&format!("calendar {} {token}", p.key()));
+            let youtube_too = d
+                .vault
+                .get(crate::social::VAULT_YOUTUBE_OAUTH, crate::store::now())
+                .ok()
+                .and_then(|j| serde_json::from_str::<crate::social::apis::GoogleSignIn>(&j).ok())
+                .is_some_and(|g| g.client_id == oauthlink::GOOGLE_CLIENT_ID && !g.refresh_token.is_empty());
+            if youtube_too {
+                return " Google's permission stays: your YouTube numbers use the same sign-in. Disconnect YouTube on the Social page to end both.".into();
+            }
+            // Off the page's thread: Google's answer is a courtesy, the vault
+            // is already clear.
+            std::thread::spawn(move || {
+                crate::heard!(oauthlink::revoke_google(&crate::social::apis::Https, &token));
+            });
+            " Google's permission is being taken back too.".into()
+        }
     }
 }
 
@@ -412,12 +469,13 @@ pub fn tick(d: &mut Daemon, now: u64) {
         match took {
             Ok(n) => {
                 let _ = d.calendar.save(&d.store);
-                l.last_ok = true;
+                connect::took_read(l, None);
                 l.last_said = format!("{n} event{} changed", if n == 1 { "" } else { "s" });
             }
             Err(e) => {
-                l.last_ok = false;
-                l.last_said = e;
+                if let Some(say) = connect::took_read(l, Some(&e)) {
+                    d.to_say_aloud.push(say);
+                }
             }
         }
         changed = true;
@@ -663,6 +721,8 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     if let Err(e) = kept {
         return format!("{} let me in as {}, but I couldn't seal the sign-in in the vault, so nothing was kept: {e}.", s.provider.name(), s.email);
     }
+    // Signed in again: whatever was refused before is tried again (N5).
+    connect::note_health(&d.store, &s.email, None);
     let key = oauthlink::calendar_key(s.provider, &s.email);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     links.retain(|l| l.url != key);

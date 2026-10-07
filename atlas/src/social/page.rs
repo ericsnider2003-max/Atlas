@@ -42,6 +42,8 @@ pub struct Service {
     /// Hidden fields or a box the button needs (a handle).
     pub inner: String,
     pub note: String,
+    /// The form's `what` for taking it away, when it's connected (N5).
+    pub disconnect: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -102,6 +104,10 @@ pub fn render_social(v: &View) -> String {
             let action = match &sv.button {
                 Some((what, words)) => form(what, &sv.inner, words),
                 None => String::new(),
+            };
+            let action = match &sv.disconnect {
+                Some(what) => format!("{action}{}", form(what, "", "Disconnect")),
+                None => action,
             };
             let note = if sv.note.is_empty() { String::new() } else { format!("<span class=meta>{}</span>", esc(&sv.note)) };
             b.push_str(&format!(

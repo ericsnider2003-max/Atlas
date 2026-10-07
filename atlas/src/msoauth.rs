@@ -111,10 +111,10 @@ pub fn poll_once(client_id: &str, device_code: &str) -> PollOutcome {
     parse_poll_response(&body)
 }
 
-/// Trades a stored refresh token for a fresh access token. Called before
-/// every connection rather than caching one — an access token is only
-/// good for about an hour, and a cache that's gone stale mid-check is a
-/// worse bug than one extra request.
+/// Trades a stored refresh token for a fresh access token. Mail asks
+/// through `access`, which keeps the token while it has five minutes left:
+/// the old rule here, a fresh one before every connection, made four
+/// requests a check and let two threads refresh one sign-in together.
 pub fn refresh(client_id: &str, refresh_token: &str) -> Result<Tokens, String> {
     let using = current(refresh_token);
     let body = post_form(
@@ -135,6 +135,15 @@ pub fn refresh(client_id: &str, refresh_token: &str) -> Result<Tokens, String> {
     })?;
     rotated(refresh_token, &tokens.refresh_token);
     Ok(tokens)
+}
+
+/// An access token for mail, from the stored refresh token: the one kept
+/// while it has more than five minutes left, else a fresh one -- fetched by
+/// one thread at a time, so the four places mail connects never refresh the
+/// same sign-in together (`connect::access_once`, N5).
+pub fn access(client_id: &str, refresh_token: &str) -> Result<String, String> {
+    let key = format!("ms-mail {client_id} {refresh_token}");
+    crate::connect::access_once(&key, crate::store::now(), || refresh(client_id, refresh_token).map(|t| (t.access_token, t.expires_in)))
 }
 
 // ------------------------------------------------------------ rotation (Q7)

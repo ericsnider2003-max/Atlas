@@ -436,6 +436,12 @@ impl<'a> Daemon<'a> {
                 if ctl.checkpoint() {
                     break;
                 }
+                // Its sign-in was refused (revoked or lapsed): said once when
+                // it happened, and not asked again until you sign in again,
+                // which notes it working (N5).
+                if account.oauth && crate::connect::sign_in_refused(&store, &account.address) {
+                    continue;
+                }
                 let host = match account.imap_server() {
                     Ok(h) => h,
                     Err(why) => {

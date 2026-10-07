@@ -525,6 +525,8 @@ mod older_atlas_keeps_newer_fields;
 mod two_writers;
 #[path = "watching_a_video.rs"]
 mod watching_a_video;
+#[path = "connections_stay_alive.rs"]
+mod connections_stay_alive;
 #[path = "parsers_survive_garbage.rs"]
 mod parsers_survive_garbage;
 #[path = "test_scratch_is_cleared.rs"]

@@ -851,6 +851,38 @@ impl Daemon<'_> {
 
     // ------------------------------------------------------------ the hub page
 
+    /// Disconnect YouTube: the sign-in out of the vault, and the permission
+    /// taken back at Google when no Google calendar rides the same grant --
+    /// Google ends a grant whole, every scope at once (N5).
+    fn youtube_disconnect(&mut self, t: u64) -> String {
+        if let Err(e) = self.vault_ready(t) {
+            return format!("The vault is shut, so nothing changed: {e}");
+        }
+        let held = self.vault.get(VAULT_YOUTUBE_OAUTH, t).ok().and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok());
+        let Some(g) = held else {
+            return "YouTube isn't connected through a sign-in, so there's nothing to take away.".into();
+        };
+        self.vault.secrets.retain(|s| s.name != VAULT_YOUTUBE_OAUTH);
+        if let Err(e) = self.vault.save(&crate::roots::install_state()) {
+            return format!("I couldn't save the vault, so YouTube is still connected: {e}");
+        }
+        crate::connect::forget_access(&format!("youtube {} {}", g.client_id, g.refresh_token));
+        crate::connecting::note_google_data(self);
+        let calendar_too = self
+            .store
+            .load::<Vec<crate::connect::CalendarLink>>(crate::connect::CALENDAR_LINKS)
+            .iter()
+            .any(|l| matches!(crate::oauthlink::parse_calendar_key(&l.url), Some((crate::oauthlink::Provider::Google, _))));
+        if calendar_too && g.client_id == crate::oauthlink::GOOGLE_CLIENT_ID {
+            return "YouTube is disconnected and its sign-in is gone from the vault. Google's permission stays, because your Google Calendar uses the same sign-in; disconnect that too on the Accounts page to end both.".into();
+        }
+        let token = g.refresh_token.clone();
+        std::thread::spawn(move || {
+            crate::heard!(crate::oauthlink::revoke_google(&Https, &token));
+        });
+        "YouTube is disconnected, its sign-in is gone from the vault, and Google's permission is being taken back too.".into()
+    }
+
     /// "Connect my YouTube": the Connect button, said.
     pub(crate) fn connect_youtube(&mut self) -> String {
         match crate::oauthlink::google_secret() {
@@ -870,6 +902,7 @@ impl Daemon<'_> {
             connected: yt,
             button: crate::oauthlink::google_secret().is_some().then(|| ("google".to_string(), if yt { "Connect again".to_string() } else { "Connect YouTube".to_string() })),
             inner: String::new(),
+            disconnect: has(VAULT_YOUTUBE_OAUTH).then(|| "youtube-disconnect".to_string()),
             note: if crate::oauthlink::google_secret().is_some() {
                 "Your channel's numbers and retention, through your Google sign-in.".into()
             } else {
@@ -884,6 +917,7 @@ impl Daemon<'_> {
             button: Some(("bluesky-handle".into(), if handle.is_empty() { "Connect Bluesky".into() } else { "Change".into() })),
             inner: format!("<label>Your handle <input name=handle value='{}' size=22 placeholder='you.bsky.social' required></label>", crate::hub::esc(&handle)),
             note: "Your public numbers need only your handle.".into(),
+            disconnect: None,
         });
         out.push(page::Service {
             name: "Instagram, TikTok, X, Facebook, LinkedIn, Reddit".into(),
@@ -891,6 +925,7 @@ impl Daemon<'_> {
             connected: false,
             button: Some(("browser-signin-all".into(), "Sign in to your accounts".into())),
             inner: String::new(),
+            disconnect: None,
             note: "One window opens with a tab for each site: sign in on the ones you use, skip the rest, close it. \
                    Or just say \"sign me into my socials\"."
                 .into(),
@@ -1079,6 +1114,7 @@ impl Daemon<'_> {
                 }
                 self.social_google(&id, &secret, t)
             }
+            "youtube-disconnect" => self.youtube_disconnect(t),
             "tiktok-start" => self.social_tiktok_start(&field("key"), &field("secret"), &field("redirect"), t),
             "tiktok-finish" => self.social_tiktok_finish(&field("address"), t),
             "accounts" => {

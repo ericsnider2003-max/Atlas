@@ -391,6 +391,12 @@ pub fn google_exchange(net: &dyn Net, s: &GoogleSignIn, code: &str, redirect: &s
 /// A fresh access token from the refresh token. `invalid_grant` is the
 /// seven-day lapse (or access taken away), said as that.
 pub fn google_access(net: &dyn Net, s: &GoogleSignIn) -> Result<String, String> {
+    // Kept while it has five minutes left, one fetch at a time (N5).
+    let key = format!("youtube {} {}", s.client_id, s.refresh_token);
+    crate::connect::access_once(&key, crate::store::now(), || fetch_google_access(net, s))
+}
+
+fn fetch_google_access(net: &dyn Net, s: &GoogleSignIn) -> Result<(String, u64), String> {
     let form = format!(
         "grant_type=refresh_token&refresh_token={}&client_id={}&client_secret={}",
         enc(&s.refresh_token),
@@ -399,10 +405,11 @@ pub fn google_access(net: &dyn Net, s: &GoogleSignIn) -> Result<String, String> 
     );
     let r = net.post_form("oauth2.googleapis.com", "/token", &form)?;
     if r.body.contains("invalid_grant") {
-        return Err("Google no longer accepts the YouTube sign-in -- it lapses after seven days while the Google app is in Testing, or access was removed. Connect YouTube again on the Social page.".into());
+        return Err("Google no longer accepts Atlas's sign-in for YouTube -- it lapses after seven days while the Google app is in Testing, or access was removed. Connect YouTube again on the Social page.".into());
     }
     let v = json_of(r, "Google sign-in")?;
-    v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Google gave no access token".into())
+    let token = v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Google gave no access token".to_string())?;
+    Ok((token, v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(3600)))
 }
 
 // ---------------------------------------------------------------- Meta
@@ -778,7 +785,7 @@ pub fn tiktok_access(net: &dyn Net, s: &TikTokSignIn) -> Result<(String, String)
     );
     let r = net.post_form(TIKTOK, "/v2/oauth/token/", &form)?;
     if r.body.contains("invalid_grant") {
-        return Err("TikTok no longer accepts the sign-in (a year has passed, or access was removed). Sign in again from the Social page.".into());
+        return Err("TikTok no longer accepts Atlas's sign-in (a year has passed, or access was removed). Sign in again from the Social page.".into());
     }
     tiktok_tokens(&json_of(r, "TikTok sign-in")?)
 }

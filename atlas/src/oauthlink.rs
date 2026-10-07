@@ -274,7 +274,15 @@ pub const NO_GOOGLE_SECRET: &str = "This copy of Atlas was built without Google'
 from it. Connect the calendar by its private link instead.";
 
 /// A fresh access token for reading calendars.
+///
+/// Kept while it has more than five minutes left, and fetched by one thread
+/// at a time (`connect::access_once`, N5).
 fn calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Result<String, String> {
+    let key = format!("calendar {} {refresh_token}", p.key());
+    crate::connect::access_once(&key, crate::store::now(), || fetch_calendar_access(net, p, refresh_token))
+}
+
+fn fetch_calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Result<(String, u64), String> {
     let form = match p {
         Provider::Google => format!(
             "grant_type=refresh_token&refresh_token={}&client_id={}&client_secret={}",
@@ -295,8 +303,29 @@ fn calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Result<St
     if let Some(newer) = v.get("refresh_token").and_then(|t| t.as_str()) {
         crate::msoauth::rotated(refresh_token, newer);
     }
-    v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| format!("{} gave no access token", p.name()))
+    let token = v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| format!("{} gave no access token", p.name()))?;
+    Ok((token, v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(3600)))
 }
+
+/// Take back a Google sign-in at Google itself, not only out of the vault:
+/// Google's revocation endpoint, which ends the refresh token and the access
+/// granted with it. Disconnecting should mean disconnected (N5).
+///
+/// Google ends the whole grant -- every scope this app was given on that
+/// Google account -- so a caller only does this when nothing else Atlas
+/// keeps rides the same grant (`connecting`, the YouTube sign-in).
+pub fn revoke_google(net: &dyn Net, refresh_token: &str) -> Result<(), String> {
+    let r = net.post_form("oauth2.googleapis.com", "/revoke", &format!("token={}", enc(refresh_token)))?;
+    // 400 invalid_token: already gone, which is what was wanted.
+    if (200..300).contains(&r.status) || r.body.contains("invalid_token") {
+        return Ok(());
+    }
+    Err(format!("Google answered {}", r.status))
+}
+
+/// Where you take back Microsoft's permission yourself: Microsoft offers an
+/// app like Atlas (a public client) no way to end its own grant.
+pub const MICROSOFT_PERMISSIONS: &str = "https://account.live.com/consent/Manage";
 
 // ------------------------------------------------------------ calendars
 
