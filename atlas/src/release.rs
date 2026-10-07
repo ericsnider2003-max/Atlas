@@ -93,6 +93,13 @@ const fn hex_value(c: u8) -> u8 {
 /// Where the release key is kept in your vault.
 pub const RELEASE_KEY_NAME: &str = "atlas-release-key";
 
+/// Said when the release key is in the old vault set aside by
+/// `vault::move_to_sign_in`: never make another (every copy handed out
+/// trusts this one), bring that one across.
+pub const IN_THE_OLD_VAULT: &str = "Your release key is in your old vault, which is set aside and still locked. Type that \
+     vault's passphrase or recovery key under \"Your old vault\" on the Accounts page and it comes across; never make a \
+     second key, because every copy you've handed out trusts this one.";
+
 /// The two public halves, as the lines `release-keys.txt` takes. Kept (in
 /// the store) when the key is made, so it can be shown again without the
 /// vault: it's public by design.
@@ -111,6 +118,9 @@ pub struct MadeKey {
 /// handed out trusts the first, and a second would make them refuse your
 /// updates. The caller saves the vault.
 pub fn make_release_key(vault: &mut crate::vault::Vault, now: u64) -> Result<MadeKey, String> {
+    if vault.set_aside.iter().any(|n| n == RELEASE_KEY_NAME) {
+        return Err(IN_THE_OLD_VAULT.into());
+    }
     if vault.list().iter().any(|(n, _)| *n == RELEASE_KEY_NAME) {
         return Err("There's already a release key in your vault. A second one would make every copy of \
                     Atlas you've handed out refuse your updates. If the key is lost or stolen, the \
@@ -1178,7 +1188,9 @@ pub fn sign_build(
     now: u64,
     trusted: &[u8; 32],
 ) -> Result<SignedBuild, String> {
-    let seed = vault.get(RELEASE_KEY_NAME, now).map_err(|_| "There's no release key in your vault.".to_string())?;
+    let seed = vault.get(RELEASE_KEY_NAME, now).map_err(|_| {
+        if vault.set_aside.iter().any(|n| n == RELEASE_KEY_NAME) { IN_THE_OLD_VAULT.to_string() } else { "There's no release key in your vault.".to_string() }
+    })?;
     let seed = seed_from_hex(&seed).ok_or("The release key in your vault is damaged.")?;
     let key = signing_key_from_seed(&seed);
     if anchor_of(&key) != *trusted {

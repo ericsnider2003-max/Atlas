@@ -3991,6 +3991,8 @@ pub struct VaultView {
     pub opens_on_login: bool,
     /// Made before that, with a passphrase and no sign-in copy yet.
     pub needs_its_passphrase_once: bool,
+    /// What's in the old vault set aside by `vault::move_to_sign_in`, by name.
+    pub set_aside: Vec<String>,
     pub has_passphrase: bool,
     pub has_recovery_key: bool,
     pub handed_over: bool,
@@ -4051,15 +4053,22 @@ pub fn vault_section(v: &VaultView) -> String {
              <form method=post action=/hub/vault><input type=hidden name=what value=unlock>{nonce}\
              <label for=vault-once>Passphrase or recovery key</label>\
              <input id=vault-once name=old type=password autocomplete=current-password required>\
-             <button class=primary>Unlock it this once</button></form>\
-             <details><summary>I don't remember either</summary>\
-             <p>Start a new vault that opens with your Windows sign-in and needs no passphrase. The old one is \
-             set aside, not deleted. What was in it (sign-ins and keys) comes back by pressing Connect again.</p>\
-             <form method=post action=/hub/vault><input type=hidden name=what value=fresh>{nonce}\
-             <button>Start a new vault</button></form></details>"
+             <button class=primary>Unlock it this once</button></form>"
         ));
         out.push_str("</section>");
         return out;
+    }
+    if v.opens_on_login && !v.set_aside.is_empty() {
+        out.push_str(&format!(
+            "<h3>Your old vault</h3>\
+             <p>Set aside as it was, still locked, and never deleted. It holds: {}. Nothing you connect needs it. \
+             If you find its passphrase or recovery key, type it here and what's in it comes across for good.</p>\
+             <form method=post action=/hub/vault autocomplete=off><input type=hidden name=what value=bring>{nonce}\
+             <label for=vault-old>Old passphrase or recovery key</label>\
+             <input id=vault-old name=old type=password autocomplete=current-password required>\
+             <button>Bring it across</button></form>",
+            esc(&v.set_aside.join(", "))
+        ));
     }
     if v.opens_on_login {
         out.push_str("<p>Your vault opens with your Windows sign-in, so there's nothing to type or remember. \

@@ -107,6 +107,16 @@ impl Daemon<'_> {
     /// the recovery key waiting to be shown, so it is shown this once.
     fn vault_section_live(&mut self) -> String {
         let nonce = self.shown_once.mark();
+        // A vault from before it opened on your sign-in is moved on the
+        // moment this page is looked at, not left as a question (6 Oct 2026).
+        let now = crate::store::now();
+        if !self.vault.sealed_to_this_login()
+            && !self.vault.is_brand_new()
+            && self.tools_cfg().vault.open_on_this_login
+            && crate::loginseal::available()
+        {
+            crate::heard!(self.move_vault_to_sign_in(now));
+        }
         let opens_on_login = self.vault.sealed_to_this_login();
         let v = hub::VaultView {
             opens_on_login,
@@ -114,6 +124,7 @@ impl Daemon<'_> {
                 && !self.vault.is_brand_new()
                 && self.tools_cfg().vault.open_on_this_login
                 && crate::loginseal::available(),
+            set_aside: self.vault.set_aside.clone(),
             has_passphrase: self.vault.has_a_passphrase(),
             has_recovery_key: self.vault.has_a_recovery_key(),
             handed_over: self.handed_over_now(),
@@ -220,35 +231,35 @@ impl Daemon<'_> {
                             format!("Unlocked for now.{sealed}")
                         }
                     }
-                    Err(_) => "That isn't this vault's passphrase or recovery key. If you don't remember either, \"I don't remember either\" below starts a new one.".to_string(),
+                    Err(_) => "That isn't this vault's passphrase or recovery key.".to_string(),
                 }
             }
-            "fresh" => {
+            "bring" => {
                 if handed {
                     "Not while this machine is handed over.".to_string()
-                } else if self.vault.is_brand_new() || self.vault.sealed_to_this_login() {
+                } else if let Err(e) = self.vault_ready(now) {
+                    e
+                } else {
+                    match crate::vault::bring_in_set_aside(&self.vault_home, &mut self.vault, old.reveal(), &cfg, now) {
+                        Ok(names) if names.is_empty() => "Opened. There was nothing in it that could come across.".to_string(),
+                        Ok(names) => {
+                            self.log.info(&format!("brought {} across from the old vault", names.len()));
+                            let left = if self.vault.set_aside.is_empty() { "" } else { " Authenticator and recovery codes stay in the old one: they never open on a sign-in alone." };
+                            format!("Brought across: {}. Your vault holds them now, and opens with your Windows sign-in.{left}", names.join(", "))
+                        }
+                        Err(why) => why,
+                    }
+                }
+            }
+            // The button this replaced is gone (the page moves an old vault on
+            // by itself now); a form from an old page still does the same.
+            "fresh" => {
+                if self.vault.is_brand_new() || self.vault.sealed_to_this_login() {
                     "This vault already opens with your Windows sign-in.".to_string()
                 } else {
-                    // Set aside, not deleted: if the passphrase comes back to
-                    // you, what was in it is still there.
-                    let aside = format!("{}-set-aside-{now}", crate::vault::Vault::FILE);
-                    match self.vault_home.save(&aside, &self.vault) {
-                        Err(e) => format!("I couldn't set the old vault aside ({e}), so nothing changed."),
-                        Ok(()) => {
-                            let before = std::mem::take(&mut self.vault);
-                            match self.vault_ready(now) {
-                                Ok(()) => {
-                                    self.log.info(&format!("new vault started on the Windows sign-in; the old one kept as {aside}"));
-                                    "A new vault is ready, and it opens with your Windows sign-in. The old one is set aside, \
-                                     not deleted. Press Connect on the Social and Accounts pages to bring your accounts back."
-                                        .to_string()
-                                }
-                                Err(e) => {
-                                    self.vault = before;
-                                    format!("I couldn't start a new one ({e}), so the old vault is still in place.")
-                                }
-                            }
-                        }
+                    match self.move_vault_to_sign_in(now) {
+                        Ok(()) => "Your vault now opens with your Windows sign-in. The old one is set aside, still locked.".to_string(),
+                        Err(e) => e,
                     }
                 }
             }
