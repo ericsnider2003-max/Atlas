@@ -296,7 +296,14 @@ pub(super) fn check_draft_in_sandbox(
             }
         }
     }
-    run_ladder_in(&sandbox.root, lang, true)
+    let check = run_ladder_in(&sandbox.root, lang, true);
+    // What the formatter and the toolchain's own fixes changed is the code
+    // now: handed over as it passed, not as the model wrote it.
+    let main = lang.draft_files(code).into_iter().find(|(_, c)| c == code).map(|(p, _)| p);
+    match main.and_then(|p| std::fs::read_to_string(sandbox.root.join(p)).ok()) {
+        Some(now) if !now.trim().is_empty() && now != code => crate::build_it::Check::Rewrote(now, Box::new(check)),
+        _ => check,
+    }
 }
 
 /// A Python draft's packages into `dir/.deps`, with the files that point the
@@ -360,7 +367,22 @@ pub(super) fn run_ladder_in(dir: &std::path::Path, lang: crate::craft::Lang, rew
         // Generous against the gate's rough estimate; a compile that runs
         // far past it is stuck, not slow.
         let limit = (gate.seconds as u64) * 4 + 30;
-        let (mut passed, output) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 4000);
+        let (mut passed, mut output) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 4000);
+        // The toolchain's own fixes first (`craft::autofix_for`), in a copy
+        // only: a check of a folder of yours never rewrites it. Run again
+        // after; what's left is what the next round works on.
+        if !passed && rewrite_allowed {
+            if let Some(fix) = crate::craft::autofix_for(&gate) {
+                if let Some(done) = toolchain_fix(dir, &fix, limit) {
+                    let (again, out) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 4000);
+                    if again {
+                        notes.push(format!("the toolchain fixed what it found itself ({done})"));
+                    }
+                    passed = again;
+                    output = out;
+                }
+            }
+        }
         // pytest with nothing to collect exits 5: in a sandbox the smoke test
         // is always there, so only a folder of yours can have none.
         if !passed && !rewrite_allowed && gate.tells == Tells::Behaviour && output.contains("no tests ran") {
@@ -382,5 +404,60 @@ pub(super) fn run_ladder_in(dir: &std::path::Path, lang: crate::craft::Lang, rew
         }
         Next::Fix { output, .. } => crate::build_it::Check::Failed(output),
         Next::CannotCheck { program, .. } => crate::build_it::Check::CannotCheck(program),
+    }
+}
+
+/// Run a toolchain's own fixer (`craft::autofix_for`) in `dir`, resolving
+/// its program as the gates do. `Some(command)` when it ran; `None` when its
+/// program isn't here or wouldn't start -- then nothing was changed.
+fn toolchain_fix(dir: &std::path::Path, fix: &str, limit: u64) -> Option<String> {
+    let mut parts = fix.split_whitespace();
+    let first = parts.next()?;
+    let args: Vec<String> = parts.map(str::to_string).collect();
+    let mut program = crate::craft::program_in(dir, first);
+    if let Some(p) = crate::codetools::llvm_program(&program, &crate::roots::install_root()) {
+        program = p.to_string_lossy().into_owned();
+    }
+    let (_ok, out) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 2000);
+    let low = out.to_lowercase();
+    if low.starts_with("couldn't run") || low.starts_with("could not start") {
+        return None;
+    }
+    Some(fix.split_whitespace().take(2).collect::<Vec<_>>().join(" "))
+}
+
+#[cfg(test)]
+mod the_toolchain_fixes_first {
+    use crate::build_it::Check;
+    use crate::craft::Lang;
+
+    fn have(program: &str, args: &[&str]) -> bool {
+        std::process::Command::new(program).args(args).output().is_ok_and(|o| o.status.success())
+    }
+
+    #[test]
+    fn what_clippy_can_fix_itself_is_fixed_and_handed_over_fixed() {
+        // A real toolchain run: skipped, saying so, where there's no cargo.
+        if !have("cargo", &["--version"]) || !have("cargo", &["clippy", "--version"]) {
+            eprintln!("no cargo/clippy here: nothing to run");
+            return;
+        }
+        // `len() == 0` is clippy's `len_zero`, whose suggestion is marked
+        // machine-applicable: the toolchain knows the exact change.
+        let draft = "pub fn empty(v: &[u8]) -> bool {\n    v.len() == 0\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn it() {\n        assert!(super::empty(&[]));\n    }\n}\n";
+        let base = std::env::temp_dir().join(format!("atlas-autofix-{}", std::process::id()));
+        let mut sb = crate::sandbox::Sandbox::create(&base, "autofix").unwrap();
+        let mut code = draft.to_string();
+        let check = super::check_draft_in_sandbox(&mut sb, Lang::Rust, draft).settle(&mut code);
+        let _ = std::fs::remove_dir_all(&base);
+        match check {
+            Check::Passed(notes) => {
+                assert!(code.contains("is_empty()"), "the fix wasn't carried into the code handed over:\n{code}");
+                assert!(notes.iter().any(|n| n.contains("toolchain fixed")), "notes: {}", notes.join(" | "));
+            }
+            Check::Failed(out) => panic!("it failed after the fixes: {out}"),
+            Check::CannotCheck(p) => panic!("{p} isn't here"),
+            Check::Rewrote(..) => panic!("settle leaves no rewrite behind"),
+        }
     }
 }

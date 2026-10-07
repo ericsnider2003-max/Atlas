@@ -460,7 +460,11 @@ impl<'a> Daemon<'a> {
             } else {
                 run_ladder_in(&folder, lang, false)
             };
+            // The agent's file is the one handed over; a rewrite made in the
+            // checking copy isn't carried back into it.
+            let check = check.settle(&mut String::new());
             let verdict = match &check {
+                crate::build_it::Check::Rewrote(..) => unreachable!("settled above"),
                 crate::build_it::Check::Passed(_) => "It passes my checks here.".to_string(),
                 crate::build_it::Check::Failed(out) => format!("It doesn't pass my checks yet: {}", opening_of(out)),
                 crate::build_it::Check::CannotCheck(missing) => format!("I couldn't check it: {missing} isn't installed on this computer."),
@@ -500,6 +504,8 @@ impl<'a> Daemon<'a> {
             let ran = crate::coding_agent::run(agent, &program, &root, &task, 30 * 60);
             let check = run_ladder_in(&root, lang, false);
             let verdict = match &check {
+                // A folder of yours is checked, never rewritten.
+                crate::build_it::Check::Rewrote(..) => unreachable!("run_ladder_in(.., false) doesn't rewrite"),
                 crate::build_it::Check::Passed(notes) if notes.iter().any(|n| n.contains("no tests")) => {
                     format!("{project_name} still builds, though it has no tests for me to run.")
                 }
@@ -2138,5 +2144,56 @@ mod naming_a_project {
         // 2 Oct 2026: this named a project "my".
         assert_eq!(name_after_a_lead("add a feature to my app in my project"), None);
         assert_eq!(name_after_a_lead("fix the bug within the project"), None);
+    }
+}
+
+/// "What broke the_brief_is_said_once?": the test named, when it is one.
+fn what_broke_test(said: &str) -> Option<String> {
+    let t = said.trim().to_lowercase();
+    let rest = ["what broke ", "find what broke ", "which change broke ", "what change broke ", "find the change that broke "]
+        .iter()
+        .find_map(|l| t.strip_prefix(l))?;
+    let name = rest.trim().trim_end_matches(['?', '.', '!']).trim_start_matches("the test ").trim();
+    // A test's name: one word of letters, digits, underscores and `::`.
+    let ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':');
+    ok.then(|| name.to_string())
+}
+
+impl<'a> Daemon<'a> {
+    /// "What broke <test>": the change that made it start failing, found by
+    /// `bisect` in Atlas's own source, on the crew. No model.
+    pub(super) fn what_broke_asked(&mut self, said: &str, t: u64) -> Option<String> {
+        let test = what_broke_test(said)?;
+        if self.handover().stance.handed_over() {
+            return None;
+        }
+        let scfg = self.tools_cfg().self_work.clone();
+        let root = crate::selfwork::source_root(&scfg).unwrap_or_default();
+        if !crate::selfwork::is_a_source_checkout(&root) {
+            return Some("That needs my source code on this computer, with its history -- and there isn't a copy here. If there is, say where in Settings (Self-improvement -> where my source is).".into());
+        }
+        let mut cmd: Vec<String> = scfg.test_command.split_whitespace().map(String::from).collect();
+        cmd.push(test.clone());
+        let (root2, test2) = (root.clone(), test.clone());
+        let work: crate::crew::Work = Box::new(move |_c| {
+            let o = crate::bisect::what_broke(&root2, &cmd, 64, crate::selfwork::PROOF_BUDGET_SECS)?;
+            Ok(crate::bisect::told(&root2, &test2, &o))
+        });
+        Some(if self.hand_off("what-broke", t, work, Some(test.clone()), super::SpeakPolicy::Always) {
+            format!("Looking for the change that broke {test} -- I run it at older versions of me until it passes, then narrow it down. The first build can take a while; I'll tell you what I find.")
+        } else {
+            "I'm already looking for what broke something -- I'll tell you when that's done.".into()
+        })
+    }
+}
+
+#[cfg(test)]
+mod asking_what_broke {
+    #[test]
+    fn the_test_is_read_from_the_question() {
+        assert_eq!(super::what_broke_test("What broke the_brief_is_said_once?").as_deref(), Some("the_brief_is_said_once"));
+        assert_eq!(super::what_broke_test("find what broke the test hunting::brief").as_deref(), Some("hunting::brief"));
+        assert_eq!(super::what_broke_test("what broke my heart"), None);
+        assert_eq!(super::what_broke_test("what broke"), None);
     }
 }

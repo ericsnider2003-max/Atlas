@@ -23,12 +23,38 @@ impl<'a> Daemon<'a> {
         if crate::growth::asks_for_the_list(said) {
             return Some(wanted.spoken());
         }
+        if crate::growth::asks_to_set_up(said) {
+            let Some(w) = crate::growth::latest_approved(&wanted) else {
+                return Some("There's no approved ability to set up. Say \"approve that ability\" first.".into());
+            };
+            let scfg = self.tools_cfg().self_work.clone();
+            let root = crate::selfwork::source_root(&scfg).unwrap_or_default();
+            if !crate::selfwork::is_a_source_checkout(&root) {
+                return Some("That needs my source code on this computer, and there isn't a copy here.".into());
+            }
+            let (y, m, d) = crate::hubpages::ymd((t / 86_400) as i64);
+            const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            let ask = crate::scaffold::Ask {
+                id: crate::scaffold::name_for(&w.what),
+                what: w.what.clone(),
+                day: format!("{d} {} {y}", MONTHS[(m as usize).saturating_sub(1).min(11)]),
+            };
+            return Some(match crate::scaffold::on_a_branch(&root, &ask) {
+                Ok(branch) => format!(
+                    "Set up \"{}\" on a branch of its own, {branch} -- not installed, not pushed, main untouched. {}",
+                    w.what,
+                    crate::scaffold::left_to_do(&ask)
+                ),
+                Err(why) => format!("I couldn't set it up: {why}."),
+            });
+        }
         if let Some(state) = crate::growth::answer(said) {
             if let Some(what) = wanted.decide_latest(state) {
                 let _ = self.store.save(crate::growth::STORE, &wanted);
                 return Some(match state {
                     crate::growth::State::Approved => format!(
-                        "Approved: \"{what}\". It's on the build list now -- the next build picks it up, and I'll tell you when it's in."
+                        "Approved: \"{what}\". It's on the build list now -- the next build picks it up, and I'll tell you when it's in. \
+                         Say \"set that ability up\" and I'll do its bookkeeping in my source now, on a branch of its own."
                     ),
                     _ => format!("Left it: \"{what}\" won't be built."),
                 });
@@ -49,7 +75,7 @@ impl<'a> Daemon<'a> {
         wanted.ask(&what, t);
         let _ = self.store.save(crate::growth::STORE, &wanted);
         self.log.info(&format!("ability asked for: {what}"));
-        Some(crate::growth::noted(&what))
+        Some(crate::growth::noted_beside(&what, &crate::growth::already_close(&what, &crate::capability::all())))
     }
 
     /// What "this" refers to right now.

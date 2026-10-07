@@ -389,6 +389,23 @@ pub enum Check {
     Failed(String),
     /// A deciding check's program isn't on this computer (its name).
     CannotCheck(String),
+    /// The toolchain fixed some of it itself (`craft::autofix_for`): the
+    /// code as it is now, and what the checks said of it after. The code
+    /// handed over is the fixed one, not the draft as written (5 Oct 2026).
+    Rewrote(String, Box<Check>),
+}
+
+impl Check {
+    /// The verdict, with any rewrite the toolchain made taken into `code`.
+    pub fn settle(self, code: &mut String) -> Check {
+        match self {
+            Check::Rewrote(fixed, then) => {
+                *code = fixed;
+                then.settle(code)
+            }
+            other => other,
+        }
+    }
 }
 
 /// The whole generate → check → fix loop, with the checking injected so the
@@ -419,7 +436,8 @@ pub fn build_loop(
     // in circles, not closing in (2 Oct 2026).
     let max_rounds = max_rounds.min(MOST_ROUNDS);
     loop {
-        match check(&code) {
+        match check(&code).settle(&mut code) {
+            Check::Rewrote(..) => unreachable!("settle takes every rewrite into the code"),
             Check::Passed(notes) => return Outcome::Built { code, rounds, notes },
             Check::CannotCheck(missing) => return Outcome::Unchecked { code, rounds, missing },
             Check::Failed(output) => {
@@ -1344,7 +1362,8 @@ pub fn keep_building(
                 code = next;
             }
             let changed = if code == before { String::new() } else { "a new draft".to_string() };
-            match check(&code) {
+            match check(&code).settle(&mut code) {
+                Check::Rewrote(..) => unreachable!("settle takes every rewrite into the code"),
                 Check::Passed(n) => {
                     notes = n;
                     Attempt { n: 0, passed: vec![ladder.clone()], failed: vec![], changed }
@@ -1420,8 +1439,9 @@ pub fn ask_for_help(
     };
     match crate::handoff::read_answer(&reply) {
         crate::handoff::Usable::Apply(blocks) => {
-            let code = blocks[0].code.clone();
-            match check(&code) {
+            let mut code = blocks[0].code.clone();
+            match check(&code).settle(&mut code) {
+                Check::Rewrote(..) => unreachable!("settle takes every rewrite into the code"),
                 Check::Passed(notes) => (
                     Outcome::Built { code, rounds: rounds + 1, notes },
                     format!("\"{}\" is done — the bigger model found it, and it checks out here.", s.description),
