@@ -59,6 +59,7 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
         out.push_str(&step_for(d, &a));
     }
     out.push_str(&calendar_form());
+    out.push_str(&muse_block(d));
     out.push_str(&connected_list(d));
     out.push_str(
         "<p class=note>YouTube, Bluesky and the other networks connect on the <a href='/hub/social'>Social \
@@ -237,6 +238,18 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
             None => back("That button isn't wired to anything, so nothing changed."),
         },
         "calendar" => add_calendar(d, &field(fields, "url")),
+        "muse-page" => back(&match d.plat.open_path(crate::muse::KEY_PAGE) {
+            Ok(()) => "Meta's key page is open in your browser: API keys, then Create API key. Paste it here.".to_string(),
+            Err(e) => format!("I couldn't open it ({e}); it's {}.", crate::muse::KEY_PAGE),
+        }),
+        "muse-key" => back(&connect_muse(d, &field(fields, "key"), &field(fields, "cap"))),
+        "muse-cap" => back(&set_muse_cap(d, &field(fields, "cap"))),
+        "muse-disconnect" => {
+            d.vault.secrets.retain(|s| s.name != crate::muse::VAULT_MUSE);
+            crate::kept!(d.vault.save(&d.vault_home));
+            crate::muse::set_key(None);
+            back("Muse is disconnected and its key is gone from the vault. You can also delete the key on Meta's page.")
+        }
         "disconnect" => {
             let id = field(fields, "id");
             match field(fields, "kind").as_str() {
@@ -384,6 +397,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
     LAST.store(now, std::sync::atomic::Ordering::Relaxed);
     keep_signed_in(d, now);
     keep_rotated(d, now);
+    keep_muse(d, now);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     if links.is_empty() {
         return;
@@ -491,6 +505,8 @@ pub enum Connect {
     Youtube,
     Microsoft,
     Socials,
+    /// Muse Spark: Meta's page for a key, which only you can make.
+    Muse,
 }
 
 /// Read a request to connect an account, said or typed. Only when the
@@ -503,6 +519,9 @@ pub fn connect_asked(said: &str) -> Option<Connect> {
         .any(|p| l.starts_with(p));
     if !asks {
         return None;
+    }
+    if l.contains("muse") {
+        return Some(Connect::Muse);
     }
     if l.contains("youtube") && !l.contains("youtube studio") {
         return Some(Connect::Youtube);
@@ -709,6 +728,143 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
         if let Err(e) = d.vault.save(&crate::roots::install_state()) {
             // Kept in the open vault already; the next vault save writes it.
             d.log.warn(&format!("a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"));
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Muse Spark
+
+/// Your monthly limit for Muse, when you've set one (else the setting).
+const MUSE_CAP: &str = "muse_cap";
+
+/// What came of checking a new key, waiting for the tick.
+static MUSE_CHECK: Mutex<Option<Result<(), String>>> = Mutex::new(None);
+
+fn muse_cap(d: &mut Daemon) -> f64 {
+    let kept: Option<f64> = d.store.load(MUSE_CAP);
+    kept.unwrap_or(d.tools_cfg().models.muse.monthly_cap_usd)
+}
+
+/// The Muse Spark block on the Accounts page (6 Oct 2026: people on the
+/// wait list asked for it). Optional, billed to the person's own Meta
+/// account, with a monthly limit Atlas keeps because Meta keeps none.
+fn muse_block(d: &mut Daemon) -> String {
+    let now = crate::store::now();
+    let cap = muse_cap(d);
+    let mut out = String::from("<h3 id=muse>Muse Spark (Meta's AI) -- optional</h3>");
+    if crate::muse::has_key() {
+        out.push_str(&format!(
+            "<p class=what>Connected. Muse does the hard work -- drafts, research write-ups, \"think hard about\" -- \
+             and whatever you ask it directly, like \"ask Muse what to cook tonight\". Talking stays on the model here. Spent: {}.</p>",
+            esc(&crate::muse::spent_sentence(now))
+        ));
+        out.push_str(&format!(
+            "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=muse-cap>\
+             <label>Monthly limit, $ <input name=cap type=number min=0 step=0.5 value='{cap:.2}' size=6></label><button>Set</button></form>\
+             <form method=post action='/hub/connect' class=inline><input type=hidden name=what value=muse-disconnect><button>Disconnect Muse</button></form>"
+        ));
+        return out;
+    }
+    out.push_str(
+        "<p class=what>Meta's model, for the hard work. Meta has no free version for apps and no spending \
+         limit, so it's billed to your own Meta account, and Atlas stops at the monthly limit you set here. \
+         Press the first button, make a key on Meta's page (API keys, Create API key), and paste it below. \
+         Or just say \"connect Muse\".</p>\
+         <form method=post action='/hub/connect' class=inline><input type=hidden name=what value=muse-page>\
+         <button>Open Meta's key page</button></form>",
+    );
+    out.push_str(&format!(
+        "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=muse-key>\
+         <label>Key <input name=key type=password autocomplete=off required size=28></label> \
+         <label>Monthly limit, $ <input name=cap type=number min=0 step=0.5 value='{cap:.2}' size=6></label>\
+         <button class=primary>Connect Muse</button></form>"
+    ));
+    out
+}
+
+fn parse_cap(typed: &str) -> Option<f64> {
+    let t = typed.trim().trim_start_matches('$');
+    if t.is_empty() {
+        return None;
+    }
+    t.parse::<f64>().ok().filter(|c| c.is_finite() && *c >= 0.0 && *c <= 10_000.0)
+}
+
+fn set_muse_cap(d: &mut Daemon, typed: &str) -> String {
+    let Some(cap) = parse_cap(typed) else {
+        return "That isn't an amount -- a number of dollars, like 5 or 12.50.".into();
+    };
+    let _ = d.store.save(MUSE_CAP, &Some(cap));
+    let now = crate::store::now();
+    let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
+    crate::muse::restore(&crate::muse::ledger(now).max_of(&l), cap, now);
+    if cap == 0.0 {
+        "No monthly limit for Muse now. Meta has none either, so everything it's asked is billed.".into()
+    } else {
+        format!("Muse's monthly limit is ${cap:.2}.")
+    }
+}
+
+/// Keep the key, then check it with Meta on its own thread (asking for the
+/// list of models costs nothing) and say what came of it on the page.
+fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
+    let key = key.trim().to_string();
+    if key.len() < 16 || key.contains(char::is_whitespace) {
+        return "That doesn't look like a whole key -- copy it from Meta's page with its Copy button.".into();
+    }
+    let now = crate::store::now();
+    if let Err(e) = d.vault_ready(now) {
+        return format!("Nothing was kept: {e}.");
+    }
+    if let Err(e) = d.vault.put(crate::muse::VAULT_MUSE, crate::vault::Kind::ApiKey, &key, now).and_then(|()| d.vault.save(&d.vault_home).map_err(|e| e.to_string())) {
+        return format!("I couldn't keep the key in the vault: {e}");
+    }
+    let cap = parse_cap(cap).unwrap_or_else(|| muse_cap(d));
+    let _ = d.store.save(MUSE_CAP, &Some(cap));
+    let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
+    crate::muse::restore(&l, cap, now);
+    crate::muse::set_key(Some(key.clone()));
+    std::thread::spawn(move || {
+        let r = crate::muse::check_key(&key);
+        if let Ok(mut c) = MUSE_CHECK.lock().or_else(crate::crash::unpoison) {
+            *c = Some(r);
+        }
+    });
+    let _ = d.store.save(SIGNIN_SAID, &"Checking the Muse key with Meta...".to_string());
+    format!("Kept the key; checking it with Meta now. Monthly limit: ${cap:.2}.")
+}
+
+/// The key into memory once the vault opens, a key check's result onto the
+/// page, and the month's spending onto disk.
+fn keep_muse(d: &mut Daemon, now: u64) {
+    if let Some(r) = MUSE_CHECK.lock().or_else(crate::crash::unpoison).ok().and_then(|mut c| c.take()) {
+        let said = match r {
+            Ok(()) => "Muse Spark is connected. It takes the hard work from now on; say \"ask Muse what to cook tonight\", or anything, to ask it directly.".to_string(),
+            Err(why) if why.starts_with("couldn't reach") => {
+                format!("Kept the Muse key, but I {why}, so it isn't checked yet. The first question to Muse will tell.")
+            }
+            Err(why) => {
+                d.vault.secrets.retain(|s| s.name != crate::muse::VAULT_MUSE);
+                crate::kept!(d.vault.save(&d.vault_home));
+                crate::muse::set_key(None);
+                format!("Meta didn't take that Muse key ({why}), so it isn't kept. Make a new one and paste it again.")
+            }
+        };
+        let _ = d.store.save(SIGNIN_SAID, &said);
+    }
+    let kept = d.vault.list().iter().any(|(n, _)| *n == crate::muse::VAULT_MUSE);
+    if kept && !crate::muse::has_key() && d.vault_ready(now).is_ok() {
+        let key = d.vault.get(crate::muse::VAULT_MUSE, now).ok();
+        let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
+        let cap = muse_cap(d);
+        crate::muse::restore(&l, cap, now);
+        crate::muse::set_key(key);
+    }
+    if crate::muse::has_key() {
+        let l = crate::muse::ledger(now);
+        let stored: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
+        if l != stored {
+            let _ = d.store.save(crate::muse::LEDGER, &l);
         }
     }
 }

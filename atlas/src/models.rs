@@ -182,6 +182,9 @@ pub struct ModelsConfig {
     /// this machine can't answer, or there isn't one, a free model online
     /// that needs no account (`freeonline`). `false`: nothing is sent.
     pub online_second: bool,
+    /// Muse Spark, for whoever connects their own Meta key (`muse`): the
+    /// model, the monthly limit Atlas keeps, Meta's prices and the effort.
+    pub muse: crate::muse::MuseConfig,
     /// The talking model sees pictures itself (Eric, 1 Oct 2026, item 79).
     /// When the talking model is a picture model (the shipped Qwen3-VL 4B)
     /// and its picture encoder (`mmproj-…`) is beside it, the server is
@@ -333,6 +336,7 @@ impl Default for ModelsConfig {
             deep_idle_secs: 300,
             deep_context: 8192,
             online_second: true,
+            muse: crate::muse::MuseConfig::default(),
             see_with_talking_model: true,
             coder: String::new(),
             coder_port: 0,
@@ -1587,7 +1591,12 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
         });
     let both = crate::brain::FallbackLlm::new(primary, secondary);
     let both = if own_second { both.secondary_is_your_own() } else { both };
-    Some(std::sync::Arc::new(both) as std::sync::Arc<dyn crate::brain::Llm>)
+    // Muse Spark first for the hard work while someone has connected it and
+    // it's under their monthly limit; otherwise exactly the above.
+    Some(std::sync::Arc::new(crate::muse::MuseFirst {
+        muse: std::sync::Arc::new(crate::muse::MuseSpark::new(tc.models.muse.clone())),
+        rest: std::sync::Arc::new(both),
+    }) as std::sync::Arc<dyn crate::brain::Llm>)
 }
 
 // ---------------------------------------------------------------------------

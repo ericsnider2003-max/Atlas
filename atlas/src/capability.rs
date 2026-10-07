@@ -308,7 +308,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "timebox", what: "stop before you have to ask what's taking so long", area: Thinking, state: Working, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["timebox"] },
         Capability { id: "chain", what: "do something that crosses several apps", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 19, runs: &[Needs::ActInApps], modules: &["chain"] },
         Capability { id: "person", what: "learn how you work", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["person"] },
-        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain", "freeonline"] },
+        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain", "freeonline", "muse", "contemplate"] },
 
         Capability { id: "selfwork", what: "change its own code and test it", area: Itself, state: Off, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["selfwork", "pipeline", "sandbox", "mend", "selfgrant"] },
         Capability { id: "plainchange", what: "explain a change it staged as behaviour, not code — what will now happen and what it no longer promises, read from the tests it adds and drops", area: Itself, state: Untested, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["plainchange"] },
@@ -1577,7 +1577,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // (Chat C, failures nobody was waiting for) = 482.
 // 5 Oct 2026: + `bisect` (Chat A, what broke a test) = 483.
 // 6 Oct 2026: + `scaffold` (Chat A, the bookkeeping for a new ability) = 484.
-pub const MODULES_IN_TREE: usize = 484;
+// 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
+// ("think hard about": several tries, the best of them) = 486.
+pub const MODULES_IN_TREE: usize = 486;
 
 /// Every module no capability claims, and why it is not one.
 ///

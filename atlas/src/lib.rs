@@ -139,6 +139,8 @@ pub mod applewx;
 pub mod webpush;
 pub mod onnxfix;
 pub mod freeonline;
+pub mod muse;
+pub mod contemplate;
 pub mod parakeet;
 pub mod kws;
 pub mod report;

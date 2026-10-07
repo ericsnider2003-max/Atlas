@@ -243,6 +243,11 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
         || atlas::growth::asks_to_set_up(phrase)
         || atlas::camwatch::asks(phrase).is_some()
         || atlas::callmute::asks(phrase).is_some()
+        // Connecting, Muse and thinking hard (5-6 Oct 2026), read before
+        // the parser in `answer_locally`.
+        || atlas::connecting::connect_asked(phrase).is_some()
+        || atlas::muse::asked_of_muse(phrase).is_some()
+        || atlas::contemplate::asked_to_think_hard(phrase).is_some()
     {
         return true;
     }

@@ -987,6 +987,64 @@ impl<'a> Daemon<'a> {
             },
             Connect::Youtube => self.connect_youtube(),
             Connect::Socials => self.open_social_signins(),
+            Connect::Muse => match self.plat.open_path(crate::muse::KEY_PAGE) {
+                Ok(()) => "I've opened Meta's page for Muse Spark keys. Make a key there (API keys, Create API key), \
+                           then paste it on the Accounts page under Muse Spark. Meta bills your own account for what \
+                           it uses, and I stop at the monthly limit you set there -- $5 to start."
+                    .into(),
+                Err(e) => format!("I couldn't open Meta's key page ({e}). It's {}: make a key under API keys, then paste it on the Accounts page under Muse Spark.", crate::muse::KEY_PAGE),
+            },
+        })
+    }
+
+    /// "ask Muse ...": one question for Muse Spark, answered in the
+    /// background and said when it comes.
+    pub(super) fn muse_help(&mut self, said: &str) -> Option<String> {
+        let q = crate::muse::asked_of_muse(said)?;
+        let now = crate::store::now();
+        if !crate::muse::has_key() {
+            return Some("Muse Spark isn't connected. Say \"connect Muse\" and I'll open Meta's page for a key -- it's billed to your own Meta account, with a monthly limit Atlas keeps.".into());
+        }
+        if crate::muse::over_cap(now) {
+            return Some(format!("Muse has reached this month's limit ({}). Raise it on the Accounts page, or I can answer with the model here.", crate::muse::spent_sentence(now)));
+        }
+        let muse = crate::muse::MuseSpark::new(self.tools_cfg().models.muse.clone());
+        let effort = muse.cfg.effort.clone();
+        let work: crew::Work = Box::new(move |_ctl| {
+            muse.ask(crate::contemplate::MUSE_SYSTEM, &q, 2_000, &effort).map(|r| r.text).map_err(|e| e.to_string())
+        });
+        Some(if self.hand_off("muse", now, work, None, SpeakPolicy::Always) {
+            "Asking Muse.".into()
+        } else {
+            "I've too much on to ask Muse right now. Ask again in a moment.".into()
+        })
+    }
+
+    /// "think hard about ...": Muse at its highest effort when it's
+    /// connected, otherwise several drafts on this machine and the best of
+    /// them (`contemplate`).
+    pub(super) fn think_hard_help(&mut self, said: &str) -> Option<String> {
+        let q = crate::contemplate::asked_to_think_hard(said)?;
+        let now = crate::store::now();
+        let (work, start): (crew::Work, &str) = if crate::muse::ready(now) {
+            let muse = crate::muse::MuseSpark::new(self.tools_cfg().models.muse.clone());
+            (
+                Box::new(move |_ctl| muse.ask(crate::contemplate::MUSE_SYSTEM, &q, 4_000, "high").map(|r| r.text).map_err(|e| e.to_string())),
+                "Thinking it through with Muse at its deepest. I'll tell you when it's done.",
+            )
+        } else {
+            let Some(llm) = self.background_llm() else {
+                return Some("Thinking hard takes a model, and there isn't one running here yet.".into());
+            };
+            (
+                Box::new(move |ctl| crate::contemplate::contemplate(llm.as_ref(), &q, &|| ctl.stopping())),
+                "Thinking it through: three tries at it, then the best of them. It takes a few minutes; I'll tell you when it's done.",
+            )
+        };
+        Some(if self.hand_off("think-hard", now, work, None, SpeakPolicy::Always) {
+            start.into()
+        } else {
+            "I've too much on to think that through right now. Ask again in a moment.".into()
         })
     }
 
