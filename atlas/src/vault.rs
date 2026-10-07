@@ -1554,7 +1554,7 @@ pub const SET_ASIDE: &str = "vault-set-aside";
 
 /// The names in the set-aside vault, readable without opening it (as
 /// `Vault::list` is). Empty when there isn't one.
-pub fn names_set_aside(state: &crate::store::Store) -> Vec<String> {
+fn names_set_aside(state: &crate::store::Store) -> Vec<String> {
     if !state.exists(SET_ASIDE) {
         return Vec::new();
     }
