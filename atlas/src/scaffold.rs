@@ -209,7 +209,11 @@ pub fn apply(root: &Path, changes: &[FileChange]) -> Result<(), String> {
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     let out = crate::tools::command("git")
-        .args(["-c", "user.name=Atlas", "-c", "user.email=atlas@localhost", "-c", "commit.gpgsign=false"])
+        // The worktree holds the files exactly as committed (6 Oct 2026): with
+        // Git for Windows' core.autocrlf=true they came out with CRLF endings,
+        // the edits below look for `\n` and found nothing, and "set that
+        // ability up" failed on Windows every time.
+        .args(["-c", "user.name=Atlas", "-c", "user.email=atlas@localhost", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"])
         .args(args)
         .current_dir(dir)
         .output()

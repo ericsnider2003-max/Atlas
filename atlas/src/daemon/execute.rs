@@ -1341,6 +1341,11 @@ impl<'a> Daemon<'a> {
         // tasklist the same way (6 Oct 2026): run after the CPU sample it
         // made the answer 3.2 s on a busy laptop; beside it, it costs nothing.
         let by_app = std::thread::spawn(crate::tune::memory_by_app);
+        // And the two-second CPU sample itself (6 Oct 2026): tasklist was
+        // still waited on before the sample began, so the answer took the
+        // two in turn, 3.5 to 6 s; started first, everything below runs
+        // inside those two seconds.
+        let sampling = std::thread::spawn(|| crate::tune::sample_machine(std::time::Duration::from_secs(2)));
         let r = self.readings();
         let f = assess_machine(&r, &self.health_cfg());
         let watched = self.watcher.summary();
@@ -1411,7 +1416,7 @@ impl<'a> Daemon<'a> {
         // Windows starts things from, not only your Run key
         // (`tune_plan`, shared with "close what I don't need").
         let tune_cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
-        let sampled = crate::tune::sample_machine(std::time::Duration::from_secs(2));
+        let sampled = sampling.join().ok().flatten();
         if let Some(sm) = &sampled {
             s.push(' ');
             s.push_str(&crate::tune::slowest_words(&sm.load));
