@@ -222,6 +222,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 |---|---|---|---|---|---|---|---|---|
 | run in the background from the moment you sign in with nothing open — an icon by the clock to open it, open the hub, pause or quit — and start itself again after a crash or an update | built, never run for real | `notifyicon` `startup` `crash` `goodbye` `onlyone` | ready | would | would | catch | would | **no** |
 | find the change that broke one of my tests -- "what broke <test>" runs it at older versions of me until it passes, then narrows it to the one change, and names the files it touched; no model | built, never run for real | `bisect` | ready | would | would | catch | would | **no** |
+| do the bookkeeping for a new ability in my own source -- "atlas scaffold <what it should do>" writes the module, its catalogue entry marked not built yet, its reasons in the guard lists and the module count, so the work left is only the ability itself; no model | built, never run for real | `scaffold` | ready | ready | ready | catch | would | catch |
 | watch what you name — the disk over 90% for ten minutes, a server down — and say so when your rule comes true; reminders on weekdays or 'the last Friday of the month' | built, never run for real | `automation` `cronspec` `scheduler` | ready | would | would | catch | would | **no** |
 | reach any page or action by typing, and ask 'did you mean' when a word is one typo off | built, never run for real | `palette` `typos` | ready | ready | ready | ready | ready | ready |
 | read its own log as the handful of things that happened, with counts | built, never run for real | `drain` `log` | ready | ready | ready | catch | would | catch |
@@ -365,4 +366,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-246 things, across 436 of 485 source files. The other 49 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+247 things, across 437 of 486 source files. The other 49 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

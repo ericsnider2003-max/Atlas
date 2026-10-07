@@ -229,6 +229,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "workshop", what: "keep a per-project queue of proposed changes you review and implement when ready", area: Files, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["workshop"] },
         Capability { id: "calendar", what: "keep your own calendar, and tell you what's on", area: Time, state: Working, needs: None, offline: true, added: 20, runs: &[Needs::Files, Needs::JustThinking], modules: &["calendar", "recur", "civil", "when", "keeping"] },
         Capability { id: "bisect", what: "find the change that broke one of my tests -- \"what broke <test>\" runs it at older versions of me until it passes, then narrows it to the one change, and names the files it touched; no model", area: Itself, state: Untested, needs: Some("my source code on this computer, with its history"), offline: true, added: 46, runs: &[Needs::Background], modules: &["bisect"] },
+        Capability { id: "scaffold", what: "do the bookkeeping for a new ability in my own source -- \"atlas scaffold <what it should do>\" writes the module, its catalogue entry marked not built yet, its reasons in the guard lists and the module count, so the work left is only the ability itself; no model", area: Itself, state: Untested, needs: Some("my source code on this computer"), offline: true, added: 46, runs: &[Needs::Files], modules: &["scaffold"] },
         Capability { id: "weather", what: "say the weather now or tomorrow, here or in a town you name, from Open-Meteo (free, no account)", area: Time, state: Untested, needs: None, offline: false, added: 42, runs: &[Needs::JustThinking], modules: &["weather"] },
         // 23 Sep 2026, the GitHub ports: an .ics invite from anyone, "the last
         // Friday of every month", a repeat that can be written to a file.
@@ -1575,9 +1576,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 5 Oct 2026: + `childjob` (Chat A, programs end with Atlas) and `unheard`
 // (Chat C, failures nobody was waiting for) = 482.
 // 5 Oct 2026: + `bisect` (Chat A, what broke a test) = 483.
+// 6 Oct 2026: + `scaffold` (Chat A, the bookkeeping for a new ability) = 484.
 // 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
-// ("think hard about": several tries, the best of them) = 485.
-pub const MODULES_IN_TREE: usize = 485;
+// ("think hard about": several tries, the best of them) = 486.
+pub const MODULES_IN_TREE: usize = 486;
 
 /// Every module no capability claims, and why it is not one.
 ///

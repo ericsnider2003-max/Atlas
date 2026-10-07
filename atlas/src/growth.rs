@@ -283,6 +283,20 @@ pub fn answer(said: &str) -> Option<State> {
     None
 }
 
+/// "Set that ability up": the bookkeeping for the newest approved one, in
+/// Atlas's source (`scaffold`).
+pub fn asks_to_set_up(said: &str) -> bool {
+    let t = plain(said);
+    ["set that ability up", "set up that ability", "set that up in your source", "scaffold that ability", "start building that ability", "set up the new ability"]
+        .iter()
+        .any(|p| t.contains(p))
+}
+
+/// The newest approved ability.
+pub fn latest_approved(w: &WantedAbilities) -> Option<&Wanted> {
+    w.items.iter().rev().find(|x| x.state == State::Approved)
+}
+
 /// Is this "what abilities have I asked for?"
 pub fn asks_for_the_list(said: &str) -> bool {
     let t = plain(said);

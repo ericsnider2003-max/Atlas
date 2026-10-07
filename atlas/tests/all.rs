@@ -1025,3 +1025,5 @@ mod connecting_accounts;
 mod asking_for_a_new_ability;
 #[path = "what_broke_it.rs"]
 mod what_broke_it;
+#[path = "scaffolding_an_ability.rs"]
+mod scaffolding_an_ability;

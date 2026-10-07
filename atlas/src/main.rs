@@ -1213,6 +1213,10 @@ fn main() {
         return run_selftest(atlas::cli::tail_after(&argv, "selftest"));
     }
 
+    if words.first().map(|s| s.as_str()) == Some("scaffold") {
+        return run_scaffold(atlas::cli::tail_after(&argv, "scaffold"));
+    }
+
     if words.first().map(|s| s.as_str()) == Some("catalog") {
         return run_catalog(atlas::cli::tail_after(&argv, "catalog"));
     }
