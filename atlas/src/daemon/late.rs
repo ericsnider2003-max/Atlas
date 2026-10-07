@@ -1856,33 +1856,7 @@ impl<'a> Daemon<'a> {
             let after: f64 = spans.iter().map(|(a, b)| b - a).sum();
             crate::heard!(run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")))));
             let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-")).count()).unwrap_or(0);
-            let mut transcript = String::new();
-            if let Some(timed) = &timed {
-                let wav = folder.join("sound.wav");
-                // The sound is a scratch copy of the cut, never kept whatever
-                // the recordings setting says (the video itself is): the
-                // guard drops it and the timed transcript's file on every
-                // way out, as for a recording.
-                let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
-                let mut sound = crate::retention::Recording::new(&wav, &scratch);
-                sound.and_also(&wav.with_extension("srt"));
-                if run(&video.ffmpeg, crate::studio::audio_args(&s(&cut), &s(&wav))).is_ok() {
-                    let mut v = vars.clone();
-                    let stem_path = wav.with_extension("");
-                    v.insert("in_wav".into(), s(&wav));
-                    v.insert("stem".into(), s(&stem_path));
-                    v.insert("srt".into(), format!("{}.srt", s(&stem_path)));
-                    v.entry("task_opt".into()).or_default();
-                    v.entry("lang_opt".into()).or_default();
-                    v.entry("lang_val".into()).or_default();
-                    let mut tool = timed.clone();
-                    tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
-                    if let Ok(srt) = tool.run(&v, None) {
-                        crate::kept!(std::fs::write(folder.join(format!("{stem} - cut.srt")), &srt));
-                        transcript = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
-                    }
-                }
-            }
+            let transcript = transcript_of(&video, timed.as_ref(), &vars, &s(&cut), &folder, Some(&folder.join(format!("{stem} - cut.srt"))));
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
                 let quoted = crate::untrusted::Read::new("the video", &transcript, crate::store::now()).quoted();
@@ -2618,4 +2592,44 @@ fn later_own_words(said: &str) -> Option<String> {
         return None;
     }
     Some(own.to_string())
+}
+
+/// What's said in a video, from the local timed transcriber, or empty when
+/// there is none or it can't be read. The sound is a scratch copy in
+/// `folder`, never kept whatever the recordings setting says: the guard
+/// drops it and the transcriber's own file on every way out. `keep_srt`
+/// keeps the captions there when given (the studio does; watching doesn't).
+pub(super) fn transcript_of(
+    video: &crate::voice::VideoConfig,
+    timed: Option<&crate::tools::ExternalTool>,
+    vars: &crate::tools::Vars,
+    src: &str,
+    folder: &std::path::Path,
+    keep_srt: Option<&std::path::Path>,
+) -> String {
+    let Some(timed) = timed else { return String::new() };
+    let s = |p: &std::path::Path| p.display().to_string();
+    let wav = folder.join("sound.wav");
+    let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
+    let mut sound = crate::retention::Recording::new(&wav, &scratch);
+    sound.and_also(&wav.with_extension("srt"));
+    let made = crate::tools::command(&video.ffmpeg.command).args(crate::studio::audio_args(src, &s(&wav))).output();
+    if !made.is_ok_and(|o| o.status.success()) {
+        return String::new();
+    }
+    let mut v = vars.clone();
+    let stem_path = wav.with_extension("");
+    v.insert("in_wav".into(), s(&wav));
+    v.insert("stem".into(), s(&stem_path));
+    v.insert("srt".into(), format!("{}.srt", s(&stem_path)));
+    v.entry("task_opt".into()).or_default();
+    v.entry("lang_opt".into()).or_default();
+    v.entry("lang_val".into()).or_default();
+    let mut tool = timed.clone();
+    tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
+    let Ok(srt) = tool.run(&v, None) else { return String::new() };
+    if let Some(keep) = keep_srt {
+        crate::kept!(std::fs::write(keep, &srt));
+    }
+    crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ")
 }

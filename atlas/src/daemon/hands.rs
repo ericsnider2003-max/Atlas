@@ -603,6 +603,88 @@ impl<'a> Daemon<'a> {
         seen
     }
 
+    /// "Watch this video: C:\clips\trip.mp4 -- what happens?" (`watchvideo`):
+    /// frames read by the local picture reader, what's said read by the
+    /// local transcriber, and the model here answering from both. Nothing
+    /// leaves the computer.
+    pub(super) fn watch_video_help(&mut self, said: &str, t: u64) -> Option<String> {
+        if !crate::watchvideo::asks(said) {
+            return None;
+        }
+        let Some((path, question)) = crate::edit::path_and_wish(said) else {
+            return Some("Which video? Give me its path -- watch this video: \"C:\\clips\\trip.mp4\" what happens in it?".into());
+        };
+        let original = std::path::PathBuf::from(&path);
+        if !original.is_file() {
+            return Some(format!("I can't find {path}."));
+        }
+        let tools = self.tools_cfg();
+        let root = self.store.install_root();
+        let eyes_url = (tools.picture_talk.enabled && crate::models::talking_model_sees() && self.helpers.is_running("model-server"))
+            .then(|| crate::models::talking_chat_url(&tools.models));
+        if eyes_url.is_none() {
+            if let Err(why) = crate::picture_talk::ready(&tools.picture_talk, &root) {
+                return Some(format!("I can't watch videos yet: {why}."));
+            }
+            if let Err(why) = self.room_for_heavy("picture reader", crate::picture_talk::MEMORY_MB, t) {
+                return Some(format!("I can't watch it right now: {why}"));
+            }
+        }
+        let Some(llm) = self.background_llm() else {
+            return Some("Watching a video takes a model to put it together, and there isn't one running here yet.".into());
+        };
+        let video = tools.video.clone();
+        let timed = tools.stt_timed.clone();
+        let mut vars = tools.vars.clone();
+        self.add_language_vars(&mut vars);
+        let cfg = tools.picture_talk.clone();
+        let work_dir = std::path::PathBuf::from(&tools.work_dir).join(format!("watching-{t}"));
+        let shown = path.clone();
+        let work: crew::Work = Box::new(move |c: &crew::Control| {
+            std::fs::create_dir_all(&work_dir).map_err(|e| format!("couldn't make a scratch folder: {e}"))?;
+            let tidy = |r: std::result::Result<String, String>| {
+                crate::heard!(std::fs::remove_dir_all(&work_dir));
+                r
+            };
+            let src = original.display().to_string();
+            let probed = crate::tools::command(&video.ffprobe.command).args(crate::edit::probe_args(&src)).output();
+            let Some(duration) = probed.ok().and_then(|o| crate::edit::duration_from_probe(&String::from_utf8_lossy(&o.stdout))) else {
+                return tidy(Err("I couldn't read how long the video is".into()));
+            };
+            let mut frames: Vec<(f64, String)> = Vec::new();
+            for (i, at) in crate::watchvideo::frame_times(duration, crate::watchvideo::FRAMES).into_iter().enumerate() {
+                if c.checkpoint() {
+                    return tidy(Err("stopped".into()));
+                }
+                let png = work_dir.join(format!("frame-{i}.png"));
+                let made = crate::tools::command(&video.ffmpeg.command).args(crate::watchvideo::frame_args(&src, at, &png.display().to_string())).output();
+                if !made.is_ok_and(|o| o.status.success()) || !png.is_file() {
+                    continue;
+                }
+                let seen = match &eyes_url {
+                    Some(url) => crate::picture_talk::ask_server(url, &png, crate::watchvideo::FRAME_QUESTION, cfg.most_words),
+                    None => crate::picture_talk::ask_until(&cfg, &root, &png, crate::watchvideo::FRAME_QUESTION, &|| c.stopping()),
+                };
+                if let Ok(seen) = seen {
+                    if !seen.trim().is_empty() {
+                        frames.push((at, seen));
+                    }
+                }
+            }
+            let transcript = super::late::transcript_of(&video, timed.as_ref(), &vars, &src, &work_dir, None);
+            if frames.is_empty() && transcript.trim().is_empty() {
+                return tidy(Ok(crate::watchvideo::nothing_seen(&shown)));
+            }
+            let prompt = crate::watchvideo::answer_prompt(&question, &frames, &transcript);
+            tidy(llm.complete_long(crate::watchvideo::ANSWER_SYSTEM, &prompt, 600).map(|r| r.text).map_err(|e| e.to_string()))
+        });
+        Some(if self.hand_off("video", t, work, Some(path.clone()), SpeakPolicy::Always) {
+            format!("Watching {path}: {} frames and what's said in it. I'll tell you when I've got it.", crate::watchvideo::FRAMES)
+        } else {
+            "I'm swamped with background work right now -- ask me again in a moment.".into()
+        })
+    }
+
     /// "Look at my screen", "what does this chart show?" — a picture taken
     /// and asked about with the local picture reader (`picture_talk`).
     ///

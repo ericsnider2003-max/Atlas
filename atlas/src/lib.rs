@@ -141,6 +141,7 @@ pub mod onnxfix;
 pub mod freeonline;
 pub mod muse;
 pub mod contemplate;
+pub mod watchvideo;
 pub mod parakeet;
 pub mod kws;
 pub mod report;
