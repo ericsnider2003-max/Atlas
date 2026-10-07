@@ -445,6 +445,19 @@ impl<'a> Daemon<'a> {
             // Deliberately not retried: a panic means an assumption was
             // wrong, and repeating it immediately is how a crash becomes a
             // loop.
+            // What held the loop between ticks, when it was long (6 Oct 2026:
+            // the hub waited a minute at start with nothing in the log to say
+            // why). Your turns and the nap are expected to take time; the
+            // rest isn't.
+            let held: u32 = between
+                .parts()
+                .iter()
+                .filter(|(n, _)| !matches!(*n, "between ticks: listening and turns" | "napping, answering the hub"))
+                .map(|(_, ms)| *ms)
+                .sum();
+            if held >= SLOW_BETWEEN_MS {
+                self.log.info(&format!("timing: between ticks took {held}ms ({})", between.plain(3)));
+            }
             let tick_started = std::time::Instant::now();
             let lines = match crate::crash::caught("thinking about what to do next", || self.tick(t))
             {
@@ -733,6 +746,7 @@ impl<'a> Daemon<'a> {
                 }
             }
 
+            between.mark("between ticks: listening and turns");
             // The model server, looked after on every pass without waiting:
             // started once the first check answers, not at the first thing
             // you say (29 Sep 2026).
@@ -1884,3 +1898,6 @@ pub(super) struct LeftWaiting {
 }
 
 
+
+/// Upkeep between two ticks that's worth a line in the log, in milliseconds.
+const SLOW_BETWEEN_MS: u32 = 3000;
