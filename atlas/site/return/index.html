@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Returning to Atlas</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<h1>Returning to Atlas…</h1>
+<p id="said" class="muted">One moment.</p>
+<script>
+// Some sign-in services (Meta's, for one) only send you back to an https
+// address. This page is that address: it hands the sign-in straight to Atlas
+// on your own computer (127.0.0.1) and keeps nothing. The port Atlas is
+// listening on travels in the sign-in's own `state`, as "<nonce>.<port>".
+(function () {
+  var q = new URLSearchParams(location.search);
+  var state = q.get("state") || "";
+  var port = parseInt(state.split(".").pop(), 10);
+  var said = document.getElementById("said");
+  if (!(port >= 1024 && port <= 65535)) {
+    said.textContent = "This page only works when Atlas sends you here to sign in. You can close it.";
+    return;
+  }
+  var back = new URLSearchParams();
+  ["code", "state", "error", "error_description", "error_reason"].forEach(function (k) {
+    if (q.has(k)) back.set(k, q.get(k));
+  });
+  // Nothing is kept: the address is replaced, so the code isn't left in history.
+  location.replace("http://127.0.0.1:" + port + "/callback?" + back.toString());
+  setTimeout(function () {
+    said.textContent = "If nothing happens, Atlas has stopped waiting — start the sign-in again from Atlas.";
+  }, 4000);
+})();
+</script>
+</main>
+</body>
+</html>
