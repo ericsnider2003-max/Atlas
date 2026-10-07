@@ -793,6 +793,10 @@ pub struct Daemon<'a> {
     pub audio_devices: Option<Vec<crate::audio::Device>>,
     /// When to list the sound devices again after a listing failed.
     audio_devices_retry_at: u64,
+    /// The listing in progress, off the loop (6 Oct 2026: ffmpeg's device
+    /// list held the first tick 2.4 s on Windows, and again every five
+    /// minutes while it failed).
+    audio_probe: Option<std::thread::JoinHandle<std::result::Result<Vec<crate::audio::Device>, String>>>,
     /// Where a message from another Atlas would arrive, if one is open.
     /// `None` for the overwhelming majority of installs, which will never
     /// have another Atlas to hear from -- see `with_signal_listener`.
@@ -1775,6 +1779,7 @@ impl<'a> Daemon<'a> {
             outbox: crate::notify::Outbox::load(&store_for_load2),
             audio_devices: None,
             audio_devices_retry_at: 0,
+            audio_probe: None,
             signal_listener: None,
             signal_retry: None,
             sync_server: None,

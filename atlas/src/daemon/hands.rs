@@ -2011,28 +2011,52 @@ impl<'a> Daemon<'a> {
     /// minutes (29 Sep 2026: it was recorded as an empty list, "looked and
     /// found nothing", so one failed listing at sign-in, ffmpeg not fetched
     /// yet, silenced spoken notifications for the rest of the session).
+    ///
+    /// The listing runs on a thread of its own and is picked up on a later
+    /// pass (6 Oct 2026): ffmpeg's device list takes a second or more on
+    /// Windows, and on the loop it held Atlas -- the hub, your keys, your
+    /// voice -- 2.4 s at every start, and again every five minutes while it
+    /// failed.
     pub(super) fn refresh_audio_once(&mut self) {
         let now = crate::store::now();
-        if self.audio_devices.is_some() || now < self.audio_devices_retry_at {
+        if self.audio_devices.is_some() {
+            return;
+        }
+        if self.audio_probe.as_ref().is_some_and(|h| !h.is_finished()) {
+            return;
+        }
+        if let Some(h) = self.audio_probe.take() {
+            match h.join() {
+                Ok(Ok(list)) => self.audio_devices = Some(list),
+                Ok(Err(e)) => {
+                    self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
+                    self.audio_devices_retry_at = now + 300;
+                }
+                Err(_) => {
+                    self.log.warn("listing the sound devices stopped unexpectedly (trying again in five minutes)");
+                    self.audio_devices_retry_at = now + 300;
+                }
+            }
+            return;
+        }
+        if now < self.audio_devices_retry_at {
             return;
         }
         let ffmpeg = self.tools_ref()
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
-        match crate::audio::probe_devices(&ffmpeg) {
-            // With the speakers too, where the listing names none (Windows):
-            // a notice then knows it is going into your headphones (29 Sep 2026).
-            Ok(mut list) => {
-                if !list.iter().any(|d| d.kind == crate::audio::Kind::Output) {
-                    list.extend(crate::playout::output_devices());
-                }
-                self.audio_devices = Some(list);
-            }
-            Err(e) => {
-                self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
-                self.audio_devices_retry_at = now + 300;
-            }
-        }
+        self.audio_probe = Some(std::thread::spawn(move || {
+            crate::audio::probe_devices(&ffmpeg)
+                .map(|mut list| {
+                    // With the speakers too, where the listing names none (Windows):
+                    // a notice then knows it is going into your headphones (29 Sep 2026).
+                    if !list.iter().any(|d| d.kind == crate::audio::Kind::Output) {
+                        list.extend(crate::playout::output_devices());
+                    }
+                    list
+                })
+                .map_err(|e| e.to_string())
+        }));
     }
 
     /// Put one of Atlas's own panels on screen.
