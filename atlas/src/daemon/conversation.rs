@@ -456,9 +456,23 @@ impl<'a> Daemon<'a> {
         let turn = self.conversation_turn("", t, crate::register::Register::Chatting, &persona, None, "");
         let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false, stronger: false };
         let said = self.model_warmed.clone();
+        let server = self.tools_ref().filter(|t| self.starts_model_server && t.llm.is_none() && t.models.server.is_some()).map(|t| (t.models.clone(), t.vars.clone()));
         std::thread::Builder::new()
             .name("atlas-warm".into())
             .spawn(move || {
+                // At start the server Atlas runs may not have been started
+                // yet -- the loop starts it once its first check answers --
+                // and asking a port nobody is behind failed at once
+                // ("actively refused", 6 Oct 2026). Wait for it to answer,
+                // as long as a load takes; if it never does, say so plainly.
+                if let Some((cfg, vars)) = &server {
+                    if !crate::models::wait_until_up(cfg, vars, crate::models::LOADING_SECS) {
+                        if let Ok(mut s) = said.lock().or_else(crate::crash::unpoison) {
+                            *s = Some("the model wasn't up within two minutes of starting, so it didn't read ahead; it will with your first message".into());
+                        }
+                        return;
+                    }
+                }
                 let started = std::time::Instant::now();
                 let line = match llm.chat(&req, &mut |_| false) {
                     Ok(_) => format!("timing: the model read the start of the conversation in {}ms", started.elapsed().as_millis()),

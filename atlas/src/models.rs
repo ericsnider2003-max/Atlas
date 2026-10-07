@@ -663,8 +663,23 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
         // 30 Sep 2026). On a 16 GB laptop beside a browser that's the
         // memory running at 84-86% all evening; 1 GB holds the two slots'
         // prompts with room to spare.
+        //
+        // 6 Oct 2026: 256. With the model on integrated graphics, the
+        // server's own memory came to 5.2 GB on the laptop, and Atlas told
+        // you "memory is nearly full" seconds after starting it. The two
+        // slots keep their prompts in the context itself; this is only for
+        // prompts pushed out of it, and one fits in 256 MB.
         "--cache-ram".into(),
-        "1024".into(),
+        "256".into(),
+        // The context's memory (keys and values) at 8 bits rather than 16:
+        // half the size -- about 0.6 GB less for the 4B at 8192 -- for a
+        // difference in answers too small to measure. llama.cpp turns flash
+        // attention on for it; tried on the laptop's Intel Arc with this
+        // build (Vulkan, b10456) on 6 Oct 2026 and it answered normally.
+        "-ctk".into(),
+        "q8_0".into(),
+        "-ctv".into(),
+        "q8_0".into(),
     ]
     .into_iter()
     // Speculative decoding, only when set (`models.draft`, `models.speculate`).
@@ -985,7 +1000,7 @@ pub fn server_tool(cfg: &ModelsConfig) -> Option<ExternalTool> {
 }
 
 /// Wait for a server that's loading its model. True once it answers.
-fn wait_until_up(cfg: &ModelsConfig, vars: &Vars, secs: u64) -> bool {
+pub fn wait_until_up(cfg: &ModelsConfig, vars: &Vars, secs: u64) -> bool {
     let http = server_get();
     let until = std::time::Instant::now() + std::time::Duration::from_secs(secs);
     loop {
