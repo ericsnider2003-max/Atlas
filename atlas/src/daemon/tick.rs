@@ -1238,15 +1238,6 @@ impl<'a> Daemon<'a> {
 
         self.tick_laps.mark("the self-audit");
 
-        // The hourly chores wait out the first minutes after a start (6 Oct
-        // 2026): run on the very first tick, they were most of the 1.4-3 s
-        // "the rest" took while the hub and your first words waited.
-        if self.last_tidy == 0 {
-            self.last_tidy = t.saturating_sub(3600 - FIRST_CHORES_AFTER_SECS);
-        }
-        if self.last_index_check == 0 {
-            self.last_index_check = t.saturating_sub(3600 - FIRST_CHORES_AFTER_SECS);
-        }
         if t.saturating_sub(self.last_tidy) >= 3600 {
             self.last_tidy = t;
             // Atlas's own things, fixed without asking (E1).
@@ -2985,10 +2976,6 @@ impl Daemon<'_> {
     }
 }
 
-
-/// How long after a start the hourly chores (the tidy, the index check) first
-/// run: not on the first tick, while you wait for the hub and the first answer.
-const FIRST_CHORES_AFTER_SECS: u64 = 300;
 
 /// How long after the model server starts its memory is still settling: the
 /// memory finding waits this out rather than reporting Atlas's own load.

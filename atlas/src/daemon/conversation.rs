@@ -456,7 +456,7 @@ impl<'a> Daemon<'a> {
         let turn = self.conversation_turn("", t, crate::register::Register::Chatting, &persona, None, "");
         let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false, stronger: false };
         let said = self.model_warmed.clone();
-        let server = self.tools_ref().filter(|t| t.llm.is_none() && t.models.server.is_some()).map(|t| (t.models.clone(), t.vars.clone()));
+        let server = self.tools_ref().filter(|t| self.starts_model_server && t.llm.is_none() && t.models.server.is_some()).map(|t| (t.models.clone(), t.vars.clone()));
         std::thread::Builder::new()
             .name("atlas-warm".into())
             .spawn(move || {

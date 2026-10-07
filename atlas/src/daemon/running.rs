@@ -333,6 +333,16 @@ impl<'a> Daemon<'a> {
         // then for the model to read the whole prompt from nothing.
         // Starting it is quick (`keep_model_server` waits for nothing); the
         // reading happens on a thread of its own (`warm_the_model`).
+        // The hourly chores wait out the first minutes after a start (6 Oct
+        // 2026): run on the very first tick, they were most of the 1.4-3 s
+        // "the rest" took while the hub and your first words waited.
+        let now = clock();
+        if self.last_tidy == 0 {
+            self.last_tidy = now.saturating_sub(3600 - FIRST_CHORES_AFTER_SECS);
+        }
+        if self.last_index_check == 0 {
+            self.last_index_check = now.saturating_sub(3600 - FIRST_CHORES_AFTER_SECS);
+        }
         self.keep_model_server(clock());
         // unheard-ok: returns `Option<JoinHandle<()>>`, not a Result
         let _ = self.warm_the_model(clock());
@@ -1901,3 +1911,7 @@ pub(super) struct LeftWaiting {
 
 /// Upkeep between two ticks that's worth a line in the log, in milliseconds.
 const SLOW_BETWEEN_MS: u32 = 3000;
+
+/// How long after a start the hourly chores (the tidy, the index check) first
+/// run: not on the first tick, while you wait for the hub and the first answer.
+const FIRST_CHORES_AFTER_SECS: u64 = 300;
