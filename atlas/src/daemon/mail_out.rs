@@ -106,8 +106,8 @@ pub(super) fn authenticate_imap<S: std::io::Read + std::io::Write>(
 ) -> std::result::Result<(), String> {
     match oauth_client_id {
         Some(client_id) => {
-            let tokens = crate::msoauth::refresh(client_id, password)?;
-            session.auth_xoauth2(address, &tokens.access_token)
+            let token = crate::msoauth::access(client_id, password)?;
+            session.auth_xoauth2(address, &token)
         }
         None => session.login(address, password),
     }
@@ -124,8 +124,8 @@ pub(super) fn authenticate_smtp<S: std::io::Read + std::io::Write>(
 ) -> std::result::Result<(), String> {
     match oauth_client_id {
         Some(client_id) => {
-            let tokens = crate::msoauth::refresh(client_id, password)?;
-            session.auth_xoauth2(address, &tokens.access_token)
+            let token = crate::msoauth::access(client_id, password)?;
+            session.auth_xoauth2(address, &token)
         }
         None => session.auth_login(address, password),
     }

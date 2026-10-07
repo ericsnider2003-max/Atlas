@@ -203,6 +203,9 @@ pub struct CalendarLink {
     pub last_read: u64,
     pub last_ok: bool,
     pub last_said: String,
+    /// Its sign-in was refused as revoked or expired (`revoked`): not read
+    /// again until you sign in again, which replaces the link (N5).
+    pub needs_signin: bool,
 }
 
 /// The calendar links kept, by the store.
@@ -245,8 +248,110 @@ pub fn calendar_name(url: &str) -> String {
 }
 
 /// Is a linked calendar due to be read again?
+///
+/// Not one whose sign-in was refused: asking again every 15 minutes with a
+/// token the provider has already turned down is the "hammering a dead
+/// token for hours" the connections design warns about (N5).
 pub fn read_due(link: &CalendarLink, now: u64) -> bool {
-    now.saturating_sub(link.last_read) >= READ_EVERY_SECS
+    !link.needs_signin && now.saturating_sub(link.last_read) >= READ_EVERY_SECS
+}
+
+/// Take in how one read of a linked calendar went. Returns what to say aloud
+/// when its sign-in has just stopped working (once, on the change, never on
+/// every read after).
+pub fn took_read(link: &mut CalendarLink, failed: Option<&str>) -> Option<String> {
+    match failed {
+        None => {
+            link.last_ok = true;
+            link.needs_signin = false;
+            None
+        }
+        Some(e) => {
+            link.last_ok = false;
+            link.last_said = e.to_string();
+            if !revoked(e) || link.needs_signin {
+                return None;
+            }
+            link.needs_signin = true;
+            Some(format!(
+                "{} stopped letting me in ({e}). I've stopped asking it; press Sign in again beside it on the Accounts page.",
+                link.name
+            ))
+        }
+    }
+}
+
+// ------------------------------------------------------------ lifecycle (N5)
+
+/// The words every refused sign-in is said with -- Google's and Microsoft's
+/// `invalid_grant`, whichever reader met it -- so one test, `revoked`, tells
+/// a dead sign-in from a passing network failure.
+pub const REVOKED: &str = "no longer accepts Atlas's sign-in";
+
+/// Was this failure the provider refusing the sign-in itself (revoked, or
+/// lapsed), rather than something that a later try could get past?
+pub fn revoked(said: &str) -> bool {
+    said.contains(REVOKED)
+}
+
+/// Is this account's sign-in known to be refused? Then it isn't tried again
+/// until you sign in again (which notes it working, `note_health`).
+pub fn sign_in_refused(store: &crate::store::Store, who: &str) -> bool {
+    health_of(store, who).is_some_and(|h| !h.ok && revoked(&h.said))
+}
+
+/// How long before its stated expiry an access token is fetched again:
+/// a token used at the edge of its life fails half way through a check.
+pub const RENEW_BEFORE_SECS: u64 = 5 * 60;
+
+type Held = std::sync::Arc<std::sync::Mutex<Option<(String, u64)>>>;
+static ACCESS: std::sync::Mutex<Vec<(u64, Held)>> = std::sync::Mutex::new(Vec::new());
+
+fn key_of(key: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut h);
+    h.finish()
+}
+
+/// An access token for one sign-in, fetched by `fetch` -- which answers the
+/// token and how many seconds it lasts -- only when there isn't one with
+/// more than `RENEW_BEFORE_SECS` left, and by one thread at a time: a mail
+/// check and a calendar read wanting the same sign-in at once make one
+/// request, not two (the "thundering herd" the design names). A failure is
+/// never kept; the next ask tries again.
+///
+/// `key` names the sign-in and what the token is for (Microsoft's mail and
+/// calendar tokens differ); it is hashed, so no refresh token sits in here.
+pub fn access_once(key: &str, now: u64, fetch: impl FnOnce() -> Result<(String, u64), String>) -> Result<String, String> {
+    let k = key_of(key);
+    let held: Held = {
+        let mut all = ACCESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        match all.iter().find(|(h, _)| *h == k) {
+            Some((_, held)) => held.clone(),
+            None => {
+                let held = Held::default();
+                all.push((k, held.clone()));
+                held
+            }
+        }
+    };
+    let mut slot = held.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((token, until)) = slot.as_ref() {
+        if now + RENEW_BEFORE_SECS < *until {
+            return Ok(token.clone());
+        }
+    }
+    *slot = None;
+    let (token, lasts) = fetch()?;
+    *slot = Some((token.clone(), now + lasts));
+    Ok(token)
+}
+
+/// Forget a sign-in's access token (it was disconnected, or refused).
+pub fn forget_access(key: &str) {
+    let k = key_of(key);
+    ACCESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|(h, _)| *h != k);
 }
 
 /// The link's host and path, for an https request.
