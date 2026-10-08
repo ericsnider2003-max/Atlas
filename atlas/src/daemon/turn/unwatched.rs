@@ -921,6 +921,7 @@ impl<'a> Daemon<'a> {
                 crate::heard!(std::fs::remove_file(&copy));
                 if !is_yes(said) {
                     crate::heard!(std::fs::remove_file(&result));
+                    self.finish_media_decision(false);
                     return "Alright — I've thrown the edit away. Your original is untouched.".into();
                 }
                 // Removing an original is the consequential kind of media
@@ -932,9 +933,11 @@ impl<'a> Daemon<'a> {
                     self.pending_media_original = Some(original);
                     return q;
                 }
+                self.finish_media_decision(true);
                 return "Kept.".into();
             }
             if let Some(original) = self.pending_media_original.take() {
+                self.finish_media_decision(true);
                 self.session.pending = Pending::Nothing;
                 if !is_yes(said) {
                     return "Alright, the original stays.".into();

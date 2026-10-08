@@ -1111,7 +1111,7 @@ impl Llm for EditScript {
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> { self.0.chat(req, on_text) }
 }
 
-fn background_media(fail: bool, no_output: bool) {
+fn background_media(fail: bool, no_output: bool, decision: u8) {
     let (mut c, p) = (cfg(), plat());
     let dir = tmp(if fail { "media-failure" } else if no_output { "media-no-output" } else { "media-approval" });
     let clip = dir.join("clip.mp4");
@@ -1131,7 +1131,12 @@ fn background_media(fail: bool, no_output: bool) {
     let mut d = Daemon::new(&c, &p, Some(Arc::new(EditScript(script.clone())) as Arc<dyn Llm>), Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
     let first = d.turn(&format!("find the clip and then edit \"{}\" to trim it", clip.display()), 1_790_740_000);
     assert!(first.starts_with("Working through"), "{first}");
-    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let mut said = Vec::new();
+    for n in 1..500 {
+        said.extend(d.tick(1_790_740_000 + n).into_iter().map(|s| (s, 0u64)));
+        if said.iter().any(|(s, _)| s.contains("Keep it?")) || !d.working_through_steps() { break; }
+        std::thread::sleep(Duration::from_millis(20));
+    }
     assert_eq!(script.requests().len(), 1, "editing must not claim completion before approval or after failure: {said:?}");
     if no_output {
         assert!(said.last().map(|(s, _)| s.contains("without a result file")).unwrap_or(false), "the missing output was claimed as an edit: {said:?}");
@@ -1141,13 +1146,33 @@ fn background_media(fail: bool, no_output: bool) {
         assert!(said.last().map(|(s, _)| s.contains("Keep it?")).unwrap_or(false), "the result's approval question was lost: {said:?}");
     }
     assert_eq!(std::fs::read_to_string(&clip).unwrap(), "original footage fixture");
+    if !fail && !no_output {
+        assert!(d.working_through_steps(), "the request was dropped at its keep question");
+        if decision == 1 {
+            let answer = d.turn("yes", 1_790_741_000);
+            assert!(answer.contains("Kept"), "{answer}");
+            assert_eq!(script.requests().len(), 1, "do not overlap the original-removal question");
+            d.turn("no", 1_790_741_001);
+        } else {
+            d.turn(if decision == 2 { "no" } else { "stop everything" }, 1_790_741_000);
+        }
+        tick_until_done(&mut d, 1_790_741_002, 10);
+        assert_eq!(script.requests().len(), if decision == 1 { 2 } else { 1 }, "remaining work must follow the decision");
+        if decision == 1 { assert!(script.requests()[1].messages.iter().any(|m| m.content.contains("Kept edited file")), "the actual kept result must reach the next step"); }
+    }
+    assert_eq!(std::fs::read_to_string(&clip).unwrap(), "original footage fixture");
     assert!(!d.working_through_steps(), "the media result left a worker waiting");
 }
 
 #[test]
-fn background_media_failure_blocks_the_remaining_request() { background_media(true, false); }
+fn background_media_failure_blocks_the_remaining_request() { background_media(true, false, 0); }
 
 #[test]
-fn background_media_result_waits_for_the_keep_decision() { background_media(false, false); }
+fn background_media_result_waits_for_the_keep_decision() { background_media(false, false, 1); }
 #[test]
-fn background_media_cannot_claim_a_render_without_a_result_file() { background_media(false, true); }
+fn background_media_cannot_claim_a_render_without_a_result_file() { background_media(false, true, 0); }
+
+#[test]
+fn declining_the_edit_blocks_remaining_work() { background_media(false, false, 2); }
+#[test]
+fn stopping_at_the_keep_question_releases_the_request() { background_media(false, false, 3); }

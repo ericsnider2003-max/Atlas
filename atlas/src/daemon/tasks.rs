@@ -45,6 +45,8 @@ pub(crate) struct TaskLoop {
     tainted: bool,
     /// The crew job whose typed completion the dependent worker is awaiting.
     waiting_for: Option<u64>,
+    /// Kept-file path retained while the edit and original decisions are pending.
+    waiting_for_media: Option<String>,
 }
 
 impl TaskLoop {
@@ -348,6 +350,7 @@ impl<'a> Daemon<'a> {
             started: std::time::Instant::now(),
             tainted: false,
             waiting_for: None,
+            waiting_for_media: None,
         });
         let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
         let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
@@ -389,6 +392,32 @@ impl<'a> Daemon<'a> {
         false
     }
 
+    /// Only the matching edit job may park this dependent request for consent.
+    pub(super) fn park_media_decision(&mut self, id: u64) -> bool {
+        if let (Some(tl), Some((_, _, result))) = (self.task_loop.as_mut(), self.pending_media_keep.as_ref()) {
+            if tl.waiting_for == Some(id) {
+                tl.waiting_for = None;
+                tl.waiting_for_media = Some(result.clone());
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Release the retained edit step only after its own decisions are resolved.
+    pub(super) fn finish_media_decision(&mut self, kept: bool) {
+        if let Some(tl) = self.task_loop.as_mut() {
+            if let Some(result) = tl.waiting_for_media.take() {
+                let outcome = if kept {
+                    crate::taskloop::Outcome::Done(format!("Kept edited file: {result}."))
+                } else {
+                    crate::taskloop::Outcome::Failed("The edit was declined. Dependent steps were not run.".into())
+                };
+                let _ = tl.reply.send(outcome);
+            }
+        }
+    }
+
     /// Is a request of several steps being worked through?
     pub fn working_through_steps(&self) -> bool {
         self.task_loop.is_some()
@@ -404,7 +433,7 @@ impl<'a> Daemon<'a> {
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
-        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && tl.waiting_for.take().is_some() {
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_media.take().is_some()) {
             let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
         }
         // A model call already in flight can submit a tool while paused.
@@ -644,6 +673,7 @@ impl<'a> Daemon<'a> {
             started: std::time::Instant::now(),
             tainted: false,
             waiting_for: None,
+            waiting_for_media: None,
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),
