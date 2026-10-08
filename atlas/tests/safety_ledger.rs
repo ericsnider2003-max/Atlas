@@ -15,6 +15,9 @@ use atlas::safety::{LedgerState, Trash, TrashConfig};
 use std::fs;
 use std::path::PathBuf;
 
+#[path = "file_recovery_transactions.rs"]
+mod file_recovery_transactions;
+
 struct Area(PathBuf);
 impl Area {
     fn new(tag: &str) -> Area {

@@ -876,6 +876,16 @@ pub struct SortDone {
 /// a file already there (`tune::move_files_into` gives it " (2)"), and
 /// nothing deleted.
 pub fn carry_out_moves(plan: &SortPlan, sys: &crate::system::SystemConfig, now: u64) -> SortDone {
+    carry_out_moves_recorded(plan, sys, now, &mut |_, _| Ok(()))
+}
+
+/// Production sorting records the actual destination before touching a file.
+pub fn carry_out_moves_recorded(
+    plan: &SortPlan,
+    sys: &crate::system::SystemConfig,
+    now: u64,
+    before: &mut impl FnMut(&Path, &Path) -> Result<(), String>,
+) -> SortDone {
     let mut done = SortDone::default();
     let mut groups: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
     for m in &plan.moves {
@@ -906,7 +916,7 @@ pub fn carry_out_moves(plan: &SortPlan, sys: &crate::system::SystemConfig, now: 
                 None => break,
             }
         }
-        let (moved, not) = crate::tune::move_files_into(&files, &dir);
+        let (moved, not) = crate::tune::move_files_into_recorded(&files, &dir, before);
         if !moved.is_empty() || dir.exists() {
             for m in missing.into_iter().rev() {
                 if !done.made.contains(&m) {

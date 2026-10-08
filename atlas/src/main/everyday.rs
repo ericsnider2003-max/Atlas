@@ -1520,6 +1520,10 @@ pub(super) fn run_backups(args: &[String]) {
             println!("\natlas backups restore <n>");
         }
         Some("restore") => {
+            if let Err(e) = atlas::safety::may_restore(&store) {
+                println!("{e}");
+                return;
+            }
             let Some(n) = args.get(1).and_then(|s| s.parse::<usize>().ok()) else {
                 println!("atlas backups restore <n> -- see `atlas backups list` for the number");
                 return;

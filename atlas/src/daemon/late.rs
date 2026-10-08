@@ -1567,22 +1567,59 @@ impl<'a> Daemon<'a> {
             );
         }
         if let Some((files, to)) = &plan.moves {
-            let (moved, failed) = crate::tune::move_files_into(files, to);
+            let what = format!("moving files from Downloads into {}", to.display());
+            let id = self.history.note(
+                &what,
+                "files",
+                Undo::Atlas("move them back".into()),
+                true,
+                t,
+            );
+            undo_record.push((
+                id,
+                crate::tune::TuneUndo::RecordedMoves {
+                    moves: Vec::new(),
+                    made: Vec::new(),
+                },
+            ));
+            let ready = self
+                .store
+                .save("undo_history", &self.history)
+                .and_then(|_| self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record));
+            let (moved, failed) = if let Err(e) = ready {
+                (Vec::new(), vec![format!("files were left in place because their recovery record couldn't be saved ({e})")])
+            } else {
+                crate::tune::move_files_into_recorded(files, to, &mut |from, into| {
+                    let intent = crate::tune::RecordedMove::new(from, into)?;
+                    let Some((_, crate::tune::TuneUndo::RecordedMoves { moves, .. })) =
+                        undo_record.iter_mut().find(|(rid, _)| *rid == id)
+                    else {
+                        return Err(
+                            "the recovery record is missing; the file was left in place".into()
+                        );
+                    };
+                    moves.push(intent);
+                    self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record)
+                        .map_err(|e| format!("{} was left in place because its recovery record couldn't be saved ({e})", from.display()))
+                })
+            };
             if !moved.is_empty() {
                 let what = format!("moved {} file{} from Downloads into {}", moved.len(), if moved.len() == 1 { "" } else { "s" }, to.display());
                 done.push(what.clone());
                 self.journal.record_at(Act::Upkeep, &what, true, t);
-                let id = self.history.note(&what, "files", Undo::Atlas("move them back".into()), true, t);
-                undo_record.push((id, crate::tune::TuneUndo::Moves(moved)));
+                if let Some(entry) = self.history.done.iter_mut().find(|d| d.id == id) {
+                    entry.what = what;
+                }
             }
             not.extend(failed);
         }
-        // Kept bounded, like the history it belongs to.
-        if undo_record.len() > 200 {
-            undo_record.drain(0..undo_record.len() - 200);
+        // Never evict an outstanding file recovery record to meet a quota.
+        if let Err(e) = self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record) {
+            not.push(format!("the latest recovery status couldn't be saved ({e}); the saved move intents remain available"));
         }
-        let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record);
-        let _ = self.store.save("undo_history", &self.history);
+        if let Err(e) = self.store.save("undo_history", &self.history) {
+            not.push(format!("the latest history couldn't be saved ({e})"));
+        }
         let mut said = if done.is_empty() { "Nothing changed.".to_string() } else { format!("Done: {}.", done.join("; ")) };
         if !not.is_empty() {
             said.push_str(&format!(" Not done: {}.", not.join("; ")));
@@ -1601,10 +1638,51 @@ impl<'a> Daemon<'a> {
     /// file back where it was (`tune::TuneUndo::Organized`).
     pub(super) fn carry_out_sorting(&mut self, plan: crate::organize::SortPlan, t: u64) -> String {
         let sys = self.tools_cfg().system.clone();
-        let done = crate::organize::carry_out_moves(&plan, &sys, crate::store::now());
+        let names: Vec<String> =
+                plan.folders.iter().map(|f| {
+                f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.display().to_string())
+            }).collect();
+        let what = format!("sorting files in {}", names.join(", "));
+        let id = self.history.note(
+            &what,
+            "files",
+            crate::undo::Undo::Atlas("move them back".into()),
+            true,
+            t,
+        );
+        let mut record: Vec<(u64, crate::tune::TuneUndo)> =
+            self.store.load(crate::tune::TUNE_UNDO_RECORD);
+        record.push((
+            id,
+            crate::tune::TuneUndo::RecordedMoves {
+                moves: Vec::new(),
+                made: Vec::new(),
+            },
+        ));
+        if let Err(e) = self
+            .store
+            .save("undo_history", &self.history)
+            .and_then(|_| self.store.save(crate::tune::TUNE_UNDO_RECORD, &record))
+        {
+            return format!("Nothing moved: I couldn't save the recovery record ({e}).");
+        }
+        let done = crate::organize::carry_out_moves_recorded(
+            &plan,
+            &sys,
+            crate::store::now(),
+            &mut |from, into| {
+                let intent = crate::tune::RecordedMove::new(from, into)?;
+                let Some((_, crate::tune::TuneUndo::RecordedMoves { moves, .. })) =
+                    record.iter_mut().find(|(rid, _)| *rid == id)
+                else {
+                    return Err("the recovery record is missing; the file was left in place".into());
+                };
+                moves.push(intent);
+                self.store.save(crate::tune::TUNE_UNDO_RECORD, &record)
+                .map_err(|e| format!("{} was left in place because its recovery record couldn't be saved ({e})", from.display()))
+            },
+        );
         if !done.moved.is_empty() {
-            let names: Vec<String> =
-                plan.folders.iter().map(|f| f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.display().to_string())).collect();
             let what = format!(
                 "sorted {} file{} in {} into folders",
                 done.moved.len(),
@@ -1612,17 +1690,23 @@ impl<'a> Daemon<'a> {
                 names.join(", ")
             );
             self.journal.record_at(Act::Upkeep, &what, true, t);
-            let id = self.history.note(&what, "files", crate::undo::Undo::Atlas("move them back".into()), true, t);
-            let mut record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
-            record.push((id, crate::tune::TuneUndo::Organized { moves: done.moved.clone(), made: done.made.clone() }));
-            // Kept bounded, like the history it belongs to.
-            if record.len() > 200 {
-                record.drain(0..record.len() - 200);
+            if let Some(entry) = self.history.done.iter_mut().find(|d| d.id == id) {
+                entry.what = what;
             }
-            let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record);
-            let _ = self.store.save("undo_history", &self.history);
         }
-        crate::organize::done_said(&plan, &done)
+        if let Some((_, crate::tune::TuneUndo::RecordedMoves { made, .. })) =
+            record.iter_mut().find(|(rid, _)| *rid == id)
+        {
+            *made = done.made.clone();
+            }
+            let mut said = crate::organize::done_said(&plan, &done);
+        if let Err(e) = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record) {
+            said.push_str(&format!(" The latest folder-cleanup record couldn't be saved ({e}); the saved file moves can still be undone."));
+        }
+        if let Err(e) = self.store.save("undo_history", &self.history) {
+            said.push_str(&format!(" The latest history couldn't be saved ({e})."));
+        }
+        said
     }
 
     /// "Use my webcam mic" (Eric, 29 Sep 2026): the microphones this machine
@@ -1732,12 +1816,27 @@ impl<'a> Daemon<'a> {
         // run (2 Oct 2026): taken back from what was kept beside it.
         let mut record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
         if let Some(pos) = record.iter().position(|(rid, _)| *rid == id) {
-            return match crate::tune::undo_tune_change(&record[pos].1) {
+            let undo = record[pos].1.clone();
+            return match crate::tune::undo_tune_change_with_checkpoint(&undo, &mut |next| {
+                record[pos].1 = next.clone();
+                self.store
+                    .save(crate::tune::TUNE_UNDO_RECORD, &record)
+                    .map_err(|e| e.to_string())
+            }) {
                 Ok(said) => {
-                    record.remove(pos);
-                    let _ = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record);
+                    // Save completion before dropping the recovery intent. If
+                    // either save fails, repeating the file undo is harmless.
                     self.history.mark_undone(id);
-                    let _ = self.store.save("undo_history", &self.history);
+                    if let Err(e) = self.store.save("undo_history", &self.history) {
+                        if let Some(entry) = self.history.done.iter_mut().find(|d| d.id == id) {
+                            entry.undone = false;
+                        }
+                        return format!("{said} I couldn't save completion ({e}); the recovery record is kept for retry.");
+                    }
+                    record.remove(pos);
+                    if let Err(e) = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record) {
+                        return format!("Undone: {}. {said} The old recovery record remains because cleanup couldn't be saved ({e}).", d.what);
+                    }
                     format!("Undone: {}. {said}", d.what)
                 }
                 Err(why) => why,

@@ -210,9 +210,18 @@ fn copy_state_into_skipping(
     bytes: &mut u64,
 ) -> Result<()> {
     std::fs::create_dir_all(to)?;
-    for e in std::fs::read_dir(from)?.flatten() {
+    for e in std::fs::read_dir(from)? {
+        let e = e?;
         let p = e.path();
-        let Some(name) = p.file_name().map(|n| n.to_owned()) else { continue };
+        let Some(name) = p.file_name().map(|n| n.to_owned()) else { continue;
+        };
+        let name_text = name.to_string_lossy();
+        if name_text.ends_with(".writing")
+            || name_text.ends_with(".lock")
+            || name_text.starts_with(".restoring-")
+        {
+            continue;
+        }
         // A file that is no longer there is skipped, not an error.
         //
         // The old one-level loop was `if !p.is_file() { continue }`, which
@@ -298,7 +307,8 @@ pub fn backups(cfg: &BackupConfig) -> std::result::Result<Vec<Backup>, String> {
 
 pub fn list_backups(cfg: &BackupConfig) -> Vec<Backup> {
     let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(&cfg.dir) else { return out };
+    let Ok(rd) = std::fs::read_dir(&cfg.dir) else { return out;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if !p.is_dir() {
@@ -398,6 +408,17 @@ pub fn due_for_backup(cfg: &BackupConfig, t: u64) -> bool {
     }
 }
 
+/// Restore must not run beside a daemon holding stale in-memory state. A
+/// stale/malformed heartbeat still cannot prove that its holder has stopped.
+pub fn may_restore(store: &crate::store::Store) -> Result<()> {
+    let singleton = crate::onlyone::OnlyOne::at(&store.data_dir());
+    match std::fs::symlink_metadata(singleton.path()) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(_) => Err(AtlasError::Platform("I couldn't confirm Atlas is stopped, so restore hasn't changed any files. Close Atlas completely before restoring.".into())),
+        Err(e) => Err(AtlasError::Platform(format!("I couldn't check whether Atlas has stopped ({e}), so restore hasn't changed any files."))),
+    }
+}
+
 /// Put a backup back. Existing files are moved to trash first, so restoring
 /// the wrong one is itself undoable.
 ///
@@ -450,8 +471,14 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
         rel.as_os_str() != "household.json"
     });
 
-    let staging = state.join(format!(".restoring-{}", now()));
-    crate::heard!(std::fs::remove_dir_all(&staging));
+    planned.sort_by(|a, b| a.1.cmp(&b.1));
+    static STAGE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let staging = state.join(format!(
+        ".restoring-{}-{}-{}", now(),
+        std::process::id(),
+        STAGE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir(&staging)?;
     let stage_all = || -> Result<()> {
         for (src, rel) in &planned {
             let dst = staging.join(rel);
@@ -473,14 +500,17 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
     let mut replaced: Vec<String> = Vec::new();
     for (_, rel) in &planned {
         let target = state.join(rel);
-        if let Some(parent) = target.parent() {
+        let put_one = (|| -> Result<()> {
+            if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        if target.exists() {
+        if std::fs::symlink_metadata(&target).is_ok() {
             trash.take(&target, "replaced by a restore")?;
             replaced.push(rel.display().to_string());
         }
-        if let Err(e) = move_across(&staging.join(rel), &target) {
+            move_across(&staging.join(rel), &target)
+        })();
+        if let Err(e) = put_one {
             crate::heard!(std::fs::remove_dir_all(&staging));
             return Err(AtlasError::Platform(format!(
                 "I restored {n} file(s) and then couldn't put {} back: {e}. The ones I \
@@ -497,17 +527,23 @@ pub fn restore(backup: &Path, state: &Path, trash: &Trash, mine: &crate::househo
 
 /// Every file under `dir`, as (full path, path relative to the root).
 fn gather(dir: &Path, rel: &Path, out: &mut Vec<(PathBuf, PathBuf)>) -> Result<()> {
-    for e in std::fs::read_dir(dir)?.flatten() {
+    for e in std::fs::read_dir(dir)? {
+        let e = e?;
         let p = e.path();
         let meta = std::fs::symlink_metadata(&p)?;
         if meta.file_type().is_symlink() {
             continue;
         }
-        let Some(name) = p.file_name().map(|n| n.to_owned()) else { continue };
+        let Some(name) = p.file_name().map(|n| n.to_owned()) else {
+            continue;
+        };
         let here = rel.join(&name);
         if meta.is_dir() {
             gather(&p, &here, out)?;
-        } else if !name.to_string_lossy().starts_with(PART_PREFIX) {
+        } else if !name.to_string_lossy().starts_with(PART_PREFIX)
+            && !name.to_string_lossy().ends_with(".writing")
+            && !name.to_string_lossy().ends_with(".lock")
+        {
             // A temp file from a backup that died mid-copy is not something
             // to restore.
             out.push((p, here));
@@ -527,6 +563,12 @@ pub struct Discarded {
     pub held: String,
     pub why: String,
     pub at: u64,
+    /// Intent was durably saved before moving. Older ledgers describe held items.
+    #[serde(default)]
+    pub pending: bool,
+    /// Undo was durably started; reconcile a crash after the move on retry.
+    #[serde(default)]
+    pub returning: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -539,7 +581,10 @@ pub struct TrashConfig {
 
 impl Default for TrashConfig {
     fn default() -> Self {
-        TrashConfig { dir: String::new(), keep_days: 30 }
+        TrashConfig {
+            dir: String::new(),
+            keep_days: 30,
+        }
     }
 }
 
@@ -658,7 +703,8 @@ impl LedgerState {
 /// private and this module must not start depending on the survey to report
 /// on the trash.
 fn size_on_disk(p: &Path, total: &mut u64) {
-    let Ok(meta) = std::fs::symlink_metadata(p) else { return };
+    let Ok(meta) = std::fs::symlink_metadata(p) else { return;
+    };
     if meta.file_type().is_symlink() {
         return;
     }
@@ -699,7 +745,7 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
         let dst = to.join(e.file_name());
         let meta = std::fs::symlink_metadata(&src)?;
         if meta.file_type().is_symlink() {
-            continue;
+            return Err(std::io::Error::other("a directory containing symbolic links cannot be safely copied to the recovery store"));
         }
         if meta.is_dir() {
             copy_tree(&src, &dst)?;
@@ -717,11 +763,27 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 /// delete the source, and on a failed copy clean up the destination and leave
 /// the source exactly as it was.
 fn move_across(from: &Path, to: &Path) -> Result<()> {
-    if std::fs::rename(from, to).is_ok() {
+    let meta = std::fs::symlink_metadata(from)?;
+    if meta.file_type().is_symlink() {
+        return Err(AtlasError::Platform(
+            "I won't move a symbolic link through the recovery store".into(),
+        ));
+    }
+    if std::fs::symlink_metadata(to).is_ok() {
+        return Err(AtlasError::Platform(format!(
+            "{} already exists; nothing was overwritten",
+            to.display()
+        )));
+    }
+    if meta.is_dir() {
+        // Windows rename refuses an existing destination, preserving the
+        // instant same-volume path for large folders without a clobber race.
+        #[cfg(windows)]
+        if std::fs::rename(from, to).is_ok() {
         return Ok(());
     }
-    let meta = std::fs::symlink_metadata(from)?;
-    if meta.is_dir() {
+        // Reserve the destination rather than renaming over an empty directory.
+        std::fs::create_dir(to)?;
         if let Err(e) = copy_tree(from, to) {
             // The half-copy goes; the original stays.
             crate::heard!(std::fs::remove_dir_all(to));
@@ -733,7 +795,26 @@ fn move_across(from: &Path, to: &Path) -> Result<()> {
         }
         std::fs::remove_dir_all(from)?;
     } else {
-        if let Err(e) = std::fs::copy(from, to) {
+        // A hard link reserves the exact name atomically and is fast within a
+        // volume. Across volumes create_new provides the same no-clobber rule.
+        if std::fs::hard_link(from, to).is_ok() {
+            std::fs::remove_file(from)?;
+            return Ok(());
+        }
+        let mut output = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(to)?;
+        let copied = (|| -> std::io::Result<()> {
+            let mut input = std::fs::File::open(from)?;
+            let n = std::io::copy(&mut input, &mut output)?;
+            if n != meta.len() {
+                return Err(std::io::Error::other("the source changed while copying"));
+            }
+            output.sync_all()
+        })();
+        drop(output);
+        if let Err(e) = copied {
             crate::heard!(std::fs::remove_file(to));
             return Err(AtlasError::Platform(format!(
                 "couldn't copy {} to {}: {e}. Nothing was removed.",
@@ -744,6 +825,11 @@ fn move_across(from: &Path, to: &Path) -> Result<()> {
         std::fs::remove_file(from)?;
     }
     Ok(())
+}
+
+/// Shared no-clobber transfer for sorting and its recovery path.
+pub(crate) fn move_without_overwrite(from: &Path, to: &Path) -> Result<()> {
+    move_across(from, to)
 }
 
 #[derive(Debug, Clone)]
@@ -758,6 +844,23 @@ impl Trash {
 
     fn ledger_path(&self) -> PathBuf {
         PathBuf::from(&self.cfg.dir).join("ledger.json")
+    }
+
+    /// The OS releases this lock even if Atlas exits during a file operation.
+    fn lock(&self) -> Result<std::fs::File> {
+        std::fs::create_dir_all(&self.cfg.dir)?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(PathBuf::from(&self.cfg.dir).join("ledger.lock"))?;
+        file.try_lock().map_err(|e| {
+            AtlasError::Platform(format!(
+                "the trash is being changed elsewhere ({e}); try again"
+            ))
+        })?;
+        Ok(file)
     }
 
     /// What the ledger says, or why it can't say.
@@ -807,13 +910,18 @@ impl Trash {
         // Write beside it and rename, so a crash mid-write cannot leave a
         // half-written ledger where a whole one used to be.
         let tmp = self.ledger_path().with_extension("json.writing");
-        std::fs::write(&tmp, text)?;
+        use std::io::Write;
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(text.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
         crate::store::rename_patiently(&tmp, &self.ledger_path())?;
         Ok(())
     }
 
     /// Move a file out of the way instead of deleting it.
     pub fn take(&self, path: &Path, why: &str) -> Result<Discarded> {
+        let _lock = self.lock()?;
         if !path.exists() {
             return Err(AtlasError::Platform(format!("{} isn't there", path.display())));
         }
@@ -832,45 +940,80 @@ impl Trash {
                 )))
             }
         };
-        let id = items.iter().map(|i| i.id).max().unwrap_or(0) + 1;
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let mut id = items
+            .iter()
+            .map(|i| i.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| AtlasError::Platform("the trash record has no unused ids".into()))?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         // Id-prefixed, so two files with the same name don't collide.
-        let held = PathBuf::from(&self.cfg.dir).join(format!("{id}-{name}"));
+        let mut held = PathBuf::from(&self.cfg.dir).join(format!("{id}-{name}"));
+        while std::fs::symlink_metadata(&held).is_ok() {
+            id = id
+                .checked_add(1)
+                .ok_or_else(|| AtlasError::Platform("the trash record has no unused ids".into()))?;
+            held = PathBuf::from(&self.cfg.dir).join(format!("{id}-{name}"));
+        }
 
-        // Folders as well as files — see the note above `remove_whatever`.
-        // Everything `reclaim` offers is a folder, and the old fallback here
-        // could only copy a file.
-        move_across(path, &held)?;
-
-        let d = Discarded {
+        let mut d = Discarded {
             id,
             original: path.display().to_string(),
             held: held.display().to_string(),
             why: why.to_string(),
             at: now(),
+            pending: true,
+            returning: false,
         };
+        // Write ahead: a failed save leaves the original untouched; a crash
+        // after moving leaves both paths in the ledger for undo to reconcile.
         items.push(d.clone());
         self.write_ledger(&items)?;
+        move_across(path, &held)?;
+        d.pending = false;
+        if let Some(entry) = items.last_mut() {
+            entry.pending = false;
+        }
+        if let Err(e) = self.write_ledger(&items) {
+            return Err(AtlasError::Platform(format!("The file is kept at {} and its recovery intent is saved, but I couldn't finish the trash record ({e}). Undo #{id} can put it back.", held.display())));
+        }
         Ok(d)
     }
 
     /// Put the last thing back.
     pub fn undo_last(&self) -> Result<Discarded> {
         let items = self.ledger();
-        let last = items.last().cloned().ok_or_else(|| {
-            AtlasError::Platform("there's nothing to undo".into())
-        })?;
+        let last = items
+            .last()
+            .cloned()
+            .ok_or_else(|| AtlasError::Platform("there's nothing to undo".into()))?;
         self.undo(last.id)
     }
 
     pub fn undo(&self, id: u64) -> Result<Discarded> {
-        let mut items = self.ledger();
+        let _lock = self.lock()?;
+        let state = self.read_ledger();
+        if let Some(why) = state.trouble() {
+            return Err(AtlasError::Platform(why));
+        }
+        let mut items = state.entries();
         let pos = items
             .iter()
             .position(|i| i.id == id)
             .ok_or_else(|| AtlasError::Platform(format!("nothing with id {id}")))?;
         let item = items[pos].clone();
         let original = PathBuf::from(&item.original);
+        let held = PathBuf::from(&item.held);
+        // Intent before take, or undo completed before its final ledger save.
+        if !held.exists() && original.exists() && (item.pending || item.returning) {
+            items.remove(pos);
+            self.write_ledger(&items)?;
+            return Ok(item);
+        }
 
         // Refusing beats silently overwriting whatever is there now.
         if original.exists() {
@@ -886,7 +1029,9 @@ impl Trash {
         // happened. It used to come off the list whether or not the copy
         // worked, so a failed restore lost the record of where the thing was
         // and left it in the trash with nothing pointing at it.
-        move_across(Path::new(&item.held), &original)?;
+        items[pos].returning = true;
+        self.write_ledger(&items)?;
+        move_across(&held, &original)?;
         items.remove(pos);
         self.write_ledger(&items)?;
         Ok(item)
@@ -894,6 +1039,7 @@ impl Trash {
 
     /// Permanently remove anything past its keep window.
     pub fn expire(&self, t: u64) -> usize {
+        let Ok(_lock) = self.lock() else { return 0 };
         // `read_ledger`, not `ledger()`, and the difference is everything.
         //
         // `ledger()`'s own doc says: "Kept for reading and reporting only.
@@ -929,44 +1075,30 @@ impl Trash {
             return 0;
         }
         let items = state.entries();
-        let cutoff = self.cfg.keep_days * 86_400;
+        let cutoff = self.cfg.keep_days.saturating_mul(86_400);
         let (old, keep): (Vec<Discarded>, Vec<Discarded>) =
-            items.into_iter().partition(|i| t.saturating_sub(i.at) >= cutoff);
-        // Written FIRST, then the files removed. If the write fails, nothing
-        // has been deleted and the ledger still matches the folder; the other
-        // order can delete files and then fail to record it.
-        if self.write_ledger(&keep).is_err() {
+            items.iter()
+            .cloned().partition(|i| !i.pending && !i.returning && t.saturating_sub(i.at) >= cutoff);
+        // Check writability while keeping every recovery path. Files that
+        // cannot be removed remain recorded even if the process exits next.
+        if self.write_ledger(&items).is_err() {
             return 0;
         }
-        // A removal that FAILS puts the entry back.
-        //
-        // This was `let _ = std::fs::remove_file(&i.held)`, and the discarded
-        // error was not a rare case: `remove_file` fails on a directory
-        // every time, on every platform, and every single thing `reclaim`
-        // offers is a directory. So the record was dropped and the folder
-        // stayed — invisible to `undo`, invisible to the next `expire`, and
-        // taking up exactly as much space as before it was "reclaimed".
-        //
-        // Two ledger writes rather than one is the price. The first keeps the
-        // crash-safety the comment above describes; the second is what stops
-        // a folder becoming orphaned bytes. A crash between them loses the
-        // record of something still on disk, which is the old behaviour — but
-        // it needs an interleaving, where the old behaviour needed only a
-        // folder.
+        // Remove the record only after deletion, so interruption leaves a
+        // stale record of a deleted file rather than an unrecorded live file.
         let mut gone = 0usize;
         let mut stuck: Vec<Discarded> = Vec::new();
         for i in old {
             match remove_whatever(Path::new(&i.held)) {
                 Ok(()) => gone += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(_) => stuck.push(i),
             }
         }
-        if !stuck.is_empty() {
-            let mut back = keep;
+        let mut back = keep;
             back.extend(stuck);
             back.sort_by_key(|i| i.id);
             crate::heard!(self.write_ledger(&back));
-        }
         gone
     }
 
@@ -986,11 +1118,13 @@ impl Trash {
         let known: std::collections::BTreeSet<PathBuf> =
             self.ledger().into_iter().map(|i| PathBuf::from(i.held)).collect();
         let mut out = Vec::new();
-        let Ok(rd) = std::fs::read_dir(&self.cfg.dir) else { return out };
+        let Ok(rd) = std::fs::read_dir(&self.cfg.dir) else { return out;
+        };
         for e in rd.flatten() {
             let p = e.path();
             // The ledger itself and its in-progress copy are not strays.
             if p == self.ledger_path()
+                || p.file_name().is_some_and(|n| n == "ledger.lock")
                 || p.extension().and_then(|x| x.to_str()) == Some("writing")
             {
                 continue;

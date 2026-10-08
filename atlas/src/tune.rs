@@ -1714,43 +1714,63 @@ pub fn may_move_into(dest: &std::path::Path, from_dir: &std::path::Path) -> Resu
 /// Move one file, never over another: a name already taken gets " (2)".
 /// Across drives a rename can't work, so it's copied, the copy's size
 /// checked, and only then the original removed.
-fn move_one(from: &std::path::Path, dest_dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
-    let name = from.file_name().ok_or_else(|| format!("{} has no name", from.display()))?;
+fn move_one_recorded(
+    from: &std::path::Path,
+    dest_dir: &std::path::Path,
+    before: &mut impl FnMut(&std::path::Path, &std::path::Path) -> Result<(), String>,
+) -> Result<std::path::PathBuf, String> {
+    let name = from
+        .file_name()
+        .ok_or_else(|| format!("{} has no name", from.display()))?;
     let mut to = dest_dir.join(name);
     let mut n = 2;
-    while to.exists() {
-        let stem = std::path::Path::new(name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let ext = std::path::Path::new(name).extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    while std::fs::symlink_metadata(&to).is_ok() {
+        let stem = std::path::Path::new(name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let ext = std::path::Path::new(name)
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
         to = dest_dir.join(format!("{stem} ({n}){ext}"));
         n += 1;
     }
+    before(from, &to)?;
     move_exact(from, &to)?;
     Ok(to)
 }
 
 fn move_exact(from: &std::path::Path, to: &std::path::Path) -> Result<(), String> {
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
-    }
-    let len = std::fs::metadata(from).map_err(|e| format!("{}: {e}", from.display()))?.len();
-    let copied = std::fs::copy(from, to).map_err(|e| format!("{} couldn't be copied: {e}", from.display()))?;
-    if copied != len {
-        crate::heard!(std::fs::remove_file(to));
-        return Err(format!("{} didn't copy whole, so the original stays", from.display()));
-    }
-    std::fs::remove_file(from).map_err(|e| format!("{} was copied but the original couldn't be removed: {e}", from.display()))
+    crate::safety::move_without_overwrite(from, to).map_err(|e| e.to_string())
 }
 
 /// Move each file into `dest` (made if it isn't there). Returns each move
 /// that happened, as (where it was, where it is), and why each other didn't.
-pub fn move_files_into(files: &[std::path::PathBuf], dest: &std::path::Path) -> (Vec<(std::path::PathBuf, std::path::PathBuf)>, Vec<String>) {
+pub fn move_files_into(
+    files: &[std::path::PathBuf],
+    dest: &std::path::Path,
+) -> (Vec<(std::path::PathBuf, std::path::PathBuf)>, Vec<String>) {
+    move_files_into_recorded(files, dest, &mut |_, _| Ok(()))
+}
+
+/// The exact collision-free destination is durably recorded before each move.
+/// A rejected record leaves that file in its original location.
+pub fn move_files_into_recorded(
+    files: &[std::path::PathBuf],
+    dest: &std::path::Path,
+    before: &mut impl FnMut(&std::path::Path, &std::path::Path) -> Result<(), String>,
+) -> (Vec<(std::path::PathBuf, std::path::PathBuf)>, Vec<String>) {
     let mut done = Vec::new();
     let mut not = Vec::new();
     if let Err(e) = std::fs::create_dir_all(dest) {
-        return (done, vec![format!("{} couldn't be made: {e}", dest.display())]);
+        return (
+            done,
+            vec![format!("{} couldn't be made: {e}", dest.display())],
+        );
     }
     for f in files {
-        match move_one(f, dest) {
+        match move_one_recorded(f, dest, before) {
             Ok(to) => done.push((f.clone(), to)),
             Err(e) => not.push(e),
         }
@@ -1765,7 +1785,10 @@ pub fn move_back(moves: &[(std::path::PathBuf, std::path::PathBuf)]) -> (usize, 
     let mut not = Vec::new();
     for (was, is) in moves {
         if was.exists() {
-            not.push(format!("{} has something new in its old place", was.display()));
+            not.push(format!(
+                "{} has something new in its old place",
+                was.display()
+            ));
             continue;
         }
         if !is.exists() {
@@ -1799,7 +1822,10 @@ pub enum TuneAsk {
     /// "Clear my temp files."
     ClearTemp,
     /// "Move my big downloads to D:\Archive" (or the duplicates).
-    MoveInto { to: std::path::PathBuf, duplicates: bool },
+    MoveInto {
+        to: std::path::PathBuf,
+        duplicates: bool,
+    },
     /// A move with no folder named: asked for, never guessed.
     MoveWhere,
 }
@@ -1815,13 +1841,36 @@ pub fn tune_ask(said: &str) -> TuneAsk {
             None => TuneAsk::MoveWhere,
         };
     }
-    if has(&["startup", "start up", "starts with windows", "start with windows", "starts up with", "runs at startup", "run at startup", "launch at startup", "boot"]) {
+    if has(&[
+        "startup",
+        "start up",
+        "starts with windows",
+        "start with windows",
+        "starts up with",
+        "runs at startup",
+        "run at startup",
+        "launch at startup",
+        "boot",
+    ]) {
         return TuneAsk::Startup;
     }
-    if has(&["temp file", "temporary file", "temp folder", "temporary folder"]) {
+    if has(&[
+        "temp file",
+        "temporary file",
+        "temp folder",
+        "temporary folder",
+    ]) {
         return TuneAsk::ClearTemp;
     }
-    if has(&["space", "storage", "duplicate", "big files", "biggest files", "downloads folder", "disk"]) {
+    if has(&[
+        "space",
+        "storage",
+        "duplicate",
+        "big files",
+        "biggest files",
+        "downloads folder",
+        "disk",
+    ]) {
         return TuneAsk::Space;
     }
     if has(&["close", "kill", "end task", "shut down what", "quit what"]) {
@@ -1842,7 +1891,59 @@ pub enum TuneUndo {
     /// the folders the sorting made taken away again, innermost first, but
     /// only those that are empty once the files are back -- anything you've
     /// put in one since keeps it.
-    Organized { moves: Vec<(std::path::PathBuf, std::path::PathBuf)>, made: Vec<std::path::PathBuf> },
+    Organized {
+        moves: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+        made: Vec<std::path::PathBuf>,
+    },
+    /// Write-ahead file intents with identity evidence for interrupted retries.
+    RecordedMoves {
+        moves: Vec<RecordedMove>,
+        made: Vec<std::path::PathBuf>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordedMove {
+    pub from: std::path::PathBuf,
+    pub to: std::path::PathBuf,
+    /// None only when migrating an old record whose moved file is missing.
+    #[serde(default)]
+    pub fingerprint: Option<String>,
+}
+
+impl RecordedMove {
+    pub fn new(from: &std::path::Path, to: &std::path::Path) -> Result<Self, String> {
+        Ok(Self {
+            from: from.to_path_buf(),
+            to: to.to_path_buf(),
+            fingerprint: Some(file_fingerprint(from)?),
+        })
+    }
+}
+
+fn file_fingerprint(path: &std::path::Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let meta = std::fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        return Err(format!(
+            "{} isn't an ordinary file; it was left alone",
+            path.display()
+        ));
+    }
+    let mut input = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = input
+            .read(&mut buffer)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hash.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 pub const TUNE_UNDO_RECORD: &str = "tune_undo";
@@ -1850,38 +1951,117 @@ pub const TUNE_UNDO_RECORD: &str = "tune_undo";
 /// Take one back: what happened, or why it couldn't be (and then it stays
 /// in the record, to try again).
 pub fn undo_tune_change(u: &TuneUndo) -> Result<String, String> {
-    match u {
-        TuneUndo::Startup(e) => match set_startup(e, true) {
-            Ok(()) => Ok(format!("{} starts with Windows again.", e.name)),
-            Err(err) => Err(format!("I couldn't switch {} back on: {err}.", e.name)),
-        },
-        TuneUndo::Moves(m) => {
-            let (back, not) = move_back(m);
-            let mut s = format!("Moved {back} of {} back.", m.len());
-            if !not.is_empty() {
-                s.push_str(&format!(" Not moved: {}.", not.join("; ")));
-            }
-            if back == 0 {
-                Err(s)
-            } else {
-                Ok(s)
-            }
+    undo_tune_change_with_checkpoint(u, &mut |_| Ok(()))
+}
+
+/// Persist identity before undo, and each completion afterward. Failed or
+/// interrupted saves can be reconciled using the saved fingerprint on retry.
+pub fn undo_tune_change_with_checkpoint(
+    u: &TuneUndo,
+    checkpoint: &mut impl FnMut(&TuneUndo) -> Result<(), String>,
+) -> Result<String, String> {
+    if let TuneUndo::Startup(e) = u {
+        return set_startup(e, true)
+            .map(|_| format!("{} starts with Windows again.", e.name))
+            .map_err(|err| format!("I couldn't switch {} back on: {err}.", e.name));
+    }
+    let (moves, made) = match u {
+        TuneUndo::RecordedMoves { moves, made } => (moves.clone(), made.clone()),
+        TuneUndo::Moves(moves) | TuneUndo::Organized { moves, .. } => {
+            let records = moves
+                .iter()
+                .map(|(from, to)| RecordedMove {
+                    from: from.clone(),
+                    to: to.clone(),
+                    fingerprint: file_fingerprint(to).ok(),
+                })
+                .collect();
+            let made = match u {
+                TuneUndo::Organized { made, .. } => made.clone(),
+                _ => Vec::new(),
+            };
+            (records, made)
         }
-        TuneUndo::Organized { moves, made } => {
-            let (back, not) = move_back(moves);
-            // `remove_dir` only ever removes an empty folder.
-            for d in made.iter().rev() {
-                crate::heard!(std::fs::remove_dir(d));
-            }
-            let mut s = format!("Put {back} of {} back where {} were.", moves.len(), if back == 1 { "it" } else { "they" });
-            if !not.is_empty() {
-                s.push_str(&format!(" Not put back: {}.", not.join("; ")));
-            }
-            if back == 0 && !moves.is_empty() {
-                Err(s)
+        TuneUndo::Startup(_) => return Err("The startup recovery record couldn't be prepared.".into()),
+    };
+    let total = moves.len();
+    let mut next = TuneUndo::RecordedMoves { moves, made };
+    checkpoint(&next)?;
+    let mut back = 0;
+    let mut not = Vec::new();
+    let mut i = 0;
+    loop {
+        let current = match &next {
+            TuneUndo::RecordedMoves { moves, .. } => moves.get(i).cloned(),
+            _ => None,
+        };
+        let Some(current) = current else { break };
+        let was = &current.from;
+        let is = &current.to;
+        let original_exists = std::fs::symlink_metadata(was).is_ok();
+        let moved_exists = std::fs::symlink_metadata(is).is_ok();
+        let result = if original_exists && !moved_exists {
+            if current
+                .fingerprint
+                .as_ref()
+                .is_some_and(|f| file_fingerprint(was).as_ref() == Ok(f))
+            {
+                Ok(()) // Already returned, or recorded just before the move.
             } else {
-                Ok(s)
+                Err(format!(
+                    "{} is occupied and I can't confirm it is the returned file",
+                    was.display()
+                ))
+            }
+        } else if original_exists {
+            Err(format!(
+                "{} has something new in its old place",
+                was.display()
+            ))
+        } else if !moved_exists {
+            Err(format!("{} isn't where I moved it any more", is.display()))
+        } else {
+            // Editing the moved file is fine. Persist its current identity
+            // before returning it so a crash afterward remains recognizable.
+            let fingerprint = file_fingerprint(is)
+                .map_err(|e| format!("Put {back} of {total} back; the rest remain pending ({e})."))?;
+            if let TuneUndo::RecordedMoves { moves, .. } = &mut next {
+                moves[i].fingerprint = Some(fingerprint);
+            }
+            checkpoint(&next)
+                .map_err(|e| format!("Put {back} of {total} back; couldn't save the next recovery intent ({e}). The rest were left in place."))?;
+            if let Some(parent) = was.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Put {back} of {total} back; the rest remain pending ({}: {e}).", parent.display()))?;
+            }
+            move_exact(is, was)
+        };
+        match result {
+            Ok(()) => {
+                back += 1;
+                if let TuneUndo::RecordedMoves { moves, .. } = &mut next {
+                    moves.remove(i);
+                }
+                checkpoint(&next).map_err(|e| format!("Put {back} of {total} back, but couldn't save the latest recovery status ({e}); retry is safe."))?;
+            }
+            Err(e) => {
+                not.push(e);
+                i += 1;
             }
         }
     }
-}
+    if not.is_empty() {
+        if let TuneUndo::RecordedMoves { made, .. } = &next {
+            for dir in made.iter().rev() {
+                crate::heard!(std::fs::remove_dir(dir));
+            }
+        }
+        if matches!(&next, TuneUndo::RecordedMoves { made, .. } if !made.is_empty()) {
+            Ok(format!("Put {back} of {total} back where they were."))
+        } else {
+            Ok(format!("Moved {back} of {total} back."))
+        }
+    } else {
+        Err(format!("Put {back} of {total} back. Still pending: {}. Retry undo after clearing these obstructions.", not.join("; ")))
+    }
+        }
