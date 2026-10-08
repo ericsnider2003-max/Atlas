@@ -263,7 +263,7 @@ mod launch {
         for _ in 0..20 {
             let _ = launch_ranking("app 77", &all, &Uses::default(), THU);
         }
-        assert!(t.elapsed().as_millis() < 2000, "{:?} for 20 ranks of 1000", t.elapsed());
+        crate::common::assert_prompt(t.elapsed(), std::time::Duration::from_millis(2000), "20 ranks of 1000");
     }
 }
 

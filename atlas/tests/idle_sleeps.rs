@@ -19,7 +19,7 @@ fn news_sent_before_the_wait_is_not_slept_through() {
     tx.send(1).unwrap();
     let started = Instant::now();
     assert!(atlas::doorbell::wait_after(seen, 10_000), "a send after the count was read must end the wait");
-    assert!(started.elapsed() < Duration::from_secs(1));
+    crate::common::assert_prompt(started.elapsed(), Duration::from_secs(1), "took too long");
     assert_eq!(rx.try_recv().ok(), Some(1));
 }
 
@@ -35,14 +35,14 @@ fn a_send_from_another_thread_wakes_the_waiter() {
     let mut got = None;
     // Woken by the ring, then looks: well under the 10 s it would sleep.
     let mut seen = seen;
-    while got.is_none() && started.elapsed() < Duration::from_secs(10) {
+    while got.is_none() && started.elapsed() < crate::common::allowed(Duration::from_secs(10)) {
         atlas::doorbell::wait_after(seen, 10_000);
         seen = atlas::doorbell::rung();
         got = rx.try_recv().ok();
     }
     sender.join().unwrap();
     assert_eq!(got, Some("typed"));
-    assert!(started.elapsed() < Duration::from_secs(2), "took {:?}", started.elapsed());
+    crate::common::assert_prompt(started.elapsed(), Duration::from_secs(2), "took");
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn a_wait_with_nothing_to_wake_it_still_ends_on_time() {
     // Spurious rings from other tests can only end it sooner.
     let started = Instant::now();
     atlas::doorbell::wait_after(atlas::doorbell::rung(), 50);
-    assert!(started.elapsed() < Duration::from_secs(2));
+    crate::common::assert_prompt(started.elapsed(), Duration::from_secs(2), "took too long");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn a_paused_errand_goes_on_the_moment_it_is_resumed() {
         )
         .unwrap();
     let until = |f: &dyn Fn() -> bool| {
-        let end = Instant::now() + Duration::from_secs(5);
+        let end = Instant::now() + crate::common::allowed(Duration::from_secs(5));
         while Instant::now() < end && !f() {
             std::thread::sleep(Duration::from_millis(2));
         }
@@ -108,7 +108,7 @@ fn a_paused_errand_goes_on_the_moment_it_is_resumed() {
     assert!(until(&|| done.load(Ordering::SeqCst) >= 2));
     assert!(c.pause(id));
     let holding = |c: &Crew| c.errands().into_iter().any(|e| e.id == id && e.state == State::Holding);
-    let end = Instant::now() + Duration::from_secs(5);
+    let end = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while Instant::now() < end && !holding(&c) {
         std::thread::sleep(Duration::from_millis(2));
     }
@@ -117,7 +117,7 @@ fn a_paused_errand_goes_on_the_moment_it_is_resumed() {
     let resumed = Instant::now();
     assert!(c.resume(id));
     assert!(until(&|| done.load(Ordering::SeqCst) > held_at), "it never went on");
-    assert!(resumed.elapsed() < Duration::from_secs(1), "took {:?} to notice the resume", resumed.elapsed());
+    crate::common::assert_prompt(resumed.elapsed(), Duration::from_secs(1), "took to notice the resume");
     c.ask_to_stop(id);
 }
 
@@ -172,6 +172,6 @@ fn a_wait_longer_than_the_clock_can_hold_still_wakes_on_news() {
     });
     let started = std::time::Instant::now();
     assert!(atlas::doorbell::wait_after(seen, u64::MAX), "news must end even an endless wait");
-    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_secs(10), "took too long");
     ringer.join().expect("ringer");
 }

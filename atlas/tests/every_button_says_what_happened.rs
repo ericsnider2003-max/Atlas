@@ -205,7 +205,7 @@ fn sending_a_document_comes_straight_back_and_the_page_follows_the_send() {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
     let r = atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/documents".into(), fields });
-    assert!(started.elapsed().as_millis() < 1500, "the form waited for Sam's Atlas: {:?}", started.elapsed());
+    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(1500), "the form waited for Sam's Atlas");
     assert!(r.body.contains("job="), "{}", r.body);
 
     // While it's going: said, and the page looks again by itself.

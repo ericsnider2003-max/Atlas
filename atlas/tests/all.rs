@@ -541,6 +541,8 @@ mod clock_changes;
 mod poisoned_locks;
 #[path = "idle_sleeps.rs"]
 mod idle_sleeps;
+#[path = "a_tight_bound_still_catches_a_stall.rs"]
+mod a_tight_bound_still_catches_a_stall;
 #[path = "errand_pause.rs"]
 mod errand_pause;
 #[path = "personal_atlas_is_its_own.rs"]
@@ -1031,3 +1033,5 @@ mod asking_for_a_new_ability;
 mod what_broke_it;
 #[path = "scaffolding_an_ability.rs"]
 mod scaffolding_an_ability;
+#[path = "connectors_are_data.rs"]
+mod connectors_are_data;

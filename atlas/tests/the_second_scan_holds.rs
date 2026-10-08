@@ -205,7 +205,7 @@ fn a_voice_turn_leaves_a_talk_turn_that_is_still_thinking_alone() {
     let started = Instant::now();
     d.converse("what are volcanic islands made of", &ears, &mouth, &|| 110);
     let took = started.elapsed();
-    assert!(took < Duration::from_secs(3), "the voice turn waited for the Talk turn: {took:?}");
+    crate::common::assert_prompt(took, Duration::from_secs(3), "the voice turn waited for the Talk turn");
     assert!(d.talk_is_thinking(), "the voice turn took the Talk turn over");
     let islands = d.thread.recent.iter().find(|e| e.said.contains("volcanic")).expect("the voice turn was answered");
     assert!(islands.reply.contains("basalt"), "{}", islands.reply);
@@ -344,7 +344,7 @@ fn a_click_answered_busy_is_never_run_afterwards() {
     let port = server.port();
     let d2 = server.threaded().unwrap();
     let lp = std::thread::spawn(move || {
-        let until = Instant::now() + Duration::from_secs(5);
+        let until = Instant::now() + crate::common::allowed(Duration::from_secs(5));
         let mut n = 0;
         while n == 0 && Instant::now() < until {
             n += d2.wait_and_answer(50, &mut |_a| Reply::ok("{\"ok\":true}")).len();
@@ -390,7 +390,7 @@ fn a_client_sending_a_byte_at_a_time_runs_out_of_time() {
         std::thread::sleep(Duration::from_millis(150));
     }
     assert!(closed, "a trickling client was still connected after {:?}", started.elapsed());
-    assert!(started.elapsed() < Duration::from_secs(9), "held for {:?}", started.elapsed());
+    crate::common::assert_prompt(started.elapsed(), Duration::from_secs(9), "held for");
 }
 
 #[test]
@@ -929,7 +929,7 @@ fn the_iphone_app_is_read_off_the_loop() {
     let started = Instant::now();
     let first = atlas::hublive::ipa_facts(&f);
     assert!(first.is_none());
-    assert!(started.elapsed() < Duration::from_millis(100), "the first look read the file: {:?}", started.elapsed());
+    crate::common::assert_prompt(started.elapsed(), Duration::from_millis(100), "the first look read the file");
     let until = Instant::now() + Duration::from_secs(20);
     while !atlas::hublive::ipa_facts_ready(&f) && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));

@@ -83,7 +83,7 @@ fn a_burst_of_requests_is_answered_together_not_one_per_pass() {
 
     assert!(ok, "a request in the burst was not answered with the page");
     assert_eq!(answered, 12, "the loop did not answer every request");
-    assert!(took < Duration::from_millis(1500), "twelve requests took {took:?}");
+    crate::common::assert_prompt(took, Duration::from_millis(1500), "twelve requests took");
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn empty_connections_cost_the_loop_nothing() {
     lp.join().unwrap();
     drop(silent);
     assert!(r.starts_with("HTTP/1.1 200"), "got: {}", &r[..r.len().min(80)]);
-    assert!(took < Duration::from_millis(500), "a click behind silent connections took {took:?}");
+    crate::common::assert_prompt(took, Duration::from_millis(500), "a click behind silent connections took");
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn a_wrong_token_is_slowed_without_slowing_anything_else() {
     stop.store(true, Ordering::SeqCst);
     lp.join().unwrap();
     assert!(r.starts_with("HTTP/1.1 200"));
-    assert!(took < Duration::from_millis(400), "the right token waited {took:?} behind wrong ones");
+    crate::common::assert_prompt(took, Duration::from_millis(400), "the right token waited behind wrong ones");
 }
 
 #[test]
@@ -157,7 +157,7 @@ fn the_app_files_are_answered_with_nobody_at_the_loop() {
     let r = ask(port, "GET /hub/icon-192.png HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
     assert!(r.starts_with("HTTP/1.1 200"), "got: {}", &r[..r.len().min(80)]);
     assert!(r.contains("max-age"), "an icon is not kept by the browser");
-    assert!(started.elapsed() < Duration::from_millis(500));
+    crate::common::assert_prompt(started.elapsed(), Duration::from_millis(500), "took too long");
 }
 
 #[test]

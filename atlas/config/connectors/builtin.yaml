@@ -1,0 +1,132 @@
+# Built-in connectors. One entry per service Atlas can connect to.
+# Your own are added as *.yaml files in a 'connectors' folder (calendar-by-link only).
+
+- id: gmail
+  name: Gmail
+  group: email
+  for: "so I can read your Gmail and send mail you approve"
+  may: read+act
+  handshake: [app_password]
+  domains: [imap.gmail.com, smtp.gmail.com]
+  if_it_breaks: "If it stops working, make a fresh app password in your Google account and paste it again."
+  where: accounts
+
+- id: outlook
+  name: Outlook
+  group: email
+  for: "so I can read your Outlook mail and send mail you approve"
+  may: read+act
+  handshake: [sign_in, device_code]
+  domains: [outlook.office365.com, login.microsoftonline.com]
+  if_it_breaks: "If it stops working, sign in to Microsoft again from the accounts page."
+  where: accounts
+
+- id: imap-mail
+  name: Other mailboxes
+  group: email
+  for: "so I can read mail from Yahoo, Fastmail, iCloud and other mailboxes and send mail you approve"
+  may: read+act
+  handshake: [app_password]
+  domains: []
+  if_it_breaks: "If it stops working, make a fresh app password with your mail provider and paste it again."
+  where: accounts
+
+- id: google-calendar
+  name: Google Calendar
+  group: calendar
+  for: "so I can see when you are busy"
+  may: read
+  handshake: [sign_in]
+  domains: [www.googleapis.com, oauth2.googleapis.com]
+  if_it_breaks: "If it stops working, sign in to Google again from the accounts page."
+  where: accounts
+
+- id: outlook-calendar
+  name: Outlook Calendar
+  group: calendar
+  for: "so I can see when you are busy"
+  may: read
+  handshake: [sign_in]
+  domains: [graph.microsoft.com, login.microsoftonline.com]
+  if_it_breaks: "If it stops working, sign in to Microsoft again from the accounts page."
+  where: accounts
+
+- id: calendar-link
+  name: Calendar by link
+  group: calendar
+  for: "so I can see when you are busy from a calendar link you paste"
+  may: read
+  handshake: [link]
+  domains: []
+  if_it_breaks: "If it stops working, paste a fresh calendar link from your calendar's sharing settings."
+  where: accounts
+
+- id: youtube
+  name: YouTube
+  group: social
+  for: "so I can read your channel's numbers and comments"
+  may: read
+  handshake: [sign_in, key]
+  domains: [www.googleapis.com]
+  if_it_breaks: "If it stops working, sign in again or paste a fresh key on the social page."
+  where: social
+
+- id: bluesky
+  name: Bluesky
+  group: social
+  for: "so I can read your Bluesky posts and numbers"
+  may: read
+  handshake: [key]
+  domains: [public.api.bsky.app, bsky.social]
+  if_it_breaks: "If it stops working, make a fresh app password in Bluesky and paste it again."
+  where: social
+
+- id: instagram
+  name: Instagram
+  group: social
+  for: "so I can read your Instagram posts and numbers"
+  may: read
+  handshake: [key, browser_session]
+  domains: [graph.instagram.com]
+  if_it_breaks: "If it stops working, paste a fresh key or sign in again in the browser window I open."
+  where: social
+
+- id: threads
+  name: Threads
+  group: social
+  for: "so I can read your Threads posts and numbers"
+  may: read
+  handshake: [key]
+  domains: [graph.threads.net]
+  if_it_breaks: "If it stops working, paste a fresh key on the social page."
+  where: social
+
+- id: facebook
+  name: Facebook
+  group: social
+  for: "so I can read your Facebook page posts and numbers"
+  may: read
+  handshake: [key, browser_session]
+  domains: [graph.facebook.com]
+  if_it_breaks: "If it stops working, paste a fresh key or sign in again in the browser window I open."
+  where: social
+
+- id: tiktok
+  name: TikTok
+  group: social
+  for: "so I can read your TikTok videos and numbers"
+  may: read
+  handshake: [sign_in]
+  domains: [open.tiktokapis.com]
+  if_it_breaks: "If it stops working, sign in to TikTok again from the social page."
+  where: social
+
+- id: muse
+  name: Muse
+  group: ai
+  for: "so I can ask Meta's Muse model to think hard about a question"
+  may: read
+  handshake: [key]
+  domains: [api.meta.ai]
+  if_it_breaks: "If it stops working, paste a fresh key from dev.meta.ai on the accounts page."
+  where: accounts

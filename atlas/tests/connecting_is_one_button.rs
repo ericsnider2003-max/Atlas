@@ -249,3 +249,59 @@ fn one_window_opens_every_site() {
     assert!(!a.iter().any(|x| x.starts_with("--headless")));
     assert!(urls.iter().all(|u| a.contains(u)), "{a:?}");
 }
+
+fn post_social(d: &mut Daemon, fields: &[(&str, &str)]) -> String {
+    let r = atlas::hublive::reply(
+        d,
+        atlas::server::Action::HubPost {
+            path: "/hub/social".into(),
+            fields: fields.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect(),
+        },
+    );
+    atlas::hub::urldecode(&r.body)
+}
+
+/// N5 leftovers (8 Oct 2026): Instagram, Threads, Facebook and TikTok sign-ins
+/// had a "Keep it" and no way to take them away again.
+#[test]
+fn an_instagram_threads_facebook_or_tiktok_sign_in_can_be_disconnected() {
+    stand_in();
+    let (dir, p) = daemon("takeaway");
+    let c = Config::load(Path::new("config")).unwrap();
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    // Nothing kept: no button, and the post says so rather than pretending.
+    let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Social)).body;
+    assert!(!html.contains("value='token-disconnect'"), "a Disconnect button for something not kept");
+    let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", "instagram")]);
+    assert!(back.contains("nothing to take away"), "{back}");
+
+    for (name, kept) in [("instagram", "Instagram token"), ("threads", "Threads token"), ("facebook", "Facebook Page token")] {
+        let back = post_social(&mut d, &[("what", "key"), ("name", name), ("secret", "EAAB-not-real")]);
+        assert!(back.contains("Kept your"), "{back}");
+        let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Social)).body;
+        assert!(html.contains(&format!("name=name value={name}")), "{kept} is kept and has no Disconnect button");
+        let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", name)]);
+        assert!(back.contains("disconnected") && back.contains("gone from the vault"), "{back}");
+        assert!(back.contains("Business Integrations"), "Meta's own page is named, since it gives Atlas no way to end the token: {back}");
+        let mut v = Vault::load(&Store::new(dir.clone()));
+        v.open_unattended(1).unwrap();
+        let secret = match name { "instagram" => atlas::social::VAULT_INSTAGRAM, "threads" => atlas::social::VAULT_THREADS, _ => atlas::social::VAULT_FACEBOOK };
+        assert!(v.get(secret, 1).is_err(), "{name} is still in the vault");
+        let again = post_social(&mut d, &[("what", "token-disconnect"), ("name", name)]);
+        assert!(again.contains("nothing to take away"), "{again}");
+    }
+
+    // TikTok: kept as its sign-in record (no refresh token, so nothing to ask TikTok to end).
+    {
+        let mut v = Vault::load(&Store::new(dir.clone()));
+        v.open_unattended(1).unwrap();
+        let rec = r#"{"client_key":"ck","client_secret":"cs","redirect":"https://x.example/r"}"#;
+        v.put(atlas::social::VAULT_TIKTOK, Kind::ApiKey, rec, 1).unwrap();
+        v.save(&atlas::roots::install_state()).unwrap();
+    }
+    let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", "tiktok")]);
+    assert!(back.contains("TikTok is disconnected"), "{back}");
+    let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", "linkedin")]);
+    assert!(back.contains("isn't a sign-in I keep"), "{back}");
+    let _ = std::fs::remove_dir_all(dir);
+}

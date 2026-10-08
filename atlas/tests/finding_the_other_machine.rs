@@ -210,7 +210,7 @@ fn looking_on_a_network_with_nothing_on_it_comes_back_empty_rather_than_hanging(
     // Either an empty list or a socket error -- a sandbox may refuse
     // broadcast, and that is reported rather than swallowed. What must not
     // happen is waiting.
-    assert!(took < Duration::from_secs(3), "it waited {took:?}");
+    crate::common::assert_prompt(took, Duration::from_secs(3), "it waited");
     if let Ok(found) = r {
         assert!(found.is_empty() || !found.is_empty(), "a list either way");
     }

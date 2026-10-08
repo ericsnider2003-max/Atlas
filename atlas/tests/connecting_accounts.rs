@@ -121,7 +121,7 @@ fn the_accounts_page_leads_with_connecting_and_walks_you_through_it() {
     let r = atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "calendar"), ("url", "webcal://calendar.google.com/calendar/ical/me/private-x/basic.ics")]) });
     assert!(r.body.contains("Added+Google+Calendar"), "{}", r.body);
     let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
-    assert!(page.contains("<b>Google Calendar</b> calendar <span class=tag>Not tried yet</span>"), "{page}");
+    assert!(page.contains("<b>Google Calendar</b> <span class=tag>read only</span> <span class='tag'>Kept, not tried yet</span>"), "{page}");
     let links: Vec<connect::CalendarLink> = Store::new(store.clone()).load(connect::CALENDAR_LINKS);
     assert_eq!(links[0].url, "https://calendar.google.com/calendar/ical/me/private-x/basic.ics");
     atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "disconnect"), ("kind", "calendar"), ("id", &links[0].url)]) });

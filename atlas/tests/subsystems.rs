@@ -495,10 +495,12 @@ fn environment_variables_expand_regardless_of_case() {
     // Windows reports "ProgramFiles"; configs are written %PROGRAMFILES%.
     // A case-sensitive match silently left the placeholder in place, and the
     // app was then reported as missing.
-    std::env::set_var("AtlasTestVar", "/somewhere");
-    assert_eq!(atlas::doctor::expand_env("%ATLASTESTVAR%/app.exe"), "/somewhere/app.exe");
-    assert_eq!(atlas::doctor::expand_env("%atlastestvar%/app.exe"), "/somewhere/app.exe");
-    assert_eq!(atlas::doctor::expand_env("%AtlasTestVar%/app.exe"), "/somewhere/app.exe");
+    // The variables are passed in: the process's environment is shared with
+    // every other test in this binary. The match is the real one's.
+    let env = |n: &str| atlas::doctor::lookup_in(n, [("AtlasTestVar".to_string(), "/somewhere".to_string())]);
+    assert_eq!(atlas::doctor::expand_env_with("%ATLASTESTVAR%/app.exe", &env), "/somewhere/app.exe");
+    assert_eq!(atlas::doctor::expand_env_with("%atlastestvar%/app.exe", &env), "/somewhere/app.exe");
+    assert_eq!(atlas::doctor::expand_env_with("%AtlasTestVar%/app.exe", &env), "/somewhere/app.exe");
 }
 
 #[test]

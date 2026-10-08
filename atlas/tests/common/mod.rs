@@ -684,3 +684,82 @@ pub fn printing(text: &str) -> atlas::tools::ExternalTool {
         atlas::tools::ExternalTool { command: "cat".into(), args: vec![file], ..Default::default() }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Wall-clock bounds that hold on a busy machine (Q19, 8 Oct 2026)
+// ---------------------------------------------------------------------------
+//
+// About forty tests say "this must not wait more than N ms". They were right
+// to: the A2 pass on 7 Oct found two real loop stalls (a 2.4 s ffmpeg listing,
+// a `tasklist` waited on before a CPU sample) because a 2 s bound caught them.
+// But on a laptop that was also compiling and running Atlas's own self-test,
+// 19 of them failed and every one passed alone -- the bound was measuring how
+// busy the machine was, not whether the code waited.
+//
+// The remedy keeps the bound and asks the machine how far behind it is. A
+// sleeping thread is woken late in proportion to the contention, so a few
+// short sleeps give a factor to widen the bound by. On an idle machine the
+// factor is about 1 and the bound is the bound: a 2.4 s stall still fails a
+// 2 s test. Only a machine that is itself running late is given the slack,
+// and a failure says how much, so a real regression can't hide behind it.
+
+use std::time::{Duration, Instant};
+
+/// The widening for a machine this late: 1 while a short sleep overruns by no
+/// more than ordinary timer noise (2 ms), then one more for every 5 ms past
+/// that, at most 8.
+pub fn load_factor_for(overran: Duration) -> f64 {
+    let late_ms = (overran.as_secs_f64() * 1000.0 - 2.0).max(0.0);
+    (1.0 + late_ms / 5.0).clamp(1.0, 8.0)
+}
+
+/// How late this machine is running right now (>= 1.0). Measured about once each
+/// second: four 5 ms sleeps, worst overrun, so a measurement costs about 20 ms.
+pub fn load_factor() -> f64 {
+    // Measured at most once a second: a polling loop asks on every pass, and
+    // twenty milliseconds of sleeping per pass would change what it measures.
+    static LAST: std::sync::Mutex<Option<(Instant, f64)>> = std::sync::Mutex::new(None);
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, f)) = *last {
+        if at.elapsed() < Duration::from_secs(1) {
+            return f;
+        }
+    }
+    let f = measure_load_factor();
+    *last = Some((Instant::now(), f));
+    f
+}
+
+fn measure_load_factor() -> f64 {
+    let mut worst = Duration::ZERO;
+    for _ in 0..4 {
+        let t = Instant::now();
+        std::thread::sleep(Duration::from_millis(5));
+        worst = worst.max(t.elapsed().saturating_sub(Duration::from_millis(5)));
+    }
+    load_factor_for(worst)
+}
+
+/// `bound`, widened by how late the machine is running now.
+pub fn allowed(bound: Duration) -> Duration {
+    bound.mul_f64(load_factor())
+}
+
+/// Did `took` stay within `bound` on a machine running at `factor`?
+pub fn is_prompt(took: Duration, bound: Duration, factor: f64) -> bool {
+    took <= bound.mul_f64(factor)
+}
+
+/// Assert that something that should not have waited did not, allowing for a
+/// busy machine. The message names the factor that was applied.
+#[track_caller]
+pub fn assert_prompt(took: Duration, bound: Duration, what: &str) {
+    if took <= bound {
+        return; // on time without any slack: the common case, and no sleeping
+    }
+    let factor = load_factor();
+    assert!(
+        is_prompt(took, bound, factor),
+        "{what}: took {took:?}, over the {bound:?} bound (widened x{factor:.1} for this machine's load)"
+    );
+}

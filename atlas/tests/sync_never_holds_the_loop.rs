@@ -60,10 +60,10 @@ fn a_device_that_never_answers_doesnt_stop_atlas() {
     let started = Instant::now();
     d.tick(t);
     let took = started.elapsed();
-    assert!(took < Duration::from_secs(2), "the automatic sync held the tick {took:?} waiting on a device");
+    crate::common::assert_prompt(took, Duration::from_secs(2), "the automatic sync held the tick waiting on a device");
 
     // The send was still made, off the loop.
-    let until = Instant::now() + Duration::from_secs(5);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while dialled.load(std::sync::atomic::Ordering::SeqCst) == 0 && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -72,7 +72,7 @@ fn a_device_that_never_answers_doesnt_stop_atlas() {
     // Later passes take the (missing) answer without waiting either.
     let started = Instant::now();
     d.tick(t + 5);
-    assert!(started.elapsed() < Duration::from_secs(2));
+    crate::common::assert_prompt(started.elapsed(), Duration::from_secs(2), "took too long");
 }
 
 #[test]

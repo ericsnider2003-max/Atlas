@@ -286,7 +286,7 @@ fn a_wake_word_switched_off_is_not_listened_for() {
     let started = std::time::Instant::now();
     assert!(!Voice::new(&cfg).wake_once().unwrap(), "a switched-off wake word was heard");
     assert!(!marker.exists(), "it recorded anyway");
-    assert!(started.elapsed() < std::time::Duration::from_millis(100));
+    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(100), "took too long");
 
     // Switched on, the same setup does listen -- so the test above is
     // measuring the switch, not a broken fixture.

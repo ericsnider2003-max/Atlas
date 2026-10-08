@@ -229,7 +229,7 @@ fn a_free_or_live_lock_is_answered_without_waiting() {
     let started = std::time::Instant::now();
     assert!(d.lock().take_patiently(std::time::Duration::from_secs(30), &|| 1000).is_ok());
     assert!(d.lock().take_patiently(std::time::Duration::from_secs(30), &|| 1001).is_err());
-    assert!(started.elapsed() < std::time::Duration::from_secs(5), "waited on a lock that wasn't abandoned");
+    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_secs(5), "waited on a lock that wasn't abandoned");
 }
 
 #[test]

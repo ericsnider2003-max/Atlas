@@ -35,10 +35,7 @@ fn a_process_that_never_finishes_is_killed() {
     let took = started.elapsed();
 
     assert!(r.is_err(), "a hung tool returned success");
-    assert!(
-        took.as_secs() < 5,
-        "the caller was held for {took:?} — the deadline did nothing"
-    );
+    crate::common::assert_prompt(took, std::time::Duration::from_secs(5), "the caller was held, the deadline did nothing");
 }
 
 #[cfg(unix)]
@@ -62,7 +59,7 @@ fn a_quick_tool_is_untouched() {
         .run(&Vars::default(), None)
         .expect("echo should work");
     assert!(out.contains("hello"));
-    assert!(started.elapsed().as_millis() < 2000);
+    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(2000), "took too long");
 }
 
 #[cfg(unix)]
@@ -117,10 +114,7 @@ fn a_big_piece_of_text_handed_to_a_tool_does_not_deadlock() {
     let took = started.elapsed();
 
     assert_eq!(out.len(), big.len(), "the text did not come back whole");
-    assert!(
-        took.as_secs() < 10,
-        "1MB through a tool took {took:?}, which is the deadlock, not slowness"
-    );
+    crate::common::assert_prompt(took, std::time::Duration::from_secs(10), "1MB through a tool took which is the deadlock, not slowness");
 }
 
 #[cfg(unix)]
@@ -140,10 +134,7 @@ fn a_tool_that_never_reads_its_input_is_still_killed_on_time() {
     let took = started.elapsed();
 
     assert!(r.is_err(), "a tool that ignored its input and hung returned success");
-    assert!(
-        took.as_secs() < 8,
-        "held for {took:?} against a 2s deadline -- the write blocked outside it"
-    );
+    crate::common::assert_prompt(took, std::time::Duration::from_secs(8), "held for against a 2s deadline -- the write blocked outside it");
 }
 
 #[cfg(unix)]

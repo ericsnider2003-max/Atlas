@@ -63,7 +63,7 @@ fn reachability_is_cached_so_it_is_cheap_to_check_every_tick() {
     for t in 0..200 {
         c.status(1000 + t % 20);
     }
-    assert!(t0.elapsed().as_millis() < 200, "cached checks must not re-probe");
+    crate::common::assert_prompt(t0.elapsed(), std::time::Duration::from_millis(200), "cached checks must not re-probe");
 }
 
 #[test]

@@ -69,6 +69,6 @@ mod on_windows {
         let found = atlas::launcher::shortcuts(&dirs);
         println!("LIVE [launcher] {} shortcuts in {:?} from {dirs:?}", found.len(), t.elapsed());
         assert!(!found.is_empty());
-        assert!(t.elapsed().as_secs() < 5);
+        crate::common::assert_prompt(t.elapsed(), std::time::Duration::from_secs(5), "took too long");
     }
 }
