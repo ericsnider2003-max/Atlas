@@ -119,3 +119,17 @@ fn no_stored_type_renames_a_field_by_alias() {
     }
     assert!(found.is_empty(), "serde alias in: {found:?}");
 }
+
+#[test]
+fn unnamed_list_items_are_matched_by_position_only_when_the_list_kept_its_length() {
+    use serde_json::json;
+    let raw = json!({ "list": [ { "x": 1, "new": "a" }, { "x": 2, "new": "b" } ] });
+    let known = json!({ "list": [ { "x": 1 }, { "x": 2 } ] });
+    let u = atlas::store::unknown_part(&raw, &known).expect("something unknown");
+    let mut same_len = json!({ "list": [ { "x": 9 }, { "x": 8 } ] });
+    atlas::store::put_back_unknown(&u, &mut same_len);
+    assert_eq!(same_len, json!({ "list": [ { "x": 9, "new": "a" }, { "x": 8, "new": "b" } ] }));
+    let mut grown = json!({ "list": [ { "x": 9 }, { "x": 8 }, { "x": 7 } ] });
+    atlas::store::put_back_unknown(&u, &mut grown);
+    assert_eq!(grown, json!({ "list": [ { "x": 9 }, { "x": 8 }, { "x": 7 } ] }), "a list that changed length is not guessed at");
+}
