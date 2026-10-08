@@ -907,7 +907,7 @@ impl Daemon<'_> {
             return format!("{label} isn't connected through a kept sign-in, so there's nothing to take away.");
         };
         self.vault.secrets.retain(|s| s.name != vault);
-        if let Err(e) = self.vault.save(&crate::roots::install_state()) {
+        if let Err(e) = self.vault.save(&self.vault_home) {
             return format!("I couldn't save the vault, so {label} is still connected: {e}");
         }
         let _ = self.apply_setting(&format!("workday.social.{setting}"), "off"); // unheard-ok: the setting only stops the platform being read; the vault entry is already gone

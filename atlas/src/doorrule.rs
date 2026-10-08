@@ -90,12 +90,8 @@ fn plain_path(p: &str) -> String {
     p.trim().trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
 }
 
-/// `%NAME%` in `s` replaced by the environment's value, where there is one.
-pub fn expand_vars(s: &str) -> String {
-    expand_vars_with(s, &|n| std::env::var(n).ok())
-}
-
-/// `expand_vars` with the environment passed in.
+/// `%NAME%` in `s` replaced by the value `var` gives for it, where it gives one
+/// (the process's environment, or one a test passes in).
 pub fn expand_vars_with(s: &str, var: &dyn Fn(&str) -> Option<String>) -> String {
     let mut out = String::new();
     let mut rest = s;

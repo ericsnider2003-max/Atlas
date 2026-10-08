@@ -292,13 +292,9 @@ fn an_instagram_threads_facebook_or_tiktok_sign_in_can_be_disconnected() {
     }
 
     // TikTok: kept as its sign-in record (no refresh token, so nothing to ask TikTok to end).
-    {
-        let mut v = Vault::load(&Store::new(dir.clone()));
-        v.open_unattended(1).unwrap();
-        let rec = r#"{"client_key":"ck","client_secret":"cs","redirect":"https://x.example/r"}"#;
-        v.put(atlas::social::VAULT_TIKTOK, Kind::ApiKey, rec, 1).unwrap();
-        v.save(&atlas::roots::install_state()).unwrap();
-    }
+    let rec = r#"{"client_key":"ck","client_secret":"cs","redirect":"https://x.example/r"}"#;
+    d.vault.put(atlas::social::VAULT_TIKTOK, Kind::ApiKey, rec, 1).unwrap();
+    d.vault.save(&d.vault_home).unwrap();
     let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", "tiktok")]);
     assert!(back.contains("TikTok is disconnected"), "{back}");
     let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", "linkedin")]);

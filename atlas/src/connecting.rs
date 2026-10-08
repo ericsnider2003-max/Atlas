@@ -11,7 +11,8 @@ use crate::hub::{self, esc, Page};
 use crate::server::Reply;
 use std::sync::Mutex;
 
-pub mod rows;
+mod rows;
+pub use rows::the_one_list;
 
 /// Where a lookup of an unknown provider is kept between the "Next" press
 /// and the page that shows the result: domain -> (host, port).
@@ -62,7 +63,7 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
     }
     out.push_str(&calendar_form());
     out.push_str(&muse_block(d));
-    out.push_str(&rows::html(d));
+    out.push_str(&the_one_list(d));
     out.push_str(
         "<p class=note>YouTube, Bluesky and the other networks connect on the <a href='/hub/social'>Social \
          page</a>.</p></section>",

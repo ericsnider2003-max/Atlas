@@ -136,19 +136,19 @@ fn parse(text: &str, source: Source) -> Result<Vec<Connector>, String> {
 }
 
 /// The connectors that ship with Atlas. Empty if the embedded file is broken.
-pub fn builtin() -> &'static [Connector] {
+pub fn built_in_connectors() -> &'static [Connector] {
     static LIST: OnceLock<Vec<Connector>> = OnceLock::new();
     LIST.get_or_init(|| {
         parse(include_str!("../config/connectors/builtin.yaml"), Source::Builtin).unwrap_or_default()
     })
 }
 
-pub fn find(id: &str) -> Option<&'static Connector> {
-    builtin().iter().find(|c| c.id == id)
+pub fn connector_named(id: &str) -> Option<&'static Connector> {
+    built_in_connectors().iter().find(|c| c.id == id)
 }
 
 /// Your own connectors from `dir/connectors/*.yaml`: (accepted, refusals).
-pub fn yours(dir: &Path) -> (Vec<Connector>, Vec<String>) {
+pub fn your_connectors(dir: &Path) -> (Vec<Connector>, Vec<String>) {
     let mut ok: Vec<Connector> = Vec::new();
     let mut refused = Vec::new();
     let Ok(rd) = std::fs::read_dir(dir.join("connectors")) else {
@@ -173,7 +173,7 @@ pub fn yours(dir: &Path) -> (Vec<Connector>, Vec<String>) {
             Ok(list) => {
                 if let Some(c) = list
                     .iter()
-                    .find(|c| find(&c.id).is_some() || ok.iter().any(|o| o.id == c.id))
+                    .find(|c| connector_named(&c.id).is_some() || ok.iter().any(|o| o.id == c.id))
                 {
                     refused.push(format!("{name}: '{}' is already taken by another connector.", c.id));
                 } else {
@@ -188,7 +188,7 @@ pub fn yours(dir: &Path) -> (Vec<Connector>, Vec<String>) {
 
 /// Built-in plus your accepted connectors.
 pub fn all(dir: &Path) -> Vec<Connector> {
-    let mut v = builtin().to_vec();
-    v.extend(yours(dir).0);
+    let mut v = built_in_connectors().to_vec();
+    v.extend(your_connectors(dir).0);
     v
 }

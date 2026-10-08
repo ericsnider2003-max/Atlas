@@ -218,7 +218,7 @@ fn taking_a_tiktok_sign_in_back_asks_tiktok_to_end_it() {
     };
     let net = Says::new(200, r#"{"error":{"code":"ok"}}"#);
     apis::tiktok_revoke(&net, &s, "act.1").unwrap();
-    assert_eq!(net.asked.borrow()[0], "POST open.tiktokapis.com/v2/oauth/revoke/ client_key=ck&client_secret=c%20s&token=act.1");
+    assert_eq!(net.asked.borrow()[0], "POST open.tiktokapis.com/v2/oauth/revoke/ client_key=ck&client_secret=c+s&token=act.1");
     // Already gone at TikTok is what was wanted; a refusal is said.
     assert!(apis::tiktok_revoke(&Says::new(400, r#"{"error":"access_token_invalid"}"#), &s, "x").is_ok());
     assert!(apis::tiktok_revoke(&Says::new(500, "oops"), &s, "x").is_err());

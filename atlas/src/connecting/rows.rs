@@ -86,7 +86,7 @@ fn social_form(what: &str, name: &str, button: &str) -> String {
 
 /// Every row, connected ones first (in the order they were found), then what
 /// could be connected.
-pub fn rows(d: &mut Daemon) -> Vec<Row> {
+pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
     let now = crate::store::now();
     let mut out: Vec<Row> = Vec::new();
 
@@ -220,8 +220,8 @@ pub fn rows(d: &mut Daemon) -> Vec<Row> {
 }
 
 /// The list as it appears on a page.
-pub fn html(d: &mut Daemon) -> String {
-    let rows = rows(d);
+pub fn the_one_list(d: &mut Daemon) -> String {
+    let rows = connected_rows(d);
     let dir = crate::roots::config_dir();
     let all = connectors::all(&dir);
     let find = |id: &str| all.iter().find(|c| c.id == id);
@@ -239,7 +239,7 @@ pub fn html(d: &mut Daemon) -> String {
             None => "",
         };
         let name = match def {
-            Some(c) if c.name != r.which => format!("{} <span class=note>({})</span>", esc(&r.which), esc(&c.name)),
+            Some(c) if !r.which.contains(&c.name) => format!("{} <span class=note>({})</span>", esc(&r.which), esc(&c.name)),
             _ => esc(&r.which),
         };
         out.push_str(&format!("<li><b>{name}</b> {may}<span class='{class}'>{word}</span>"));
@@ -248,7 +248,7 @@ pub fn html(d: &mut Daemon) -> String {
         }
         out.push_str(&format!(" {} {}", r.fix, r.take_away));
         if let Some(c) = def {
-            out.push_str(&format!("<br><span class=note>{} If it breaks: {}</span>", esc(&c.for_what), esc(&c.if_it_breaks)));
+            out.push_str(&format!("<br><span class=note>{}. {}</span>", esc(&c.for_what), esc(&c.if_it_breaks)));
         }
         out.push_str("</li>");
     }

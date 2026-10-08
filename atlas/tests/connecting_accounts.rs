@@ -121,7 +121,7 @@ fn the_accounts_page_leads_with_connecting_and_walks_you_through_it() {
     let r = atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "calendar"), ("url", "webcal://calendar.google.com/calendar/ical/me/private-x/basic.ics")]) });
     assert!(r.body.contains("Added+Google+Calendar"), "{}", r.body);
     let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
-    assert!(page.contains("<b>Google Calendar</b> <span class=tag>read only</span> <span class='tag'>Kept, not tried yet</span>"), "{page}");
+    assert!(page.contains("<b>Google Calendar <span class=note>(Calendar by link)</span></b> <span class=tag>read only</span> <span class='tag'>Kept, not tried yet</span>"), "{page}");
     let links: Vec<connect::CalendarLink> = Store::new(store.clone()).load(connect::CALENDAR_LINKS);
     assert_eq!(links[0].url, "https://calendar.google.com/calendar/ical/me/private-x/basic.ics");
     atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "disconnect"), ("kind", "calendar"), ("id", &links[0].url)]) });
@@ -323,7 +323,7 @@ fn signing_in_keeps_the_token_sealed_and_connects_outlook_mail_and_calendar() {
 
     let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
     assert!(page.contains("Connected eric@outlook.com: Outlook mail and calendar"), "{page}");
-    assert!(page.contains("<b>Outlook Calendar (eric@outlook.com)</b> calendar"));
+    assert!(page.contains("<b>Outlook Calendar (eric@outlook.com)</b>"));
 
     // The calendar off: the mail still uses the token, so it stays.
     atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "disconnect"), ("kind", "calendar"), ("id", "oauth:microsoft:eric@outlook.com")]) });
