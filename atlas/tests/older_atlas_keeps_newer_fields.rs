@@ -133,3 +133,14 @@ fn unnamed_list_items_are_matched_by_position_only_when_the_list_kept_its_length
     atlas::store::put_back_unknown(&u, &mut grown);
     assert_eq!(grown, json!({ "list": [ { "x": 9 }, { "x": 8 }, { "x": 7 } ] }), "a list that changed length is not guessed at");
 }
+
+#[test]
+fn install_root_is_found_from_a_plain_a_state_and_a_profile_folder() {
+    use std::path::PathBuf;
+    let p = |s: &str| PathBuf::from(s);
+    assert_eq!(Store::new(p("/i/data/state/profiles/ann")).install_root(), p("/i"), "a profile's root is the install, four levels up");
+    assert_eq!(Store::new(p("/i/data/state")).install_root(), p("/i"));
+    assert_eq!(Store::new(p("/i/data/other/profiles/ann")).install_root(), p("/i/data/other/profiles/ann"), "only the exact shape is trusted");
+    assert_eq!(Store::new(p("/i/state/profiles/ann")).install_root(), p("/i/state/profiles/ann"), "data/ is part of the shape");
+    assert_eq!(Store::new(p("/i/data/state/people/ann")).install_root(), p("/i/data/state/people/ann"), "profiles is part of the shape");
+}
