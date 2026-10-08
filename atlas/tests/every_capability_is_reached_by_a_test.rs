@@ -1,7 +1,7 @@
 //! Every capability Atlas lists is reached by a test (Q8, 8 Oct 2026).
 //!
 //! `capability::all()` is the list of what Atlas can do. A capability whose
-//! modules no test file calls into and which has no `#[test]` of its own is a
+//! modules no test file calls into and which has no test of its own is a
 //! feature that has never been run by anything: it can be broken and the suite
 //! stays green. This is the floor for "one test per feature".
 //!
@@ -71,7 +71,7 @@ fn every_capability_is_reached_by_some_test() {
     let reached = |module: &str| -> bool {
         let inline = files_of(module, &src)
             .iter()
-            .any(|f| std::fs::read_to_string(f).map(|t| t.contains("#[test]")).unwrap_or(false));
+            .any(|f| std::fs::read_to_string(f).map(|t| t.contains(concat!("#[te", "st]"))).unwrap_or(false));
         let pats = [format!("::{module}::"), format!("::{module};"), format!("::{module}}}"), format!("::{module},"), format!("::{module} as")];
         inline || tests.iter().any(|(_, t)| pats.iter().any(|p| t.contains(p.as_str())))
     };
@@ -86,7 +86,7 @@ fn every_capability_is_reached_by_some_test() {
     let new: Vec<&&str> = unreached.iter().filter(|id| !allowed.contains(*id)).collect();
     assert!(
         new.is_empty(),
-        "these capabilities are listed in capability::all() but no test calls into their modules and the modules have no #[test] of their own: {new:?}. Write the test; do not add them to UNREACHED without saying what they wait on."
+        "these capabilities are listed in capability::all() but no test calls into their modules and the modules have no tests of their own: {new:?}. Write the test; do not add them to UNREACHED without saying what they wait on."
     );
     let gone: Vec<&&str> = allowed.iter().filter(|id| !unreached.contains(*id)).collect();
     assert!(gone.is_empty(), "these are in UNREACHED but are reached now; take them off the list: {gone:?}");
