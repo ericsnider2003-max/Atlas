@@ -158,6 +158,50 @@ struct Engine {
     npu: bool,
     /// Kept registered for the life of the process.
     _plugin: Option<ort::ep::ExecutionProviderLibrary>,
+    blocked: Option<String>,
+}
+
+// The guard and native provider loader are separate so the crash boundary
+// can be exercised without loading a DLL into the test process.
+fn guarded_provider<T>(guard: impl FnOnce() -> Option<String>, load: impl FnOnce() -> Option<T>) -> (Option<T>, Option<String>) {
+    let blocked = guard();
+    if blocked.is_some() {
+        (None, blocked)
+    } else {
+        (load(), None)
+    }
+}
+
+static NATIVE_ATTEMPT: Mutex<()> = Mutex::new(());
+
+// Access violations cannot unwind a Rust guard: the marker therefore remains
+// after a native crash, but an ordinary returned error removes it.
+struct NativeAttempt {
+    marker: PathBuf,
+    _serial: std::sync::MutexGuard<'static, ()>,
+}
+
+impl NativeAttempt {
+    fn begin(marker: PathBuf, what: &str) -> Result<Self, String> {
+        use std::io::Write;
+        let serial = NATIVE_ATTEMPT.lock().unwrap_or_else(|e| e.into_inner());
+        let parent = marker.parent().ok_or("no parent for the native recovery marker")?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("couldn't prepare native recovery: {e}"))?;
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&marker)
+            .map_err(|e| format!("won't use the NPU without a recovery marker: {e}"))?;
+        if let Err(e) = file.write_all(what.as_bytes()).and_then(|_| file.sync_all()) {
+            drop(file);
+            let _ = std::fs::remove_file(&marker);
+            return Err(format!("won't use the NPU without a durable recovery marker: {e}"));
+        }
+        Ok(Self { marker, _serial: serial })
+    }
+}
+
+impl Drop for NativeAttempt {
+    fn drop(&mut self) {
+        crate::heard!(std::fs::remove_file(&self.marker));
+    }
 }
 
 static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
@@ -176,9 +220,19 @@ fn engine(root: &Path) -> Result<&'static Engine, String> {
             ort::init_from(&lib).map_err(|e| format!("ONNX Runtime wouldn't open: {e}"))?.with_name("atlas").commit();
             let env = ort::environment::Environment::current().map_err(|e| format!("ONNX Runtime wouldn't start: {e}"))?;
             let plugin_path = root.join(PLUGIN);
-            let plugin = if plugin_path.is_file() {
+            let (plugin, crashed) = guarded_provider(|| crashed_atlas(&verdicts(), &engine_version()), || if plugin_path.is_file() {
+                let _attempt = match NativeAttempt::begin(cache_dir().join(COMPILING), "loading the NPU provider") {
+                    Ok(attempt) => attempt,
+                    Err(why) => {
+                        crate::outln!("{why}; using the processor");
+                        return None;
+                    }
+                };
                 match env.register_ep_library("openvino", &plugin_path) {
-                    Ok(p) => Some(p),
+                    Ok(p) => {
+                        let available = npu_devices(&env).next().is_some();
+                        Some((p, available))
+                    }
                     Err(e) => {
                         crate::outln!("the NPU engine wouldn't load: {e}");
                         None
@@ -186,18 +240,18 @@ fn engine(root: &Path) -> Result<&'static Engine, String> {
                 }
             } else {
                 None
-            };
+            });
             // An engine that has crashed Atlas is never used again
             // (`crashed_atlas`): Eric's laptop, 2 Oct to 6 Oct 2026, seven
             // crashes, every one an access violation inside
             // openvino_intel_npu_compiler.dll -- in Atlas's own process, so
             // the whole of Atlas went with it.
-            let crashed = crashed_atlas(&verdicts(), &engine_version());
             if let Some(why) = &crashed {
                 crate::outln!("the NPU stays off: {why}. Search and voice ID run on the processor.");
             }
-            let npu = crashed.is_none() && plugin.is_some() && npu_devices(&env).next().is_some();
-            Ok(Engine { env, npu, _plugin: plugin })
+            let npu = crashed.is_none() && plugin.as_ref().is_some_and(|(_, available)| *available);
+            let plugin = plugin.map(|(p, _)| p);
+            Ok(Engine { env, npu, _plugin: plugin, blocked: crashed })
         })
         .as_ref()
         .map_err(|e| e.clone())
@@ -228,6 +282,7 @@ fn why_not_on_npu(root: &Path) -> Option<String> {
     }
     match engine(root) {
         Err(e) => Some(e.clone()),
+        Ok(e) if e.blocked.is_some() => e.blocked.clone(),
         Ok(e) if !e.npu && !root.join(PLUGIN).is_file() => Some("the NPU engine isn't downloaded yet".into()),
         Ok(e) if !e.npu => Some("the NPU engine is here, but no NPU answered".into()),
         Ok(_) => None,
@@ -304,8 +359,10 @@ pub fn crashed_atlas(v: &std::collections::BTreeMap<String, String>, version: &s
     let mut v = v.clone();
     v.insert(crash_key(version), why.clone());
     crate::heard!(std::fs::create_dir_all(cache_dir()));
-    crate::kept!(std::fs::write(cache_dir().join("verdicts.json"), serde_json::to_vec_pretty(&v).unwrap_or_default()));
-    crate::heard!(std::fs::remove_file(&marker));
+    match crate::store::write_json(&cache_dir().join("verdicts.json"), &v) {
+        Ok(()) => { crate::heard!(std::fs::remove_file(&marker)); }
+        Err(e) => crate::outln!("couldn't keep the NPU quarantine: {e}; leaving its recovery marker in place"),
+    }
     Some(why)
 }
 
@@ -353,7 +410,7 @@ pub fn remember(model: &Path, shapes: &[(String, Vec<i64>)], npu_won: bool) {
     let mut v = verdicts();
     v.insert(verdict_key(model, shapes), if npu_won { "npu" } else { "processor" }.into());
     crate::heard!(std::fs::create_dir_all(cache_dir()));
-    crate::kept!(std::fs::write(cache_dir().join("verdicts.json"), serde_json::to_vec_pretty(&v).unwrap_or_default()));
+    crate::kept!(crate::store::write_json(&cache_dir().join("verdicts.json"), &v));
 }
 
 /// Each free dimension's name in `model`'s inputs, with the size `shapes`
@@ -437,7 +494,9 @@ impl Session {
                 .map_err(|e| e.to_string())?;
         }
         let mut on = Where::Cpu;
+        let mut native_attempt = None;
         if want == Where::Npu && e.npu {
+            native_attempt = Some(NativeAttempt::begin(cache_dir().join(COMPILING), &verdict_key(model, shapes))?);
             let cache = cache_dir();
             crate::heard!(std::fs::create_dir_all(&cache));
             let opts = vec![
@@ -454,14 +513,8 @@ impl Session {
         // The NPU compile is where Atlas crashed (`crashed_atlas`): a marker
         // while it runs, so a process that dies in it turns the NPU off for
         // the next start instead of crashing again.
-        let marker = cache_dir().join(COMPILING);
-        if on == Where::Npu {
-            crate::kept!(std::fs::write(&marker, verdict_key(model, shapes)));
-        }
         let s = b.commit_from_file(&file).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()));
-        if on == Where::Npu {
-            crate::heard!(std::fs::remove_file(&marker));
-        }
+        drop(native_attempt);
         let s = s?;
         Ok(Session { s: Mutex::new(s), on })
     }
@@ -608,6 +661,60 @@ pub fn check(root: &Path) -> String {
 #[cfg(test)]
 mod a_crash_turns_it_off {
     use super::*;
+
+    #[test]
+    fn a_quarantined_provider_is_never_loaded_into_atlas() {
+        let touched = std::cell::Cell::new(false);
+        let (plugin, why) = guarded_provider(|| Some("known compiler crash".into()), || {
+            touched.set(true);
+            Some(())
+        });
+        assert!(!touched.get(), "the crash guard must run before touching the native provider");
+        assert!(plugin.is_none());
+        assert_eq!(why.as_deref(), Some("known compiler crash"));
+    }
+
+    #[test]
+    fn a_provider_without_a_crash_is_allowed() {
+        let (plugin, why) = guarded_provider(|| None, || Some(7));
+        assert_eq!(plugin, Some(7));
+        assert!(why.is_none());
+    }
+
+    #[test]
+    fn native_work_requires_a_durable_marker_and_cleans_up_returned_errors() {
+        let root = std::env::temp_dir().join(format!("atlas-npu-attempt-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let marker = root.join("marker");
+        std::fs::write(&marker, "an unfinished earlier attempt").unwrap();
+        assert!(NativeAttempt::begin(marker.clone(), "new work").is_err());
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "an unfinished earlier attempt");
+        std::fs::remove_file(&marker).unwrap();
+        {
+            let _attempt = NativeAttempt::begin(marker.clone(), "loading provider").unwrap();
+            assert_eq!(std::fs::read_to_string(&marker).unwrap(), "loading provider");
+        }
+        assert!(!marker.exists());
+        std::fs::remove_dir(&root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "run alone with ATLAS_ORT_TEST_ROOT for the laptop's actual runtime"]
+    fn actual_runtime_keeps_a_quarantined_native_provider_unloaded() {
+        use windows::core::w;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        let root = PathBuf::from(std::env::var_os("ATLAS_ORT_TEST_ROOT").expect("explicit runtime root"));
+        assert!(root.join(PLUGIN).is_file(), "this proof requires the actual provider to be present");
+        let mut v = verdicts();
+        v.insert(crash_key(&engine_version()), "quarantined for the safe-start proof".into());
+        crate::store::write_json(&cache_dir().join("verdicts.json"), &v).unwrap();
+        assert!(runtime_ready(&root), "the processor runtime must remain available");
+        assert!(!npu_ready(&root));
+        assert!(why_not_on_npu(&root).unwrap().contains("quarantined"));
+        assert!(unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(), "a quarantined DLL must never enter Atlas's process");
+        assert!(unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err());
+    }
 
     #[test]
     fn windows_record_of_the_compiler_crash_is_read() {
