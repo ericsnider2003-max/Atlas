@@ -163,6 +163,11 @@ impl<'a> Daemon<'a> {
                 .into_iter()
                 .map(|(_, d)| LeftWaiting { what: d, asked: true, at: crate::store::now() })
                 .collect();
+            if self.current_flow.is_none() {
+                if let Pending::Clarification(q) = &self.session.pending {
+                    waiting.push(LeftWaiting { what: q.clone(), asked: true, at: crate::store::now() });
+                }
+            }
             if let Some(l) = &self.task_loop {
                 waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
             }

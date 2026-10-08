@@ -964,20 +964,28 @@ fn background_document(tag: &str, slow: bool) -> (atlas::config::Config, PathBuf
     (c, doc, Store::new(dir.join("state")))
 }
 
-#[test]
-fn background_read_keeps_the_scan_approval_boundary() {
-    let (mut c, doc, store) = background_document("background-ask", false);
+fn background_scan_decision(approve: bool) {
+    let (mut c, doc, store) = background_document(if approve { "background-ask" } else { "background-decline" }, false);
     c.tools.as_mut().unwrap().files.virus_scan.command.clear();
     let p = plat();
     let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), says("All done.")], 0);
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), store, Proactive::new(ProactiveConfig::default()));
     d.turn("read the deadline document and then tell me what it says", 1_790_740_000);
-    let said = tick_until_done(&mut d, 1_790_740_000, 15);
-    assert!(said.iter().any(|(s, _)| s.contains("Open it anyway?")), "{said:?}");
-    assert_eq!(llm.requests().len(), 1, "approval must stop the dependent work");
+    for n in 1..500 { d.tick(1_790_740_000+n); if matches!(d.session.pending, atlas::session::Pending::Clarification(_)) { break; } std::thread::sleep(Duration::from_millis(20)); }
+    assert!(matches!(&d.session.pending, atlas::session::Pending::Clarification(q) if q.contains("Open it anyway?")));
+    for n in 500..510 { d.tick(1_790_740_000+n); std::thread::sleep(Duration::from_millis(20)); }
+    assert!(d.working_through_steps(), "the scan question dropped the plan");
+    assert_eq!(llm.requests().len(), 1);
+    d.turn(if approve { "yes" } else { "no" }, 1_790_740_520);
+    tick_until_done(&mut d, 1_790_740_521, 15);
     assert!(!d.working_through_steps());
+    assert_eq!(llm.requests().len(), if approve { 2 } else { 1 });
+    if approve { assert!(llm.requests()[1].messages.iter().any(|m| m.content.contains("filing deadline is April 15"))); }
 }
-
+#[test]
+fn background_read_keeps_the_scan_approval_boundary() { background_scan_decision(true); }
+#[test]
+fn declining_a_scan_exception_blocks_the_remaining_plan() { background_scan_decision(false); }
 fn background_read_control(cancel: bool) {
     let (c, doc, store) = background_document(if cancel { "background-cancel" } else { "background-pause" }, true);
     let p = plat();
@@ -1221,3 +1229,57 @@ fn an_app_goal_resumes_dependent_work_only_when_finished() { dependent_app_job(1
 fn an_app_goal_failure_blocks_dependent_work() { dependent_app_job(2); }
 #[test]
 fn an_app_goal_cancellation_releases_dependent_work() { dependent_app_job(3); }
+
+fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replaced: bool) {
+    let (c, p) = (cfg(), plat());
+    let app = c.apps.apps.keys().next().unwrap().clone();
+    let script = Scripted::new(vec![], vec![calls("close_app", &app), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(script.clone() as Arc<dyn Llm>), Store::new(tmp(if approve { "approve-plan" } else { "decline-plan" })), Proactive::new(ProactiveConfig::default()));
+    d.execute(&Intent::OpenApp(app));
+    d.turn(FOUR, 1_790_760_000);
+    if queued { d.session.await_approval(Intent::Undo, "Undo the unrelated change?"); }
+    for n in 1..500 {
+        d.tick(1_790_760_000+n);
+        if matches!(d.session.pending, atlas::session::Pending::Approval(..)) && (!queued || d.session.approvals_waiting() == 2) { break; }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(matches!(d.session.pending, atlas::session::Pending::Approval(..)));
+    // Drain the old loop's final news to expose whether the plan was dropped.
+    for n in 500..510 { d.tick(1_790_760_000+n); std::thread::sleep(Duration::from_millis(20)); }
+    assert!(d.working_through_steps(), "the approval question dropped the dependent plan");
+    assert_eq!(script.requests().len(), 1);
+    if queued && !replaced {
+        d.turn("no", 1_790_760_515);
+        assert!(d.working_through_steps(), "answering another approval released the wrong plan");
+        assert_eq!(script.requests().len(), 1);
+    }
+    let answer = d.turn(if replaced { "what time is it" } else if approve { "yes" } else { "no" }, if expired { 1_790_761_000 } else { 1_790_760_520 });
+    tick_until_done(&mut d, 1_790_761_001, 10);
+    assert!(!d.working_through_steps(), "answer={answer}, pending={:?}", d.session.pending);
+    assert_eq!(script.requests().len(), if approve && !expired && !replaced { 2 } else { 1 });
+    assert_eq!(p.log.borrow().iter().any(|a| matches!(a, atlas::platform::mock::Action::Close(_))), approve && !expired && !replaced);
+}
+#[test]
+fn approval_keeps_the_plan_and_yes_resumes_it() { dependent_policy_approval(true, false, false, false); }
+#[test]
+fn declining_approval_blocks_the_dependent_plan() { dependent_policy_approval(false, false, false, false); }
+#[test]
+fn expired_approval_releases_the_dependent_plan() { dependent_policy_approval(true, true, false, false); }
+
+#[test]
+fn restart_record_preserves_completed_steps_of_a_waiting_plan() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("plan-record");
+    let app = c.apps.apps.keys().next().unwrap().clone();
+    let script = Scripted::new(vec![], vec![calls("find_file", "deadline"), calls("close_app", &app)], 0);
+    let mut d = Daemon::new(&c, &p, Some(script as Arc<dyn Llm>), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    d.turn(FOUR, atlas::store::now());
+    for n in 1..500 { d.tick(atlas::store::now()+n); if matches!(d.session.pending, atlas::session::Pending::Approval(..)) { break; } std::thread::sleep(Duration::from_millis(20)); }
+    d.persist();
+    let left: Vec<serde_json::Value> = Store::new(root).load("left_waiting");
+    assert!(left.iter().any(|v| v["what"].as_str().is_some_and(|s| s.contains("Step 1"))), "the restart record lost completed work: {left:?}");
+}
+#[test]
+fn an_unrelated_approval_does_not_release_the_waiting_plan() { dependent_policy_approval(true, false, true, false); }
+#[test]
+fn replacing_queued_approvals_releases_the_waiting_plan() { dependent_policy_approval(true, false, true, true); }

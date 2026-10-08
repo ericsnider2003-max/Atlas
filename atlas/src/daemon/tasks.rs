@@ -49,6 +49,9 @@ pub(crate) struct TaskLoop {
     waiting_for_media: Option<String>,
     /// Await the entire app goal, including its questions and multiple crew turns.
     waiting_for_operating: bool,
+    waiting_for_approval: Option<Intent>,
+    waiting_for_scan: bool,
+    completed: Vec<String>,
 }
 
 impl TaskLoop {
@@ -57,7 +60,7 @@ impl TaskLoop {
         if self.plan.is_empty() {
             format!("\"{}\"", self.said)
         } else {
-            format!("\"{}\" ({} steps planned)", self.said, self.plan.len())
+            format!("\"{}\" ({} steps planned). Completed steps: {}", self.said, self.plan.len(), if self.completed.is_empty() { "none reported".into() } else { self.completed.join("; ") })
         }
     }
 }
@@ -354,6 +357,9 @@ impl<'a> Daemon<'a> {
             waiting_for: None,
             waiting_for_media: None,
             waiting_for_operating: false,
+            waiting_for_approval: None,
+            waiting_for_scan: false,
+            completed: Vec::new(),
         });
         let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
         let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
@@ -430,6 +436,80 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// Execute a current approval once, preserving the matching dependent step.
+    pub(super) fn execute_approved_step(&mut self, intent: &Intent) -> String {
+        self.last_crew_handoff = None;
+        let operating_before = self.operating.is_some();
+        let said = self.execute(intent);
+        let handoff = self.last_crew_handoff;
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for_approval.as_ref() == Some(intent) {
+                tl.waiting_for_approval = None;
+                if let Some(id) = handoff.filter(|id| self.crew_links.get(id).is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media"))) {
+                    tl.waiting_for = Some(id);
+                } else if !operating_before && self.operating.is_some() {
+                    tl.waiting_for_operating = true;
+                } else {
+                    let outcome = if handoff.is_some() {
+                        crate::taskloop::Outcome::Started(said.clone())
+                    } else if !matches!(self.session.pending, crate::session::Pending::Nothing) {
+                        crate::taskloop::Outcome::NeedsYou(said.clone())
+                    } else {
+                        crate::taskloop::Outcome::Done(said.clone())
+                    };
+                    let _ = tl.reply.send(outcome);
+                }
+            }
+        }
+        said
+    }
+
+    pub(super) fn decline_dependent_approval(&mut self, intent: &Intent, why: &str) {
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for_approval.as_ref() == Some(intent) {
+                tl.waiting_for_approval = None;
+                let _ = tl.reply.send(crate::taskloop::Outcome::Failed(why.into()));
+            }
+        }
+    }
+
+    pub(super) fn abandon_dependent_question(&mut self) {
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for_approval.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_scan) {
+                let _ = tl.reply.send(crate::taskloop::Outcome::Failed("The approval question was dropped or expired; dependent steps were not run.".into()));
+            }
+        }
+    }
+
+    pub(super) fn park_scan_decision(&mut self, id: u64) -> bool {
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for == Some(id) && self.pending_unscanned.is_some() {
+                tl.waiting_for = None;
+                tl.waiting_for_scan = true;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub(super) fn answer_scan_decision(&mut self, what: &str, path: &str, yes: bool) -> String {
+        self.last_crew_handoff = None;
+        let said = if yes {
+            let job = if what == "unzip" { FileJob::Unzip } else { FileJob::Read };
+            self.file_work_off_the_loop(job, path, true)
+        } else { "Alright, I've left it unopened.".into() };
+        if let Some(tl) = self.task_loop.as_mut() {
+            if std::mem::take(&mut tl.waiting_for_scan) {
+                if let Some(id) = self.last_crew_handoff.filter(|id| self.crew_links.get(id).is_some_and(|l| l.label == "read-file")) {
+                    tl.waiting_for = Some(id);
+                } else {
+                    let _ = tl.reply.send(crate::taskloop::Outcome::Failed(if yes { said.clone() } else { "The scan exception was declined; dependent steps were not run.".into() }));
+                }
+            }
+        }
+        said
+    }
+
     /// Is a request of several steps being worked through?
     pub fn working_through_steps(&self) -> bool {
         self.task_loop.is_some()
@@ -445,7 +525,7 @@ impl<'a> Daemon<'a> {
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
-        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating)) {
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating) || tl.waiting_for_approval.take().is_some() || std::mem::take(&mut tl.waiting_for_scan)) {
             let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
         }
         // A model call already in flight can submit a tool while paused.
@@ -471,7 +551,13 @@ impl<'a> Daemon<'a> {
                     // job. Counting workers cannot distinguish those cases.
                     let waiting = self.last_crew_handoff.take().filter(|id| self.crew_links.get(id)
                         .is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media")));
-                    if call.name == "operate" && !operating_before && self.operating.is_some() {
+                    let approval = if matches!(outcome, crate::taskloop::Outcome::NeedsYou(_)) {
+                        crate::intent::from_tool(&call.name, &call.arguments, &tl.said).filter(|i| self.session.all_approvals().iter().any(|(pending, _)| pending == i))
+                    } else { None };
+                    if let Some(intent) = approval {
+                        out.push(outcome.text().to_string());
+                        tl.waiting_for_approval = Some(intent);
+                    } else if call.name == "operate" && !operating_before && self.operating.is_some() {
                         out.push(outcome.text().to_string());
                         tl.waiting_for_operating = true;
                     } else if call.name == "operate" && matches!(outcome, crate::taskloop::Outcome::Done(_) | crate::taskloop::Outcome::Started(_)) {
@@ -491,7 +577,7 @@ impl<'a> Daemon<'a> {
                     };
                     let _ = tl.reply.send(outcome);
                 }
-                Ok(LoopNews::Progress(line)) => out.push(line),
+                Ok(LoopNews::Progress(line)) => { tl.completed.push(line.clone()); out.push(line); },
                 Ok(LoopNews::Done(run)) => {
                     finished = Some(run);
                     break;
@@ -693,6 +779,9 @@ impl<'a> Daemon<'a> {
             waiting_for: None,
             waiting_for_media: None,
             waiting_for_operating: false,
+            waiting_for_approval: None,
+            waiting_for_scan: false,
+            completed: Vec::new(),
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),
@@ -750,12 +839,13 @@ impl<'a> Daemon<'a> {
                 continue;
             };
             if let Some(refusal) = self.handed_over_refusal(&intent) {
+                self.decline_dependent_approval(&intent, &refusal);
                 lines.push(refusal);
                 continue;
             }
             self.memory.record_approval(crate::session::kind_of(&intent), yes, None);
             let line = if yes {
-                let r = self.execute(&intent);
+                let r = self.execute_approved_step(&intent);
                 // The first was what a scheduled job was waiting on.
                 if k == 0 {
                     if let Some(jid) = self.pending_job.take() {
@@ -765,6 +855,7 @@ impl<'a> Daemon<'a> {
                 }
                 r
             } else {
+                self.decline_dependent_approval(&intent, "Approval declined; dependent steps were not run.");
                 if k == 0 {
                     self.pending_job = None;
                 }

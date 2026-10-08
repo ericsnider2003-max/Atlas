@@ -61,6 +61,7 @@ impl<'a> Daemon<'a> {
     /// Every open question dropped, in one place: the session's and each
     /// slot's.
     pub(super) fn drop_open_questions(&mut self) {
+        self.abandon_dependent_question();
         self.session.pending = Pending::Nothing;
         self.session.queued.clear();
         self.pending_stamp = None;

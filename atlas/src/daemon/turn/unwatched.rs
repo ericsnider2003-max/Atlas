@@ -709,6 +709,7 @@ impl<'a> Daemon<'a> {
             // all. A stranger's yes must not teach Atlas anything about what
             // you approve of.
             if let Some(refusal) = self.handed_over_refusal(&intent) {
+                self.abandon_dependent_question();
                 self.session.drop_approvals();
                 self.pending_job = None;
                 return refusal;
@@ -743,7 +744,7 @@ impl<'a> Daemon<'a> {
                     }
                     self.session.pending = Pending::Nothing;
                     self.memory.record_approval(&kind, true, None);
-                    let reply = self.execute(&intent);
+                    let reply = self.execute_approved_step(&intent);
                     self.session.record(said, &intent, &reply);
                     let reply = self.and_the_next_approval(reply);
                     self.persist();
@@ -759,9 +760,10 @@ impl<'a> Daemon<'a> {
             // used to be "Left it alone." -- a no -- and the new request was
             // lost with the question (27 Sep 2026).
             if yes || is_no(said) {
+                if !yes { self.decline_dependent_approval(&intent, "Approval declined; dependent steps were not run."); }
                 self.memory.record_approval(&kind, yes, None);
                 let reply = if yes {
-                    let r = self.execute(&intent);
+                    let r = self.execute_approved_step(&intent);
                     // If this was a scheduled job asking, close it out too.
                     if let Some(jid) = self.pending_job.take() {
                         self.scheduler.approve(jid);
@@ -794,6 +796,7 @@ impl<'a> Daemon<'a> {
             self.pending_job = None;
             // Something new instead of an answer: everything that was
             // waiting is dropped with the question.
+            self.abandon_dependent_question();
             self.session.queued.clear();
         }
 
@@ -908,12 +911,7 @@ impl<'a> Daemon<'a> {
             // A file the scan couldn't check: open it anyway only on a yes (H3).
             if let Some((what, path)) = self.pending_unscanned.take() {
                 self.session.pending = Pending::Nothing;
-                if !is_yes(said) {
-                    return "Alright, I've left it unopened.".into();
-                }
-                // Off the loop like the first ask (`file_work_off_the_loop`).
-                let job = if what == "unzip" { FileJob::Unzip } else { FileJob::Read };
-                return self.file_work_off_the_loop(job, &path, true);
+                return self.answer_scan_decision(&what, &path, is_yes(said));
             }
             // An edited video: keep it, and then the original (G8).
             if let Some((original, copy, result)) = self.pending_media_keep.take() {

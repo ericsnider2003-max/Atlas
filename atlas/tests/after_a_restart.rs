@@ -271,11 +271,11 @@ fn a_question_left_unanswered_is_named_after_a_restart_and_never_acted_on() {
     }
     let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
     let said = d.tick(t + 60).join(" ");
-    assert!(said.contains("waiting on your yes") && said.contains("Tidy your desktop into folders"), "{said}");
+    assert!(said.contains("waiting on your answer") && said.contains("Tidy your desktop into folders"), "{said}");
     assert_eq!(d.session.approvals_waiting(), 0, "nothing is carried out or re-armed from before");
     // Said once.
     let again = d.tick(t + 120).join(" ");
-    assert!(!again.contains("waiting on your yes"), "{again}");
+    assert!(!again.contains("waiting on your answer"), "{again}");
 }
 
 #[test]
@@ -300,4 +300,22 @@ fn a_workflow_waiting_on_your_yes_is_asked_again_after_a_restart() {
     assert_eq!(d.tick(t + 65).join(" ").matches("waiting for your yes").count(), 0, "not asked again before you answer");
     let reply = d.turn("yes", t + 70);
     assert!(!reply.to_lowercase().contains("nothing to") && !reply.is_empty(), "the yes didn't reach the workflow: {reply}");
+}
+
+#[test]
+fn a_clarification_question_survives_a_restart_as_an_interruption() {
+    let root = scratch("clarification");
+    let p = plat();
+    let t = atlas::store::now();
+    {
+        let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        d.tick(t);
+        d.session.ask("Edited clip is ready. Keep it?");
+        d.persist();
+    }
+    let mut d = Daemon::new(cfg(), &p, None, Store::new(root), Proactive::new(ProactiveConfig::default()));
+    let said = d.tick(t + 60).join(" ");
+    assert!(said.contains("Edited clip is ready. Keep it"), "the restart lost the pending decision: {said}");
+    assert!(matches!(d.session.pending, atlas::session::Pending::Nothing), "old consent must not be rearmed");
+    assert!(!d.tick(t + 120).join(" ").contains("Edited clip is ready"));
 }

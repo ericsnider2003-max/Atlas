@@ -510,7 +510,7 @@ impl<'a> Daemon<'a> {
             let doing: Vec<String> = fresh.iter().filter(|l| !l.asked).map(|l| l.what.clone()).collect();
             if !asked.is_empty() {
                 out.push(format!(
-                    "Before I restarted, {} waiting on your yes: {}. A yes from before doesn't carry over -- ask again if you still want {}.",
+                    "Before I restarted, {} waiting on your answer: {}. A yes from before doesn't carry over -- ask again if you still want {}.",
                     if asked.len() == 1 { "this was" } else { "these were" },
                     asked.join("; "),
                     if asked.len() == 1 { "it" } else { "them" }
@@ -840,7 +840,9 @@ impl<'a> Daemon<'a> {
                 let watched = if matches!(completion, Outcome::Done(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
                 self.long_work.update(link.watch_id, watched, completion.text(), t);
                 let said = completion.text().to_string();
-                if !self.finish_background_step(news.id, completion) {
+                if matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id) {
+                    out.push(said);
+                } else if !self.finish_background_step(news.id, completion) {
                     out.push(said);
                 }
                 if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
