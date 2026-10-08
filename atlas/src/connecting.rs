@@ -12,7 +12,7 @@ use crate::server::Reply;
 use std::sync::Mutex;
 
 mod rows;
-pub use rows::the_one_list;
+pub use rows::{connected_rows, the_one_list, State as RowState};
 
 /// Where a lookup of an unknown provider is kept between the "Next" press
 /// and the page that shows the result: domain -> (host, port).

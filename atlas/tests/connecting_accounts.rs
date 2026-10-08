@@ -399,3 +399,31 @@ fn a_mail_password_only_travels_on_a_private_line() {
     let b = atlas::server::Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "start"), ("address", "a@b.co")]) };
     assert!(!b.carries_a_secret());
 }
+
+#[test]
+fn the_one_list_has_a_row_for_everything_connected_and_for_what_could_be() {
+    // N1 (8 Oct 2026): one list, not four pages. A calendar connected by its
+    // link is a row with its state said; every other service Atlas can
+    // connect (config/connectors/builtin.yaml) is a row too, Not set up, with
+    // a way in. A bank can only ever be read.
+    let c = Config::load(Path::new("config")).unwrap();
+    let p = plat();
+    let store = tmp("onelist");
+    let mut d = Daemon::new(&c, &p, None, Store::new(store.clone()), Proactive::new(ProactiveConfig::default()));
+    let rows = atlas::connecting::connected_rows(&mut d);
+    assert!(rows.iter().all(|r| r.state == atlas::connecting::RowState::NotSetUp), "nothing is connected yet");
+    for id in ["gmail", "outlook", "google-calendar", "youtube", "bluesky", "tiktok", "muse"] {
+        let r = rows.iter().find(|r| r.connector == id).unwrap_or_else(|| panic!("no row for {id}"));
+        assert!(r.fix.contains("Connect"), "{id} has no way in: {}", r.fix);
+    }
+    atlas::hublive::reply(&mut d, Action::HubPost { path: "/hub/connect".into(), fields: fields(&[("what", "calendar"), ("url", "https://calendar.google.com/calendar/ical/me/private-x/basic.ics")]) });
+    let rows = atlas::connecting::connected_rows(&mut d);
+    let cal = rows.iter().find(|r| r.connector == "calendar-link").expect("the calendar is a row");
+    assert_eq!(cal.state, atlas::connecting::RowState::Kept, "nothing has read it yet, so it isn't 'working'");
+    assert!(cal.take_away.contains("Disconnect"));
+    assert!(!rows.iter().any(|r| r.connector == "calendar-link" && r.state == atlas::connecting::RowState::NotSetUp), "a connected service isn't also listed as not set up");
+    // The Connections page leads with the same list.
+    let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Connections)).body;
+    assert!(page.contains("Everything connected"), "{}", &page[..page.len().min(400)]);
+    let _ = std::fs::remove_dir_all(store);
+}
