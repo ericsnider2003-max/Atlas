@@ -543,6 +543,8 @@ mod poisoned_locks;
 mod idle_sleeps;
 #[path = "a_tight_bound_still_catches_a_stall.rs"]
 mod a_tight_bound_still_catches_a_stall;
+#[path = "every_capability_is_reached_by_a_test.rs"]
+mod every_capability_is_reached_by_a_test;
 #[path = "errand_pause.rs"]
 mod errand_pause;
 #[path = "personal_atlas_is_its_own.rs"]
