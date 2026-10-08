@@ -24,8 +24,8 @@
 //! What a step may do is decided by the daemon's `Hands`: anything that
 //! would need your OK stops the loop and asks (the question is the reply);
 //! long work goes to the background crew and the loop ends there, saying
-//! what started and what follows when it's done; a failed step is shown to
-//! the model, which may try another way. The same call twice ends it.
+//! what started and what follows when it's done; a failed prerequisite stops
+//! the dependent request with its actual blocker. The same call twice ends it.
 
 use crate::brain::{ChatRequest, Llm, Msg, ToolCall, Turn};
 
@@ -64,7 +64,7 @@ pub trait Hands {
 pub enum Verdict {
     /// The model answered after doing what it needed.
     Finished,
-    /// A step needs the person: the reply asks.
+    /// A step needs the person or failed: the reply names the blocker.
     Blocked,
     /// Long work is running in the background; the rest follows it.
     Started,
@@ -297,11 +297,22 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
                 verdict = Verdict::Blocked;
                 break;
             }
+            Outcome::Failed(_) => {
+                // A stop can arrive while the daemon is carrying out this
+                // step. Keep cancellation distinct from a failed prerequisite.
+                if let Some(why) = watch.stop() {
+                    verdict = Verdict::Stopped;
+                    answer = why;
+                } else {
+                    verdict = Verdict::Blocked;
+                }
+                break;
+            }
             Outcome::Started(_) => {
                 verdict = Verdict::Started;
                 break;
             }
-            Outcome::Done(_) | Outcome::Failed(_) => {}
+            Outcome::Done(_) => {}
         }
         messages.push(Msg::assistant(format!("(called {} {})", call.name, serde_json::Value::Object(match &call.arguments {
             serde_json::Value::Object(m) => m.clone(),

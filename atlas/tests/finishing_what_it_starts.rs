@@ -861,3 +861,54 @@ fn the_first_words_are_spoken_before_the_reply_is_finished_and_logged() {
     assert!(ms >= 300 && ms < 1_200, "first words at {ms}ms: {line}");
     assert!(!mouth.0.lock().unwrap().is_empty());
 }
+
+#[test]
+fn a_failed_dependent_step_blocks_the_remaining_plan() {
+    let llm = Scripted::new(vec![], vec![calls("find_file", "tax pdf"), calls("read_document", "tax.pdf"), says("All done.")], 0);
+    let mut hands = ScriptedHands {
+        outcomes: vec![("find_file", Outcome::Failed("The folder could not be read.".into()))],
+        called: vec![],
+    };
+    let plan = vec!["find the tax pdf".into(), "read its deadline".into()];
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("find the tax pdf and read its deadline"), &plan, &mut hands, 4, &mut atlas::taskloop::Unwatched);
+    assert_eq!(run.verdict, Verdict::Blocked, "a required failure cannot become a finished request");
+    assert_eq!(hands.called.len(), 1, "no dependent tool runs after the failed prerequisite");
+    assert_eq!(llm.requests().len(), 1, "a model answer cannot override the tool failure");
+    assert!(run.reply.contains("The folder could not be read."), "{}", run.reply);
+    assert!(!run.reply.contains("All done."), "{}", run.reply);
+}
+
+#[test]
+fn a_failure_after_completed_work_preserves_the_actual_blocker() {
+    let llm = Scripted::new(vec![], vec![calls("find_file", "tax pdf"), calls("read_document", "tax.pdf"), says("The deadline is April 15.")], 0);
+    let mut hands = ScriptedHands {
+        outcomes: vec![
+            ("find_file", Outcome::Done("Found tax.pdf".into())),
+            ("read_document", Outcome::Failed("The document is locked.".into())),
+        ],
+        called: vec![],
+    };
+    let plan = vec!["find the tax pdf".into(), "read its deadline".into()];
+    let run = atlas::taskloop::run_watched(&*llm, &loop_turn("find the tax pdf and read its deadline"), &plan, &mut hands, 4, &mut atlas::taskloop::Unwatched);
+    assert_eq!(run.verdict, Verdict::Blocked);
+    assert_eq!(run.steps.len(), 2);
+    assert!(matches!(run.steps[0].outcome, Outcome::Done(_)));
+    assert!(run.reply.contains("The document is locked."), "{}", run.reply);
+    assert!(!run.reply.contains("April 15"), "an unread document cannot supply its deadline");
+    assert_eq!(llm.requests().len(), 2);
+}
+
+#[test]
+fn a_failed_tool_in_the_real_daemon_cannot_be_reported_as_finished() {
+    let (c, p) = (cfg(), plat());
+    let llm = Scripted::new(vec![], vec![calls("missing_tool", "tax pdf"), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("failed-dependent-step")), Proactive::new(ProactiveConfig::default()));
+    let started = d.turn("find the tax pdf and read me what it says about the deadline", 1_790_740_000);
+    assert!(started.starts_with("Working through that"), "{started}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    assert!(!d.working_through_steps(), "the failure must end the request visibly");
+    let reply = said.last().map(|(line, _)| line.as_str()).unwrap_or("");
+    assert!(reply.contains("There's no tool called missing_tool"), "{said:?}");
+    assert!(!reply.contains("All done."), "{said:?}");
+    assert_eq!(llm.requests().len(), 1, "the known failure must not be rewritten by the model");
+}
