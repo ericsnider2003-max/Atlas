@@ -47,6 +47,8 @@ pub(crate) struct TaskLoop {
     waiting_for: Option<u64>,
     /// Kept-file path retained while the edit and original decisions are pending.
     waiting_for_media: Option<String>,
+    /// Await the entire app goal, including its questions and multiple crew turns.
+    waiting_for_operating: bool,
 }
 
 impl TaskLoop {
@@ -351,6 +353,7 @@ impl<'a> Daemon<'a> {
             tainted: false,
             waiting_for: None,
             waiting_for_media: None,
+            waiting_for_operating: false,
         });
         let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
         let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
@@ -418,6 +421,15 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    pub(super) fn finish_operating_step(&mut self, outcome: crate::taskloop::Outcome) {
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for_operating {
+                tl.waiting_for_operating = false;
+                let _ = tl.reply.send(outcome);
+            }
+        }
+    }
+
     /// Is a request of several steps being worked through?
     pub fn working_through_steps(&self) -> bool {
         self.task_loop.is_some()
@@ -433,7 +445,7 @@ impl<'a> Daemon<'a> {
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
-        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_media.take().is_some()) {
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating)) {
             let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
         }
         // A model call already in flight can submit a tool while paused.
@@ -449,6 +461,7 @@ impl<'a> Daemon<'a> {
             match tl.rx.try_recv() {
                 Ok(LoopNews::Act(call)) => {
                     self.last_crew_handoff = None;
+                    let operating_before = self.operating.is_some();
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
                         crate::taskloop::Outcome::Failed("Stopped before this step.".into())
                     } else {
@@ -458,7 +471,12 @@ impl<'a> Daemon<'a> {
                     // job. Counting workers cannot distinguish those cases.
                     let waiting = self.last_crew_handoff.take().filter(|id| self.crew_links.get(id)
                         .is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media")));
-                    if let Some(id) = waiting {
+                    if call.name == "operate" && !operating_before && self.operating.is_some() {
+                        out.push(outcome.text().to_string());
+                        tl.waiting_for_operating = true;
+                    } else if call.name == "operate" && matches!(outcome, crate::taskloop::Outcome::Done(_) | crate::taskloop::Outcome::Started(_)) {
+                        let _ = tl.reply.send(crate::taskloop::Outcome::Failed(outcome.text().to_string()));
+                    } else if let Some(id) = waiting {
                         out.push(outcome.text().to_string());
                         tl.waiting_for = Some(id);
                     } else {
@@ -674,6 +692,7 @@ impl<'a> Daemon<'a> {
             tainted: false,
             waiting_for: None,
             waiting_for_media: None,
+            waiting_for_operating: false,
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),

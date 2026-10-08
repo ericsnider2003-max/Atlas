@@ -36,6 +36,7 @@ impl<'a> Daemon<'a> {
     /// Stopped by "stop" or "stop everything": `true` when a job was going.
     pub(super) fn stop_operating(&mut self) -> Option<String> {
         let j = self.operating.take()?;
+        self.finish_operating_step(crate::taskloop::Outcome::Failed(format!("Stopped app goal: {}.", j.goal)));
         Some(match j.steps.len() {
             0 => format!("Stopped \"{}\" before doing anything.", j.goal),
             n => format!("Stopped \"{}\" after {n} step{}: {}.", j.goal, if n == 1 { "" } else { "s" }, j.steps.last().cloned().unwrap_or_default()),
@@ -70,6 +71,17 @@ impl<'a> Daemon<'a> {
 
     /// One pass of the job, on the tick.
     pub(super) fn operate_tick(&mut self, t: u64) -> Vec<String> {
+        let had_job = self.operating.is_some();
+        let out = self.operate_tick_inner(t);
+        if had_job && self.operating.is_none() {
+            // Success already releases the goal below. Every other terminal
+            // path is a failure, including window/step/model limits.
+            self.finish_operating_step(crate::taskloop::Outcome::Failed(out.last().cloned().unwrap_or_else(|| "The app job stopped without a result.".into())));
+        }
+        out
+    }
+
+    fn operate_tick_inner(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
         let Some(mut job) = self.operating.take() else { return out };
         if job.thinking.is_some() || job.waiting_on_you || self.attention.is_paused() {
@@ -142,6 +154,7 @@ impl<'a> Daemon<'a> {
                 Action::Done(summary) => {
                     self.journal.record_at(Act::Upkeep, &format!("in {}: {}", job.app, job.goal), true, t);
                     out.push(if summary.trim().is_empty() { format!("Done: {}.", job.goal) } else { summary });
+                    self.finish_operating_step(crate::taskloop::Outcome::Done(out.last().cloned().unwrap_or_default()));
                     return out;
                 }
                 Action::GiveUp(why) => {
@@ -251,6 +264,15 @@ impl<'a> Daemon<'a> {
 
     /// The model's chosen step, back from the crew.
     pub(super) fn operate_news(&mut self, id: u64, ending: &crew::Ending) -> Option<String> {
+        let had_job = self.operating.is_some();
+        let said = self.operate_news_inner(id, ending);
+        if had_job && self.operating.is_none() {
+            self.finish_operating_step(crate::taskloop::Outcome::Failed(said.clone().unwrap_or_else(|| "The app job stopped without a result.".into())));
+        }
+        said
+    }
+
+    fn operate_news_inner(&mut self, id: u64, ending: &crew::Ending) -> Option<String> {
         let job = self.operating.as_mut()?;
         if job.thinking != Some(id) {
             return None;

@@ -1176,3 +1176,48 @@ fn background_media_cannot_claim_a_render_without_a_result_file() { background_m
 fn declining_the_edit_blocks_remaining_work() { background_media(false, false, 2); }
 #[test]
 fn stopping_at_the_keep_question_releases_the_request() { background_media(false, false, 3); }
+
+struct AppStepScript(Arc<Scripted>);
+impl Llm for AppStepScript {
+    fn complete(&self, s: &str, u: &str) -> atlas::error::Result<String> { self.0.complete(s, u) }
+    fn native_chat(&self) -> bool { true }
+    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+        if req.tools.iter().any(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some("give_up")) {
+            return Ok(calls("ask", "Which heading should I use?"));
+        }
+        self.0.chat(req, on_text)
+    }
+}
+
+fn dependent_app_job(decision: u8) {
+    let succeed = decision == 1;
+    let (c, p) = (cfg(), plat());
+    *p.front.borrow_mut() = Some(atlas::platform::WindowId(1));
+    p.screens.borrow_mut().insert(1, atlas::uia::Node::new(atlas::uia::Role::Window, "Draft").with(vec![atlas::uia::Node::new(atlas::uia::Role::Edit, "Heading"), atlas::uia::Node::new(atlas::uia::Role::Button, "Save")]));
+    let script = Scripted::new(vec![], vec![calls("operate", "make a heading"), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(AppStepScript(script.clone())) as Arc<dyn Llm>), Store::new(tmp(if succeed { "app-success" } else { "app-failure" })), Proactive::new(ProactiveConfig::default()));
+    d.turn(FOUR, 1_790_750_000);
+    let mut said = Vec::new();
+    for n in 1..500 {
+        said.extend(d.tick(1_790_750_000 + n));
+        if d.operating.as_ref().is_some_and(|j| j.waiting_on_you) { break; }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(d.operating.as_ref().is_some_and(|j| j.waiting_on_you), "the app must reach its question: {said:?}");
+    assert!(d.working_through_steps(), "starting an app job dropped the remaining request");
+    assert_eq!(script.requests().len(), 1, "choosing a next app action must not finish the goal");
+    assert_eq!(d.operating.as_ref().unwrap().goal, "make a heading");
+    if decision == 3 { d.turn("stop everything", 1_790_751_000); tick_until_done(&mut d, 1_790_751_001, 10); assert!(!d.working_through_steps()); assert_eq!(script.requests().len(), 1); return; }
+    d.turn("Budget", 1_790_751_000);
+    d.operating.as_mut().unwrap().next = Some((if succeed { "done" } else { "give_up" }.into(), if succeed { "The heading is ready." } else { "The document is locked." }.into()));
+    tick_until_done(&mut d, 1_790_751_001, 10);
+    assert!(!d.working_through_steps());
+    assert_eq!(script.requests().len(), if succeed { 2 } else { 1 });
+    if succeed { assert!(script.requests()[1].messages.iter().any(|m| m.content.contains("The heading is ready."))); }
+}
+#[test]
+fn an_app_goal_resumes_dependent_work_only_when_finished() { dependent_app_job(1); }
+#[test]
+fn an_app_goal_failure_blocks_dependent_work() { dependent_app_job(2); }
+#[test]
+fn an_app_goal_cancellation_releases_dependent_work() { dependent_app_job(3); }
