@@ -1085,3 +1085,69 @@ fn background_research_continues_with_the_actual_finding() { background_research
 
 #[test]
 fn background_research_failure_blocks_the_remaining_request() { background_research(true); }
+#[test]
+fn a_second_request_cannot_replace_the_active_plan() {
+    let (c, p) = (cfg(), plat());
+    let llm = four_steps(120);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("competing-plan")), Proactive::new(ProactiveConfig::default()));
+    let t = 1_790_740_000;
+    let first = d.turn(FOUR, t);
+    assert!(first.starts_with("Working through"), "{first}");
+    let before = d.turn("what are you working on", t);
+    let refused = d.turn("find the annual budget and then read it", t);
+    assert!(refused.contains("still working"), "{refused}");
+    let after = d.turn("what are you working on", t);
+    assert_eq!(after, before, "a refused request changed the active plan");
+    let said = tick_until_done(&mut d, t, 20);
+    assert!(said.last().map(|(s, _)| s.contains("none of them")).unwrap_or(false), "the original request was lost: {said:?}");
+    assert_eq!(llm.requests().len(), 5, "the second request ran despite being refused");
+}
+struct EditScript(Arc<Scripted>);
+impl Llm for EditScript {
+    fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
+        Ok(r#"{"segments":[{"source":0,"start":0,"end":1}],"intent":"trim a copy"}"#.into())
+    }
+    fn native_chat(&self) -> bool { true }
+    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> { self.0.chat(req, on_text) }
+}
+
+fn background_media(fail: bool, no_output: bool) {
+    let (mut c, p) = (cfg(), plat());
+    let dir = tmp(if fail { "media-failure" } else if no_output { "media-no-output" } else { "media-approval" });
+    let clip = dir.join("clip.mp4");
+    std::fs::write(&clip, "original footage fixture").unwrap();
+    let tools = c.tools.as_mut().unwrap();
+    tools.video.work_dir = dir.join("edits").display().to_string();
+    tools.video.ffprobe.command = "atlas-test-no-probe".into();
+    let render = dir.join(if cfg!(windows) { "render.cmd" } else { "render.sh" });
+    std::fs::write(&render, if no_output { if cfg!(windows) { "@exit /b 0\n" } else { "exit 0\n" } } else if cfg!(windows) {
+        "@echo off\n:atlas_next\nif \"%~1\"==\"\" goto atlas_write\nset \"atlas_result=%~1\"\nshift\ngoto atlas_next\n:atlas_write\n> \"%atlas_result%\" echo render fixture\n"
+    } else {
+        "for last; do :; done; printf 'render fixture' > \"$last\"\n"
+    }).unwrap();
+    tools.video.ffmpeg.command = if fail { "atlas-test-no-renderer".into() } else if cfg!(windows) { "cmd".into() } else { "/bin/sh".into() };
+    tools.video.ffmpeg.args = if cfg!(windows) { vec!["/C".into(), render.display().to_string()] } else { vec![render.display().to_string()] };
+    let script = Scripted::new(vec![], vec![calls("edit_media", &format!("edit \"{}\" to trim it", clip.display())), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(EditScript(script.clone())) as Arc<dyn Llm>), Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    let first = d.turn(&format!("find the clip and then edit \"{}\" to trim it", clip.display()), 1_790_740_000);
+    assert!(first.starts_with("Working through"), "{first}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    assert_eq!(script.requests().len(), 1, "editing must not claim completion before approval or after failure: {said:?}");
+    if no_output {
+        assert!(said.last().map(|(s, _)| s.contains("without a result file")).unwrap_or(false), "the missing output was claimed as an edit: {said:?}");
+    } else if fail {
+        assert!(said.last().map(|(s, _)| s.contains("couldn't edit")).unwrap_or(false), "the render failure was lost: {said:?}");
+    } else {
+        assert!(said.last().map(|(s, _)| s.contains("Keep it?")).unwrap_or(false), "the result's approval question was lost: {said:?}");
+    }
+    assert_eq!(std::fs::read_to_string(&clip).unwrap(), "original footage fixture");
+    assert!(!d.working_through_steps(), "the media result left a worker waiting");
+}
+
+#[test]
+fn background_media_failure_blocks_the_remaining_request() { background_media(true, false); }
+
+#[test]
+fn background_media_result_waits_for_the_keep_decision() { background_media(false, false); }
+#[test]
+fn background_media_cannot_claim_a_render_without_a_result_file() { background_media(false, true); }

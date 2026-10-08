@@ -109,7 +109,7 @@ const JOINS: &[&str] = &[" and then ", ", then ", ". then ", " then ", "; ", ", 
 
 /// Verbs a part of a request starts with: "research X and draft Y".
 const VERBS: &[&str] = &[
-    "research", "look", "find", "check", "open", "close", "draft", "write", "send", "email", "message", "tell",
+    "research", "look", "find", "check", "open", "close", "draft", "write", "edit", "send", "email", "message", "tell",
     "remind", "put", "add", "schedule", "organize", "organise", "tidy", "read", "summarise", "summarize", "show",
     "make", "start", "run", "set", "turn", "book", "call", "note", "take", "save", "get", "search", "compare",
     "report", "create", "give", "list", "clean", "move", "copy", "translate", "plan", "sort", "play", "text",

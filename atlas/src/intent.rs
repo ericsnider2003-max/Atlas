@@ -1728,7 +1728,7 @@ pub fn from_tool(name: &str, args: &serde_json::Value, said: &str) -> Option<Int
     };
     // A dependent loop may have just found a file. Use the selected path
     // rather than the original request (which may not name that file).
-    if matches!(name, "read_document" | "unzip") && !arg.trim().is_empty() {
+    if matches!(name, "read_document" | "unzip" | "edit_media") && !arg.trim().is_empty() {
         return command_by_name(name, arg.trim().to_string(), arg.trim());
     }
     command_by_name(name, arg.trim().to_string(), said)

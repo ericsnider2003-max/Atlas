@@ -790,19 +790,27 @@ impl<'a> Daemon<'a> {
             }
             // A window job's reply: routed to its window, not spoken.
             if link.label == "edit-media" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
-                match &news.ending {
-                    crew::Ending::Done(Ok(json)) => {
-                        if let Ok((original, copy, result, described)) = serde_json::from_str::<(String, String, String, String)>(json) {
+                use crate::taskloop::Outcome;
+                let completion = match &news.ending {
+                    crew::Ending::Done(Ok(json)) => match serde_json::from_str::<(String, String, String, String)>(json) {
+                        Ok((original, copy, result, described)) if std::path::Path::new(&result).is_file() => {
                             let q = format!("Here it is: {result} — {described} Keep it?");
                             self.session.ask(&q);
                             self.pending_media_keep = Some((original, copy, result));
-                            out.push(q);
+                            Outcome::NeedsYou(q)
                         }
-                    }
-                    crew::Ending::Done(Err(e)) => out.push(format!("I couldn't edit it: {e}. Your original is untouched.")),
-                    _ => {}
-                }
+                        Ok(_) => Outcome::Failed("The edit returned without a result file. Your original is untouched.".into()),
+                        Err(e) => Outcome::Failed(format!("I couldn't recover the edit's result ({e}). Your original is untouched.")),
+                    },
+                    crew::Ending::Done(Err(e)) => Outcome::Failed(format!("I couldn't edit it: {e}. Your original is untouched.")),
+                    crew::Ending::Stopped => Outcome::Failed("Stopped before the edit finished. Your original is untouched.".into()),
+                    crew::Ending::Vanished => Outcome::Failed("The edit stopped without returning a result. Your original is untouched.".into()),
+                };
+                let said = completion.text().to_string();
+                let watched = if matches!(completion, Outcome::NeedsYou(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
+                self.long_work.update(link.watch_id, watched, &said, t);
+                if !self.finish_background_step(news.id, completion) { out.push(said); }
+                if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) { j.reported = true; }
                 continue;
             }
             // A file read or unpacked off the loop (`file_work_off_the_loop`).

@@ -160,7 +160,7 @@ impl<'a> Daemon<'a> {
         // These background requests explicitly depend on their result even
         // when the later wording isn't a phrase-matched command ("research
         // this, then tell me what you found"). Keep the dependent plan.
-        if matches!(whole, Intent::Research(_) | Intent::ReadDocument(_) | Intent::Unzip(_))
+        if matches!(whole, Intent::Research(_) | Intent::ReadDocument(_) | Intent::Unzip(_) | Intent::EditMedia(_))
             && parts[1..].iter().any(|p| crate::taskloop::refers_back(p))
         {
             return Some(Several::StepByStep);
@@ -306,6 +306,12 @@ impl<'a> Daemon<'a> {
     /// steps and "resume" carries it on; "stop everything" ends it there.
     /// What this returns is the plan, said at once; the answer follows.
     pub(super) fn work_through(&mut self, llm: std::sync::Arc<dyn brain::Llm>, said: &str, mut turn: brain::Turn, t: u64) -> brain::Decision {
+        // One loop at a time: a second request of several steps while one
+        // runs waits its turn rather than two interleaving their steps.
+        if self.task_loop.is_some() {
+            let s = STILL_WORKING.to_string();
+            return brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::NotNeeded };
+        }
         let plan = crate::taskloop::parts(said);
         turn.tools = self.tools_for_parts(&plan);
         turn.stable_tools = 1;
@@ -313,12 +319,7 @@ impl<'a> Daemon<'a> {
             .iter()
             .map(|p| crate::streams::Stream { part: p.clone(), state: crate::streams::State::Running, said: String::new(), at: t })
             .collect();
-        // One loop at a time: a second request of several steps while one
-        // runs waits its turn rather than two interleaving their steps.
-        if self.task_loop.is_some() {
-            let s = STILL_WORKING.to_string();
-            return brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::NotNeeded };
-        }
+
         let llm = self.background_llm().unwrap_or(llm);
         // Beside the conversation: you may talk with Atlas while it works.
         turn.aside = true;
@@ -427,7 +428,7 @@ impl<'a> Daemon<'a> {
                     // The handoff's exact id also identifies a queued or joined
                     // job. Counting workers cannot distinguish those cases.
                     let waiting = self.last_crew_handoff.take().filter(|id| self.crew_links.get(id)
-                        .is_some_and(|l| matches!(l.label, "read-file" | "research")));
+                        .is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media")));
                     if let Some(id) = waiting {
                         out.push(outcome.text().to_string());
                         tl.waiting_for = Some(id);
