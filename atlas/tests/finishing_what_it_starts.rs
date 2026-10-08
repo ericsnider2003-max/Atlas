@@ -912,3 +912,176 @@ fn a_failed_tool_in_the_real_daemon_cannot_be_reported_as_finished() {
     assert!(!reply.contains("All done."), "{said:?}");
     assert_eq!(llm.requests().len(), 1, "the known failure must not be rewritten by the model");
 }
+
+#[test]
+fn background_read_failure_blocks_the_remaining_request() {
+    let (c, p) = (cfg(), plat());
+    let missing = tmp("background-missing").join("missing.txt");
+    let llm = Scripted::new(vec![], vec![calls("read_document", &missing.display().to_string()), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("background-failure")), Proactive::new(ProactiveConfig::default()));
+    let first = d.turn("read the deadline document and then tell me what it says", 1_790_740_000);
+    assert!(first.starts_with("Working through"), "{first}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 15);
+    assert!(said.last().map(|(s, _)| s.contains("can't find")).unwrap_or(false), "{said:?}");
+    assert_eq!(llm.requests().len(), 1, "a failed background prerequisite must not prompt a completion claim");
+    assert!(!d.working_through_steps());
+}
+
+#[test]
+fn background_read_returns_its_contents_to_the_next_step() {
+    let (mut c, p) = (cfg(), plat());
+    let dir = tmp("background-read");
+    let doc = dir.join("deadline.txt");
+    std::fs::write(&doc, "The filing deadline is April 15.").unwrap();
+    let mut tools = atlas::voice::ToolsConfig::default();
+    tools.files.virus_scan.command = if cfg!(windows) { "cmd".into() } else { "/bin/true".into() };
+    tools.files.virus_scan.args = if cfg!(windows) { vec!["/C".into(), "exit 0".into()] } else { vec![] };
+    c.tools = Some(tools);
+    let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), says("The deadline is April 15.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    let first = d.turn("read the deadline document and then tell me what it says", 1_790_740_000);
+    assert!(first.starts_with("Working through"), "{first}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 15);
+    assert_eq!(llm.requests().len(), 2, "the request stopped at 'started': {said:?}");
+    let requests = llm.requests();
+    assert!(requests[1].messages.iter().any(|m| m.content.contains("filing deadline is April 15")), "the next step needs the actual contents");
+    assert!(said.last().map(|(s, _)| s.contains("deadline is April 15")).unwrap_or(false), "{said:?}");
+    assert!(!d.working_through_steps());
+}
+fn background_document(tag: &str, slow: bool) -> (atlas::config::Config, PathBuf, Store) {
+    let mut c = cfg();
+    let dir = tmp(tag);
+    let doc = dir.join("deadline.txt");
+    std::fs::write(&doc, "The filing deadline is April 15.").unwrap();
+    let mut tools = atlas::voice::ToolsConfig::default();
+    tools.files.virus_scan.command = if cfg!(windows) { "powershell".into() } else { "/bin/sh".into() };
+    tools.files.virus_scan.args = if cfg!(windows) {
+        vec!["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), if slow { "Start-Sleep -Milliseconds 700; exit 0".into() } else { "exit 0".into() }]
+    } else {
+        vec!["-c".into(), if slow { "sleep 1; exit 0".into() } else { "exit 0".into() }]
+    };
+    c.tools = Some(tools);
+    (c, doc, Store::new(dir.join("state")))
+}
+
+#[test]
+fn background_read_keeps_the_scan_approval_boundary() {
+    let (mut c, doc, store) = background_document("background-ask", false);
+    c.tools.as_mut().unwrap().files.virus_scan.command.clear();
+    let p = plat();
+    let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), store, Proactive::new(ProactiveConfig::default()));
+    d.turn("read the deadline document and then tell me what it says", 1_790_740_000);
+    let said = tick_until_done(&mut d, 1_790_740_000, 15);
+    assert!(said.iter().any(|(s, _)| s.contains("Open it anyway?")), "{said:?}");
+    assert_eq!(llm.requests().len(), 1, "approval must stop the dependent work");
+    assert!(!d.working_through_steps());
+}
+
+fn background_read_control(cancel: bool) {
+    let (c, doc, store) = background_document(if cancel { "background-cancel" } else { "background-pause" }, true);
+    let p = plat();
+    let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), says("The deadline is April 15.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), store, Proactive::new(ProactiveConfig::default()));
+    let mut t = 1_790_740_000;
+    d.turn("read the deadline document and then tell me what it says", t);
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut said = Vec::new();
+    while !said.iter().any(|s: &String| s.starts_with("Reading ")) && Instant::now() < until {
+        t += 1;
+        said.extend(d.tick(t));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(said.iter().any(|s| s.starts_with("Reading ")), "background work never started: {said:?}");
+    d.turn(if cancel { "stop everything" } else { "pause" }, t);
+    if cancel {
+        let rest = tick_until_done(&mut d, t, 10);
+        assert!(!d.working_through_steps(), "cancel left a worker waiting forever: {rest:?}");
+        assert!(rest.iter().any(|(s, _)| s.contains("Stopped")), "{rest:?}");
+        // A late completion cannot restart the canceled request.
+        for _ in 0..60 { t += 1; d.tick(t); std::thread::sleep(Duration::from_millis(20)); }
+        assert_eq!(llm.requests().len(), 1);
+    } else {
+        for _ in 0..60 { t += 1; d.tick(t); std::thread::sleep(Duration::from_millis(20)); }
+        assert_eq!(llm.requests().len(), 1, "continuation ran while paused");
+        assert!(d.working_through_steps(), "pause discarded the remaining request");
+        d.turn("resume", t);
+        let rest = tick_until_done(&mut d, t, 15);
+        assert_eq!(llm.requests().len(), 2, "resume lost the completed result: {rest:?}");
+        assert!(!d.working_through_steps());
+    }
+}
+
+#[test]
+fn background_read_waits_through_pause_and_continues_on_resume() { background_read_control(false); }
+
+#[test]
+fn background_read_cancellation_releases_the_waiting_worker() { background_read_control(true); }
+
+#[test]
+fn background_read_retains_outside_text_approval_for_the_next_action() {
+    let (c, doc, store) = background_document("background-taint", false);
+    let p = plat();
+    let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), calls("open_app", "notepad"), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), store, Proactive::new(ProactiveConfig::default()));
+    d.turn("read the deadline document and then open the app it mentions", 1_790_740_000);
+    let said = tick_until_done(&mut d, 1_790_740_000, 15);
+    assert_eq!(llm.requests().len(), 2, "the continuation did not reach the action: {said:?}");
+    assert!(matches!(&d.session.pending, atlas::session::Pending::Approval(Intent::OpenApp(_), _)), "external text bypassed approval: {said:?}");
+}
+
+#[test]
+fn background_read_can_join_an_existing_job_and_continue() {
+    let (c, doc, store) = background_document("background-join", true);
+    let p = plat();
+    let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), says("The deadline is April 15.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), store, Proactive::new(ProactiveConfig::default()));
+    let first = d.execute(&Intent::ReadDocument(format!("\"{}\"", doc.display())));
+    assert!(first.starts_with("Reading "), "{first}");
+    d.turn("read the deadline document and then tell me what it says", 1_790_740_000);
+    let said = tick_until_done(&mut d, 1_790_740_000, 15);
+    assert_eq!(llm.requests().len(), 2, "joining the same job lost the continuation: {said:?}");
+    assert!(llm.requests()[1].messages.iter().any(|m| m.content.contains("filing deadline is April 15")), "{said:?}");
+    assert_eq!(d.long_work.jobs.iter().filter(|j| j.name == "read-file").count(), 1, "the same reading was started twice");
+    assert!(!d.working_through_steps());
+}
+struct ResearchScript(Arc<Scripted>);
+impl Llm for ResearchScript {
+    fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
+        Ok("Ventura high tide is just after noon.".into())
+    }
+    fn native_chat(&self) -> bool { true }
+    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+        self.0.chat(req, on_text)
+    }
+}
+
+fn background_research(fail: bool) {
+    let (mut c, p) = (cfg(), plat());
+    let tools = c.tools.as_mut().unwrap();
+    tools.research.enabled = true;
+    tools.research.pages_on_this_machine = true;
+    tools.research.search = Some(crate::common::printing(if fail { "" } else { "http://example.test/tides" }));
+    tools.research.fetch = Some(crate::common::printing(&"Ventura high tide is just after noon. ".repeat(20)));
+    let dir = tmp(if fail { "background-research-fail" } else { "background-research" });
+    tools.research.notes_dir = dir.join("notes").display().to_string();
+    let scripted = Scripted::new(vec![], vec![calls("research", "Ventura tide times"), says("Ventura high tide is just after noon.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(ResearchScript(scripted.clone())) as Arc<dyn Llm>), Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    let first = d.turn("research Ventura tide times and then tell me what you found", 1_790_740_000);
+    assert!(first.starts_with("Working through"), "{first}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    assert!(!d.working_through_steps(), "research left the request waiting: {said:?}");
+    if fail {
+        assert_eq!(scripted.requests().len(), 1, "failed research prompted a success claim: {said:?}");
+    } else {
+        assert_eq!(scripted.requests().len(), 2, "research never resumed the request: {said:?}");
+        assert!(scripted.requests()[1].messages.iter().any(|m| m.content.contains("high tide is just after noon")), "the finding was not passed to the next step");
+    }
+}
+
+#[test]
+fn background_research_continues_with_the_actual_finding() { background_research(false); }
+
+#[test]
+fn background_research_failure_blocks_the_remaining_request() { background_research(true); }

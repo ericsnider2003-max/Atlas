@@ -43,6 +43,8 @@ pub(crate) struct TaskLoop {
     /// it read can be instructions in disguise (`brain::reads_outside_text`;
     /// 5 Oct 2026 audit, Q2, the "lethal trifecta").
     tainted: bool,
+    /// The crew job whose typed completion the dependent worker is awaiting.
+    waiting_for: Option<u64>,
 }
 
 impl TaskLoop {
@@ -154,6 +156,14 @@ impl<'a> Daemon<'a> {
         let asks = |p: &String| crate::taskloop::starts_with_verb(p) || crate::doing::looks_like_an_action(p);
         if parts.iter().filter(|p| asks(p)).count() < 2 {
             return None;
+        }
+        // These background requests explicitly depend on their result even
+        // when the later wording isn't a phrase-matched command ("research
+        // this, then tell me what you found"). Keep the dependent plan.
+        if matches!(whole, Intent::Research(_) | Intent::ReadDocument(_) | Intent::Unzip(_))
+            && parts[1..].iter().any(|p| crate::taskloop::refers_back(p))
+        {
+            return Some(Several::StepByStep);
         }
         // A command the phrases matched, with a second request in its
         // argument ("research local models and check my email"): split only
@@ -336,6 +346,7 @@ impl<'a> Daemon<'a> {
             paused,
             started: std::time::Instant::now(),
             tainted: false,
+            waiting_for: None,
         });
         let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
         let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
@@ -364,6 +375,19 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// A matching background result releases only its dependent request.
+    /// Call after decoding the result and applying any approval question.
+    pub(super) fn finish_background_step(&mut self, id: u64, outcome: crate::taskloop::Outcome) -> bool {
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for == Some(id) {
+                tl.waiting_for = None;
+                let _ = tl.reply.send(outcome);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Is a request of several steps being worked through?
     pub fn working_through_steps(&self) -> bool {
         self.task_loop.is_some()
@@ -379,18 +403,37 @@ impl<'a> Daemon<'a> {
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && tl.waiting_for.take().is_some() {
+            let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
+        }
+        // A model call already in flight can submit a tool while paused.
+        // Leave it on the channel until resume; cancellation still drains it.
+        if paused && !tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
+            self.task_loop = Some(tl);
+            return out;
+        }
         let mut finished: Option<crate::taskloop::Run> = None;
         let mut parts_done: Option<(Vec<crate::streams::Stream>, usize, u64)> = None;
         let mut gone = false;
         loop {
             match tl.rx.try_recv() {
                 Ok(LoopNews::Act(call)) => {
+                    self.last_crew_handoff = None;
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
                         crate::taskloop::Outcome::Failed("Stopped before this step.".into())
                     } else {
                         self.act_on_call(&call, &tl.said, &mut tl.tainted)
                     };
-                    let _ = tl.reply.send(outcome);
+                    // The handoff's exact id also identifies a queued or joined
+                    // job. Counting workers cannot distinguish those cases.
+                    let waiting = self.last_crew_handoff.take().filter(|id| self.crew_links.get(id)
+                        .is_some_and(|l| matches!(l.label, "read-file" | "research")));
+                    if let Some(id) = waiting {
+                        out.push(outcome.text().to_string());
+                        tl.waiting_for = Some(id);
+                    } else {
+                        let _ = tl.reply.send(outcome);
+                    }
                 }
                 Ok(LoopNews::ActIntent(intent, from_model)) => {
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
@@ -599,6 +642,7 @@ impl<'a> Daemon<'a> {
             paused,
             started: std::time::Instant::now(),
             tainted: false,
+            waiting_for: None,
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),

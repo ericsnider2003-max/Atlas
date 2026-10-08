@@ -284,6 +284,7 @@ impl<'a> Daemon<'a> {
                     }
                 }
                 self.log.info(&format!("{name}: already in hand, joined that run"));
+                self.last_crew_handoff = Some(crew_id);
                 return Some(crew_id);
             }
             Ok(taken) => taken.id(),
@@ -310,6 +311,7 @@ impl<'a> Daemon<'a> {
             self.keep_unfinished();
         }
         self.crew_links.insert(crew_id, CrewLink { watch_id, label: name, topic, speak });
+        self.last_crew_handoff = Some(crew_id);
         Some(crew_id)
     }
 
@@ -805,15 +807,34 @@ impl<'a> Daemon<'a> {
             }
             // A file read or unpacked off the loop (`file_work_off_the_loop`).
             if link.label == "read-file" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
-                match &news.ending {
+                use crate::taskloop::Outcome;
+                let completion = match &news.ending {
                     crew::Ending::Done(Ok(json)) => match serde_json::from_str::<FileDone>(json) {
-                        Ok(done) => out.push(self.file_done(done)),
-                        Err(e) => out.push(format!("I read it, but lost what I found on the way back ({e}). Ask me again.")),
+                        Ok(done) => {
+                            let completion = match &done {
+                                FileDone::Said { said, ok: true, .. } => Outcome::Done(said.clone()),
+                                FileDone::Said { said, ok: false, .. } => Outcome::Failed(said.clone()),
+                                FileDone::Ask { question, .. } => Outcome::NeedsYou(question.clone()),
+                            };
+                            // Record logging or the pending scan question before
+                            // the worker sees its result and can ask for more.
+                            self.file_done(done);
+                            completion
+                        }
+                        Err(e) => Outcome::Failed(format!("I read it, but lost what I found on the way back ({e}). Ask me again.")),
                     },
-                    crew::Ending::Done(Err(e)) => out.push(format!("I couldn't get to that file: {e}")),
-                    crew::Ending::Stopped => out.push("Stopped -- I didn't finish with that file.".into()),
-                    crew::Ending::Vanished => out.push("That file's reading stopped without finishing. Ask me again.".into()),
+                    crew::Ending::Done(Err(e)) => Outcome::Failed(format!("I couldn't get to that file: {e}")),
+                    crew::Ending::Stopped => Outcome::Failed("Stopped -- I didn't finish with that file.".into()),
+                    crew::Ending::Vanished => Outcome::Failed("That file's reading stopped without finishing. Ask me again.".into()),
+                };
+                let watched = if matches!(completion, Outcome::Done(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
+                self.long_work.update(link.watch_id, watched, completion.text(), t);
+                let said = completion.text().to_string();
+                if !self.finish_background_step(news.id, completion) {
+                    out.push(said);
+                }
+                if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
+                    j.reported = true;
                 }
                 continue;
             }
@@ -1112,13 +1133,24 @@ impl<'a> Daemon<'a> {
                 }
             }
 
+            let mut continued = false;
+            if link.label == "research" {
+                let complete = ok && matches!(news.ending, crew::Ending::Done(Ok(_)));
+                let outcome = if complete {
+                    crate::taskloop::Outcome::Done(result.clone())
+                } else {
+                    crate::taskloop::Outcome::Failed(result.clone())
+                };
+                continued = self.finish_background_step(news.id, outcome);
+            }
+
             match link.speak {
                 // The answer to something you asked for is said the
                 // moment it's ready, not filtered through "was this worth
                 // interrupting for" — that filter is for chores you never
                 // asked about in the first place.
                 SpeakPolicy::Always => {
-                    out.push(result.clone());
+                    if !continued { out.push(result.clone()); }
                     if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
                         j.reported = true;
                     }

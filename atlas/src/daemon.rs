@@ -1074,6 +1074,8 @@ pub struct Daemon<'a> {
     /// (`tasks::work_through`, 30 Sep 2026): its steps are carried out and
     /// said by the tick.
     task_loop: Option<tasks::TaskLoop>,
+    /// Exact job selected by the most recent handoff, including joining a run.
+    last_crew_handoff: Option<u64>,
     /// Whether what a restart cut off (`LEFT_WAITING`) has been read back
     /// yet; until then it isn't written over.
     left_waiting_read: bool,
@@ -1915,6 +1917,7 @@ impl<'a> Daemon<'a> {
             coder: crate::coder::Coder::none(),
             coder_look_at: 0,
             task_loop: None,
+            last_crew_handoff: None,
             left_waiting_read: false,
             cpu_meter: Default::default(),
             talk_setting_seen: None,
