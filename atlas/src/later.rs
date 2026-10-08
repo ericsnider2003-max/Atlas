@@ -22,6 +22,10 @@ pub struct Later {
     /// When the brief last mentioned it.
     #[serde(default)]
     pub mentioned: u64,
+    /// Versions survive deletion and restart, preventing delayed adds from
+    /// resurrecting an item. Old saved lists have no versions yet.
+    #[serde(default)]
+    pub versions: std::collections::BTreeMap<String, crate::sync::Version>,
 }
 
 /// The gist of something Atlas said: its first sentence, kept short.
@@ -37,6 +41,36 @@ pub fn gist(said: &str) -> String {
 }
 
 impl Later {
+    pub fn note_version(&mut self, event: &crate::sync::Event) -> bool {
+        let crate::sync::What::Changed { id, field, .. } = &event.what else { return false };
+        let Some(what) = id.strip_prefix("later:").filter(|_| field == "later") else { return false };
+        let key = what.to_lowercase();
+        let version = crate::sync::Version::of(event);
+        if self.versions.get(&key).is_some_and(|old| *old >= version) {
+            return false;
+        }
+        self.versions.insert(key, version);
+        true
+    }
+
+    /// Returns true when the saved list/version changed, including a delete
+    /// of an absent item: that tombstone is needed for future delayed events.
+    pub fn apply_synced(&mut self, event: &crate::sync::Event) -> bool {
+        let crate::sync::What::Changed { id, field, to } = &event.what else { return false };
+        let Some(what) = id.strip_prefix("later:").filter(|_| field == "later") else { return false };
+        let added = if to.is_empty() { None } else {
+            let Ok(added) = to.parse::<u64>() else { return false };
+            Some(added)
+        };
+        if !self.note_version(event) {
+            return false;
+        }
+        self.items.retain(|i| i.what.to_lowercase() != what.to_lowercase());
+        if let Some(added) = added {
+            self.items.push(Item { what: what.into(), added });
+        }
+        true
+    }
     pub fn add(&mut self, what: &str, t: u64) -> bool {
         let what = what.trim();
         if what.is_empty() || self.items.iter().any(|i| i.what.eq_ignore_ascii_case(what)) {
@@ -78,5 +112,49 @@ impl Later {
             if n == 1 { "" } else { "s" },
             self.items[0].what
         ))
+    }
+}
+
+#[cfg(test)]
+mod sync_recovery {
+    use super::*;
+    fn event(device: &str, at: u64, to: &str) -> crate::sync::Event {
+        crate::sync::Event {
+            device: device.into(), seq: 1, at, hlc: crate::hlc::Stamp::ZERO,
+            what: crate::sync::What::Changed { id: "later:write the script".into(), field: "later".into(), to: to.into() },
+        }
+    }
+
+    #[test]
+    fn delayed_add_cannot_resurrect_a_deleted_item_after_restart() {
+        let add = event("phone", 10, "10");
+        let delete = event("laptop", 20, "");
+        let mut a = Later::default();
+        a.apply_synced(&add);
+        a.apply_synced(&delete);
+        let saved = serde_json::to_vec(&a).unwrap();
+        let mut restarted: Later = serde_json::from_slice(&saved).unwrap();
+        assert!(!restarted.apply_synced(&add), "an older add must not override the saved deletion");
+        assert!(restarted.items.is_empty());
+        let mut b = Later::default();
+        b.apply_synced(&delete);
+        b.apply_synced(&add);
+        assert_eq!(a, b, "opposite delivery orders must converge");
+    }
+
+    #[test]
+    fn concurrent_changes_use_device_tie_break_and_future_adds_work() {
+        let add = event("a-phone", 20, "20");
+        let delete = event("z-laptop", 20, "");
+        let mut a = Later::default();
+        a.apply_synced(&add);
+        a.apply_synced(&delete);
+        let mut b = Later::default();
+        b.apply_synced(&delete);
+        b.apply_synced(&add);
+        assert_eq!(a, b);
+        assert!(b.items.is_empty());
+        assert!(b.apply_synced(&event("a-phone", 21, "21")));
+        assert_eq!(b.items[0].added, 21);
     }
 }

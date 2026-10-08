@@ -94,6 +94,23 @@ pub(crate) fn effective_stamp(e: &Event) -> crate::hlc::Stamp {
     }
 }
 
+/// Persisted last-writer order, including deletes. Arrival order is not a
+/// version; two peers must use the same causal/device/sequence tie breaks.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Version {
+    wall: u64,
+    count: u32,
+    device: String,
+    seq: u64,
+}
+
+impl Version {
+    pub fn of(e: &Event) -> Self {
+        let stamp = effective_stamp(e);
+        Self { wall: stamp.wall, count: stamp.count, device: e.device.clone(), seq: e.seq }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum What {
     /// Something added. These never conflict with anything.

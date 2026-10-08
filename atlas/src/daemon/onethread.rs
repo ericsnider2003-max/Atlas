@@ -150,8 +150,16 @@ impl Daemon<'_> {
         if events.is_empty() {
             return;
         }
+        let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
+        let mut later_version_changed = false;
         for e in events {
             self.synclog.append(e, t);
+            if let Some(event) = self.synclog.events.last() {
+                later_version_changed |= later.note_version(event);
+            }
+        }
+        if later_version_changed {
+            let _ = self.store.save(crate::later::RECORD, &later);
         }
         // Saved on the next tick, not inside the turn: the log grows with
         // every exchange, and writing it out is time the reply would wait.
@@ -201,17 +209,17 @@ impl Daemon<'_> {
     }
 
     /// The later list, from your other device.
-    pub(super) fn take_a_later_item(&mut self, id: &str, to: &str, sealed: bool) {
-        let Some(what) = id.strip_prefix(LATER_PREFIX).filter(|_| sealed) else { return };
+    pub(super) fn take_a_later_item(&mut self, event: &crate::sync::Event, sealed: bool) {
+        if !sealed { return; }
+        let crate::sync::What::Changed { id, .. } = &event.what else { return };
+        let Some(what) = id.strip_prefix(LATER_PREFIX) else { return };
         let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
-        let changed = if to.is_empty() {
-            let n = later.items.len();
-            later.items.retain(|i| i.what != what);
-            later.items.len() != n
-        } else {
-            later.add(what, to.parse().unwrap_or(0))
-        };
-        if changed {
+        // Bootstrap versions from the durable event log when upgrading an
+        // older list. New lists retain the version with the items themselves.
+        for old in &self.synclog.events {
+            later.note_version(old);
+        }
+        if later.apply_synced(event) {
             self.arrived_by_sync.later.insert(what.to_string());
             let _ = self.store.save(crate::later::RECORD, &later);
         }

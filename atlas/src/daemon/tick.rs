@@ -2144,8 +2144,8 @@ impl<'a> Daemon<'a> {
                 // the later list and reminders -- your own devices only.
                 crate::sync::What::Said { text, .. } => self.take_an_exchange(text, sealed),
                 crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::FACT_PREFIX) => self.take_a_fact(to, sealed),
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::LATER_PREFIX) => {
-                    self.take_a_later_item(id, to, sealed)
+                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::LATER_PREFIX) => {
+                    self.take_a_later_item(e, sealed)
                 }
                 crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::REMIND_PREFIX) => {
                     self.take_a_reminder(id, to, sealed)
