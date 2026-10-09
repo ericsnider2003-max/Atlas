@@ -275,14 +275,14 @@ fn a_pass_of_the_loop_returns_at_once_while_the_wake_clip_records_and_the_wake_a
 
     let t = Instant::now();
     assert!(!d.listen_pass(&e, &mouth, &clock), "nothing heard yet");
-    assert!(t.elapsed() < Duration::from_millis(200), "starting the microphone took {:?}", t.elapsed());
+    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(200), "starting the microphone took");
     wait_until("the wake clip to start recording", 2, || st.recording.load(Ordering::SeqCst));
 
     // Mid-recording: a pass takes no time, and the hub is answered.
     for _ in 0..5 {
         let t = Instant::now();
         assert!(!d.listen_pass(&e, &mouth, &clock));
-        assert!(t.elapsed() < Duration::from_millis(50), "a pass waited {:?} on the microphone", t.elapsed());
+        crate::common::assert_prompt(t.elapsed(), Duration::from_millis(50), "a pass waited on the microphone");
         assert!(d.mic_recording_for_test(), "the clip should still be recording");
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -290,7 +290,7 @@ fn a_pass_of_the_loop_returns_at_once_while_the_wake_clip_records_and_the_wake_a
     let r = atlas::hublive::reply(&mut d, Action::GlanceJson);
     assert_eq!(r.status, 200);
     assert!(st.recording.load(Ordering::SeqCst), "the hub was answered while the clip recorded");
-    assert!(t.elapsed() < Duration::from_millis(1500), "the hub took {:?}", t.elapsed());
+    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(1500), "the hub took");
 
     // The wake, and what was said after it, arrive through the channel and
     // are answered.
@@ -315,7 +315,7 @@ fn the_thread_hands_over_the_wake_with_what_was_said_after_it() {
     };
     let m = MicThread::start(Box::new(e));
     m.set_wake(true);
-    let until = Instant::now() + Duration::from_secs(3);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(3));
     let got = loop {
         if let Some(h) = m.poll() {
             break h;
@@ -339,7 +339,7 @@ fn stopping_atlas_stops_the_microphone_thread_mid_clip() {
     wait_until("the clip to start", 2, || st.recording.load(Ordering::SeqCst));
     let t = Instant::now();
     let _ = d.shut_down();
-    assert!(t.elapsed() < Duration::from_secs(2), "shutting down waited {:?}", t.elapsed());
+    crate::common::assert_prompt(t.elapsed(), Duration::from_secs(2), "shutting down waited");
     assert!(d.mic_stopped_for_test(), "the microphone's thread outlived Atlas");
     assert!(!st.recording.load(Ordering::SeqCst), "the ten-second clip was still recording");
 }

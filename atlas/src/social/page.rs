@@ -187,7 +187,18 @@ pub fn render_social(v: &View) -> String {
             Some(false) => "not set",
             None => "vault locked",
         };
-        b.push_str(&format!("<li><span>{}</span><span class=meta>{state}</span></li>", esc(what)));
+        // The four sign-ins that can be taken away from here (N5).
+        let take_away = match (what.as_str(), kept) {
+            ("Instagram token", Some(true)) => Some("instagram"),
+            ("Threads token", Some(true)) => Some("threads"),
+            ("Facebook Page token", Some(true)) => Some("facebook"),
+            ("TikTok sign-in", Some(true)) => Some("tiktok"),
+            _ => None,
+        };
+        let button = take_away
+            .map(|n| form("token-disconnect", &format!("<input type=hidden name=name value={n}>"), "Disconnect"))
+            .unwrap_or_default();
+        b.push_str(&format!("<li><span>{}</span><span class=meta>{state}</span> {button}</li>", esc(what)));
     }
     b.push_str("</ul>");
     b.push_str(&form(

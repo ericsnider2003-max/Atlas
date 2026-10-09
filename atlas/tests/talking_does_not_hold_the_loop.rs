@@ -75,14 +75,14 @@ fn the_words_come_back_while_the_loop_carries_on() {
     let d = down.clone();
     let t = Instant::now();
     mic.talk(Arc::new(move || d.load(Ordering::SeqCst)));
-    assert!(t.elapsed() < Duration::from_millis(20), "asking took {:?}", t.elapsed());
+    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(20), "asking took");
     wait_until("the key's recording to start", 2, || recording.load(Ordering::SeqCst));
 
     // While you talk, the loop's look at the microphone takes no time.
     for _ in 0..10 {
         let t = Instant::now();
         assert!(mic.poll().is_none());
-        assert!(t.elapsed() < Duration::from_millis(10));
+        crate::common::assert_prompt(t.elapsed(), Duration::from_millis(10), "took too long");
         std::thread::sleep(Duration::from_millis(10));
     }
     let wakes_while_talking = wakes.load(Ordering::SeqCst);

@@ -20,6 +20,9 @@ use super::{SocialConfig, VAULT_BLUESKY, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_
 use crate::daemon::Daemon;
 use serde::{Deserialize, Serialize};
 
+/// Where a person ends an app's access to their Facebook, Instagram or Threads account.
+const META_APPS: &str = "facebook.com/settings?tab=business_integrations";
+
 /// Sources read in one scheduled errand.
 const PER_SCAN: usize = 5;
 /// Sources read when you ask.
@@ -883,6 +886,54 @@ impl Daemon<'_> {
         "YouTube is disconnected, its sign-in is gone from the vault, and Google's permission is being taken back too.".into()
     }
 
+    /// Disconnect an Instagram, Threads, Facebook Page or TikTok sign-in: the
+    /// secret out of the vault, the platform switched off so it isn't asked
+    /// for again, and the access taken back at the provider where the provider
+    /// has a call for it (TikTok does; Meta gives an app no way to end its own
+    /// token, so its page is named instead) (N5).
+    fn token_disconnect(&mut self, name: &str, t: u64) -> String {
+        let (vault, label, setting, meta) = match name {
+            "instagram" => (VAULT_INSTAGRAM, "Instagram", "instagram", true),
+            "threads" => (VAULT_THREADS, "Threads", "threads", true),
+            "facebook" => (VAULT_FACEBOOK, "Facebook Page", "facebook_page", true),
+            "tiktok" => (VAULT_TIKTOK, "TikTok", "tiktok", false),
+            _ => return "That isn't a sign-in I keep, so nothing changed.".into(),
+        };
+        if let Err(e) = self.vault_ready(t) {
+            return format!("The vault is shut, so nothing changed: {e}");
+        }
+        let held = self.vault.get(vault, t).ok();
+        let Some(held) = held else {
+            return format!("{label} isn't connected through a kept sign-in, so there's nothing to take away.");
+        };
+        self.vault.secrets.retain(|s| s.name != vault);
+        if let Err(e) = self.vault.save(&self.vault_home) {
+            return format!("I couldn't save the vault, so {label} is still connected: {e}");
+        }
+        let _ = self.apply_setting(&format!("workday.social.{setting}"), "off"); // unheard-ok: the setting only stops the platform being read; the vault entry is already gone
+        match name {
+            "instagram" => self.social_watch().instagram_token_at = 0,
+            "threads" => self.social_watch().threads_token_at = 0,
+            _ => {}
+        }
+        crate::heard!(self.social_keep_watch());
+        if meta {
+            return format!(
+                "{label} is disconnected and its token is gone from the vault. Meta gives an app like Atlas no way to end its own token, so it lapses on its own; to end it now, remove Atlas under Business Integrations in your Facebook settings ({}).",
+                META_APPS
+            );
+        }
+        match serde_json::from_str::<TikTokSignIn>(&held) {
+            Ok(s) if !s.refresh_token.is_empty() => {
+                std::thread::spawn(move || {
+                    crate::heard!(apis::tiktok_access(&Https, &s).and_then(|(access, _)| apis::tiktok_revoke(&Https, &s, &access)));
+                });
+                "TikTok is disconnected, its sign-in is gone from the vault, and TikTok is being asked to end Atlas's access too.".into()
+            }
+            _ => "TikTok is disconnected and its sign-in is gone from the vault.".into(),
+        }
+    }
+
     /// "Connect my YouTube": the Connect button, said.
     pub(crate) fn connect_youtube(&mut self) -> String {
         match crate::oauthlink::google_secret() {
@@ -1115,6 +1166,7 @@ impl Daemon<'_> {
                 self.social_google(&id, &secret, t)
             }
             "youtube-disconnect" => self.youtube_disconnect(t),
+            "token-disconnect" => self.token_disconnect(&field("name"), t),
             "tiktok-start" => self.social_tiktok_start(&field("key"), &field("secret"), &field("redirect"), t),
             "tiktok-finish" => self.social_tiktok_finish(&field("address"), t),
             "accounts" => {

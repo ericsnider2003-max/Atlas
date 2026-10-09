@@ -420,7 +420,7 @@ fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("offloop")), Proactive::new(ProactiveConfig::default()));
     let t0 = Instant::now();
     let first = d.turn(FOUR, 1_790_740_000);
-    assert!(t0.elapsed() < Duration::from_millis(MODEL_MS * 4 / 5), "the turn held the loop: {:?}", t0.elapsed());
+    crate::common::assert_prompt(t0.elapsed(), Duration::from_millis(MODEL_MS * 4 / 5), "the turn held the loop");
     assert!(first.starts_with("Working through that in"), "{first}");
     assert!(d.working_through_steps());
     // The hub, asked all the while: every page answered quickly.
@@ -442,7 +442,7 @@ fn the_hub_is_answered_and_each_step_said_while_four_steps_run() {
     assert!(!d.working_through_steps(), "the loop never finished");
     assert!(hub_times.len() >= 10, "the hub was asked only {} times in ~7.5 s of model calls", hub_times.len());
     let slowest = hub_times.iter().max().unwrap();
-    assert!(*slowest < Duration::from_millis(1_000), "a hub page waited {slowest:?}");
+    crate::common::assert_prompt(*slowest, Duration::from_millis(1_000), "a hub page waited");
     // Each step said as it happened, then the answer.
     let steps: Vec<&(String, Instant)> = said.iter().filter(|(l, _)| l.starts_with("Step ")).collect();
     assert_eq!(steps.len(), 4, "{said:?}");
@@ -465,7 +465,7 @@ fn pause_holds_the_steps_and_resume_carries_them_on() {
     let mut t = 1_790_740_000;
     let _ = d.turn(FOUR, t);
     // Until the first step is said...
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     let mut said = Vec::new();
     while !said.iter().any(|l: &String| l.starts_with("Step 1")) && Instant::now() < until {
         t += 1;
@@ -476,7 +476,7 @@ fn pause_holds_the_steps_and_resume_carries_them_on() {
     // ...then pause: answered at once, and nothing more is done.
     let asked = Instant::now();
     let reply = d.turn("pause", t);
-    assert!(asked.elapsed() < Duration::from_millis(500), "pause waited for the steps");
+    crate::common::assert_prompt(asked.elapsed(), Duration::from_millis(500), "pause waited for the steps");
     assert!(reply.to_lowercase().contains("paus"), "{reply}");
     // A step already asked of the model may finish; after that, nothing.
     std::thread::sleep(Duration::from_millis(400));
@@ -508,7 +508,7 @@ fn stop_everything_ends_the_steps_between_them() {
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("stopsteps")), Proactive::new(ProactiveConfig::default()));
     let mut t = 1_790_740_000;
     let _ = d.turn(FOUR, t);
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     let mut said: Vec<String> = Vec::new();
     while !said.iter().any(|l| l.starts_with("Step 1")) && Instant::now() < until {
         t += 1;
@@ -589,7 +589,7 @@ fn two_parts_are_worked_out_at_the_same_time_on_both_slots() {
     let first = d.turn("write a haiku about rain and make up a name for my boat", 1_790_740_000);
     // Model calls of 1.5 s; the turn comes back well before one could
     // (it was 400 ms against 350, which a busy laptop crossed, 6 Oct 2026).
-    assert!(started.elapsed() < Duration::from_millis(1_200), "the turn waited for the model: {:?}", started.elapsed());
+    crate::common::assert_prompt(started.elapsed(), Duration::from_millis(1_200), "the turn waited for the model");
     assert_eq!(first, "Doing both at once: write a haiku about rain, and make up a name for my boat.");
     let said = tick_until_done(&mut d, 1_790_740_000, 30);
     let reply = said.last().map(|(l, _)| l.clone()).unwrap_or_default();

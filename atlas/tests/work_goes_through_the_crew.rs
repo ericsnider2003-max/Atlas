@@ -84,12 +84,12 @@ fn a_slow_model_writing_a_reply_never_holds_up_the_tick() {
     show(&p, 7, "SomeChat.exe", "Sam: Friday?");
     let began = Instant::now();
     let said = d.execute_timed(&Intent::Delegate("draft a reply to this".into()), "draft a reply to this");
-    assert!(began.elapsed() < Duration::from_millis(400), "asking waited for the model: {:?}", began.elapsed());
+    crate::common::assert_prompt(began.elapsed(), Duration::from_millis(400), "asking waited for the model");
     assert!(said.starts_with("Drafting a reply in SomeChat"), "{said}");
     let t = atlas::store::now() + 50;
     let one = Instant::now();
     let _ = d.tick(t);
-    assert!(one.elapsed() < Duration::from_millis(400), "a tick waited for the model: {:?}", one.elapsed());
+    crate::common::assert_prompt(one.elapsed(), Duration::from_millis(400), "a tick waited for the model");
     let _ = until(&mut d, t + 1, |d, _| d.working_for_you.is_empty());
     assert_eq!(typed(&p), vec!["Friday works.".to_string()]);
 }
@@ -238,6 +238,6 @@ fn the_picture_reader_can_be_stopped_while_it_looks() {
         });
         assert_eq!(r, Err("you asked me to stop".to_string()));
     });
-    assert!(asked.elapsed() < Duration::from_secs(5), "stop didn't reach it: {:?}", asked.elapsed());
+    crate::common::assert_prompt(asked.elapsed(), Duration::from_secs(5), "stop didn't reach it");
 }
 

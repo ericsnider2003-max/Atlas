@@ -119,3 +119,28 @@ fn no_stored_type_renames_a_field_by_alias() {
     }
     assert!(found.is_empty(), "serde alias in: {found:?}");
 }
+
+#[test]
+fn unnamed_list_items_are_matched_by_position_only_when_the_list_kept_its_length() {
+    use serde_json::json;
+    let raw = json!({ "list": [ { "x": 1, "new": "a" }, { "x": 2, "new": "b" } ] });
+    let known = json!({ "list": [ { "x": 1 }, { "x": 2 } ] });
+    let u = atlas::store::unknown_part(&raw, &known).expect("something unknown");
+    let mut same_len = json!({ "list": [ { "x": 9 }, { "x": 8 } ] });
+    atlas::store::put_back_unknown(&u, &mut same_len);
+    assert_eq!(same_len, json!({ "list": [ { "x": 9, "new": "a" }, { "x": 8, "new": "b" } ] }));
+    let mut grown = json!({ "list": [ { "x": 9 }, { "x": 8 }, { "x": 7 } ] });
+    atlas::store::put_back_unknown(&u, &mut grown);
+    assert_eq!(grown, json!({ "list": [ { "x": 9 }, { "x": 8 }, { "x": 7 } ] }), "a list that changed length is not guessed at");
+}
+
+#[test]
+fn install_root_is_found_from_a_plain_a_state_and_a_profile_folder() {
+    use std::path::PathBuf;
+    let p = |s: &str| PathBuf::from(s);
+    assert_eq!(Store::new(p("/i/data/state/profiles/ann")).install_root(), p("/i"), "a profile's root is the install, four levels up");
+    assert_eq!(Store::new(p("/i/data/state")).install_root(), p("/i"));
+    assert_eq!(Store::new(p("/i/data/other/profiles/ann")).install_root(), p("/i/data/other/profiles/ann"), "only the exact shape is trusted");
+    assert_eq!(Store::new(p("/i/state/profiles/ann")).install_root(), p("/i/state/profiles/ann"), "data/ is part of the shape");
+    assert_eq!(Store::new(p("/i/data/state/people/ann")).install_root(), p("/i/data/state/people/ann"), "profiles is part of the shape");
+}

@@ -426,6 +426,8 @@ impl Daemon<'_> {
                     "Whether the things I rely on are answering.",
                     &self.connection_lines(now),
                 );
+                // The one list of everything connected leads the page (N1).
+                let page = hub::with_block_after_heading(page, &crate::connecting::the_one_list(self));
                 let page = with_block(page, &phone_model_block(said.as_deref()));
                 let page = with_block(page, &self.mcp_block());
                 let page = with_block(page, &self.brains_block());

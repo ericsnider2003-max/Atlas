@@ -134,7 +134,7 @@ fn a_port_that_stays_taken_is_left_for_the_next_one_and_taken_back_when_it_frees
         out
     });
     let mut answered = 0;
-    let end = Instant::now() + Duration::from_secs(5);
+    let end = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while answered == 0 && Instant::now() < end {
         answered += door.wait_and_answer(50, &mut |_a: Action| atlas::server::Reply::html("<h1>hub</h1>")).len();
     }
@@ -156,7 +156,7 @@ fn a_switched_off_hub_is_still_an_error_at_once_not_a_wait() {
     let off = ServerConfig { enabled: false, ..scfg(0) };
     let started = Instant::now();
     assert!(atlas::server::open_hub(&off, TOKEN, "x", Vec::new(), Retry::default(), on_open).is_err());
-    assert!(started.elapsed() < Duration::from_secs(1));
+    crate::common::assert_prompt(started.elapsed(), Duration::from_secs(1), "took too long");
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn setups_restart_waits_for_the_lock_to_be_let_go_not_for_the_port() {
     let watcher = {
         let (stop, lock) = (stop.clone(), lock.clone());
         std::thread::spawn(move || {
-            let end = Instant::now() + Duration::from_secs(5);
+            let end = Instant::now() + crate::common::allowed(Duration::from_secs(5));
             while !stop.exists() && Instant::now() < end {
                 std::thread::sleep(Duration::from_millis(10));
             }
@@ -439,7 +439,7 @@ fn reading_a_file_leaves_the_loop_free_while_the_scan_runs() {
     let started = Instant::now();
     let said = d.execute(&atlas::intent::Intent::ReadDocument(format!("read this pdf \"{path}\"")));
     let took = started.elapsed();
-    assert!(took < Duration::from_millis(1500), "the turn waited for the scan: {took:?}");
+    crate::common::assert_prompt(took, Duration::from_millis(1500), "the turn waited for the scan");
     assert!(said.starts_with("Reading letter.pdf"), "{said}");
     // Meanwhile the hub is answered.
     let page = atlas::hublive::reply(&mut d, Action::Hub(atlas::hub::Page::Dashboard));

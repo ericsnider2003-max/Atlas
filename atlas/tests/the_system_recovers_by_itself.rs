@@ -200,14 +200,15 @@ fn the_talk_page_asks_one_question_at_a_time() {
 
 #[test]
 fn a_rule_windows_shows_with_a_variable_in_it_is_still_ours() {
-    std::env::set_var("ATLAS_TEST_RULE_HOME", r"C:\Users\erics\AppData\Local");
+    // The variable is passed in, not set in the process (see fitting_a_new_machine).
+    let env = |n: &str| (n == "ATLAS_TEST_RULE_HOME").then(|| r"C:\Users\erics\AppData\Local".to_string());
     let exe = std::path::Path::new(r"C:\Users\erics\AppData\Local\Atlas\atlas.exe");
     let shown = "Rule Name:                            Atlas - your own devices\r\n\
                  Program:                              %ATLAS_TEST_RULE_HOME%\\Atlas\\atlas.exe\r\n";
-    assert!(atlas::doorrule::describes_rule_for(shown, exe), "setup asks for Windows' permission every time again");
+    assert!(atlas::doorrule::describes_rule_for_with(shown, exe, &env), "setup asks for Windows' permission every time again");
     let elsewhere = "Program:                              C:\\Other\\Atlas\\atlas.exe\r\n";
-    assert!(!atlas::doorrule::describes_rule_for(elsewhere, exe));
-    assert_eq!(atlas::doorrule::expand_vars("%NOT_A_VAR_ATLAS%\\x"), "%NOT_A_VAR_ATLAS%\\x");
+    assert!(!atlas::doorrule::describes_rule_for_with(elsewhere, exe, &env));
+    assert_eq!(atlas::doorrule::expand_vars_with("%NOT_A_VAR_ATLAS%\\x", &env), "%NOT_A_VAR_ATLAS%\\x");
 }
 
 // ------------------------------------------------ what it says it can't do

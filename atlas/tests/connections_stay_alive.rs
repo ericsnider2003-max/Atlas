@@ -205,3 +205,21 @@ fn a_connected_youtube_row_has_a_disconnect_button() {
     let html = atlas::social::page::render_social(&v);
     assert!(html.contains("value='youtube-disconnect'><button>Disconnect</button>"), "{html}");
 }
+
+#[test]
+fn taking_a_tiktok_sign_in_back_asks_tiktok_to_end_it() {
+    let s = apis::TikTokSignIn {
+        client_key: "ck".into(),
+        client_secret: "c s".into(),
+        redirect: "https://x.example/r".into(),
+        refresh_token: "rt".into(),
+        state: String::new(),
+        obtained: 0,
+    };
+    let net = Says::new(200, r#"{"error":{"code":"ok"}}"#);
+    apis::tiktok_revoke(&net, &s, "act.1").unwrap();
+    assert_eq!(net.asked.borrow()[0], "POST open.tiktokapis.com/v2/oauth/revoke/ client_key=ck&client_secret=c+s&token=act.1");
+    // Already gone at TikTok is what was wanted; a refusal is said.
+    assert!(apis::tiktok_revoke(&Says::new(400, r#"{"error":"access_token_invalid"}"#), &s, "x").is_ok());
+    assert!(apis::tiktok_revoke(&Says::new(500, "oops"), &s, "x").is_err());
+}

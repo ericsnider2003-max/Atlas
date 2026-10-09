@@ -53,7 +53,7 @@ fn job(name: &str, needs: Needs) -> Job {
 /// Settle until `f` holds or two seconds pass.
 fn settle_until(c: &mut Crew, t: u64, mut f: impl FnMut(&Crew) -> bool) -> bool {
     let start = Instant::now();
-    while start.elapsed() < Duration::from_secs(2) {
+    while start.elapsed() < crate::common::allowed(Duration::from_secs(2)) {
         c.settle(t);
         if f(c) {
             return true;
@@ -424,7 +424,7 @@ fn the_tick_is_hurried_only_when_something_could_start() {
     assert!(!c.wants_attention(), "nothing could start and nothing has finished");
     go.store(true, Ordering::SeqCst);
     let start = Instant::now();
-    while !c.wants_attention() && start.elapsed() < Duration::from_secs(2) {
+    while !c.wants_attention() && start.elapsed() < crate::common::allowed(Duration::from_secs(2)) {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert!(c.wants_attention(), "the render finished: its news is waiting");
@@ -444,7 +444,7 @@ fn stopped_work_is_still_reported_as_stopped() {
             assert!(matches!(n.ending, Ending::Stopped));
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(start.elapsed() < crate::common::allowed(Duration::from_secs(2)));
         std::thread::sleep(Duration::from_millis(3));
     }
 }

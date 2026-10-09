@@ -790,6 +790,23 @@ pub fn tiktok_access(net: &dyn Net, s: &TikTokSignIn) -> Result<(String, String)
     tiktok_tokens(&json_of(r, "TikTok sign-in")?)
 }
 
+/// Take Atlas's access back at TikTok itself (its revoke call, given a fresh
+/// access token), not only out of the vault: disconnecting should mean
+/// disconnected (N5). Already gone at TikTok is what was wanted.
+pub fn tiktok_revoke(net: &dyn Net, s: &TikTokSignIn, access_token: &str) -> Result<(), String> {
+    let form = format!(
+        "client_key={}&client_secret={}&token={}",
+        enc(&s.client_key),
+        enc(&s.client_secret),
+        enc(access_token)
+    );
+    let r = net.post_form(TIKTOK, "/v2/oauth/revoke/", &form)?;
+    if (200..300).contains(&r.status) || r.body.contains("invalid_grant") || r.body.contains("access_token_invalid") {
+        return Ok(());
+    }
+    Err(format!("TikTok answered {}", r.status))
+}
+
 /// TikTok answers `{"data": ..., "error": {"code": "ok"}}`; anything but
 /// "ok" is its own refusal, said.
 fn tiktok_json(r: Reply, what: &str) -> Result<Value, String> {

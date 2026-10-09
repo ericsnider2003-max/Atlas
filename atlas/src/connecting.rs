@@ -11,6 +11,9 @@ use crate::hub::{self, esc, Page};
 use crate::server::Reply;
 use std::sync::Mutex;
 
+mod rows;
+pub use rows::{connected_rows, the_one_list, State as RowState};
+
 /// Where a lookup of an unknown provider is kept between the "Next" press
 /// and the page that shows the result: domain -> (host, port).
 const LOOKED_UP: &str = "connect_looked_up";
@@ -60,7 +63,7 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
     }
     out.push_str(&calendar_form());
     out.push_str(&muse_block(d));
-    out.push_str(&connected_list(d));
+    out.push_str(&the_one_list(d));
     out.push_str(
         "<p class=note>YouTube, Bluesky and the other networks connect on the <a href='/hub/social'>Social \
          page</a>.</p></section>",
@@ -171,14 +174,6 @@ fn calendar_form() -> String {
         .into()
 }
 
-fn light(h: Option<connect::Health>) -> String {
-    match h {
-        Some(h) if h.ok => "<span class='tag ok'>Working</span>".into(),
-        Some(h) => format!("<span class='tag bad'>Not working</span> <span class=note>{}</span>", esc(&h.said)),
-        None => "<span class=tag>Not tried yet</span>".into(),
-    }
-}
-
 /// The one fix for a refused sign-in: sign in again, on the row itself.
 /// Not read again until then (`connect::read_due`, `sign_in_refused`).
 fn again(d: &Daemon, p: Provider) -> String {
@@ -197,41 +192,6 @@ fn disconnect(kind: &str, id: &str) -> String {
          <input type=hidden name=kind value={kind}><input type=hidden name=id value='{}'><button>Disconnect</button></form>",
         esc(id)
     )
-}
-
-/// Everything connected, each with whether it's working.
-fn connected_list(d: &mut Daemon) -> String {
-    let mine: Vec<crate::mail::Account> = d.store.load(crate::daemon::CONNECTED_ACCOUNTS);
-    let accounts = d.tools_cfg().mail.accounts.clone();
-    let links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
-    if accounts.is_empty() && links.is_empty() {
-        return "<p class=note>Nothing connected yet.</p>".into();
-    }
-    let mut out = String::from("<h3>Connected</h3><ul class=connected>");
-    for a in &accounts {
-        let ours = mine.iter().any(|m| m.address.eq_ignore_ascii_case(&a.address));
-        // A refused Microsoft sign-in: one button to fix it, on its own row.
-        let fix = if a.oauth && connect::sign_in_refused(&d.store, &a.address) { again(d, Provider::Microsoft) } else { String::new() };
-        out.push_str(&format!(
-            "<li><b>{}</b> mail {} {fix} {}</li>",
-            esc(&a.address),
-            light(connect::health_of(&d.store, &a.address)),
-            if ours { disconnect("mail", &a.address) } else { "<span class=note>(listed in tools.yaml)</span>".to_string() }
-        ));
-    }
-    for l in &links {
-        let h = (l.last_read > 0).then(|| connect::Health { at: l.last_read, ok: l.last_ok, said: l.last_said.clone() });
-        let fix = match oauthlink::parse_calendar_key(&l.url) {
-            Some((p, _)) if l.needs_signin => again(d, p),
-            _ => String::new(),
-        };
-        out.push_str(&format!("<li><b>{}</b> calendar {} {fix} {}</li>", esc(&l.name), light(h), disconnect("calendar", &l.url)));
-    }
-    if !d.tools_cfg().mail.enabled && !accounts.is_empty() {
-        out.push_str("<li class=note>Reading mail is switched off in Settings, so these aren't being read.</li>");
-    }
-    out.push_str("</ul>");
-    out
 }
 
 /// POST /hub/connect.

@@ -484,10 +484,10 @@ fn a_talk_turn_does_not_hold_the_loop_while_the_model_thinks() {
     let _ = d.tick(100);
     // The tick came back while the model was still on it.
     assert!(d.talk_is_thinking(), "the tick waited for the model ({:?})", started.elapsed());
-    assert!(started.elapsed() < std::time::Duration::from_millis(3_000), "the tick waited for the model: {:?}", started.elapsed());
+    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(3_000), "the tick waited for the model");
     // The words so far are there for the Talk page while it thinks.
     let mut seen_partial = false;
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let until = std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
     while d.talk_is_thinking() && std::time::Instant::now() < until {
         seen_partial |= d.talk_so_far().contains("Once upon a time");
         std::thread::sleep(std::time::Duration::from_millis(50));

@@ -326,7 +326,7 @@ fn a_tool_that_finishes_at_once_is_noticed_at_once() {
     let tool: atlas::tools::ExternalTool = serde_json::from_value(serde_json::json!({ "command": "true" })).unwrap();
     let t = std::time::Instant::now();
     tool.run(&Default::default(), None).unwrap();
-    assert!(t.elapsed() < Duration::from_millis(250), "{:?}", t.elapsed());
+    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(250), "took too long");
 }
 
 // ---------------------------------------------------------------------------

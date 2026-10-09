@@ -300,7 +300,7 @@ fn asking_what_it_said_never_blocks() {
     // Nothing to report yet — this must return immediately rather than wait.
     let began = std::time::Instant::now();
     let _ = t.heard();
-    assert!(began.elapsed().as_millis() < 50);
+    crate::common::assert_prompt(began.elapsed(), std::time::Duration::from_millis(50), "began too slowly");
     t.stop();
 }
 
@@ -322,7 +322,7 @@ fn losing_the_hand_does_not_kill_the_loop() {
     // 250 ms: on a busy Windows laptop that wasn't enough to be scheduled
     // four times (6 Oct 2026). A loop that died stays at its count and
     // still fails, after the deadline.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
     while looks.load(Ordering::Relaxed) <= 3 && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }

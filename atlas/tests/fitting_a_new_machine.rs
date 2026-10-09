@@ -12,7 +12,7 @@
 //! goal is handing Atlas to friends who run their own instance on their own
 //! hardware.
 
-use atlas::adapt::{apply, detect, leaks_a_username, portable, AppFound, Machine, MonitorFact};
+use atlas::adapt::{apply, detect, leaks_a_username, portable_with, AppFound, Machine, MonitorFact};
 use atlas::config::Config;
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
@@ -78,11 +78,13 @@ fn the_shared_windows_folders_are_not_mistaken_for_a_person() {
 fn a_found_path_is_made_portable_before_it_is_written_down() {
     // Whatever was found on disk is an absolute path with a username in it.
     // Storing it verbatim is how the leak happens in the first place.
-    std::env::set_var("LOCALAPPDATA", "C:/Users/erics/AppData/Local");
-    let out = portable("C:/Users/erics/AppData/Local/Discord/app.exe");
+    // The environment is passed in, not set: this file shares a process with
+    // the rest of the suite, and a variable set here is read by every test
+    // running beside it.
+    let env = |n: &str| (n == "LOCALAPPDATA").then(|| "C:/Users/erics/AppData/Local".to_string());
+    let out = portable_with("C:/Users/erics/AppData/Local/Discord/app.exe", &env);
     assert_eq!(out, "%LOCALAPPDATA%/Discord/app.exe");
     assert_eq!(leaks_a_username(&out), None, "a portable path still names someone");
-    std::env::remove_var("LOCALAPPDATA");
 }
 
 // ---------- detection actually runs ----------

@@ -1036,6 +1036,12 @@ const SKIP_DIRS: &[&str] =
 const IGNORE: &[&str] = &["uninstall", "crashpad", "setup", "updater", "installer", "helper"];
 
 pub fn expand_env(s: &str) -> String {
+    expand_env_with(s, &lookup_env)
+}
+
+/// `expand_env` with the lookup passed in, so a test can give it a variable
+/// without changing the whole process's environment.
+pub fn expand_env_with(s: &str, lookup: &dyn Fn(&str) -> Option<String>) -> String {
     let mut out = String::with_capacity(s.len());
     let chars: Vec<char> = s.chars().collect();
     let mut i = 0;
@@ -1045,7 +1051,7 @@ pub fn expand_env(s: &str) -> String {
                 let name: String = chars[i + 1..i + 1 + close].iter().collect();
                 // Windows env names are case-insensitive: the config says
                 // %PROGRAMFILES% and Windows reports "ProgramFiles".
-                if let Some(v) = lookup_env(&name) {
+                if let Some(v) = lookup(&name) {
                     out.push_str(&v);
                     i += close + 2;
                     continue;
@@ -1063,8 +1069,14 @@ pub fn lookup_env(name: &str) -> Option<String> {
     if let Ok(v) = std::env::var(name) {
         return Some(v);
     }
+    lookup_in(name, std::env::vars())
+}
+
+/// The case-insensitive match `lookup_env` falls back on, over any set of
+/// variables: Windows reports `ProgramFiles` where a config says `%PROGRAMFILES%`.
+pub fn lookup_in(name: &str, vars: impl IntoIterator<Item = (String, String)>) -> Option<String> {
     let want = name.to_lowercase();
-    std::env::vars().find(|(k, _)| k.to_lowercase() == want).map(|(_, v)| v)
+    vars.into_iter().find(|(k, _)| k.to_lowercase() == want).map(|(_, v)| v)
 }
 
 /// Which ear is live: the speech-to-text that will hear you, by the setting

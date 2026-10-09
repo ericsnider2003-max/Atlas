@@ -540,7 +540,7 @@ fn the_hub_is_answered_between_spoken_sentences() {
     println!("spoke {} sentence(s) in {talked:?}; {} page(s) asked for meanwhile, the slowest answered in {worst:?}", mouth.said.lock().unwrap().len(), waits.len());
     assert!(mouth.said.lock().unwrap().len() >= 4, "{:?}", mouth.said.lock().unwrap());
     // One sentence's worth of waiting at most, not the whole reply's.
-    assert!(worst < Duration::from_millis(1_300), "a page waited {worst:?} while Atlas spoke for {talked:?}");
+    crate::common::assert_prompt(worst, Duration::from_millis(1_300), "a page waited while Atlas spoke for");
 }
 
 // ================= saving after a turn =================
@@ -619,7 +619,7 @@ fn putting_a_result_into_words_leaves_the_conversation_slot_alone() {
     let mut d = Daemon::new(&c, &p, Some(llm.clone() as Arc<dyn Llm>), Store::new(tmp("aside")), Proactive::new(ProactiveConfig::default()));
     let fields = vec![("text".to_string(), "how's my computer doing".to_string())];
     let _ = atlas::hublive::reply(&mut d, atlas::server::Action::HubPost { path: "/hub/talk".into(), fields });
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     let _ = d.tick(1_790_000_000);
     while d.talk_is_thinking() && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
@@ -693,12 +693,12 @@ fn checking_the_connection_again_does_not_hold_the_loop() {
     // timeout, depending on the network -- either way it's a probe.
     let mut c = Connectivity::new(ConnectivityConfig { probe: "192.0.2.1:53".into(), timeout_ms: 800, cache_secs: 30, assume_offline: false });
     let answer = |c: &mut Connectivity, t: u64| {
-        let until = Instant::now() + Duration::from_secs(3);
+        let until = Instant::now() + crate::common::allowed(Duration::from_secs(3));
         loop {
             let started = Instant::now();
             let r = c.status_now(t);
             let took = started.elapsed();
-            assert!(took < Duration::from_millis(100), "the loop waited {took:?} for the probe");
+            crate::common::assert_prompt(took, Duration::from_millis(100), "the loop waited for the probe");
             if r != Reach::Unknown || Instant::now() > until {
                 return r;
             }

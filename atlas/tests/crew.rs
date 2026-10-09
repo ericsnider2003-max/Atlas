@@ -15,7 +15,7 @@ fn next_news(c: &mut Crew) -> News {
         if let Some(n) = c.settle(1).pop() {
             return n;
         }
-        assert!(start.elapsed() < Duration::from_secs(3), "no news");
+        assert!(start.elapsed() < crate::common::allowed(Duration::from_secs(3)), "no news");
         std::thread::sleep(Duration::from_millis(3));
     }
 }
@@ -35,7 +35,7 @@ fn the_tick_never_waits_not_even_to_stop() {
     c.settle(1);
     c.ask_to_stop(id);
     c.settle(1);
-    assert!(t.elapsed() < Duration::from_millis(50), "settle or stop waited: {:?}", t.elapsed());
+    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(50), "settle or stop waited");
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn more_work_than_hands_waits_rather_than_failing_or_all_starting() {
     let start = Instant::now();
     while c.in_hand(second) {
         c.settle(1);
-        assert!(start.elapsed() < Duration::from_secs(3));
+        assert!(start.elapsed() < crate::common::allowed(Duration::from_secs(3)));
         std::thread::sleep(Duration::from_millis(3));
     }
 }
@@ -125,7 +125,7 @@ fn a_pause_holds_without_losing_anything() {
     c.pause(id);
     let start = Instant::now();
     while !c.errands().iter().any(|e| e.id == id && e.state == State::Holding) {
-        assert!(start.elapsed() < Duration::from_secs(3));
+        assert!(start.elapsed() < crate::common::allowed(Duration::from_secs(3)));
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(c.resume(id));
@@ -140,7 +140,7 @@ fn shutdown_waits_but_not_forever() {
         let mut c = Crew::new(1);
         c.hand("stubborn", 0, forever()).unwrap();
     }
-    assert!(t.elapsed() < Duration::from_secs(SHUTDOWN_DEADLINE_SECS + 5));
+    crate::common::assert_prompt(t.elapsed(), Duration::from_secs(SHUTDOWN_DEADLINE_SECS + 5), "took too long");
 }
 
 #[test]

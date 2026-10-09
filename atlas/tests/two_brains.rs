@@ -321,7 +321,7 @@ fn background_work_starts_the_deep_brain_goes_to_it_and_it_stops_when_idle() {
     assert_eq!(reqs[0]["chat_template_kwargs"]["enable_thinking"], false);
 
     // Idle past its time: stopped, and the port answers no more.
-    let until = Instant::now() + Duration::from_secs(5);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while r.deep.gate.state() != State::Off && Instant::now() < until {
         r.deep.keep();
         std::thread::sleep(Duration::from_millis(50));
@@ -416,7 +416,7 @@ fn a_turn_cuts_in_and_the_deep_work_carries_on_from_its_words() {
         llm.chat(&req, &mut |_| true)
     });
     // Up, and a few words written...
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     while r.seen.lock().unwrap().words_at.len() < 3 && Instant::now() < until {
         r.deep.keep();
         std::thread::sleep(Duration::from_millis(10));
@@ -455,7 +455,7 @@ fn a_turn_cuts_in_while_the_deep_model_is_still_reading_its_prompt() {
     let gate = r.deep.gate.clone();
     let llm = r.deep.for_background(talk as Arc<dyn Llm>);
     let h = std::thread::spawn(move || llm.complete("s", "write up these sources"));
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     while r.seen.lock().unwrap().requests.is_empty() && Instant::now() < until {
         r.deep.keep();
         std::thread::sleep(Duration::from_millis(10));
@@ -466,10 +466,10 @@ fn a_turn_cuts_in_while_the_deep_model_is_still_reading_its_prompt() {
     std::thread::sleep(Duration::from_millis(700));
     let hung_up = r.seen.lock().unwrap().hung_up_at.clone();
     assert_eq!(hung_up.len(), 1, "the deep request wasn't dropped while the turn was answered");
-    assert!(hung_up[0].duration_since(began) < Duration::from_millis(500), "it took {:?} to give way", hung_up[0].duration_since(began));
+    crate::common::assert_prompt(hung_up[0].duration_since(began), Duration::from_millis(500), "it took to give way");
     assert_eq!(r.seen.lock().unwrap().requests.len(), 1, "asked again during the turn");
     drop(turn);
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     while !h.is_finished() && Instant::now() < until {
         r.deep.keep();
         std::thread::sleep(Duration::from_millis(20));
@@ -495,7 +495,7 @@ fn deep_work_waits_for_a_turn_in_progress_before_it_starts() {
     assert_eq!(r.starts.load(Ordering::SeqCst), 0, "started during a turn");
     assert!(r.seen.lock().unwrap().requests.is_empty());
     drop(turn);
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     while !h.is_finished() && Instant::now() < until {
         r.deep.keep();
         std::thread::sleep(Duration::from_millis(20));
@@ -514,7 +514,7 @@ fn the_talking_server_answers_at_full_speed_while_deep_work_is_under_way() {
     let gate = r.deep.gate.clone();
     let bg = r.deep.for_background(talk.clone());
     let h = std::thread::spawn(move || bg.complete("s", "research write-up"));
-    let until = Instant::now() + Duration::from_secs(10);
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(10));
     while r.seen.lock().unwrap().words_at.len() < 2 && Instant::now() < until {
         r.deep.keep();
         std::thread::sleep(Duration::from_millis(10));
@@ -528,7 +528,7 @@ fn the_talking_server_answers_at_full_speed_while_deep_work_is_under_way() {
     let took = t0.elapsed();
     let t1 = Instant::now();
     assert_eq!(reply.text, "Here you go.");
-    assert!(took < Duration::from_millis(1_500), "the turn took {took:?}");
+    crate::common::assert_prompt(took, Duration::from_millis(1_500), "the turn took");
     // The deep server wrote nothing while the turn was answered (bar one
     // word already on its way).
     let overlapping = r.seen.lock().unwrap().words_at.iter().filter(|w| **w > t0 && **w < t1).count();

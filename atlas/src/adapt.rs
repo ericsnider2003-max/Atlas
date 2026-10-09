@@ -154,9 +154,15 @@ pub fn detect(
 /// Replace a literal home directory with a placeholder, so a path found on
 /// one machine doesn't hard-code a username into anything shared.
 pub fn portable(path: &str) -> String {
+    portable_with(path, &|n| std::env::var(n).ok())
+}
+
+/// `portable` with the environment passed in, so a test can give it a
+/// variable without changing the whole process's environment.
+pub fn portable_with(path: &str, env: &dyn Fn(&str) -> Option<String>) -> String {
     let p = path.replace('\\', "/");
     for var in ["LOCALAPPDATA", "APPDATA", "USERPROFILE", "PROGRAMFILES"] {
-        if let Ok(v) = std::env::var(var) {
+        if let Some(v) = env(var) {
             let v = v.replace('\\', "/");
             if !v.is_empty() && p.to_lowercase().starts_with(&v.to_lowercase()) {
                 return format!("%{var}%{}", &p[v.len()..]);

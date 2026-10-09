@@ -63,6 +63,12 @@ fn show_args() -> Vec<String> {
 /// Does `netsh`'s answer to `show_args` describe our rule, for this exe?
 /// A rule left from an install in another folder doesn't count.
 pub fn describes_rule_for(shown: &str, exe: &Path) -> bool {
+    describes_rule_for_with(shown, exe, &|n| std::env::var(n).ok())
+}
+
+/// `describes_rule_for` with the environment passed in, so a test can give it
+/// a variable without changing the whole process's environment.
+pub fn describes_rule_for_with(shown: &str, exe: &Path, var: &dyn Fn(&str) -> Option<String>) -> bool {
     let want = plain_path(&exe.display().to_string());
     shown.lines().any(|l| {
         let low = l.to_lowercase();
@@ -74,7 +80,7 @@ pub fn describes_rule_for(shown: &str, exe: &Path) -> bool {
         // %LOCALAPPDATA%\... never matched, so setup asked for Windows'
         // permission again every time it ran).
         let value = l.split_once(':').map(|(_, v)| v).unwrap_or(l);
-        let got = plain_path(&expand_vars(value.trim()));
+        let got = plain_path(&expand_vars_with(value.trim(), var));
         !got.is_empty() && (got == want || low.trim_end().ends_with(&want))
     })
 }
@@ -84,15 +90,16 @@ fn plain_path(p: &str) -> String {
     p.trim().trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
 }
 
-/// `%NAME%` in `s` replaced by the environment's value, where there is one.
-pub fn expand_vars(s: &str) -> String {
+/// `%NAME%` in `s` replaced by the value `var` gives for it, where it gives one
+/// (the process's environment, or one a test passes in).
+pub fn expand_vars_with(s: &str, var: &dyn Fn(&str) -> Option<String>) -> String {
     let mut out = String::new();
     let mut rest = s;
     while let Some(a) = rest.find('%') {
         let Some(b) = rest[a + 1..].find('%').map(|b| b + a + 1) else { break };
         let name = &rest[a + 1..b];
-        match std::env::var(name) {
-            Ok(v) if !name.is_empty() => {
+        match var(name) {
+            Some(v) if !name.is_empty() => {
                 out.push_str(&rest[..a]);
                 out.push_str(&v);
             }
