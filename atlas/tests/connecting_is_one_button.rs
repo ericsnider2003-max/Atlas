@@ -25,6 +25,28 @@ fn stand_in() {
     std::env::set_var("ATLAS_TEST_LOGINSEAL", "1");
 }
 
+/// A private copy of config/ for one test: Settings forms write
+/// settings.yaml there, not into the checkout (9 Oct 2026).
+fn private_config(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("atlas-onebutton-config-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    copy_tree(Path::new("config"), &dir);
+    let _ = std::fs::remove_file(dir.join("settings.yaml"));
+    dir
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        let (src, dst) = (e.path(), to.join(e.file_name()));
+        if src.is_dir() {
+            copy_tree(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).unwrap();
+        }
+    }
+}
+
 fn tmp(tag: &str) -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-onebutton-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -268,7 +290,7 @@ fn an_instagram_threads_facebook_or_tiktok_sign_in_can_be_disconnected() {
     stand_in();
     let (dir, p) = daemon("takeaway");
     let c = Config::load(Path::new("config")).unwrap();
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default())).watch_settings(private_config("takeaway"));
     // Nothing kept: no button, and the post says so rather than pretending.
     let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Social)).body;
     assert!(!html.contains("value='token-disconnect'"), "a Disconnect button for something not kept");
@@ -299,5 +321,38 @@ fn an_instagram_threads_facebook_or_tiktok_sign_in_can_be_disconnected() {
     assert!(back.contains("TikTok is disconnected"), "{back}");
     let back = post_social(&mut d, &[("what", "token-disconnect"), ("name", "linkedin")]);
     assert!(back.contains("isn't a sign-in I keep"), "{back}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// N5 leftovers (9 Oct 2026): Bluesky is a handle (and maybe a posting app
+/// password), and had no Disconnect.
+#[test]
+fn bluesky_can_be_disconnected_handle_and_app_password() {
+    stand_in();
+    let (dir, p) = daemon("bskytakeaway");
+    let c = Config::load(Path::new("config")).unwrap();
+    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default())).watch_settings(private_config("bsky"));
+    let back = post_social(&mut d, &[("what", "bluesky-disconnect")]);
+    assert!(back.contains("nothing to take away"), "{back}");
+    let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Social)).body;
+    assert!(!html.contains("value='bluesky-disconnect'"), "a Disconnect button for something not connected");
+
+    post_social(&mut d, &[("what", "bluesky-handle"), ("handle", "eric.bsky.social")]);
+    let back = post_social(&mut d, &[("what", "key"), ("name", "bluesky"), ("secret", "abcd-efgh-ijkl-mnop")]);
+    assert!(back.contains("Kept your"), "{back}");
+    let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Social)).body;
+    let at = html.find("Bluesky").unwrap_or(0);
+    assert!(html.contains("value='bluesky-disconnect'"), "connected Bluesky has no Disconnect button: {}", &html[at.saturating_sub(100)..(at + 900).min(html.len())]);
+
+    let back = post_social(&mut d, &[("what", "bluesky-disconnect")]);
+    assert!(back.contains("Bluesky is disconnected"), "{back}");
+    let mut v = Vault::load(&Store::new(dir.clone()));
+    v.open_unattended(1).unwrap();
+    assert!(v.get(atlas::social::VAULT_BLUESKY, 1).is_err(), "the app password is still in the vault");
+    let html = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Social)).body;
+    assert!(!html.contains("value='bluesky-disconnect'"), "Disconnect still offered after disconnecting");
+    assert!(html.contains("Connect Bluesky") && !html.contains("eric.bsky.social"), "the handle is still set");
+    let again = post_social(&mut d, &[("what", "bluesky-disconnect")]);
+    assert!(again.contains("nothing to take away"), "{again}");
     let _ = std::fs::remove_dir_all(dir);
 }

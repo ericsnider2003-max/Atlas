@@ -182,7 +182,7 @@ pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
             state: State::Kept,
             said: "your public numbers, by handle".into(),
             fix: String::new(),
-            take_away: "<span class=note>(a handle only, nothing to take back)</span>".into(),
+            take_away: social_form("bluesky-disconnect", "bluesky", "Disconnect"),
         });
     }
     if crate::muse::has_key() {

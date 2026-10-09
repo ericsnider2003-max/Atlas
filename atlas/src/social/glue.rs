@@ -888,6 +888,31 @@ impl Daemon<'_> {
         }
     }
 
+    /// Disconnect Bluesky: it is a public handle, so there is nothing to take
+    /// back at Bluesky -- the handle is cleared so Atlas stops reading it, and
+    /// the posting app password goes from the vault if one was kept (N5).
+    fn bluesky_disconnect(&mut self, t: u64) -> String {
+        let had_handle = !self.social_cfg().bluesky_handle.trim().is_empty();
+        let listed = self.vault_ready(t).is_ok() && self.vault.get(VAULT_BLUESKY, t).is_ok();
+        if !had_handle && !listed {
+            return "Bluesky isn't connected, so there's nothing to take away.".into();
+        }
+        if listed {
+            self.vault.secrets.retain(|s| s.name != VAULT_BLUESKY);
+            if let Err(e) = self.vault.save(&self.vault_home) {
+                return format!("I couldn't save the vault, so Bluesky's app password is still kept and nothing changed: {e}");
+            }
+        }
+        if had_handle {
+            let said = self.apply_setting("workday.social.bluesky_handle", "");
+            if !said.contains("is now") {
+                return format!("I couldn't clear the handle, so Bluesky is still read: {said}");
+            }
+            crate::heard!(self.social_keep_watch());
+        }
+        "Bluesky is disconnected: Atlas no longer reads your handle, and the app password for posting is gone from the vault if there was one. Bluesky itself holds no Atlas token, so nothing needs undoing there.".into()
+    }
+
     /// "Connect my YouTube": the Connect button, said.
     pub(crate) fn connect_youtube(&mut self) -> String {
         match crate::oauthlink::google_secret() {
@@ -915,6 +940,7 @@ impl Daemon<'_> {
             },
         });
         let handle = cfg.bluesky_handle.trim().trim_start_matches('@').to_string();
+        let connected_bsky = !handle.is_empty();
         out.push(page::Service {
             name: "Bluesky".into(),
             state: if handle.is_empty() { "Not connected".into() } else { format!("Connected as @{handle}") },
@@ -922,7 +948,7 @@ impl Daemon<'_> {
             button: Some(("bluesky-handle".into(), if handle.is_empty() { "Connect Bluesky".into() } else { "Change".into() })),
             inner: format!("<label>Your handle <input name=handle value='{}' size=22 placeholder='you.bsky.social' required></label>", crate::hub::esc(&handle)),
             note: "Your public numbers need only your handle.".into(),
-            disconnect: None,
+            disconnect: connected_bsky.then(|| "bluesky-disconnect".to_string()),
         });
         out.push(page::Service {
             name: "Instagram, TikTok, X, Facebook, LinkedIn, Reddit".into(),
@@ -1121,6 +1147,7 @@ impl Daemon<'_> {
             }
             "youtube-disconnect" => self.youtube_disconnect(t),
             "token-disconnect" => self.token_disconnect(&field("name"), t),
+            "bluesky-disconnect" => self.bluesky_disconnect(t),
             "tiktok-start" => self.social_tiktok_start(&field("key"), &field("secret"), &field("redirect"), t),
             "tiktok-finish" => self.social_tiktok_finish(&field("address"), t),
             "accounts" => {

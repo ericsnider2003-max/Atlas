@@ -37,7 +37,10 @@ impl Daemon<'_> {
         // and writing an unparseable value into the settings file would turn
         // a switch that did nothing into one that stops Atlas starting.
         let mut settings = crate::settings::registry(&self.tools_cfg());
-        let said = settings.set_and_keep(key, value, &crate::roots::config_dir());
+        // Written where it is watched, so the change that was just kept is the
+        // one picked up below (the same folder when Atlas runs for real).
+        let dir = self.settings_dir().unwrap_or_else(crate::roots::config_dir);
+        let said = settings.set_and_keep(key, value, &dir);
         // What taking it up says wins: it knows a change that waits for the
         // next start from one that is live now (29 Sep 2026: "is now on" was
         // shown for Voice, Push-to-talk and the speaking voice, which only
