@@ -119,6 +119,11 @@ pub fn sha256_hex(data: &[u8]) -> String {
 /// reading it whole to hash it (then copying it to pad it) asked a 16 GB
 /// laptop for 5 GB at once.
 pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
+    sha256_file_hex_unless(path, &|| false)?.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Interrupted, "hashing stopped"))
+}
+
+/// The same streamed hash, stopped between chunks without retaining file bytes.
+pub fn sha256_file_hex_unless(path: &std::path::Path, stop: &dyn Fn() -> bool) -> std::io::Result<Option<String>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path)?;
     let mut h: [u32; 8] = [
@@ -129,6 +134,7 @@ pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
     let mut carry: Vec<u8> = Vec::with_capacity(64);
     let mut total: u64 = 0;
     loop {
+        if stop() { return Ok(None); }
         let n = f.read(&mut buf)?;
         if n == 0 {
             break;
@@ -164,7 +170,7 @@ pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
     for (i, word) in h.iter().enumerate() {
         out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
     }
-    Ok(hex(&out))
+    Ok(Some(hex(&out)))
 }
 
 fn hex(bytes: &[u8; 32]) -> String {

@@ -5,6 +5,85 @@ use crate::error::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::{Path, PathBuf};
 
+#[path = "store/state_lock.rs"]
+mod state_lock;
+pub use state_lock::StateGuard;
+pub use state_lock::AccessGuard;
+pub fn state_access(root: &Path, exclusive: bool) -> std::io::Result<AccessGuard> { state_lock::access(root, exclusive) }
+/// Fail closed before owner/permission reads if an earlier restore stopped.
+pub fn begin_state_command(root: &Path, restoring: bool) -> Result<AccessGuard> {
+    let access = state_access(root, restoring)?;
+    if access.root.join(".restore-journal.json").try_exists()? {
+        if restoring { crate::safety::recover_restore(&access.root)?; return Ok(access); }
+        let root = access.root.clone();
+        drop(access);
+        let exclusive = state_access(&root, true)?;
+        crate::safety::recover_restore(&root)?;
+        drop(exclusive);
+        return Ok(state_access(&root, false)?);
+    }
+    Ok(access)
+}
+
+pub fn state_transaction(root: &Path) -> std::io::Result<StateGuard> {
+    let guard = state_lock::try_acquire(root)?;
+    if guard.root.join(".restore-journal.json").try_exists()? {
+        crate::safety::recover_restore(&guard.root).map_err(|e| std::io::Error::other(e.to_string()))?;
+    }
+    Ok(guard)
+}
+pub fn wait_for_state_transaction(root: &Path) -> std::io::Result<StateGuard> { state_lock::acquire(root) }
+pub(crate) fn try_state_guard(root: &Path) -> std::io::Result<StateGuard> { state_lock::try_acquire(root) }
+pub fn state_root_for(path: &Path) -> std::io::Result<Option<PathBuf>> { state_lock::root_for(path) }
+pub fn bind_owned_output(root: &Path, folder: &Path) -> std::io::Result<()> { state_lock::bind_output(root, folder) }
+
+pub fn write_whole_in_state(root: &Path, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let _guard = state_transaction(root)?;
+    write_whole(path, bytes)
+}
+
+pub fn remove_state_file(root: &Path, path: &Path) -> std::io::Result<()> {
+    let _guard = state_transaction(root)?;
+    std::fs::remove_file(path)
+}
+
+pub fn write_owned_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_whole(path, bytes)
+}
+
+/// Worker-only retry: the control loop uses the nonblocking writer above.
+/// A snapshot may briefly own the state lock; stop is checked before every
+/// attempt and no destination is changed while an attempt is refused.
+pub fn write_owned_file_until(path: &Path, bytes: &[u8], stop: &dyn Fn() -> bool) -> std::io::Result<()> {
+    let started = std::time::Instant::now();
+    loop {
+        if stop() { return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "stopped before saving Atlas output")); }
+        match write_owned_file(path, bytes) {
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && started.elapsed() < std::time::Duration::from_secs(10) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            result => return result,
+        }
+    }
+}
+
+pub fn remove_owned_file(path: &Path) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let _output = if parent.join(".atlas-output-write.lock").try_exists()? { Some(owned_output_lease(parent, true)?) } else { None };
+    let _state = state_lock::for_path(path)?;
+    std::fs::remove_file(path)
+}
+
+/// A live recording holds a shared file lease; a backup takes it exclusively
+/// and fails promptly while a WAV's length/header are still being written.
+pub fn owned_output_lease(folder: &Path, snapshot: bool) -> std::io::Result<std::fs::File> {
+    std::fs::create_dir_all(folder)?;
+    let path = folder.join(".atlas-output-write.lock");
+    if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) { return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the output lock is a symbolic link")); }
+    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?;
+    let locked = if snapshot { file.try_lock() } else { file.try_lock_shared() };
+    locked.map_err(|e| std::io::Error::new(std::io::ErrorKind::WouldBlock, format!("Atlas output is still being recorded or copied ({e}); try backup again after recording finishes")))?;
+    Ok(file)
+}
+
 /// Bumped whenever a stored structure changes shape incompatibly.
 ///
 /// Without this, upgrading Atlas silently discards everything it learned —
@@ -212,26 +291,30 @@ fn remember_seen(path: &Path, stamp: Stamp) {
 /// it silent: `Daemon::persist` drains what belongs to its own store into
 /// `persist_failures`, and the person is told once, as for its own records.
 /// Bounded, so a disk that stays full can't grow it without limit.
-static FAILED_SAVES: std::sync::Mutex<Vec<(PathBuf, String, String)>> = std::sync::Mutex::new(Vec::new());
+static FAILED_SAVES: std::sync::Mutex<Vec<(PathBuf, String, String, bool)>> = std::sync::Mutex::new(Vec::new());
 const MOST_FAILED_SAVES_KEPT: usize = 64;
 
-fn record_failed_save(root: &Path, name: &str, error: &str) {
+fn record_failed_save(root: &Path, name: &str, error: &str, transient: bool) {
     if let Ok(mut v) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) {
-        v.retain(|(r, n, _)| !(r == root && n == name));
+        v.retain(|(r, n, _, _)| !(r == root && n == name));
         if v.len() >= MOST_FAILED_SAVES_KEPT {
             v.remove(0);
         }
-        v.push((root.to_path_buf(), name.to_string(), error.to_string()));
+        v.push((root.to_path_buf(), name.to_string(), error.to_string(), transient));
     }
 }
 
 /// The saves into `root` that failed since the last time this was asked, as
 /// (record name, error). Taken, so each is reported once.
 pub fn take_failed_saves(root: &Path) -> Vec<(String, String)> {
+    take_failed_saves_detailed(root).into_iter().map(|(name, error, _)| (name, error)).collect()
+}
+
+pub fn take_failed_saves_detailed(root: &Path) -> Vec<(String, String, bool)> {
     let Ok(mut v) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) else { return Vec::new() };
-    let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *v).into_iter().partition(|(r, _, _)| r == root);
+    let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *v).into_iter().partition(|(r, _, _, _)| r == root);
     *v = rest;
-    mine.into_iter().map(|(_, n, e)| (n, e)).collect()
+    mine.into_iter().map(|(_, n, e, transient)| (n, e, transient)).collect()
 }
 
 /// A record name as a `&'static str`, for `Daemon::persist_failures`. The
@@ -266,6 +349,9 @@ impl Store {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    /// Hold across a group of saves so a backup sees either whole group.
+    pub fn transaction(&self) -> Result<StateGuard> { Ok(state_transaction(&self.root)?) }
 
     /// The install's own root — the directory a fresh download unpacks
     /// into, and the one `atlas update`'s `upgrade::YOURS` list is checked
@@ -431,6 +517,42 @@ impl Store {
         T::default()
     }
 
+    /// Read state needed for an irreversible action without defaulting or moving evidence.
+    pub fn load_checked<T: DeserializeOwned + Serialize>(&self, name: &str) -> Result<Option<T>> {
+        self.load_checked_bounded(name, 16 * 1024 * 1024)
+    }
+
+    /// Checked snapshots may use a smaller caller-specific allocation budget.
+    pub fn load_checked_bounded<T: DeserializeOwned + Serialize>(&self, name: &str, maximum: u64) -> Result<Option<T>> {
+        use std::io::Read;
+        let maximum = maximum.min(16 * 1024 * 1024);
+        let path = self.path(name);
+        let mut file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => { remember_seen(&path, None); return Ok(None); }
+            Err(e) => return Err(e.into()),
+        };
+        let metadata = file.metadata()?;
+        let invalid = |why: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{name}: {why}; state was left untouched"));
+        if !metadata.is_file() || metadata.len() > maximum { return Err(invalid("not a regular state file within the read budget").into()); }
+        let before = Some((metadata.len(), metadata.modified().ok()));
+        let mut text = String::new();
+        (&mut file).take(maximum + 1).read_to_string(&mut text)?;
+        if text.len() as u64 > maximum || stamp_of(&path) != before { return Err(invalid("state changed or exceeded its read budget").into()); }
+        let raw: serde_json::Value = serde_json::from_str(&text).map_err(|_| invalid("malformed state"))?;
+        let (data, envelope) = if let Some(schema) = raw.get("schema") {
+            if schema.as_u64() != Some(u64::from(SCHEMA)) { return Err(invalid("unsupported state format").into()); }
+            (raw.get("data").cloned().ok_or_else(|| invalid("missing state data"))?, text)
+        } else {
+            let envelope = serde_json::json!({"schema": SCHEMA, "data": raw.clone()}).to_string();
+            (raw, envelope)
+        };
+        let value: T = serde_json::from_value(data).map_err(|_| invalid("state does not match this record"))?;
+        remember_seen(&path, before);
+        remember_unknown::<T>(&path, &envelope);
+        Ok(Some(value))
+    }
+
     /// Move an unreadable file aside so the next save cannot destroy it.
     ///
     /// The rename's failure is recorded rather than discarded. It used to be
@@ -438,6 +560,10 @@ impl Store {
     /// the next save will overwrite it — which is the one thing this function
     /// exists to prevent, failing silently.
     fn preserve(&self, name: &str, why: &str) {
+        let Ok(_guard) = state_transaction(&self.root) else {
+            record_failed_save(&self.root, name, "state was busy; the unreadable file was left intact", true);
+            return;
+        };
         note_set_aside(&self.root, name, why);
         let from = self.path(name);
         let to = self.root.join(format!("{name}.{why}.{}.json.bak", now()));
@@ -509,12 +635,16 @@ impl Store {
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         let r = self.save_unrecorded(name, value);
         if let Err(e) = &r {
-            record_failed_save(&self.root, name, &e.to_string());
+            let transient = matches!(e, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock);
+            record_failed_save(&self.root, name, &e.to_string(), transient);
+        } else if let Ok(mut failures) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) {
+            failures.retain(|(root, record, _, _)| !(root == &self.root && record == name));
         }
         r
     }
 
     fn save_unrecorded<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
+        let _guard = self.transaction()?;
         let final_path = self.path(name);
         // Never `unwrap_or_default` here: a value that won't serialize wrote
         // an empty file over the good one, atomically, and returned Ok -- the
@@ -663,6 +793,7 @@ impl Store {
     /// File a record under another name, byte for byte (`vault::bring_in_set_aside`
     /// retiring the old vault). Refuses to replace one already there.
     pub fn file_as(&self, name: &str, new_name: &str) -> Result<()> {
+        let _guard = self.transaction()?;
         let to = self.path(new_name);
         if to.exists() {
             return Err(crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{new_name} is already there"))));
@@ -770,6 +901,7 @@ pub fn write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
 /// kept outside a `Store` -- a crash or a full disk mid-`fs::write` left them
 /// cut short, and the next start read them as empty (audit Q3/Q11).
 pub fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let _guard = state_lock::for_path(path)?;
     use std::io::Write;
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;

@@ -181,5 +181,6 @@ pub fn post_with_app_password(
     }
     let body = json!({ "repo": did, "collection": "app.bsky.feed.post", "record": record(text, now, &images) }).to_string();
     let made = json_answer("posting", x.call("com.atproto.repo.createRecord", Some(token), "application/json", body.as_bytes()))?;
-    Ok(made.get("uri").and_then(Value::as_str).unwrap_or("").to_string())
+    let uri = made.get("uri").and_then(Value::as_str).filter(|uri| uri.starts_with("at://") && uri.contains("/app.bsky.feed.post/") && !uri.ends_with('/')).ok_or("Bluesky gave no valid receipt (posting); publication is unconfirmed")?;
+    Ok(uri.to_string())
 }

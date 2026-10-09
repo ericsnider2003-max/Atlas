@@ -768,13 +768,17 @@ impl Daemon<'_> {
                 })
             }
             "social-google" => {
+                let store = self.store.clone();
+                let _transaction = match store.transaction() { Ok(guard) => guard, Err(error) => return Some(format!("Nothing connected; Google account storage is busy: {error}")) };
+                if let Err(error) = crate::connection_removal::google_connection_allowed(&store) { return Some(error); }
                 let mut s: GoogleSignIn = serde_json::from_str(&body).ok()?;
                 s.obtained = s.obtained.max(1);
                 let json = serde_json::to_string(&s).ok()?;
+                let previous = self.vault.clone();
                 Some(match self.vault.put(VAULT_YOUTUBE_OAUTH, crate::vault::Kind::ApiKey, &json, t) {
                     Ok(()) => {
+                        if let Err(error) = self.vault.save(&self.vault_home) { self.vault = previous; return Some(format!("Google signed you in, but its credential could not be saved; nothing connected: {error}")); }
                         crate::connecting::note_google_data(self);
-                        crate::kept!(self.vault.save(&self.vault_home));
                         let lapse = if self.social_cfg().google_app_in_testing {
                             " While your Google app is in Testing, Google ends this sign-in after seven days; publishing the app (unverified is fine for your own use) stops that."
                         } else {
@@ -817,40 +821,6 @@ impl Daemon<'_> {
 
     // ------------------------------------------------------------ the brief
 
-    pub(crate) fn social_brief_items(&mut self, t: u64) -> Vec<crate::brief::Item> {
-        use crate::brief::{Item, Outcome, Source, Weight};
-        let cfg = self.social_cfg();
-        if !cfg.enabled || !cfg.in_brief {
-            return Vec::new();
-        }
-        let item = |id: &str, subject: String| Item {
-            id: id.into(),
-            source: Source::Day,
-            from: "Social".into(),
-            subject,
-            weight: Weight::Info,
-            outcome: Outcome::Yours,
-            draft: None,
-            conflicts_with: None,
-        };
-        let mut out = Vec::new();
-        // Read only if there is a record at all.
-        if self.store.root().join(super::snapshots::FILE).exists() {
-            if let Some(line) = analysis::own_brief_line(self.social_book(), t) {
-                out.push(item("social:own", line));
-            }
-        }
-        if self.store.exists(watchlist::FILE) {
-            let w = self.social_watch().clone();
-            let fresh = w.list.iter().any(|x| x.last_ok.is_some_and(|ok| t.saturating_sub(ok) < 36 * 3600));
-            if fresh {
-                if let Some(line) = analysis::brief_digest(&w, t) {
-                    out.push(item("social:watch", line));
-                }
-            }
-        }
-        out
-    }
 
     // ------------------------------------------------------------ the hub page
 
@@ -861,29 +831,13 @@ impl Daemon<'_> {
         if let Err(e) = self.vault_ready(t) {
             return format!("The vault is shut, so nothing changed: {e}");
         }
-        let held = self.vault.get(VAULT_YOUTUBE_OAUTH, t).ok().and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok());
-        let Some(g) = held else {
-            return "YouTube isn't connected through a sign-in, so there's nothing to take away.".into();
-        };
-        self.vault.secrets.retain(|s| s.name != VAULT_YOUTUBE_OAUTH);
-        if let Err(e) = self.vault.save(&crate::roots::install_state()) {
-            return format!("I couldn't save the vault, so YouTube is still connected: {e}");
-        }
-        crate::connect::forget_access(&format!("youtube {} {}", g.client_id, g.refresh_token));
+        let id = match crate::connection_removal::begin(&self.store, "YouTube", "Google", t) { Ok(id) => id, Err(error) => return format!("Removal did not start: {error}") };
+        let google_token = self.vault.get(VAULT_YOUTUBE_OAUTH, t).ok().and_then(|json| serde_json::from_str::<GoogleSignIn>(&json).ok()).map(|signin| signin.refresh_token).filter(|token| !token.is_empty());
+        if let Err(error) = crate::connection_removal::remove_credentials(&self.vault_home, &mut self.vault, &[VAULT_YOUTUBE_OAUTH.into(), VAULT_YOUTUBE_KEY.into()]) { return format!("YouTube is still connected locally: {error}"); }
         crate::connecting::note_google_data(self);
-        let calendar_too = self
-            .store
-            .load::<Vec<crate::connect::CalendarLink>>(crate::connect::CALENDAR_LINKS)
-            .iter()
-            .any(|l| matches!(crate::oauthlink::parse_calendar_key(&l.url), Some((crate::oauthlink::Provider::Google, _))));
-        if calendar_too && g.client_id == crate::oauthlink::GOOGLE_CLIENT_ID {
-            return "YouTube is disconnected and its sign-in is gone from the vault. Google's permission stays, because your Google Calendar uses the same sign-in; disconnect that too on the Accounts page to end both.".into();
-        }
-        let token = g.refresh_token.clone();
-        std::thread::spawn(move || {
-            crate::heard!(crate::oauthlink::revoke_google(&Https, &token));
-        });
-        "YouTube is disconnected, its sign-in is gone from the vault, and Google's permission is being taken back too.".into()
+        let detail = format!("YouTube sign-in and API key removed from this Atlas vault. {}", crate::connection_removal::provider_check("Google"));
+        if let Err(error) = crate::connection_removal::complete(&self.store, id, &detail) { return format!("YouTube credentials removed locally, but its completion receipt was not saved: {error}. Provider permission is unconfirmed."); }
+        format!("{detail} {}", google_token.map(|token| self.queue_google_revocation(id, token, t)).unwrap_or_default())
     }
 
     /// Disconnect an Instagram, Threads, Facebook Page or TikTok sign-in: the

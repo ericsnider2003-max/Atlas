@@ -36,6 +36,8 @@ impl Phases {
     /// Write a phase down as finished. Written to a side file and renamed,
     /// so a stop mid-write leaves the phase unfinished rather than half a file.
     pub fn finished<T: Serialize>(&self, phase: &str, result: &T) -> bool {
+        let Some(root) = self.dir.parent().and_then(Path::parent) else { return false };
+        let Ok(_state) = crate::store::state_transaction(root) else { return false };
         if std::fs::create_dir_all(&self.dir).is_err() {
             return false;
         }
@@ -59,6 +61,8 @@ impl Phases {
 
     /// The work is filed: its phases aren't needed any more.
     pub fn close(&self) {
+        let Some(root) = self.dir.parent().and_then(Path::parent) else { return };
+        let Ok(_state) = crate::store::state_transaction(root) else { return };
         crate::heard!(std::fs::remove_dir_all(&self.dir));
     }
 }

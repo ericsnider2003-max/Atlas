@@ -237,6 +237,22 @@ const WINDOW_MS: u32 = 32;
 
 static CUT: AtomicBool = AtomicBool::new(false);
 
+thread_local! {
+    static PLAYBACK_GENERATION: std::cell::RefCell<Option<(std::sync::Arc<std::sync::atomic::AtomicUsize>, usize)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A worker's own cancellation survives a following reply clearing CUT.
+pub(crate) fn with_playback_generation<T>(generation: std::sync::Arc<std::sync::atomic::AtomicUsize>, expected: usize, run: impl FnOnce() -> T) -> T {
+    struct Restore(Option<(std::sync::Arc<std::sync::atomic::AtomicUsize>, usize)>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            PLAYBACK_GENERATION.with(|g| *g.borrow_mut() = self.0.take());
+        }
+    }
+    let _restore = Restore(PLAYBACK_GENERATION.with(|g| g.replace(Some((generation, expected)))));
+    run()
+}
+
 /// Stop what Atlas is saying: the player is ended and the rest of the reply
 /// isn't started. Public (28 Sep 2026) because the talk key cuts the reply
 /// too, now that the reply plays on its own thread (`speakthread`) and the
@@ -247,7 +263,7 @@ pub fn cut_playback() {
 
 /// Has the reply been cut?
 pub fn playback_cut() -> bool {
-    CUT.load(Ordering::SeqCst)
+    CUT.load(Ordering::SeqCst) || PLAYBACK_GENERATION.with(|g| g.borrow().as_ref().is_some_and(|(generation, expected)| generation.load(Ordering::SeqCst) != *expected))
 }
 
 /// A new reply starts uncut.
@@ -832,6 +848,7 @@ impl MicThread {
     }
     /// Atlas paused: nothing is recorded until it isn't.
     pub fn set_paused(&self, on: bool) {
+        if on && !self.shared.paused.load(Ordering::SeqCst) { crate::parakeet::stop(); }
         self.shared.paused.store(on, Ordering::SeqCst);
     }
     /// A turn going on elsewhere: the wake word waits.
@@ -873,6 +890,7 @@ impl MicThread {
     /// milliseconds; only a speech-to-text run already under way can hold it
     /// longer, and that is let finish on its own rather than waited on.
     pub fn stop(&mut self) {
+        crate::parakeet::stop();
         self.shared.stop.store(true, Ordering::SeqCst);
         if let Some(h) = self.handle.take() {
             let until = Instant::now() + Duration::from_secs(2);

@@ -159,6 +159,9 @@ pub struct Log {
 }
 
 impl Log {
+    pub(crate) fn observe_version(&mut self, version: &Version, now: u64) {
+        self.clock.observe(crate::hlc::Stamp { wall: version.wall, count: version.count }, now);
+    }
     pub fn new(device: &str) -> Log {
         Log { device: device.into(), events: Vec::new(), next_seq: 0, clock: crate::hlc::Clock::new() }
     }
@@ -977,7 +980,7 @@ pub fn write_card(phrase: &str) -> Result<std::path::PathBuf, String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, recovery_card(phrase)).map_err(|e| e.to_string())?;
+    crate::store::write_owned_file(&path, recovery_card(phrase).as_bytes()).map_err(|e| e.to_string())?;
     Ok(path)
 }
 

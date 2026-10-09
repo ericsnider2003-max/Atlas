@@ -512,28 +512,29 @@ fn tell_me_more_then_that_kind_by_voice() {
 }
 
 #[test]
-fn the_morning_brief_carries_the_best_few_with_why_and_asks_once() {
+fn the_morning_brief_prepares_the_best_few_without_claiming_delivery() {
     let c = cfg_on();
     let p = plat();
     let mut d = daemon(&c, &p, "brief");
-    // Nothing known yet: the brief asks, once.
-    let first = atlas::hunting::brief_items(&mut d, NOW);
+    // Preparation is not delivery: a lost brief must not consume the question.
+    let first = d.brief_now(NOW).yours;
     assert!(first.iter().any(|i| i.subject.contains("What kinds of opportunities")), "{first:?}");
-    let second = atlas::hunting::brief_items(&mut d, NOW + 60);
-    assert!(!second.iter().any(|i| i.subject.contains("What kinds of opportunities")), "asked once, not every morning");
+    let second = d.brief_now(NOW + 60).yours;
+    assert!(second.iter().any(|i| i.subject.contains("What kinds of opportunities")), "undelivered question remains available");
+    assert!(!d.store.load::<HuntState>(hunt::FILE).asked);
 
     d.turn("my skills are video", NOW);
     read_all(&mut d, NOW);
-    let items = atlas::hunting::brief_items(&mut d, NOW + 120);
+    let items: Vec<_> = d.brief_now(NOW + 120).yours.into_iter().filter(|i| i.id.starts_with("opportunity:")).collect();
     assert_eq!(items.len(), 3, "top_n as shipped: {items:#?}");
     assert!(items.iter().all(|i| i.subject.contains("uses your video")), "each says why: {items:#?}");
 
-    // 5 Oct 2026 (Eric: "the opportunities are spamming me"): the brief is
-    // built for the morning, every part-of-day hello and every welcome
-    // back. A find is volunteered once; the next brief has none of them.
-    let again = atlas::hunting::brief_items(&mut d, NOW + 3600);
+    // Actual receipt/dedup tests cover delivery. Merely preparing these
+    // offers must retain them, including across a later preparation.
+    let again = d.brief_now(NOW + 3600).yours;
     let said_before: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
-    assert!(again.iter().all(|i| !said_before.contains(&i.id.as_str())), "the same finds said again: {again:#?}");
+    assert!(said_before.iter().all(|id| again.iter().any(|i| &i.id.as_str() == id)), "undelivered finds disappeared: {again:#?}");
+    assert!(d.store.load::<HuntState>(hunt::FILE).briefed.is_empty());
     // Asking still lists them all.
     let asked = d.turn("any opportunities?", NOW + 3700);
     assert!(asked.contains("1."), "asking lists them: {asked}");
@@ -544,7 +545,7 @@ fn the_brief_says_nothing_when_hunting_is_off() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = plat();
     let mut d = daemon(&c, &p, "off");
-    assert!(atlas::hunting::brief_items(&mut d, NOW).is_empty());
+    assert!(d.brief_now(NOW).yours.iter().all(|i| !i.id.starts_with("opportunity:")));
 }
 
 #[test]

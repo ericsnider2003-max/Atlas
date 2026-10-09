@@ -183,6 +183,13 @@ struct NotHere {
 }
 
 impl Llm for NotHere {
+    fn supports_bounded_chat(&self) -> bool { true }
+
+    fn chat_until(&self, _: &crate::brain::ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<crate::brain::ChatReply> {
+        let message = if keep() { "the coding model can't be had right now" } else { "model request stopped" };
+        Err(crate::error::AtlasError::Platform(message.into()))
+    }
+
     fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
         Err(crate::error::AtlasError::Platform("the coding model can't be had right now".into()))
     }

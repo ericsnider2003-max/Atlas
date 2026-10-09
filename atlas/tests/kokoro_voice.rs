@@ -264,6 +264,15 @@ fn the_sound_page_offers_the_engine_and_the_download() {
 #[test]
 #[ignore = "needs the Kokoro library and model (see the comment)"]
 fn kokoro_really_speaks_and_is_measured() {
+    #[cfg(windows)]
+    let check_provider_isolation = || {
+        use windows::core::w;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        assert!(unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(), "CPU voice loaded a quarantined provider");
+        assert!(unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err(), "CPU voice loaded the NPU compiler");
+    };
+    #[cfg(windows)]
+    check_provider_isolation();
     let rt = std::path::PathBuf::from(std::env::var("KOKORO_RUNTIME").expect("KOKORO_RUNTIME"));
     let model = std::path::PathBuf::from(std::env::var("KOKORO_MODEL").expect("KOKORO_MODEL"));
     let threads: i32 = std::env::var("KOKORO_THREADS").ok().and_then(|t| t.parse().ok()).unwrap_or(kokoro::thread_count());
@@ -278,9 +287,11 @@ fn kokoro_really_speaks_and_is_measured() {
     let short = "Your nine o'clock post is over length.";
     let t = Instant::now();
     let first = k.synth(short, sid, 1.0).unwrap();
+    assert!(!first.is_empty() && first.iter().all(|sample| sample.is_finite()), "first native synthesis returned invalid samples");
     let first_ms = t.elapsed().as_millis();
     let t = Instant::now();
     let again = k.synth(short, sid, 1.0).unwrap();
+    assert!(!again.is_empty() && again.iter().all(|sample| sample.is_finite()), "warm native synthesis returned invalid samples");
     let warm_ms = t.elapsed().as_millis();
     let secs = again.len() as f64 / rate as f64;
     assert!(secs > 1.0 && secs < 6.0, "{secs} s for one short sentence");
@@ -293,17 +304,38 @@ fn kokoro_really_speaks_and_is_measured() {
                 gap between them. This is Kokoro, running on the processor alone.";
     let t = Instant::now();
     let l = k.synth(long, sid, 1.0).unwrap();
+    assert!(!l.is_empty() && l.iter().all(|sample| sample.is_finite()), "long native synthesis returned invalid samples");
     let long_ms = t.elapsed().as_millis() as f64;
     let long_secs = l.len() as f64 / rate as f64;
     let rtf = (long_ms / 1000.0) / long_secs;
 
     // Pace: slower is longer.
     let slow = k.synth(short, sid, atlas::tts::Engine::Kokoro.speed_value(1.25)).unwrap();
+    assert!(!slow.is_empty() && slow.iter().all(|sample| sample.is_finite()));
     assert!(slow.len() > again.len(), "a slower pace didn't make it longer");
+    if let Ok(out) = std::env::var("KOKORO_COMMAND_OUT") {
+        let command = k.synth("Pause.", sid, 1.0).unwrap();
+        assert!(!command.is_empty() && command.iter().all(|sample| sample.is_finite()));
+        std::fs::write(out, kokoro::to_wav(&command, rate)).unwrap();
+    }
 
     // A file a person can listen to.
+    let encoded = kokoro::to_wav(&l, rate);
+    assert_eq!(&encoded[..4], b"RIFF"); assert_eq!(&encoded[8..16], b"WAVEfmt ");
+    assert_eq!(u32::from_le_bytes(encoded[4..8].try_into().unwrap()) as usize + 8, encoded.len());
+    assert_eq!(u16::from_le_bytes(encoded[20..22].try_into().unwrap()), 1, "PCM codec");
+    assert_eq!(u16::from_le_bytes(encoded[22..24].try_into().unwrap()), 1, "mono");
+    assert_eq!(u32::from_le_bytes(encoded[24..28].try_into().unwrap()), rate);
+    assert_eq!(u16::from_le_bytes(encoded[34..36].try_into().unwrap()), 16);
+    assert_eq!(&encoded[36..40], b"data");
+    assert_eq!(u32::from_le_bytes(encoded[40..44].try_into().unwrap()) as usize, encoded.len() - 44);
+    let decoded: Vec<f32> = encoded[44..].chunks_exact(2).map(|frame| i16::from_le_bytes(frame.try_into().unwrap()) as f32 / 32767.0).collect();
+    assert_eq!(decoded.len(), l.len());
+    assert!(decoded.iter().any(|sample| sample.abs() > 0.05));
+    assert!(decoded.iter().zip(&l).all(|(pcm, raw)| (*pcm - raw.clamp(-1.0, 1.0)).abs() <= 1.0 / 32767.0));
+    assert!((decoded.len() as f64 / rate as f64 - long_secs).abs() < 1.0 / rate as f64);
     if let Ok(out) = std::env::var("KOKORO_OUT") {
-        std::fs::write(&out, kokoro::to_wav(&l, rate)).unwrap();
+        std::fs::write(&out, encoded).unwrap();
         let wav = std::fs::read(&out).unwrap();
         assert!(atlas::speaking::levels_of_wav(&wav, 30).is_some_and(|v| !v.is_empty()));
     }
@@ -316,7 +348,7 @@ fn kokoro_really_speaks_and_is_measured() {
         let k = kk.lock().unwrap();
         k.synth(text, sid, 1.0).map(|s| kokoro::to_wav(&s, rate))
     });
-    let sentences: Vec<String> = atlas::speech::split(long);
+    let sentences: Vec<String> = atlas::speech::playback_chunks(long);
     let ahead = Ahead::default();
     let wall = Instant::now();
     ahead.prepare(sentences.clone(), synth);
@@ -350,6 +382,9 @@ fn kokoro_really_speaks_and_is_measured() {
     if rtf < 0.8 {
         assert!(waits.iter().skip(1).all(|w| *w < 150), "a gap between sentences on a machine fast enough for none: {waits:?}");
     }
+    drop(ahead); drop(k);
+    #[cfg(windows)]
+    check_provider_isolation();
 }
 
 /// Atlas's own speaking path, end to end, in Kokoro: a reply handed over

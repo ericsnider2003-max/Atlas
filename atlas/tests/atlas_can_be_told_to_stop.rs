@@ -242,7 +242,7 @@ fn the_way_out_calls_the_errands_off_first() {
     let called_off = body
         .find("ask_everyone_to_stop()")
         .expect("shut_down no longer calls off background work");
-    let persist = body.find("self.persist()").expect("shut_down no longer saves state");
+    let persist = body.find("self.persist_at_exit()").expect("shut_down no longer saves state");
     assert!(
         called_off < persist,
         "the errands are called off after the state is written, so the ten-second \
@@ -436,7 +436,7 @@ fn the_lock_is_released_after_the_state_is_written() {
     let end = body.find("\n    }").map(|e| e + 6).unwrap_or(body.len());
     let body = &body[..end];
 
-    let persist = body.find("self.persist()").expect("shut_down no longer saves state");
+    let persist = body.find("self.persist_at_exit()").expect("shut_down no longer saves state");
     let helpers = body.find("stop_all()").expect("shut_down no longer stops the helpers");
     let release = body.find("release()").expect("shut_down no longer releases the lock");
 
@@ -584,13 +584,13 @@ fn the_end_of_a_windows_session_asks_atlas_to_stop_and_waits_for_the_lock_to_go(
     let lock = OnlyOne::at(&dir.join("data"));
     lock.take(1_000).unwrap();
     // The daemon's side: on being asked, it finishes and lets go.
-    let path = lock.path().to_path_buf();
+    let daemon_lock = lock.clone();
     let daemon = std::thread::spawn(move || {
         while !atlas::goodbye::asked_to_stop() {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
-        let _ = std::fs::remove_file(path);
+        daemon_lock.release();
     });
     let done = atlas::goodbye::stop_and_wait(lock.path(), std::time::Duration::from_secs(4));
     daemon.join().unwrap();
@@ -626,4 +626,15 @@ fn an_update_moving_in_is_recorded_as_an_update() {
     assert_eq!(atlas::goodbye::why(), Why::Updating);
     atlas::goodbye::reset_for_test();
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn closing_checkpoint_retries_the_real_save_only_with_a_bounded_deadline() {
+    let source = crate::common::source_of("daemon");
+    let start = source.find("fn persist_at_exit(").expect("closing checkpoint missing");
+    let tail = &source[start..];
+    let body = &tail[..tail.find("\n    }").expect("checkpoint end missing")];
+    assert!(body.contains("self.persist()"), "wrapper never writes state");
+    assert!(body.contains("Duration::from_secs(2)") && body.contains("Instant::now() >= until"), "closing retry has no bounded deadline");
+    assert!(body.contains("state snapshot busy") && body.contains("Duration::from_millis(20)"), "retry must target transient contention without spinning");
 }

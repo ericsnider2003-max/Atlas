@@ -204,7 +204,7 @@ impl Reader {
     pub fn on(&self) -> &'static str {
         match self {
             Reader::Here(_) => "tract on the processor",
-            Reader::Runtime { session, .. } if session.on == crate::npu::Where::Npu => "the NPU",
+            Reader::Runtime { session, .. } if session.on() == crate::npu::Where::Npu => "the NPU",
             Reader::Runtime { .. } => "ONNX Runtime on the processor",
         }
     }

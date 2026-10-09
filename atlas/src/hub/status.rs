@@ -236,6 +236,8 @@ impl Step {
             Step::Delegated => ("doing", "⌞ Delegated"),
             Step::Rerouted => ("rerouted", "↝ Rerouted"),
             Step::Checked => ("checked", "✓ Checked"),
+            Step::Checking => ("doing", "Checking"),
+            Step::Finished => ("doing", "Runner ended"),
             Step::Waiting => ("doing", "◷ Waiting"),
             Step::Stuck => ("stuck", "! Stuck"),
             Step::Now => ("now", "▷ Now"),
@@ -253,6 +255,69 @@ pub fn live_version(v: &NowView) -> u64 {
     h.finish()
 }
 
+impl TaskReceipt {
+    /// Read existing progress only. Displaying a receipt never runs a step.
+    pub fn from_work(w: &crate::mind::Work, paused: bool) -> Self {
+        use crate::mind::Stage;
+        let total = w.steps.len();
+        let reported = w.steps.iter().filter(|s| s.reported_output.is_some()).count();
+        let status = if w.stage == Stage::Stuck {
+            "Stopped"
+        } else if w.stage == Stage::Done {
+            "Runner ended"
+        } else if paused {
+            "Paused"
+        } else if w.stage == Stage::Waiting {
+            if w.blocked_on.is_some() { "Waiting" } else { "Awaiting your answer or approval" }
+        } else {
+            "In progress"
+        };
+        let status = format!("{status}; {reported} of {total} steps have recorded replies");
+        // Failed does not mean skipped: a retry remains at the runner's position.
+        // Old records have no cursor; their first unfinished step is the safe fallback.
+        let position = w.runner_position.filter(|p| *p < total)
+            .or_else(|| w.steps.iter().position(|s| !s.done));
+        let current = if w.stage == Stage::Done {
+            "No step running.".into()
+        } else {
+            position.and_then(|p| w.steps.get(p)).map(|s| s.what.clone())
+                .unwrap_or_else(|| "No planned step recorded.".into())
+        };
+        let dependency = if w.stage.finished() {
+            w.blocked_on.clone().unwrap_or_else(|| "No further step will run for this task.".into())
+        } else if paused {
+            "Carry on when you are ready.".into()
+        } else if let Some(b) = &w.blocked_on {
+            b.clone()
+        } else if w.stage == Stage::Waiting {
+            w.thoughts.iter().rev().find(|t| t.stage == Stage::Waiting)
+                .map(|t| t.text.clone()).unwrap_or_else(|| "Your answer or approval.".into())
+        } else {
+            position.and_then(|p| w.steps.get(p + 1))
+                .map(|s| format!("Next: {} (after the current step)", s.what))
+                .unwrap_or_else(|| "Finish the current step.".into())
+        };
+        let results = w.steps.iter().filter_map(|s| s.reported_output.as_ref()
+            .map(|output| (format!("Recorded reply: {}", s.what), output.clone())))
+            .collect();
+        Self { task: w.asked.clone(), status, current, dependency, results }
+    }
+
+    fn html(&self) -> String {
+        let mut results = String::new();
+        for (step, output) in &self.results {
+            results.push_str(&format!("<dt>{}</dt><dd style='white-space:pre-wrap;overflow-wrap:anywhere'>{}</dd>", esc(step), esc(output)));
+        }
+        if results.is_empty() {
+            results.push_str("<dd>No action output recorded yet.</dd>");
+        }
+        format!("<section class=box aria-label='Task result receipt'><h2>Task result receipt</h2><p>{}</p><dl>\
+            <dt>Status</dt><dd>{}</dd><dt>Current step</dt><dd>{}</dd><dt>Next dependency</dt><dd>{}</dd>\
+            <dt>Evidence</dt><dd>Action-reported output below. Not independently checked; service acceptance does not prove recipient delivery.</dd>\
+            {results}</dl></section>", esc(&self.task), esc(&self.status), esc(&self.current), esc(&self.dependency))
+    }
+}
+
 pub fn now_page(v: &NowView) -> String {
     // Live without a timed reload (WCAG 2.2.1: a page that reloads itself is
     // a time limit you can't turn off). A small script fetches the page and
@@ -260,6 +325,9 @@ pub fn now_page(v: &NowView) -> String {
     // scripts off, Refresh is a link.
     let mut body = String::new();
     let mut steps = String::new();
+    if let Some(receipt) = &v.receipt {
+        steps.push_str(&receipt.html());
+    }
     for (i, (kind, text)) in v.steps.iter().enumerate() {
         let (class, label) = kind.label();
         let early = if i < v.plain_from { " early" } else { "" };
@@ -308,7 +376,7 @@ pub fn now_page(v: &NowView) -> String {
          <p class=liveline><span id=liveword role=status>Updating live.</span> <button type=button id=livepause aria-pressed=false>Pause live updates</button> <a href='/hub/now'>Refresh</a></p>\
          <aside class=rail2>{spent}\
          <div class=box><div class=lab>If this doesn't hold up</div><p>{fallback}</p></div>{background}\
-         <div class='box soft'>{on}<p>Running on your machine. Nothing left it.</p>\
+         <div class='box soft'>{on}<p>Atlas runs on your machine. Task results above describe what each action reported.</p>\
          <form method=post action='/hub/pause'><input type=hidden name=what value={pause_what}>\
          <button>{pause_label}</button></form></div></aside></div>",
         mark = if v.working { THINKING } else { IDLE },

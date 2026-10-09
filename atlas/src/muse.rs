@@ -341,6 +341,10 @@ pub struct MuseFirst {
 }
 
 impl Llm for MuseFirst {
+    fn supports_bounded_chat(&self) -> bool {
+        self.rest.supports_bounded_chat()
+    }
+
     fn complete(&self, system: &str, user: &str) -> Result<String> {
         self.rest.complete(system, user)
     }

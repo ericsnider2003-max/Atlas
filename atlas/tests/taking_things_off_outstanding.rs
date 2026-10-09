@@ -96,6 +96,29 @@ fn item(id: &str, title: &str, at: u64) -> atlas::workspace_view::Item {
 }
 
 #[test]
+fn interrupted_queue_work_is_visible_and_dismissal_survives_restart() {
+    let (c, p) = (cfg(), plat());
+    let root = install("interrupted-queue");
+    let store = Store::new(root.join("data/state"));
+    let mut queue = atlas::lanes::Queue::default();
+    queue.push("prepare the interrupted report", atlas::lanes::Lane::Background);
+    queue.tasks[0].state = atlas::lanes::TaskState::Running;
+    queue.save(&store).unwrap();
+    {
+        let mut d = daemon(&root, &c, &p);
+        let html = page(&mut d);
+        assert!(html.contains("previous outcome is not confirmed"), "{html}");
+        let key = key_beside(&html, "Prepare the interrupted report");
+        assert!(key.starts_with("t:"));
+        press(&mut d, &key);
+        assert!(d.queue.tasks.is_empty());
+    }
+    let mut restarted = daemon(&root, &c, &p);
+    assert!(restarted.queue.tasks.is_empty());
+    assert!(!page(&mut restarted).contains("Prepare the interrupted report"));
+}
+
+#[test]
 fn a_blocked_item_dropped_from_the_page_stays_dropped_after_a_restart() {
     let (c, p) = (cfg(), plat());
     let root = install("blocked");
@@ -192,6 +215,31 @@ fn a_queued_task_is_cancelled_and_a_running_one_has_no_button() {
     }
     let mut d = daemon(&root, &c, &p);
     assert!(!page(&mut d).contains("Tidy the downloads folder."), "came back after a restart");
+}
+
+#[test]
+fn stopping_a_queued_request_reaches_its_exact_running_worker() {
+    let (c, p) = (cfg(), plat());
+    let root = install("owned-worker-stop");
+    let mut d = daemon(&root, &c, &p);
+    let work: atlas::crew::Work = Box::new(|ctl| {
+        while !ctl.checkpoint() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+        Err("stopped".into())
+    });
+    let worker = d.crew.hand("owned research", 10, work).unwrap();
+    let id = d.queue.push("research the tide tables", atlas::lanes::Lane::Background);
+    d.queue.tasks.iter_mut().find(|t| t.id == id).unwrap().state = atlas::lanes::TaskState::Running;
+    d.queue.attach_worker(id, worker, "Working");
+    assert_eq!(d.queue.tasks.iter().find(|t| t.id == id).unwrap().worker_id, Some(worker));
+    let html = press(&mut d, &format!("t:{id}"));
+    assert!(html.contains("to stop"), "{html}");
+    assert!(d.queue.tasks.iter().find(|t| t.id == id).unwrap().stop_requested);
+    let started = std::time::Instant::now();
+    while d.crew.in_hand(worker) && started.elapsed().as_secs() < 10 {
+        d.crew.settle(atlas::store::now());
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!d.crew.in_hand(worker), "queued stop never reached the worker");
 }
 
 #[test]

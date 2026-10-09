@@ -51,7 +51,7 @@ fn body_of(src: &str, signature_starts_with: &str) -> String {
 fn the_voice_door_builds_a_daemon() {
     let body = body_of(&main_rs(), "fn voice_loop(");
     assert!(
-        body.contains("Daemon::new("),
+        body.contains("Daemon::try_new("),
         "`atlas voice` still answers without a daemon — five intents out of \
          fifty-six"
     );
@@ -84,7 +84,7 @@ fn the_mic_it_just_picked_is_the_one_the_daemon_gets() {
          daemon reads"
     );
     assert!(
-        body.contains("Daemon::new(\n        &cfg_owned,") || body.contains("&cfg_owned,"),
+        body.contains("Daemon::try_new(\n        &cfg_owned,"),
         "the daemon is built from a config that does not have the picked mic"
     );
 }

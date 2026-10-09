@@ -1,5 +1,5 @@
 use atlas::safety::{
-    back_up, due_for_backup, list_backups, prune_backups, restore, BackupConfig, Trash, TrashConfig,
+    back_up, due_for_backup, list_backups, prune_backups, restore_with_notes, BackupConfig, Trash, TrashConfig,
 };
 use atlas::server::{
     content_length, new_token, parse_request, render, route, token_matches, Action, Reply, Server,
@@ -300,9 +300,10 @@ fn a_half_written_backup_leaves_nothing_that_looks_complete() {
         .unwrap()
         .flatten()
         .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|n| n.starts_with('.'))
+        .filter(|n| n.starts_with('.') && n != ".atlas-backup-manifest.json" && n != ".atlas-owned-outputs")
         .collect();
     assert!(leftovers.is_empty(), "temp names left behind: {leftovers:?}");
+    assert!(b.path.join(".atlas-backup-manifest.json").is_file());
 }
 
 #[test]
@@ -340,7 +341,7 @@ fn restoring_moves_the_current_files_to_trash_first() {
 
     fs::write(state.join("memory.json"), r#"{"schema":1,"changed":true}"#).unwrap();
     let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let n = restore(&b.path, &state, &trash, &atlas::household::Household::default()).unwrap();
+    let n = restore_with_notes(&b.path, &state, &trash, &atlas::household::Household::default(), &state.parent().unwrap().join("notes")).unwrap();
 
     assert_eq!(n, 2);
     assert_eq!(fs::read_to_string(state.join("memory.json")).unwrap(), r#"{"schema":1}"#);
@@ -365,7 +366,7 @@ fn restoring_a_backup_from_someone_elses_household_is_refused() {
 
     let mine = Household { id: "my-id".into(), name: "Eric".into(), made_at: 1, devices: vec![] };
     let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let err = restore(&b.path, &state, &trash, &mine).unwrap_err();
+    let err = restore_with_notes(&b.path, &state, &trash, &mine, &state.parent().unwrap().join("notes")).unwrap_err();
     assert!(err.to_string().contains("someone else's"), "{err}");
 
     // And nothing was actually touched -- refusing has to mean refusing.
@@ -380,14 +381,13 @@ fn restoring_your_own_households_backup_still_works() {
     let state = state_with_files("bk-household-match");
     let root = state.parent().unwrap().to_path_buf();
     let cfg = BackupConfig { dir: root.join("backups").display().to_string(), ..Default::default() };
-    let b = back_up(&state, &cfg, 1000).unwrap();
-
     let mine = Household { id: "my-id".into(), name: "Eric".into(), made_at: 1, devices: vec![] };
-    mine.save(&Store::new(&b.path)).unwrap();
+    mine.save(&Store::new(&state)).unwrap();
+    let b = back_up(&state, &cfg, 1000).unwrap();
 
     fs::write(state.join("memory.json"), r#"{"schema":1,"changed":true}"#).unwrap();
     let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let n = restore(&b.path, &state, &trash, &mine).unwrap();
+    let n = restore_with_notes(&b.path, &state, &trash, &mine, &state.parent().unwrap().join("notes")).unwrap();
     assert_eq!(n, 2, "the same household's own backup restores as before");
 }
 
@@ -407,7 +407,7 @@ fn a_backup_older_than_this_check_with_no_household_file_is_not_refused() {
         devices: vec![],
     };
     let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let n = restore(&b.path, &state, &trash, &mine).unwrap();
+    let n = restore_with_notes(&b.path, &state, &trash, &mine, &state.parent().unwrap().join("notes")).unwrap();
     assert_eq!(n, 2, "no household file in the backup at all is let through, not refused");
 }
 

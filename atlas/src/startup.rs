@@ -461,8 +461,7 @@ pub fn decided(state_dir: &Path) -> Option<bool> {
 
 /// Keep what was decided: by setup switching it on, or by you.
 pub fn remember(state_dir: &Path, on: bool) -> std::io::Result<()> {
-    std::fs::create_dir_all(state_dir)?;
-    std::fs::write(decision_file(state_dir), if on { "on\n" } else { "off\n" })
+    crate::store::write_whole_in_state(state_dir, &decision_file(state_dir), if on { b"on\n" } else { b"off\n" })
 }
 
 /// What finishing setup does next.

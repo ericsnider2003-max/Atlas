@@ -70,7 +70,7 @@ impl Native {
     /// Which padded lengths run on the NPU now (true) or were sent back to
     /// the processor (false), for `atlas npu-check`.
     pub fn npu_lengths(&self) -> Vec<(usize, bool)> {
-        let mut v: Vec<(usize, bool)> = self.npu.iter().map(|(n, s)| (*n, s.is_some())).collect();
+        let mut v: Vec<(usize, bool)> = self.npu.iter().map(|(n, s)| (*n, s.as_ref().is_some_and(|(session, _)| session.on() == crate::npu::Where::Npu))).collect();
         v.sort();
         v
     }
@@ -144,6 +144,7 @@ impl Native {
             inputs.push(crate::npu::In::I64(name("token_type", 2), vec![1, n as i64], vec![0; n]));
         }
         let (out, npu_took) = s.run_timed(inputs).ok()?;
+        if s.on() != crate::npu::Where::Npu { return None; }
         let v = pool_flat(out.first()?, real, n);
         // The first sentence at this length runs on both, once: the NPU stays
         // only if it gives the processor's answer and is quicker.

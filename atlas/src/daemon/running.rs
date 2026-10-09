@@ -7,6 +7,17 @@
 use super::*;
 
 impl<'a> Daemon<'a> {
+    /// Closing is the one place a short bounded save retry may wait. The
+    /// normal control loop stays nonblocking while a snapshot owns storage.
+    fn persist_at_exit(&mut self) {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            self.persist();
+            if !self.persist_failures.iter().any(|(what, _)| *what == "state snapshot busy")
+                || std::time::Instant::now() >= until { break; }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
     /// Write everything down, and NOTICE when that does not work.
     ///
     /// Every line here used to be `let _ = ...`, discarding the result. All
@@ -38,9 +49,16 @@ impl<'a> Daemon<'a> {
     /// writes; `Store::save` keeps the other side's copy for the rest.
     pub(super) fn take_outside_changes(&mut self) -> Vec<&'static str> {
         let mut took = Vec::new();
-        if self.store.changed_elsewhere("calendar") {
-            self.calendar = crate::calendar::Calendar::load(&self.store);
-            took.push("calendar");
+        if self.store.changed_elsewhere("calendar") || self.calendar.refresh_requested() {
+            match self.calendar.refresh_saved(&self.store) {
+                Ok(()) => took.push("calendar"),
+                Err(error) => {
+                    let already_unavailable = self.calendar.availability_error().is_some();
+                    self.calendar.request_refresh();
+                    self.calendar.mark_unavailable(error.to_string());
+                    if !already_unavailable { self.log.warn("The saved calendar is unavailable or conflicts with unsaved changes; its cached view was retained and cannot be edited."); }
+                }
+            }
         }
         if self.store.changed_elsewhere(crate::signin::Access::RECORD) {
             self.access = crate::signin::Access::load(&self.store);
@@ -75,11 +93,27 @@ impl<'a> Daemon<'a> {
             r: crate::error::Result<()>,
         ) {
             if let Err(e) = r {
-                failed.push((what, e.to_string()));
+                let transient = matches!(&e, crate::error::AtlasError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock);
+                failed.push((if transient { "state snapshot busy" } else { what }, format!("{what}: {e}")));
             }
         }
 
         let mut failed: Vec<(&'static str, String)> = Vec::new();
+        let _transaction = match self.store.transaction() {
+            Ok(guard) => guard,
+            Err(error) => {
+                if self.persist_failures.is_empty() { self.log.warn(&format!("state has not been saved yet: {error}")); }
+                let what = if matches!(&error, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock) { "state snapshot busy" } else { "state transaction" };
+                let mut failures: Vec<_> = self.persist_failures.iter().filter(|(name, _)| *name != "state snapshot busy").cloned().collect();
+                for (name, error, transient) in crate::store::take_failed_saves_detailed(self.store.root()) {
+                    let name = if transient { "state snapshot busy" } else { crate::store::intern_record_name(&name) };
+                    if !failures.iter().any(|(known, _)| *known == name) { failures.push((name, error)); }
+                }
+                if !failures.iter().any(|(known, _)| *known == what) { failures.push((what, error.to_string())); }
+                self.persist_failures = failures;
+                return;
+            }
+        };
         self.reached.save(&self.store);
         note(&mut failed, "thread", self.thread.save(&self.store));
         note(&mut failed, "modes", self.modes.save(&self.store));
@@ -102,9 +136,65 @@ impl<'a> Daemon<'a> {
         // everything on restart.
         note(&mut failed, "facts", self.facts.save(&self.store));
         note(&mut failed, "reminded", self.store.save("reminded", &self.reminded));
-        note(&mut failed, "proposals", self.store.save("proposals", &self.proposals));
+        match self.reconcile_proposals() {
+            Ok(()) => note(&mut failed, "proposals", self.store.save("proposals", &self.proposals)),
+            Err(error) => failed.push(("proposals", error)),
+        }
         note(&mut failed, "memory", self.memory.save(&self.store));
         note(&mut failed, "scheduler", self.scheduler.save(&self.store));
+        note(&mut failed, "queue", self.queue.save(&self.store));
+        note(&mut failed, "routines", self.store.save("routines", &self.routines));
+        note(&mut failed, "goals", self.store.save(crate::nudge::GOALS, &self.nudger.goals));
+        note(&mut failed, "worklog", self.store.save("worklog", &self.worklog));
+        note(&mut failed, "work_session", self.store.save("work_session", &self.work_session));
+        note(&mut failed, "undo_history", self.history.save_merged(&self.store));
+        note(&mut failed, "long_work", self.long_work.save(&self.store));
+        // What a restart would cut off while it waits on you: questions not
+        // yet answered and a request being worked through. Until 1 Oct 2026
+        // these lived only in memory and a restart dropped them silently
+        // (research report, Stage 1 item 6). Kept as words: they're named
+        // after a restart and asked again, never carried out on an old yes.
+        if self.left_waiting_read {
+            let mut waiting: Vec<LeftWaiting> = self
+                .session
+                .all_approvals()
+                .into_iter()
+                .map(|(_, d)| LeftWaiting { what: d, asked: true, at: crate::store::now() })
+                .collect();
+            if self.current_flow.is_none() {
+                if let Pending::Clarification(q) = &self.session.pending {
+                    waiting.push(LeftWaiting { what: q.clone(), asked: true, at: crate::store::now() });
+                }
+            }
+            if let Some(l) = &self.task_loop {
+                waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
+            }
+            note(&mut failed, "left_waiting", self.store.save(LEFT_WAITING, &waiting));
+            // A workflow, whole, so one waiting on your yes is asked again
+            // after a restart rather than lost (research report, Stage 1
+            // item 6: `current_flow` was never saved).
+            note(&mut failed, "current_flow", self.store.save(FLOW_LEFT, &self.current_flow));
+        }
+        // What research taught it. Absent from this list when `learned`
+        // gained its first caller, which would have made the knowledge
+        // store a write-only diary that died with the process.
+        note(&mut failed, "known", self.store.save("known", &self.known));
+        // Anything still waiting to reach you. Left out of this list at first,
+        // which meant a restart quietly emptied the outbox while doctor kept
+        // saying nothing was lost.
+        note(&mut failed, "outbox", self.outbox.save(&self.store));
+        // Work in progress on itself. Without this the pipeline restarts at
+        // Thought every time Atlas is restarted, which is the same fault as
+        // rebuilding the session every turn, one level up.
+        note(&mut failed, "selfwork", self.store.save("selfwork", &self.selfwork));
+        note(&mut failed, "overnight", self.store.save("overnight", &self.overnight));
+        note(&mut failed, "synclog", self.store.save("synclog", &Some(self.synclog.clone())));
+        note(&mut failed, "sync_seen", self.store.save("sync_seen", &self.seen_up_to));
+        // What's been learned about which backend can read which app.
+        note(&mut failed, "backends", self.backends.save(&self.store));
+        // Index serialization runs separately; its worker must never wait on
+        // the daemon's own snapshot transaction while the daemon joins it.
+        drop(_transaction);
         // Only when it changed (`index_on_disk`), and written on a thread of
         // its own (30 Sep 2026): the whole file index is turned into text and
         // written, which on a real disk of files took the loop -- the hub, the
@@ -150,56 +240,12 @@ impl<'a> Daemon<'a> {
             }
             note(&mut failed, "index", r);
         }
-        note(&mut failed, "long_work", self.long_work.save(&self.store));
-        // What a restart would cut off while it waits on you: questions not
-        // yet answered and a request being worked through. Until 1 Oct 2026
-        // these lived only in memory and a restart dropped them silently
-        // (research report, Stage 1 item 6). Kept as words: they're named
-        // after a restart and asked again, never carried out on an old yes.
-        if self.left_waiting_read {
-            let mut waiting: Vec<LeftWaiting> = self
-                .session
-                .all_approvals()
-                .into_iter()
-                .map(|(_, d)| LeftWaiting { what: d, asked: true, at: crate::store::now() })
-                .collect();
-            if self.current_flow.is_none() {
-                if let Pending::Clarification(q) = &self.session.pending {
-                    waiting.push(LeftWaiting { what: q.clone(), asked: true, at: crate::store::now() });
-                }
-            }
-            if let Some(l) = &self.task_loop {
-                waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
-            }
-            note(&mut failed, "left_waiting", self.store.save(LEFT_WAITING, &waiting));
-            // A workflow, whole, so one waiting on your yes is asked again
-            // after a restart rather than lost (research report, Stage 1
-            // item 6: `current_flow` was never saved).
-            note(&mut failed, "current_flow", self.store.save(FLOW_LEFT, &self.current_flow));
-        }
-        // What research taught it. Absent from this list when `learned`
-        // gained its first caller, which would have made the knowledge
-        // store a write-only diary that died with the process.
-        note(&mut failed, "known", self.store.save("known", &self.known));
-        // Anything still waiting to reach you. Left out of this list at first,
-        // which meant a restart quietly emptied the outbox while doctor kept
-        // saying nothing was lost.
-        note(&mut failed, "outbox", self.outbox.save(&self.store));
-        // Work in progress on itself. Without this the pipeline restarts at
-        // Thought every time Atlas is restarted, which is the same fault as
-        // rebuilding the session every turn, one level up.
-        note(&mut failed, "selfwork", self.store.save("selfwork", &self.selfwork));
-        note(&mut failed, "overnight", self.store.save("overnight", &self.overnight));
-        note(&mut failed, "synclog", self.store.save("synclog", &Some(self.synclog.clone())));
-        note(&mut failed, "sync_seen", self.store.save("sync_seen", &self.seen_up_to));
-        // What's been learned about which backend can read which app.
-        note(&mut failed, "backends", self.backends.save(&self.store));
         // And every other save into this store that failed since the last
         // persist -- the ones made with `let _ = ...` all over the daemon
         // (`store::take_failed_saves`). Its own records above are already
         // counted, so they aren't listed twice.
-        for (name, e) in crate::store::take_failed_saves(self.store.root()) {
-            let name = crate::store::intern_record_name(&name);
+        for (name, e, transient) in crate::store::take_failed_saves_detailed(self.store.root()) {
+            let name = if transient { "state snapshot busy" } else { crate::store::intern_record_name(&name) };
             if !failed.iter().any(|(w, _)| *w == name) {
                 failed.push((name, e));
             }
@@ -210,7 +256,7 @@ impl<'a> Daemon<'a> {
         for u in crate::unheard::take() {
             match u.cost {
                 crate::unheard::Cost::NotKept => {
-                    let name = crate::store::intern_record_name(u.part());
+                    let name = if u.error.contains("Atlas state is busy in another operation; no state was changed") { "state snapshot busy" } else { crate::store::intern_record_name(u.part()) };
                     self.log.warn(&u.line());
                     if !failed.iter().any(|(w, _)| *w == name) {
                         failed.push((name, u.error));
@@ -253,6 +299,10 @@ impl<'a> Daemon<'a> {
     /// interval, and the alternative is putting it below a `return` that the
     /// commonest quiet states take.
     pub(super) fn persist_trouble(&mut self) -> Option<String> {
+        // A cooperating backup temporarily owns the snapshot barrier. Memory
+        // remains pending and persist retries each tick; this is not a disk
+        // failure and must not replace the answer just delivered to the owner.
+        if self.persist_failures.iter().all(|(what, _)| *what == "state snapshot busy") && !self.persist_failures.is_empty() { return None; }
         let failing = !self.persist_failures.is_empty();
         if failing == self.persist_told {
             return None;
@@ -865,14 +915,20 @@ impl<'a> Daemon<'a> {
             match ask {
                 crate::notifyicon::TrayAction::Pause => {
                     // unheard-ok: returns `String`, not a Result
+                    // unheard-ok: turn returns display text; this route applies control flags and supplies its own UI reply.
                     let _ = self.turn("pause", t);
                 }
                 crate::notifyicon::TrayAction::Resume => {
                     // unheard-ok: returns `String`, not a Result
+                    // unheard-ok: turn returns display text; this route applies control flags and supplies its own UI reply.
                     let _ = self.turn("carry on", t);
                 }
                 _ => {}
             }
+        }
+        if self.attention.is_paused() {
+            self.cancel_brief_preparation();
+            if let Some(speaker) = self.announcements.get() { speaker.cancel(); }
         }
         crate::notifyicon::tray_paused_now(self.attention.is_paused());
     }
@@ -889,21 +945,112 @@ impl<'a> Daemon<'a> {
         self.answer_hub_saying(None, 0)
     }
 
+    fn publish_hub_pause(&self, server: &crate::server::HubDoor) {
+        let hands = self.crew.pause_handles();
+        let pause_files = self.file_pause_handle();
+        let speech = self.announcements.get().map(|speaker| speaker.cancellation());
+        server.publish_pause(std::sync::Arc::new(move |on| {
+            for hand in &hands { hand.set_paused(on); }
+            if let Some(pause_files) = &pause_files { pause_files(on); }
+            if on { if let Some(speech) = &speech { speech(); } }
+        }));
+        let bindings = self.queue.tasks.iter().filter(|task| task.state == crate::lanes::TaskState::Running).map(|task| crate::server::FastCancel {
+            key: format!("t:{}", task.id), worker: task.worker_id, files: task.file_move_id,
+        }).chain(self.scheduler.jobs.iter().filter(|job| job.in_flight).map(|job| crate::server::FastCancel {
+            key: format!("s:{}", job.id), worker: job.worker_id, files: job.file_move_id,
+        })).chain(self.crew.errands().into_iter().map(|errand| crate::server::FastCancel {
+            key: format!("e:{}", errand.id), worker: Some(errand.id), files: None,
+        }));
+        let mut cancellations = Vec::new();
+        for binding in bindings {
+            let hand = binding.worker.and_then(|id| self.crew.control_handle(id));
+            let stop_files = binding.files.and_then(|id| self.file_stop_handle(id));
+            if hand.is_none() && stop_files.is_none() { continue; }
+            let stop: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new(move || {
+                if let Some(hand) = &hand { hand.request_stop(); }
+                if let Some(stop_files) = &stop_files { stop_files(); }
+            });
+            cancellations.push((binding, stop));
+        }
+        server.publish_cancellations(cancellations);
+    }
+
+    pub(super) fn apply_fast_hub_pause(&mut self) {
+        let Some(server) = self.hub_server.as_ref() else { return };
+        let pause = server.take_pause_requested();
+        let cancellations = server.take_cancel_requested();
+        if pause.is_none() && cancellations.is_empty() { return; }
+        let install = crate::roots::state_dir();
+        if self.handed_over_now() || crate::profiles::active_dir(&install).unwrap_or_else(|| install.clone()) != self.store.root() { return; }
+        if let Some(on) = pause {
+            if on || self.attention.is_paused() {
+                // unheard-ok: the fast HTTP route already returned its requested-status text; only control effects are applied here.
+                let _ = self.turn(if on { "pause" } else { "carry on" }, crate::store::now());
+            }
+            self.pause_files(self.attention.is_paused());
+            if on { self.cancel_brief_preparation(); }
+        }
+        for request in cancellations {
+            let exact = if let Some(id) = request.key.strip_prefix("t:").and_then(|id| id.parse::<u64>().ok()) {
+                self.queue.tasks.iter().any(|task| task.id == id && task.state == crate::lanes::TaskState::Running && task.worker_id == request.worker && task.file_move_id == request.files)
+            } else if let Some(id) = request.key.strip_prefix("s:").and_then(|id| id.parse::<u64>().ok()) {
+                self.scheduler.jobs.iter().any(|job| job.id == id && job.in_flight && job.worker_id == request.worker && job.file_move_id == request.files)
+            } else if let Some(id) = request.key.strip_prefix("e:").and_then(|id| id.parse::<u64>().ok()) {
+                request.worker == Some(id) && request.files.is_none() && self.crew.control_handle(id).is_some()
+            } else { false };
+            if exact {
+                if let Err(error) = self.drop_outstanding(&request.key, crate::store::now()) { self.log.warn(&error); }
+            }
+        }
+    }
+
+    fn reply_hub_for_owner(&mut self, install: &std::path::Path, action: crate::server::Action) -> crate::server::Reply {
+        let active = crate::profiles::active_dir(install).unwrap_or_else(|| install.to_path_buf());
+        if active != self.store.root() {
+            return crate::server::Reply { status: 503, ..crate::server::Reply::html("<p>The active profile changed. Atlas must finish switching profiles before showing private state or handling actions.</p>") };
+        }
+        // Handover and take-back keep their existing public access boundary.
+        crate::crash::caught("answering the hub", || crate::hublive::reply(self, action)).unwrap_or_else(|why| {
+            crate::server::Reply { status: 500, body: serde_json::json!({ "error": why }).to_string(), ..Default::default() }
+        })
+    }
+
     fn answer_hub_saying(&mut self, mouth: Option<&dyn Mouth>, wait_ms: u64) -> usize {
+        self.apply_fast_hub_pause();
         let Some(server) = self.hub_server.take() else {
             if wait_ms > 0 {
                 crate::goodbye::nap(wait_ms);
             }
             return 0;
         };
+        let install_state = crate::roots::state_dir();
+        let active = crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
+        // Switching profiles takes effect at restart. Until then, do not
+        // publish the previous person's private status as the new profile.
+        if self.handed_over_now() || active != self.store.root() {
+            server.invalidate_readonly();
+        } else if server.readonly_due() {
+            server.publish_readonly(crate::hublive::readonly_pages(self), install_state.clone(), self.store.root().to_path_buf());
+            self.publish_hub_pause(&server);
+        }
+        if !self.handed_over_now() && active == self.store.root() { self.publish_hub_pause(&server); }
         let mut handle = |action| {
             // Caught: a panic answering the hub would otherwise take the
             // whole of Atlas down with the page.
-            crate::crash::caught("answering the hub", || crate::hublive::reply(self, action)).unwrap_or_else(|why| {
-                crate::server::Reply { status: 500, body: serde_json::json!({ "error": why }).to_string(), ..Default::default() }
-            })
+            let reply = self.reply_hub_for_owner(&install_state, action);
+            server.invalidate_readonly();
+            if self.attention.is_paused() || !self.sound_allows_speaking() {
+                if self.attention.is_paused() { self.cancel_brief_preparation(); }
+                if let Some(speaker) = self.announcements.get() { speaker.cancel(); }
+            }
+            reply
         };
         let done = if wait_ms > 0 { server.wait_and_answer(wait_ms, &mut handle) } else { server.answer_waiting(&mut handle) };
+        let active = crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
+        if !done.is_empty() && !self.handed_over_now() && active == self.store.root() {
+            server.publish_readonly(crate::hublive::readonly_pages(self), install_state, self.store.root().to_path_buf());
+            self.publish_hub_pause(&server);
+        }
         // The door's own news (its port taken, where it opened instead:
         // `server::open_hub`), in the log where it can be found.
         for line in server.take_news() {
@@ -1061,6 +1208,20 @@ impl<'a> Daemon<'a> {
     /// Tell the microphone's thread what's wanted of it now. Paused means
     /// not listening at all: no wake word, no watching while Atlas speaks.
     pub(super) fn steer_mic(&mut self) {
+        self.pause_files(self.attention.is_paused());
+        if self.attention.is_paused() { self.cancel_brief_preparation(); }
+        if let Some(speaker) = self.announcements.get() {
+            if self.attention.is_paused() || !self.sound_allows_speaking() {
+                speaker.cancel();
+            }
+        }
+        let failures = self.announcements.get().map(|s| s.take_failures()).unwrap_or_default();
+        for notice in &failures {
+            crate::outln!("{notice}");
+            self.log.warn(notice);
+            self.thread.append("", notice, None, crate::store::now());
+        }
+        self.keep_said_for_apps(failures);
         let Some(m) = self.mic.as_ref() else { return };
         let cfg = self.tools_cfg();
         m.set_paused(self.attention.is_paused());
@@ -1171,7 +1332,17 @@ impl<'a> Daemon<'a> {
         if let Some(m) = self.tiers.succeeded() {
             self.say(mouth, &m);
         }
-        self.say(mouth, "Yes?");
+        // A listening prompt must finish before opening the next recording.
+        // Unlike a background announcement, wait in the existing playback
+        // loop that still answers the hub and watches pause/cut-in.
+        if let Some(said) = self.say_volunteered(mouth, ears, "Yes?") {
+            if !said.trim().is_empty() {
+                self.heard_through_this_ear(&said);
+                self.converse(&said, ears, mouth, clock);
+            }
+            return;
+        }
+        if self.attention.is_paused() || crate::goodbye::asked_to_stop() { return; }
         match self.follow_up(ears, NAME_ALONE_WAIT_SECS) {
             Some(said) => {
                 self.heard_through_this_ear(&said);
@@ -1266,6 +1437,7 @@ impl<'a> Daemon<'a> {
     /// Returns what is worth saying out loud, rather than saying it, so the
     /// tests can watch the order without a `Mouth`.
     pub fn shut_down(&mut self) -> Vec<String> {
+        self.stop_files();
         if self.stopped {
             return Vec::new();
         }
@@ -1313,12 +1485,11 @@ impl<'a> Daemon<'a> {
 
         // Then state, because it is the only step whose failure loses
         // something that starting again cannot recover.
-        self.persist();
+        self.persist_at_exit();
         if !self.persist_failures.is_empty() {
             let what: Vec<&str> = self.persist_failures.iter().map(|(w, _)| *w).collect();
             out.push(format!(
-                "I couldn't save {} on the way out, so that much is gone. Everything \
-                 else is written down.",
+                "I couldn't save the latest changes to {} before closing. Earlier saved versions remain; check unfinished work when Atlas opens again.",
                 what.join(", ")
             ));
         }
@@ -1727,10 +1898,6 @@ impl<'a> Daemon<'a> {
     pub(super) fn say(&self, mouth: &dyn Mouth, line: &str) {
         crate::outln!("{line}");
         self.log.info(line);
-        // Never over a reply still playing on its own thread.
-        // The whole reply, not 30 seconds of it: a long reply on a busy
-        // machine took 45 (30 Sep 2026), and the two then played at once.
-        crate::speakthread::wait_quiet(std::time::Duration::from_secs(180));
         // Paused means quiet, not blind: the line is still printed and
         // logged, but the speaker stays silent. `may_speak` existed to
         // answer exactly this and `say` never asked, so a scheduled job
@@ -1740,6 +1907,30 @@ impl<'a> Daemon<'a> {
             // The screen got the line as written; the speaker gets it as
             // said. "$2.35" reads as words, "mph" is spoken not spelled,
             // a stray markdown marker is dropped rather than pronounced.
+            if let Some(work) = mouth.speak_work() {
+                if self.announcements.get().is_none() {
+                    match crate::speakthread::Announcements::start() {
+                        Ok(speaker) => {
+                            if let Err(extra) = self.announcements.set(speaker) {
+                                extra.cancel();
+                                self.log.warn("Announcement speaker was already initialized; the extra speaker was canceled and the existing speaker will be used.");
+                            }
+                        }
+                        Err(e) => {
+                            self.log.warn(&format!("couldn't start announcement speaker: {e}; text only"));
+                            return;
+                        }
+                    }
+                }
+                if let Some(speaker) = self.announcements.get() {
+                    if let Err(why) = speaker.enqueue(crate::spoken_form::for_speech(line), work) {
+                        crate::outln!("{why}");
+                        self.log.warn(why);
+                    }
+                }
+                return;
+            }
+            // Inline stand-ins have no owned voice; real Voice supplies one.
             let _voice = crate::speakthread::hold_voice();
             if let Err(e) = mouth.speak(&crate::spoken_form::for_speech(line)) {
                 // Written down: a reply that failed to play was silence with
@@ -1798,8 +1989,17 @@ impl<'a> Daemon<'a> {
         line: &str,
         listen: &mut dyn FnMut() -> Option<String>,
     ) -> crate::speech::Delivery {
-        let mut s = self.start_saying(mouth);
+        let (ids,render_only) = self.bind_calendar_deliveries(line);
+        if !self.calendar_delivery_current(&ids) {
+            self.unsaid=None;
+            return crate::speech::Delivery {spoken:Vec::new(),unspoken:Vec::new(),
+                interrupted_by:Some("Calendar delivery stopped because ownership or the event changed.".into())};
+        }
+        self.calendar_active_delivery_ids = ids.clone();
+        let mut s = self.start_saying_mode(mouth,render_only);
+        s.bind_calendar_deliveries(ids);
         s.add(line);
+
         self.end_saying(s, mouth, listen)
     }
 
@@ -1807,7 +2007,14 @@ impl<'a> Daemon<'a> {
     /// sound says not now; the microphone watched for your voice when
     /// cutting in by voice is on and Atlas isn't paused (`micthread`).
     pub(super) fn start_saying<'m>(&self, mouth: &'m dyn Mouth) -> crate::speakthread::Saying<'m> {
-        let typed = (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
+        self.start_saying_mode(mouth,false)
+    }
+
+    fn start_saying_mode<'m>(&self,mouth:&'m dyn Mouth,render_only:bool)->crate::speakthread::Saying<'m> {
+        if let Some(speaker) = self.announcements.get() {
+            speaker.cancel();
+        }
+        let typed = render_only || (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
         let watching = if typed || self.attention.is_paused() {
             None
         } else {
@@ -1831,11 +2038,21 @@ impl<'a> Daemon<'a> {
     /// The reply is over, as far as it got.
     pub(super) fn stop_saying(&mut self, s: crate::speakthread::Saying, mouth: &dyn Mouth) -> crate::speech::Delivery {
         let said = s.finish();
+        self.calendar_active_delivery_ids.clear();
         let over_it = said.words.clone();
         if let Some(w) = said.words {
             self.cut_in_by_voice = Some(w);
         }
         let d = said.delivery;
+        let delivered = d.spoken.join(" ");
+        self.calendar_reminder_receipt(&said.calendar_delivery_ids, !d.was_interrupted(), crate::store::now());
+        let effect_receipt = self.acknowledge_prepared_effects(&delivered, crate::store::now());
+        let opportunity_receipt = crate::hunting::acknowledge_delivered(self, &delivered, crate::store::now());
+        if effect_receipt && opportunity_receipt { self.acknowledge_brief_delivery(&delivered, crate::store::now()); }
+        if !said.calendar_delivery_ids.is_empty() && !self.calendar_delivery_current(&said.calendar_delivery_ids) {
+            self.unsaid = None;
+            return d;
+        }
         if d.was_interrupted() {
             // Cut by a sound that wasn't words -- a cough, a door, Atlas's own
             // voice coming back -- is no reason to stop: the rest is said
@@ -1893,7 +2110,12 @@ impl Drop for Daemon<'_> {
         if self.stopped {
             return;
         }
-        self.persist();
+        self.crew.ask_everyone_to_stop();
+        // Wait for cooperative workers before writing restart state. Without
+        // this ordering a worker can finish during `persist_at_exit` and leave
+        // a stale left-waiting checkpoint for the next daemon instance.
+        self.crew.wait_for_stop();
+        self.persist_at_exit();
     }
 }
 
@@ -1902,6 +2124,63 @@ pub(super) const FLOW_LEFT: &str = "current_flow";
 
 /// Where `persist` keeps what a restart would cut off.
 pub(super) const LEFT_WAITING: &str = "left_waiting";
+
+#[cfg(test)]
+mod closing_checkpoint {
+    use super::*;
+    #[test]
+    fn live_hub_refuses_old_profile_state_and_actions_after_switch() {
+        let root = std::env::temp_dir().join(format!("atlas-live-hub-owner-{}", std::process::id()));
+        let store = Store::new(root.clone());
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().backup.enabled = false;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&cfg, &platform, None, store, crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        assert_eq!(daemon.reply_hub_for_owner(&root, crate::server::Action::Hub(crate::hub::Page::Now)).status, 200);
+        let mut profiles = crate::profiles::Profiles::default();
+        profiles.add("Owner", crate::profiles::Role::Owner).unwrap();
+        profiles.add("Guest", crate::profiles::Role::Guest).unwrap();
+        profiles.switch("guest", 1).unwrap(); profiles.save(&root).unwrap();
+        let page = daemon.reply_hub_for_owner(&root, crate::server::Action::Hub(crate::hub::Page::Now));
+        assert_eq!(page.status, 503); assert!(page.body.contains("profile changed"));
+        let action = daemon.reply_hub_for_owner(&root, crate::server::Action::Pause(true));
+        assert_eq!(action.status, 503); assert!(!daemon.attention.is_paused(), "wrong-owner action reached the old daemon");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn closing_waits_for_a_short_snapshot_and_keeps_the_pending_decision() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-closing-save-{}-{stamp}", std::process::id()));
+        let store = Store::new(root.clone());
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().backup.enabled = false;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        daemon.left_waiting_read = true;
+        daemon.session.ask("Keep this reviewed clip?");
+        let (ready, received) = std::sync::mpsc::channel();
+        let held_store = store.clone();
+        let snapshot = std::thread::spawn(move || {
+            let _guard = held_store.transaction().unwrap();
+            ready.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        });
+        received.recv().unwrap();
+        daemon.persist();
+        assert!(daemon.persist_failures.iter().any(|(what, _)| *what == "state snapshot busy"));
+        let started = std::time::Instant::now();
+        let said = daemon.shut_down().join(" ");
+        snapshot.join().unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+        assert!(!said.contains("couldn't save"), "{said}");
+        let pending: Vec<LeftWaiting> = store.load_checked(LEFT_WAITING).unwrap().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].what, "Keep this reviewed clip?");
+        assert!(pending[0].asked);
+        drop(daemon);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
 
 /// One thing left waiting when Atlas stopped.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

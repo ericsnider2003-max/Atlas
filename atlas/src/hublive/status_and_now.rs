@@ -136,7 +136,7 @@ impl Daemon<'_> {
         let paused = self.attention.is_paused();
         let background: Vec<String> = self.mind.background().iter().map(|w| sentence(&w.asked)).collect();
         let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
-        let Some(w) = self.mind.focus() else {
+        let Some(w) = self.mind.focus().or_else(|| self.mind.work.iter().rev().find(|w| w.stage.finished())) else {
             let title = if paused { "Paused." } else { "Waiting for you." };
             return hub::NowView {
                 title: title.into(),
@@ -153,6 +153,7 @@ impl Daemon<'_> {
                 working: false,
                 background,
                 held,
+                receipt: None,
             };
         };
         let mut steps: Vec<(hub::Step, String)> = Vec::new();
@@ -160,7 +161,8 @@ impl Daemon<'_> {
             let kind = match t.stage {
                 Stage::Gathering | Stage::Planning => hub::Step::Plan,
                 Stage::Doing => hub::Step::Doing,
-                Stage::Verifying | Stage::Done => hub::Step::Checked,
+                Stage::Verifying => hub::Step::Checking,
+                Stage::Done => hub::Step::Finished,
                 Stage::Rethinking => hub::Step::Rerouted,
                 Stage::Waiting => hub::Step::Waiting,
                 Stage::Stuck => hub::Step::Stuck,
@@ -170,10 +172,13 @@ impl Daemon<'_> {
         for s in w.steps.iter().filter(|s| s.failed.is_some()) {
             steps.push((hub::Step::Rerouted, format!("{} didn't work: {}", sentence(&s.what).trim_end_matches('.'), s.failed.clone().unwrap_or_default())));
         }
-        for e in self.crew.errands() {
-            steps.push((hub::Step::Delegated, format!("Handed to a worker: {}. I check what comes back before you see it.", e.name)));
+        for e in self.crew.errands().into_iter().filter(|_| !w.stage.finished()) {
+            steps.push((hub::Step::Delegated, format!("Handed to a worker: {}. Its result is pending.", e.name)));
         }
-        let mut open = w.steps.iter().filter(|s| !s.done && s.failed.is_none());
+        let from = w.runner_position.or_else(|| w.steps.iter().position(|s| !s.done));
+        let mut open = w.steps.iter().enumerate()
+            .filter(|(i, _)| !w.stage.finished() && from.is_some_and(|p| *i >= p))
+            .map(|(_, s)| s);
         if let Some(cur) = open.next() {
             steps.push((hub::Step::Now, sentence(&cur.what)));
         }
@@ -189,15 +194,16 @@ impl Daemon<'_> {
         };
         hub::NowView {
             title: sentence(&w.asked),
-            since: format!("Started {} · {}", crate::localclock::hhmm_here(w.started), w.stage.label()),
+            since: format!("Started {} · {}", crate::localclock::hhmm_here(w.started), if w.stage == Stage::Done { "runner ended" } else { w.stage.label() }),
             steps,
             plain_from,
             spent: Some(if mins == 0 { "under a minute".into() } else { format!("{mins} min") }),
             fallback,
             paused,
-            working: !paused,
+            working: !paused && !w.stage.finished() && w.stage != Stage::Waiting,
             background,
             held,
+            receipt: Some(hub::TaskReceipt::from_work(w, paused)),
         }
     }
 
@@ -288,12 +294,11 @@ impl Daemon<'_> {
                 Err(why) => format!("{name} didn't read as a calendar: {why}"),
             },
             "vcf" | "vcard" => {
-                let mut list = crate::clients::ClientList::load(&self.store);
-                match text().and_then(|t| list.import_vcf(&t, now)) {
+                let input = match text() { Ok(input) => input, Err(why) => return format!("{name} didn't read as contacts: {why}") };
+                match crate::clients::ClientList::change(&self.store, |list| {
+                    list.import_vcf(&input, now).map_err(crate::error::AtlasError::Platform)
+                }) {
                     Ok((added, skipped, notes)) => {
-                        if let Err(e) = list.save(&self.store) {
-                            return didnt_stick(&e);
-                        }
                         let mut said = format!("{added} added to your clients from {name}");
                         if skipped > 0 {
                             said.push_str(&format!(", {skipped} left out (no email)"));
@@ -304,7 +309,7 @@ impl Daemon<'_> {
                         }
                         said
                     }
-                    Err(why) => format!("{name} didn't read as contacts: {why}"),
+                    Err(why) => format!("Contacts were not changed: {why}"),
                 }
             }
             // Teaching the ears, from the hub's "hearing" buttons. Each

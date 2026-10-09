@@ -187,6 +187,7 @@ fn now(title: &str, steps: Vec<(Step, String)>, background: Vec<String>, working
         working,
         background,
         held: Vec::new(),
+        receipt: None,
     })
 }
 
@@ -371,6 +372,7 @@ fn notes_kept_for_you_are_on_the_now_page() {
         working: false,
         background: vec![],
         held: vec!["Disk <nearly> full".into(), "Build finished".into()],
+        receipt: None,
     };
     let page = now_page(&v);
     assert!(page.contains("<div class=lab>Kept for you</div>"), "no box for held notes");

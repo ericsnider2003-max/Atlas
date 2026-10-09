@@ -379,12 +379,17 @@ pub const HEALTH: &str = "connected_health";
 
 /// Note how an account just went (`None`: it worked).
 pub fn note_health(store: &crate::store::Store, who: &str, failed: Option<&str>) {
-    let mut all: std::collections::BTreeMap<String, Health> = store.load(HEALTH);
+    if let Err(error) = note_health_checked(store, who, failed) { crate::heard!(Err::<(), _>(error)); }
+}
+
+pub fn note_health_checked(store: &crate::store::Store, who: &str, failed: Option<&str>) -> crate::error::Result<()> {
+    let _transaction = store.transaction()?;
+    let mut all: std::collections::BTreeMap<String, Health> = store.load_checked(HEALTH)?.unwrap_or_default();
     all.insert(
         who.to_ascii_lowercase(),
         Health { at: crate::store::now(), ok: failed.is_none(), said: failed.unwrap_or("").chars().take(200).collect() },
     );
-    let _ = store.save(HEALTH, &all);
+    store.save(HEALTH, &all)
 }
 
 /// How an account last went, if it has been tried.

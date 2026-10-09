@@ -241,10 +241,6 @@ pub struct MailConfig {
     pub actually_sort: bool,
     /// Never move anything out of the inbox, only label it.
     pub label_only: bool,
-    /// Standing approval to send drafted replies to known clients without
-    /// asking each time. Off by default — until it's on, a client reply
-    /// is drafted and held, not sent.
-    pub may_email_clients: bool,
     /// Standing approval for cold brand outreach *at all*. Not enough on
     /// its own — the separate per-recipient outreach-approval list still
     /// has to say yes to that specific recipient. A master switch and a
@@ -281,7 +277,6 @@ impl Default for MailConfig {
             // The safe default: you can see what Atlas thinks without it
             // moving anything.
             label_only: true,
-            may_email_clients: false,
             may_email_brands: false,
             cold_outreach_daily_cap: 5,
             backend: "imap".into(),

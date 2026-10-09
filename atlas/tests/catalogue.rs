@@ -36,6 +36,15 @@ const EVERY_PLATFORM: &[Platform] = &[
     Platform::Web,
 ];
 
+#[test]
+fn connection_descriptions_and_removal_receipts_belong_to_existing_mail_capability() {
+    let all = capability::all();
+    let mail = all.iter().find(|capability| capability.id == "mail").unwrap();
+    assert!(mail.modules.contains(&"connectors") && mail.modules.contains(&"connection_removal"));
+    assert!(modules_in_tree().contains("connectors") && modules_in_tree().contains("connection_removal"));
+    assert_eq!(modules_in_tree().len(), capability::MODULES_IN_TREE);
+}
+
 /// Every module in the tree, by the name a capability would call it.
 ///
 /// `src/market/claims.rs` is `claims`; `src/platform/mod.rs` is `platform`.

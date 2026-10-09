@@ -223,9 +223,21 @@ fn a_platform_that_needs_an_image_will_not_post_without_one() {
         SendCheck::Hold(why) => assert!(why.contains("needs an image")),
         o => panic!("{o:?}"),
     }
-    p.attach(id, "photo.png");
-    p.approve(id);
+    let path = std::env::temp_dir().join(format!("atlas-instagram-media-{}-{}.png", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    p.attach(id, &path.display().to_string());
+    assert!(!p.approve(id), "a missing attachment must not acquire consent");
+    assert!(matches!(p.check(id, true, None), SendCheck::Hold(_)));
+    let image = std::fs::read("tests/fixtures/round11/ocr_invoice.png").unwrap();
+    std::fs::write(&path, &image).unwrap();
+    assert!(p.approve(id), "approve the actual disposable image bytes");
+    let captured = p.get(id).unwrap().verified_media_copies(&|| false).unwrap();
+    assert_eq!(captured.paths.len(), 1);
+    assert_ne!(std::path::Path::new(&captured.paths[0]), path.as_path());
+    assert_eq!(std::fs::read(&captured.paths[0]).unwrap(), image);
     assert_eq!(p.check(id, true, None), SendCheck::Go);
+    assert_eq!(std::fs::read(&path).unwrap(), image, "approval must preserve the source image");
+    std::fs::remove_file(&path).unwrap();
+    assert!(p.get(id).unwrap().verified_media_copies(&|| false).is_err(), "lost media must be refused before provider access");
 }
 
 #[test]

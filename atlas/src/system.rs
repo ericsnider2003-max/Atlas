@@ -100,7 +100,7 @@ pub enum Verdict {
     Refuse(String),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SystemConfig {
     pub enabled: bool,

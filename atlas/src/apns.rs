@@ -95,6 +95,7 @@ impl Devices {
     }
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
+        let _state = crate::store::state_transaction(state_dir)?;
         crate::store::write_json(&state_dir.join(FILE), self)
     }
 

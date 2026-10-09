@@ -225,6 +225,7 @@ fn two_windows_are_worked_side_by_side() {
     let cfg = Config::load(Path::new("config")).unwrap();
     let p = plat();
     let mut d = Daemon::new(&cfg, &p, None, store("two"), Proactive::new(ProactiveConfig::default()));
+    d.crew = atlas::crew::Crew::new(3).with_room(Box::new(|| atlas::crew::Room { free_mb: Some(8192), on_battery: false, battery_percent: Some(100) }));
     d.llm = Some(Arc::new(Writer(Mutex::new(Vec::new()))));
     show(&p, 7, "SomeChat.exe", "Sam: hi");
     let _ = d.execute_timed(&Intent::Delegate("take over this conversation".into()), "take over this conversation");
@@ -236,8 +237,48 @@ fn two_windows_are_worked_side_by_side() {
     let _ = &settled;
     assert_eq!(d.working_for_you.len(), 2, "the second stopped the first");
     let t = atlas::store::now() + 100;
+    let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    struct Release(Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for Release { fn drop(&mut self) { self.0.store(true, std::sync::atomic::Ordering::SeqCst); } }
+    let _cleanup = Release(release.clone());
+    let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let finish = finished.clone();
+    let owned = release.clone();
+    let owned_backup = d.crew.hand("backup", t, Box::new(move |control| {
+        while !owned.load(std::sync::atomic::Ordering::SeqCst) && !control.stopping() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+        finish.store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok("Disposable maintenance ended".into())
+    })).expect("owned maintenance worker must start");
+    let (control_sender, control_receiver) = std::sync::mpsc::sync_channel(1);
+    let other_release = release.clone();
+    let unrelated_backup = d.crew.hand("backup", t + 1, Box::new(move |control| {
+        control_sender.send(control.clone()).map_err(|e| e.to_string())?;
+        while !other_release.load(std::sync::atomic::Ordering::SeqCst) && !control.stopping() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        Ok("Unselected disposable maintenance ended".into())
+    })).expect("unrelated owned maintenance must start");
+    let unrelated_control = control_receiver.recv_timeout(std::time::Duration::from_secs(2)).expect("unrelated maintenance must actually start");
     let said = d.turn_from("stop", t, atlas::daemon::Arrival::Directed);
+    assert!(!finished.load(std::sync::atomic::Ordering::SeqCst), "bare stop canceled maintenance rather than asking about foreground work");
     assert!(said.contains("1)") && said.contains("2)"), "a bare stop with two going should ask which: {said}");
+    let named = d.turn_from("cancel the backup", t + 1, atlas::daemon::Arrival::Directed);
+    assert!(named.to_lowercase().contains("backup"), "named maintenance cancellation lost: {named}");
+    if named.contains("Which") {
+        // A real automatic backup may also exist: naming both is ambiguous.
+        // Answer the displayed ordering instead of silently canceling either.
+        let mut backups: Vec<_> = d.crew.errands().into_iter().filter(|e| e.name == "backup" && d.crew.in_hand(e.id)).collect();
+        backups.sort_by_key(|e| (e.started, e.id));
+        let position = backups.iter().position(|e| e.id == owned_backup).expect("owned backup missing from the choice");
+        assert!(backups.iter().any(|e| e.id == unrelated_backup), "unrelated owned worker must be in the actual choice");
+        let answer = d.turn_from(&format!("{}", position + 1), t + 2, atlas::daemon::Arrival::Directed);
+        assert!(answer.contains("backup"), "exact backup choice was lost: {answer}");
+        assert!(!unrelated_control.stopping(), "unselected backup was canceled");
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !finished.load(std::sync::atomic::Ordering::SeqCst) && std::time::Instant::now() < deadline { std::thread::sleep(std::time::Duration::from_millis(5)); }
+    assert!(finished.load(std::sync::atomic::Ordering::SeqCst), "explicit backup cancellation did not reach owned worker");
+    assert!(!unrelated_control.stopping(), "unselected backup was canceled after the selected worker ended");
 }
 
 #[test]

@@ -217,6 +217,14 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn research(&mut self, topic: &str) -> String {
+        let outcome = self.research_outcome(topic);
+        let text = outcome.text().to_string();
+        self.execution_receipt = Some((Intent::Research(topic.into()), outcome));
+        text
+    }
+
+    fn research_outcome(&mut self, topic: &str) -> crate::taskloop::Outcome {
+        use crate::taskloop::Outcome;
         // "Research it again": "again" is a request for a fresh look, not
         // part of the topic (30 Sep 2026: it was searched for as a word).
         // "research Atlas, is there ..." -- the name is who you're talking
@@ -250,7 +258,7 @@ impl<'a> Daemon<'a> {
             .unwrap_or_default()
             .resolved(&self.store.install_root());
         if !cfg.enabled {
-            return "Research is switched off in your settings.".into();
+            return Outcome::Failed("Research is switched off in your settings.".into());
         }
         // Answered from what research already taught, before spending a
         // search on it. `self.known` was written by nothing and read by
@@ -280,10 +288,10 @@ impl<'a> Daemon<'a> {
                     c.asked_about += 1;
                     let says = c.says.clone();
                     let _ = self.store.save("known", &self.known);
-                    return format!(
+                    return Outcome::Done(format!(
                         "From what I found before: {says} Say 'research it again' if you \
                          want it checked fresh."
-                    );
+                    ));
                 }
             }
         }
@@ -294,14 +302,14 @@ impl<'a> Daemon<'a> {
         // than a second copy hand-written at the point of use. Research is the
         // only `Need::Internet` intent, so this is that function's real home.
         if self.connectivity.cached() == Reach::Offline {
-            return crate::connectivity::deferral_message(&Intent::Research(topic.to_string()));
+            return Outcome::Failed(crate::connectivity::deferral_message(&Intent::Research(topic.to_string())));
         }
         // Reading the sources and writing them up is background work: the
         // deep model's, when there is one (`deepbrain`).
         let Some(llm) = self.background_llm() else {
-            return format!(
+            return Outcome::Failed(format!(
                 "I can search for {topic}, but I need a model to read the sources and write it up, and I haven't got one configured."
-            );
+            ));
         };
         // When online and Cloudflare is set up, the heavy read-and-write-up
         // step is delegated to a worker instead of grinding on the local 3B,
@@ -358,7 +366,7 @@ impl<'a> Daemon<'a> {
                     // came back fine.
                     // Where it went is said now (30 Sep 2026: it was
                     // deliberately never said, and a failed save was silent).
-                    let kept = r.save(&note);
+                    let kept = r.save_until(&note, &|| ctl.stopping());
                     // The one place in Atlas where grounding is known exactly
                     // rather than guessed at: the note carries the list of
                     // what it read. A write-up built on nothing gets said as
@@ -410,7 +418,7 @@ impl<'a> Daemon<'a> {
                     let rests = crate::research::rests_on(&note, &judging);
                     let kept = match kept {
                         Ok(_) => " The full write-up is in your notes -- say \"read me the full brief\" or \"open the report\".".to_string(),
-                        Err(e) => format!(" I couldn't save the full write-up ({e})."),
+                        Err(e) => return Err(format!("{spoken} I couldn't save the full write-up ({e}); dependent work is held until the research can be saved.")),
                     };
                     Ok(format!(
                         "{} Read {} source{}.{}{kept}",
@@ -434,17 +442,17 @@ impl<'a> Daemon<'a> {
         );
         if taken {
             if delegated {
-                format!(
+                Outcome::Started(format!(
                     "Looking into {topic} — I've handed the heavy lifting to a worker online and \
                      I'll check what comes back before I bring it to you."
-                )
+                ))
             } else {
-                format!("Looking into {topic}. I'll let you know what I find.")
+                Outcome::Started(format!("Looking into {topic}. I'll let you know what I find."))
             }
         } else {
             // The bounded waiting list is full -- vanishingly unlikely in
             // real use, but honest rather than silently dropping the ask.
-            format!("I'm swamped with background work right now — ask me about {topic} again in a moment.")
+            Outcome::Failed(format!("I'm swamped with background work right now — ask me about {topic} again in a moment."))
         }
     }
 
@@ -840,6 +848,14 @@ impl<'a> Daemon<'a> {
         said: Option<&str>,
         t: u64,
     ) -> String {
+        self.start_flow_with_claim(f, plugin, said, t, None)
+    }
+
+    pub(super) fn start_scheduled_flow(&mut self, f: crate::flow::Workflow, plugin: String, claim: String, t: u64) -> String {
+        self.start_flow_with_claim(f, Some(plugin), None, t, Some(claim))
+    }
+
+    fn start_flow_with_claim(&mut self, f: crate::flow::Workflow, plugin: Option<String>, said: Option<&str>, t: u64, claim: Option<String>) -> String {
         let w = f.name.clone();
         let steps: Vec<String> = f.steps.iter().map(|s| s.command.clone()).collect();
         let (mind_id, moved) = if self.mind.active().is_empty() {
@@ -864,6 +880,13 @@ impl<'a> Daemon<'a> {
                 format!("Running {w}, {} steps.", steps.len())
             }
         };
+        if let Some(run) = &mut self.current_flow { run.scheduled_claim = claim; run.started = t; }
+        if let Some(run) = self.current_flow.clone() {
+            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
+                self.log.warn(&format!("scheduled add-on start remains fenced ({error})"));
+                return "Your scheduled add-on is waiting to save its recovery state. No step started; I'll retry while this request remains active.".into();
+            }
+        }
         // Which of them can't be taken back, said up front (G7, merged from
         // the third chat's inline copy of this path).
         if let Some(run) = self.current_flow.clone() {
@@ -884,6 +907,22 @@ impl<'a> Daemon<'a> {
         }
         self.persist();
         reply
+    }
+
+    fn fence_scheduled_run(&mut self, run: &crate::flow::Run, phase: crate::plugins::SchedulePhase) -> crate::error::Result<()> {
+        let Some(token) = &run.scheduled_claim else { return Ok(()) };
+        let _guard = self.store.transaction()?;
+        let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
+        let claim = runs.claims.get_mut(token).ok_or_else(|| crate::error::AtlasError::Platform("the scheduled occurrence lost its durable claim; no next step started".into()))?;
+        if run.plugin.as_deref() != Some(claim.plugin.as_str()) || run.workflow != claim.workflow.name || run.steps != claim.workflow.steps || claim.run.as_ref().is_some_and(|saved| saved.position > run.position) || matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed) {
+            return Err(crate::error::AtlasError::Platform("the scheduled occurrence identity or saved progress changed; no next step started".into()));
+        }
+        let registry = crate::plugins::Registry::load_kept(&mut self.plugins_kept, &self.plugins_dir, &self.cfg.commands, &self.store);
+        if !matches!(phase, crate::plugins::SchedulePhase::Failed) && !registry.plugins.iter().any(|plugin| plugin.id == claim.plugin && plugin.sha256 == claim.approved_sha256 && plugin.status == crate::plugins::Status::Active) {
+            return Err(crate::error::AtlasError::Platform("the scheduled add-on approval changed; saved work is held without another action".into()));
+        }
+        claim.run = Some(run.clone()); claim.phase = phase;
+        runs.save(&self.store)
     }
 
     /// Did you say this add-on step needn't ask? (`plugins::may_skip_question`)
@@ -917,9 +956,11 @@ impl<'a> Daemon<'a> {
     pub(super) fn approved_flow_step(&mut self, t: u64) {
         let Some(mut run) = self.current_flow.take() else { return };
         run.approve();
+        run.approved_position = Some(run.position);
         if let crate::flow::Next::Run(cmd) = run.next() {
             let step_i = run.position;
             if let Some(w) = self.mind.get_mut(self.flow_mind) {
+                w.runner_position = Some(step_i);
                 w.think(crate::mind::Stage::Doing, &cmd, t);
             }
             // Your yes covers the question, not what the add-on may do: a
@@ -930,19 +971,35 @@ impl<'a> Daemon<'a> {
                 return;
             }
             let intent = self.parser.parse(&cmd);
+            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::InFlight) {
+                self.log.warn(&format!("approved scheduled step is waiting for its durable fence ({error})"));
+                self.current_flow = Some(run); return;
+            }
             let result = self.execute(&intent);
             let ok = !result.starts_with("error");
             self.journal.record_at(Act::Scheduled, &cmd, ok, t);
             if let Some(w) = self.mind.get_mut(self.flow_mind) {
-                w.finish_step(step_i, (!ok).then(|| result.clone()));
+                w.report_step(step_i, &result, ok);
             }
             run.report(&result, ok);
+            run.approved_position = None;
+            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) { self.log.warn(&format!("scheduled step finished but its progress is waiting to save ({error}); no next step will start")); }
+            if let Some(w) = self.mind.get_mut(self.flow_mind) {
+                w.runner_position = run.current().map(|_| run.position);
+            }
         }
         self.current_flow = Some(run);
     }
 
     pub(super) fn drive_flow(&mut self, t: u64) -> Option<String> {
         let mut run = self.current_flow.take()?;
+        if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
+            self.log.warn(&format!("scheduled add-on progress remains held ({error}); no next step started"));
+            let busy = matches!(&error, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock);
+            let message = format!("Your scheduled add-on work is held because its recovery progress couldn't be saved ({error}). No next step started. Its saved work is retained for review.");
+            self.current_flow = Some(run);
+            return if !busy && self.scheduled_notices.insert(message.clone()) { Some(message) } else { None };
+        }
         let mut said: Vec<String> = Vec::new();
         // Bounded. A flow cannot hold the turn forever, whatever is in it;
         // anything left keeps moving on the next tick.
@@ -951,6 +1008,7 @@ impl<'a> Daemon<'a> {
                 crate::flow::Next::Run(cmd) => {
                     let step_i = run.position;
                     if let Some(w) = self.mind.get_mut(self.flow_mind) {
+                        w.runner_position = Some(step_i);
                         w.think(crate::mind::Stage::Doing, &cmd, t);
                     }
                     // An add-on's step is checked before anything else --
@@ -966,8 +1024,11 @@ impl<'a> Daemon<'a> {
                         &self.memory,
                         &self.cfg.policy,
                     );
-                    if call.needs_consent() && !self.plugin_step_trusted(&run, &cmd) {
+                    if call.needs_consent() && !self.plugin_step_trusted(&run, &cmd) && run.approved_position != Some(step_i) {
                         run.needs_approval();
+                        if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
+                            run.approve(); self.log.warn(&format!("scheduled approval question is waiting to save ({error}); nothing was asked or run")); break;
+                        }
                         let from = match &run.plugin {
                             Some(id) => format!(" (from the {id} add-on)"),
                             None => String::new(),
@@ -995,13 +1056,23 @@ impl<'a> Daemon<'a> {
                         said.push(q);
                         break;
                     }
+                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::InFlight) {
+                        self.log.warn(&format!("scheduled step remains waiting for its durable fence ({error})")); break;
+                    }
                     let result = self.execute(&intent);
                     let ok = !result.starts_with("error");
                     self.journal.record_at(Act::Scheduled, &cmd, ok, t);
                     if let Some(w) = self.mind.get_mut(self.flow_mind) {
-                        w.finish_step(step_i, (!ok).then(|| result.clone()));
+                        w.report_step(step_i, &result, ok);
                     }
                     run.report(&result, ok);
+                    run.approved_position = None;
+                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
+                        self.log.warn(&format!("scheduled step outcome is waiting to save ({error}); no next step started")); break;
+                    }
+                    if let Some(w) = self.mind.get_mut(self.flow_mind) {
+                        w.runner_position = run.current().map(|_| run.position);
+                    }
                 }
                 crate::flow::Next::Approve(q) => {
                     // Already paused and already asked; nothing to do until
@@ -1010,6 +1081,7 @@ impl<'a> Daemon<'a> {
                     break;
                 }
                 crate::flow::Next::Finished => {
+                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Done) { self.log.warn(&format!("scheduled completion remains waiting to save ({error})")); break; }
                     let progress = self
                         .mind
                         .get_mut(self.flow_mind)
@@ -1052,6 +1124,7 @@ impl<'a> Daemon<'a> {
                     return Some(said.join(" "));
                 }
                 crate::flow::Next::Stopped(why) => {
+                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Failed) { self.log.warn(&format!("scheduled failure result remains waiting to save ({error})")); break; }
                     if let Some(w) = self.mind.get_mut(self.flow_mind) {
                         w.think(crate::mind::Stage::Stuck, &why, t);
                     }

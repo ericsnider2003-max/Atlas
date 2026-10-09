@@ -457,6 +457,7 @@ pub const APPS_DIR: &str = "apps";
 /// (27 Sep 2026: before this, nothing ever filled `apps/`, and the page said
 /// the app would arrive by itself).
 pub fn app_file(root: &std::path::Path, kind: Kind, downloads: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    let _state = crate::store::state_transaction(root).ok()?;
     let (name, ext) = match kind {
         Kind::Apple => ("Atlas.ipa", ".ipa"),
         Kind::Android => ("Atlas.apk", ".apk"),

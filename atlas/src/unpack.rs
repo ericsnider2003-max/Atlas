@@ -21,6 +21,15 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|e| format!("I can't open {}: {e}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes).map_err(|e| format!("I couldn't read {}: {e}", path.display()))?;
+    if bytes.len() as u64 > limit { return Err(format!("{} exceeds the current {} MiB reading limit", path.display(), limit / 1024 / 1024)); }
+    Ok(bytes)
+}
+
 /// One file inside a zip.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
@@ -158,30 +167,48 @@ pub fn folder_beside(zip: &Path) -> PathBuf {
     }
 }
 
-/// Unpack a zip into `dest`, which must not exist yet. Checks everything
-/// before writing anything, so a refusal leaves no half-unpacked folder.
-pub fn unzip(zip: &Path, dest: &Path, cfg: &crate::files::FilesConfig) -> Result<Vec<PathBuf>, String> {
-    let bytes = std::fs::read(zip).map_err(|e| format!("I can't open {}: {e}", zip.display()))?;
+
+pub fn unzip_stoppable(zip: &Path, dest: &Path, cfg: &crate::files::FilesConfig, stop: &dyn Fn() -> bool) -> Result<Vec<PathBuf>, String> {
+    if stop() { return Err("Stopped before opening the archive".into()); }
+    let size = std::fs::metadata(zip).map_err(|e| format!("I can't inspect {}: {e}", zip.display()))?.len();
+    if size > 256 * 1024 * 1024 { return Err("this archive exceeds the current 256 MiB preparation limit; use a streaming archive tool for it".into()); }
+    let bytes = read_bounded(zip, 256 * 1024 * 1024)?;
     let entries = entries_of(&bytes)?;
-    let total: u64 = entries.iter().map(|e| e.size).sum();
-    crate::files::safe_to_unpack(bytes.len() as u64 / 1_000_000, total / 1_000_000, nesting(&entries), cfg)?;
+    let total = entries.iter().try_fold(0u64, |sum, e| sum.checked_add(e.size)).ok_or("the archive's claimed size is too large")?;
+    crate::files::safe_to_unpack((bytes.len() as u64).div_ceil(1_000_000), total.div_ceil(1_000_000), nesting(&entries), cfg)?;
     let names: Vec<PathBuf> = entries.iter().map(|e| name_inside(&e.name)).collect::<Result<_, _>>()?;
     if dest.exists() {
         return Err(format!("{} is already there, and I don't unpack over things", dest.display()));
     }
-    std::fs::create_dir_all(dest).map_err(|e| format!("I couldn't make {}: {e}", dest.display()))?;
+    if stop() { return Err("Stopped before creating the unpacked folder".into()); }
+    std::fs::create_dir(dest).map_err(|e| format!("I couldn't make {}: {e}", dest.display()))?;
     let mut written = Vec::new();
     for (e, rel) in entries.iter().zip(names) {
+        if stop() { return Err(format!("Stopped after writing {} files", written.len())); }
         let to = dest.join(&rel);
+        // A previously extracted directory must never redirect subsequent
+        // entries through a link outside the destination.
+        let mut parent = to.parent();
+        while let Some(p) = parent {
+            if let Ok(meta) = std::fs::symlink_metadata(p) {
+                if meta.file_type().is_symlink() { return Err(format!("{} contains a linked folder; unpacking stopped", rel.display())); }
+            }
+            if p == dest { break; }
+            parent = p.parent();
+        }
         if e.is_dir() {
-            crate::heard!(std::fs::create_dir_all(&to));
+            std::fs::create_dir_all(&to).map_err(|err| format!("I couldn't make {}: {err}", rel.display()))?;
             continue;
         }
         if let Some(p) = to.parent() {
-            crate::heard!(std::fs::create_dir_all(p));
+            std::fs::create_dir_all(p).map_err(|err| format!("I couldn't make {}: {err}", p.display()))?;
         }
         let data = read_entry(&bytes, e)?;
-        std::fs::write(&to, data).map_err(|err| format!("I couldn't write {}: {err}", rel.display()))?;
+        if data.len() as u64 != e.size { return Err(format!("{} has a different size than the archive claims", e.name)); }
+        if stop() { return Err(format!("Stopped after writing {} files", written.len())); }
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&to).map_err(|err| format!("I couldn't create {} without overwriting: {err}", rel.display()))?;
+        file.write_all(&data).and_then(|()| file.sync_all()).map_err(|err| format!("I couldn't save {}: {err}", rel.display()))?;
         written.push(to);
     }
     Ok(written)
@@ -189,9 +216,13 @@ pub fn unzip(zip: &Path, dest: &Path, cfg: &crate::files::FilesConfig) -> Result
 
 /// The words of a Word document (.docx is a zip of XML).
 pub fn docx_text(path: &Path) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("I can't open it: {e}"))?;
+    if std::fs::metadata(path).map_err(|e| format!("I can't inspect it: {e}"))?.len() > 64 * 1024 * 1024 {
+        return Err("this Word document exceeds the current 64 MiB reading limit".into());
+    }
+    let bytes = read_bounded(path, 64 * 1024 * 1024)?;
     let entries = entries_of(&bytes)?;
     let doc = entries.iter().find(|e| e.name == "word/document.xml").ok_or("that isn't a Word document inside")?;
+    if doc.size > 32 * 1024 * 1024 { return Err("the text inside this Word document exceeds the current 32 MiB reading limit".into()); }
     let xml = String::from_utf8_lossy(&read_entry(&bytes, doc)?).into_owned();
     let mut out = String::new();
     let mut rest = xml.as_str();
@@ -259,8 +290,9 @@ impl Verdict {
     }
 }
 
-/// Scan a file or a whole folder.
-pub fn scan(path: &Path, cfg: &ScanConfig) -> Verdict {
+
+pub fn scan_stoppable(path: &Path, cfg: &ScanConfig, stop: &dyn Fn() -> bool) -> Verdict {
+    if stop() { return Verdict::NotScanned("the scan was stopped before starting".into()); }
     if cfg.command.trim().is_empty() {
         return Verdict::NotScanned("there's no virus scanner set up on this machine".into());
     }
@@ -274,12 +306,16 @@ pub fn scan(path: &Path, cfg: &ScanConfig) -> Verdict {
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000); // no console window
     }
-    let out = match c.output() {
-        Ok(o) => o,
-        Err(e) => return Verdict::NotScanned(format!("the scanner wouldn't start: {e}")),
+    let out = crate::tools::run_scoped(&mut c, std::time::Duration::from_secs(180), 2 * 1024 * 1024, None, Some(stop));
+    let status = match &out.end {
+        crate::tools::ProcessEnd::Exited(status) if !out.truncated => *status,
+        crate::tools::ProcessEnd::Exited(_) => return Verdict::NotScanned("the scanner's output exceeded its capture budget; the result is unconfirmed".into()),
+        crate::tools::ProcessEnd::Stopped => return Verdict::NotScanned("the scan was stopped".into()),
+        crate::tools::ProcessEnd::TimedOut => return Verdict::NotScanned("the scan did not finish within 180 seconds".into()),
+        crate::tools::ProcessEnd::Failed(why) => return Verdict::NotScanned(format!("the scan did not finish: {why}")),
     };
     let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
-    match out.status.code() {
+    match status.code() {
         Some(0) => Verdict::Clean,
         Some(code) if code == cfg.threat_exit => Verdict::Threat(threat_named(&text)),
         Some(code) => Verdict::NotScanned(format!("the scanner stopped with code {code}")),

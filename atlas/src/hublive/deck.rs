@@ -53,7 +53,8 @@ impl Daemon<'_> {
         let now_wall = now as i64 + off;
         let mut events: Vec<(i64, String, String, hub::Mark)> = Vec::new();
         let start_of_day = crate::localclock::midnight(now, off);
-        for e in self.calendar.occurrences_between(start_of_day, start_of_day + 86_400) {
+        let calendar_available = self.calendar.availability_error().is_none();
+        for e in self.calendar.occurrences_between(start_of_day, start_of_day + 86_400).into_iter().filter(|_| calendar_available) {
             if day(e.start, off) != today && !e.all_day {
                 continue;
             }
@@ -84,7 +85,7 @@ impl Daemon<'_> {
             matches!(t.state, crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap)
         });
         let next = events.iter().find(|(w, _, _, m)| *m == hub::Mark::Later && *w >= now_wall);
-        let (now_line, sub, now_short) = if let Some(t) = running {
+        let (now_line, mut sub, now_short) = if let Some(t) = running {
             let more = self.queue.tasks.iter().filter(|t| !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed)).count().saturating_sub(1);
             (
                 sentence(&t.command),
@@ -119,6 +120,9 @@ impl Daemon<'_> {
             )
         };
 
+        if !calendar_available {
+            sub.push_str(" Calendar unavailable: today's events cannot be confirmed. Refresh or recover it.");
+        }
         // The last three things done, now, and the next three.
         let done: Vec<_> = events.iter().filter(|(w, ..)| *w <= now_wall).collect();
         let later: Vec<_> = events.iter().filter(|(w, ..)| *w > now_wall).collect();
@@ -134,7 +138,7 @@ impl Daemon<'_> {
 
         let asks = self.home_asks(now);
         let brief = self.brief_line(&asks, running.is_some(), &now_line);
-        let first_run = events.is_empty()
+        let first_run = calendar_available && events.is_empty()
             && self.workspace.is_empty()
             && self.workshop.projects.is_empty()
             && self.calendar.is_empty()

@@ -32,6 +32,12 @@ fn plat() -> MockPlatform {
 /// the model call itself.
 struct StubLlm;
 impl Llm for StubLlm {
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, _: &atlas::brain::ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<atlas::brain::ChatReply> {
+        let text = "Tide times at Ventura peak just after noon. Wear sandals.";
+        if !keep_going() || !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+        Ok(atlas::brain::ChatReply { text: text.into(), ..Default::default() })
+    }
     fn complete(&self, _system: &str, _user: &str) -> Result<String> {
         Ok("Tide times at Ventura peak just after noon. Wear sandals.".into())
     }

@@ -113,7 +113,16 @@ fn a_reminder_that_fired_can_be_snoozed() {
     // Nothing fired yet: "snooze" isn't taken.
     let _ = d.tick(NOW + 120);
     assert!(d.last_reminder_fired.as_ref().is_some_and(|(c, _)| c.contains("stretch")), "it fired");
-    let snoozed = d.turn("snooze", NOW + 130);
+    let mut snoozed = d.turn("snooze", NOW + 130);
+    if snoozed.contains("Waiting for local storage") {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let lines = d.tick(NOW + 130);
+            if let Some(terminal) = lines.into_iter().find(|line| line.contains("I'll say it again") || line.contains("waiting reminder change")) { snoozed = terminal; break; }
+            assert!(std::time::Instant::now() < deadline, "waiting snooze never completed");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
     assert_eq!(snoozed, "I'll say it again in 10 minutes.");
     let list = d.turn("what reminders do I have", NOW + 131);
     assert!(list.contains("stretch in 10 minutes"), "{list}");

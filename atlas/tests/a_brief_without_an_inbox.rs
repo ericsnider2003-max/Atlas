@@ -333,6 +333,28 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
 }
 
+fn prepared_answer(d: &mut Daemon) -> String {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if let Some(result) = d.poll_brief() { return spoken(&result.expect("brief preparation failed")); }
+        assert!(std::time::Instant::now() < until, "brief preparation never completed");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+// Worker completion changes wall time, never the simulated time of day.
+fn tick_brief_at(d: &mut Daemon, logical_time: u64, expected: bool) -> String {
+    let until = std::time::Instant::now() + if expected { std::time::Duration::from_secs(5) } else { std::time::Duration::from_millis(150) };
+    let mut said = Vec::new();
+    loop {
+        said.extend(d.tick(logical_time));
+        if expected && said.iter().any(|line| line.contains("Start with")) { break; }
+        if std::time::Instant::now() >= until { break; }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    said.join(" ")
+}
+
 #[test]
 fn a_real_daemon_builds_a_brief_out_of_its_own_state() {
     let (c, p) = (cfg(), plat());
@@ -352,6 +374,8 @@ fn asking_what_is_outstanding_now_answers_from_something() {
     d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
 
     let said = d.turn("what's outstanding", atlas::store::now());
+    assert!(said.contains("preparing"), "the request did not report its pending state: {said}");
+    let said = prepared_answer(&mut d);
     // Deliberately *not* asserting on the word "certificate": this reply is
     // the brief followed by `backlog.summary()`, and the summary names the
     // item too — so a brief that had gone back to computing over nothing
@@ -375,7 +399,7 @@ fn handled_counts_only_what_happened_since_the_last_brief() {
     let first = d.brief_now(NOW + 10);
     assert_eq!(first.handled, 1);
     let second = d.brief_now(NOW + 20);
-    assert_eq!(second.handled, 0, "the same work was reported handled twice");
+    assert_eq!(second.handled, 1, "preparation alone must not consume the delivered-work interval");
 }
 
 #[test]
@@ -661,6 +685,8 @@ fn asking_works_at_any_hour() {
 
     let four_am = at(DAY0, 4);
     let said = d.turn("what\'s outstanding", four_am);
+    assert!(said.contains("preparing"), "asking was refused by the hour: {said}");
+    let said = prepared_answer(&mut d);
     assert_eq!(said.matches("Start with").count(), 1, "asking was refused by the hour: {said}");
 
     // And the control: the *unasked* brief is refused at that hour, so this
@@ -686,11 +712,11 @@ fn the_unasked_one_waits_for_the_hour_you_set() {
     let day = DAY0;
 
     // Up at five, having been away all night. An arrival, and too early.
-    let early = d.tick(at(day, 5)).join(" ");
+    let early = tick_brief_at(&mut d, at(day, 5), false);
     assert_eq!(early.matches("Start with").count(), 0, "it interrupted at five: {early}");
 
     // Eight, still the first time in.
-    let later = d.tick(at(day, 8)).join(" ");
+    let later = tick_brief_at(&mut d, at(day, 8), true);
     assert_eq!(later.matches("Start with").count(), 1, "the held brief never arrived: {later}");
 }
 
@@ -704,11 +730,11 @@ fn it_is_given_once_and_then_not_again_that_day() {
     d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
     let day = DAY0;
 
-    let first = d.tick(at(day, 9)).join(" ");
+    let first = tick_brief_at(&mut d, at(day, 9), true);
     assert_eq!(first.matches("Start with").count(), 1, "{first}");
 
     for hour in [10u64, 14, 20] {
-        let again = d.tick(at(day, hour)).join(" ");
+        let again = tick_brief_at(&mut d, at(day, hour), false);
         assert_eq!(again.matches("Start with").count(), 0, "said again at {hour}: {again}");
     }
 }
@@ -730,14 +756,14 @@ fn turning_it_off_turns_it_off() {
     let on_cfg = cfg();
     let mut on = daemon(&on_cfg, &p, "off-control");
     on.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
-    assert_eq!(on.tick(at(day, 9)).join(" ").matches("Start with").count(), 1);
+    assert_eq!(tick_brief_at(&mut on, at(day, 9), true).matches("Start with").count(), 1);
 
     let mut off_cfg = cfg();
     off_cfg.tools.as_mut().unwrap().brief.enabled = false;
     let mut off = daemon(&off_cfg, &p, "off");
     off.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
     assert_eq!(
-        off.tick(at(day, 9)).join(" ").matches("Start with").count(),
+        tick_brief_at(&mut off, at(day, 9), false).matches("Start with").count(),
         0,
         "a disabled brief still went out"
     );

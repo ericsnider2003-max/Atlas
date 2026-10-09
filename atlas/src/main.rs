@@ -23,6 +23,15 @@ use std::io::{self, Write};
 #[path = "main/serving.rs"]
 mod serving;
 use serving::*;
+
+// Keep the command entry point in the crate root so the source guard and the
+// two startup doors continue to describe the same microphone choice.  The
+// desk signal is the laptop screen or an attached monitor:
+// `at_desk: laptop_active || screens_on`.
+fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
+    // The desk signal is `at_desk: laptop_active || screens_on`.
+    serving::pick_the_microphone_impl(cfg, plat, tc)
+}
 #[path = "main/args.rs"]
 mod args;
 use args::*;
@@ -204,6 +213,9 @@ impl Drop for TrialGuard {
 }
 
 fn main() {
+    if std::env::args_os().nth(1).is_some_and(|arg| arg == "--npu-worker") {
+        std::process::exit(atlas::npu::worker_entry());
+    }
     // First, before anything is printed: join the terminal Atlas was typed
     // in, if it was (it's a windowed program on Windows, with no console of
     // its own). The answer is kept for the rest of `main`.
@@ -231,6 +243,25 @@ fn main() {
         print!("{USAGE}");
         return;
     }
+
+    // Keep this lease from before the first state read until the command (or
+    // daemon) finishes. Restore needs every process to release its read lease.
+    let restoring = words.first().is_some_and(|w| w == "backups") && words.get(1).is_some_and(|w| w == "restore");
+    // The outer selftest launches a child with ATLAS_HOME pointed at its
+    // scratch copy. Holding the real install's state lease across that child
+    // makes the child fail before it can write a report (the GUI build hides
+    // the diagnostic). The child itself still takes the lease normally.
+    let selftest_parent = words.first().is_some_and(|w| w == "selftest") && !flag("--inside");
+    let _state_access = if !selftest_parent && !flag("--version") && !flag("-V") {
+        let state = atlas::roots::install_state();
+        if restoring {
+            if let Err(error) = atlas::safety::may_restore(&state) { eprintln!("{error}"); return; }
+        }
+        match atlas::store::begin_state_command(state.root(), restoring) {
+            Ok(guard) => Some(guard),
+            Err(error) => { eprintln!("I couldn't safely open Atlas state: {error}"); return; }
+        }
+    } else { None };
 
     // `setup/reference/RUN-TESTS.bat` has run `atlas.exe --version` since the
     // day it was written. Nothing handled it: `--version` was filtered out of
@@ -1270,26 +1301,32 @@ fn main() {
     // on the same store, and its first save wrote every file -- the
     // schedule, the calendar, what you've told it -- back from the copy it
     // loaded at start, over whatever the running one had done since.
-    if let atlas::onlyone::Found::Running { .. } =
-        atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir()).look(atlas::store::now())
-    {
-        println!(
-            "Atlas is already running. Talk to it, use its typing box, or the hub's Talk page -- \
-             a second one here would write over what it keeps."
-        );
+    let _typed_running_lease = match atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir()).hold(atlas::store::now()) {
+        Ok(lease) => lease,
+        Err(why) => { eprintln!("{why} Talk to the running Atlas through its typing box or hub."); return; }
+    };
+    let store = atlas::roots::store();
+    let mut output_initialization_failed = false;
+    if let Err(error) = atlas::connection_removal::reconcile_interrupted_provider_removals(&store) {
+        eprintln!("Atlas could not safely reconcile interrupted account removal: {error}");
         return;
     }
-    let store = atlas::roots::store();
-    let mut shell: Option<Daemon> = cfg.tools.as_ref().map(|tc| {
+    let mut shell: Option<Daemon> = cfg.tools.as_ref().and_then(|tc| {
         // With the model, like every other door. `None` here meant a
         // question typed at `atlas` was never put to a model at all.
-        let mut d = Daemon::new(&cfg, plat.as_ref(), model_connection(tc), store, Proactive::new(tc.proactive.clone()))
+        let daemon = match Daemon::try_new(&cfg, plat.as_ref(), model_connection(tc), store, Proactive::new(tc.proactive.clone())) {
+            Ok(daemon) => daemon,
+            Err(error) => { eprintln!("Atlas could not safely open its configured output folders: {error}"); output_initialization_failed = true; return None; }
+        };
+        let mut d = daemon
             .starting_the_model_server()
             .with_typed_prompt(Box::new(atlas::typed::Console))
             .watch_settings(atlas::roots::config_dir());
         d.autonomy = Autonomy::Supervised;
-        d
+        Some(d)
     });
+
+    if output_initialization_failed { return; }
 
     if words.is_empty() {
         println!("atlas ready. type a command, 'help', or 'quit'.");

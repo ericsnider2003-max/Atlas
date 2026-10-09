@@ -37,7 +37,8 @@ fn the_commit_that_broke_it_is_found_without_moving_your_checkout() {
     } else {
         ["grep", "-qx", "ok", "state.txt"].iter().map(|s| s.to_string()).collect()
     };
-    let o = atlas::bisect::what_broke(&repo, &test, 64, 30).expect("it ran");
+    let stop = || false;
+    let o = atlas::bisect::what_broke_until(&repo, &test, 64, 30, std::time::Duration::from_secs(30), &stop).expect("it ran");
     let said = atlas::bisect::told(&repo, "the state check", &o);
     assert!(said.contains("\"change 7"), "{said}");
     assert!(said.contains("state.txt"), "names the files it changed: {said}");

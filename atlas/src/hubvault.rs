@@ -45,11 +45,23 @@ pub struct ShownOnce {
     said_space: Option<String>,
     /// Marks handed out with the passphrase forms and not yet spent.
     marks: Vec<String>,
+    signing_marks: Vec<(String, String)>,
     /// The crew's id for a survey that is running.
     surveying: Option<u64>,
 }
 
 impl ShownOnce {
+    pub fn mark_signing(&mut self, what: &str) -> String {
+        let mark = crate::server::new_token().unwrap_or_default();
+        if !mark.is_empty() { self.signing_marks.push((mark.clone(), what.into())); }
+        if self.signing_marks.len() > MARKS { self.signing_marks.remove(0); }
+        mark
+    }
+    pub fn spend_signing(&mut self, nonce: &str, what: &str) -> bool {
+        if let Some(i) = self.signing_marks.iter().position(|(mark, action)| !nonce.is_empty() && mark == nonce && action == what) {
+            self.signing_marks.remove(i); true
+        } else { false }
+    }
     /// A fresh mark for one form.
     pub fn mark(&mut self) -> String {
         let m = crate::server::new_token().unwrap_or_else(|_| format!("m{}", crate::store::now()));
@@ -93,6 +105,113 @@ pub struct Survey {
 /// The two that are said the same way from every form on the vault section.
 const ALREADY_SENT: &str = "That form had already been sent, so I didn't act on it again. Nothing changed.";
 
+#[cfg(test)]
+mod signing_form_tests {
+    use super::*;
+    #[test]
+    fn legacy_receipt_and_retained_unknown_attempts_are_displayed_without_claiming_resolution() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!("atlas-signing-receipt-ui-{}-{}", std::process::id(), crate::store::now()));
+        let store = crate::store::Store::new(root.clone());
+        let mut d = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        d.vault_home = store.clone();
+        store.save("signing_protection_receipt", &serde_json::json!({"operation":"protect","status":"pending","message":"Original retained; no final receipt."})).unwrap();
+        let legacy = d.vault_section_live();
+        assert!(legacy.contains("Outcome unconfirmed") && !legacy.contains("Verified saved result"));
+        assert!(legacy.contains("Selected file was not recorded"));
+        store.save("signing_protection_receipt", &serde_json::json!({"operation":"export","status":"verified","message":"Current recovery copy verified.","target":"C:/synthetic/<script>recovery.json","prior_unconfirmed":[{"operation_id":"opaque-old","operation":"protect","message":"Earlier <attempt> still needs inspection.","target":"Owner (C:/synthetic/<script>owner.key)"}]})).unwrap();
+        let html = d.vault_section_live();
+        assert!(html.contains("Verified saved result") && html.contains("Earlier outcomes still unconfirmed"));
+        assert!(html.contains("Earlier &lt;attempt&gt;") && !html.contains("Earlier <attempt>"));
+        assert!(!html.contains("opaque-old"));
+        assert!(html.contains("C:/synthetic/&lt;script&gt;recovery.json") && html.contains("C:/synthetic/&lt;script&gt;owner.key"));
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("does not resolve these earlier attempts"));
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn failed_passphrase_and_recovery_saves_preserve_cached_owner_identity() {
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().vault.open_on_this_login = false;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!("atlas-vault-form-ack-{}-{}", std::process::id(), crate::store::now()));
+        let state = crate::store::Store::new(root.clone());
+        let mut d = Daemon::new(&cfg, &platform, None, state.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        d.vault_home = state.clone();
+        let phrase = "synthetic violet lantern orbit canyon willow";
+        crate::vault::set_passphrase(&mut d.vault, "", phrase, phrase, &cfg.tools.as_ref().unwrap().vault, crate::store::now()).unwrap();
+        d.vault.save(&state).unwrap();
+        let html = d.vault_section_live();
+        assert!(html.contains("action='/hub/signing'") && html.contains("for='signing-protect-path'") && html.contains("for='signing-export-unlock'"));
+        assert!(html.contains("all protected signing copies") && html.contains("No file is selected by default"));
+        assert!(!html.contains(phrase));
+        let before = serde_json::to_value(&d.vault).unwrap();
+        let path = root.join("vault.json");
+        let disk = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        for what in ["change", "recovery"] {
+            let nonce = d.shown_once.mark();
+            let new = "synthetic cedar galaxy river meadow planet";
+            d.vault_post(what, &Secret::new(phrase), &Secret::new(new), &Secret::new(new), &nonce);
+            assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
+            assert!(d.shown_once.key.is_none());
+            assert!(d.shown_once.said_vault.as_ref().is_some_and(|said| said.contains("couldn't confirm the saved")));
+        }
+        std::fs::remove_dir(&path).unwrap();
+        std::fs::write(&path, &disk).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), disk);
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let locked = state.clone();
+        let holder = std::thread::spawn(move || {
+            let _guard = locked.transaction().unwrap();
+            held_tx.send(()).unwrap();
+            release_rx.recv_timeout(std::time::Duration::from_secs(10)).expect("release fixture root lock");
+        });
+        held_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        let nonce = d.shown_once.mark();
+        d.vault_post("recovery", &Secret::new(phrase), &Secret::default(), &Secret::default(), &nonce);
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
+        assert_eq!(std::fs::read(&path).unwrap(), disk, "a busy root must preserve the actual saved owner vault");
+        assert!(d.shown_once.key.is_none());
+        let mut restarted = crate::vault::Vault::load(&state);
+        assert!(restarted.open(phrase, crate::store::now(), &cfg.tools.as_ref().unwrap().vault).is_ok());
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn signing_nonce_is_one_use_and_cannot_authorize_another_action_or_vault_form() {
+        let mut shown = ShownOnce::default();
+        let protect = shown.mark_signing("protect");
+        assert!(!protect.is_empty());
+        assert!(!shown.spend(&protect));
+        assert!(!shown.spend_signing(&protect, "export"));
+        assert!(shown.spend_signing(&protect, "protect"));
+        assert!(!shown.spend_signing(&protect, "protect"));
+        let ordinary = shown.mark();
+        assert!(!shown.spend_signing(&ordinary, "protect"));
+    }
+    #[test]
+    fn an_uninitialized_owner_vault_never_offers_signing_file_actions() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!("atlas-signing-page-owner-{}-{}", std::process::id(), crate::store::now()));
+        let mut d = Daemon::new(&cfg, &platform, None, crate::store::Store::new(root.clone()), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let html = d.vault_section_live();
+        assert!(!d.vault.has_a_passphrase());
+        assert!(!html.contains("action='/hub/signing'"));
+        assert!(html.contains("established owner's vault passphrase"));
+        assert!(d.shown_once.signing_marks.is_empty());
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 impl Daemon<'_> {
     fn back_to_vault(&mut self, said: String) -> Reply {
         self.shown_once.said_vault = Some(said);
@@ -132,7 +251,40 @@ impl Daemon<'_> {
             key_to_show: self.shown_once.key.take(),
             said: self.shown_once.said_vault.take(),
         };
-        hub::vault_section(&v)
+        let mut page = hub::vault_section(&v);
+        page.push_str("<section id=signing aria-labelledby=signing-heading><h2 id=signing-heading>Signing files</h2><p>Protect an explicitly selected local file or export a portable recovery copy. Originals stay in place. These actions do not sign or publish anything.</p>");
+        match self.vault_home.load_checked::<crate::hublive::SigningReceipt>("signing_protection_receipt") {
+            Ok(Some(receipt)) if ["protect", "export"].contains(&receipt.operation.as_str()) && ["pending", "verified", "unconfirmed", "failed"].contains(&receipt.status.as_str()) => {
+                let status = match receipt.status.as_str() { "verified" => "Verified saved result", "failed" => "Action refused before a saved change", _ => "Outcome unconfirmed — inspect before retrying" };
+                page.push_str(&format!("<p class=notice role=status>{status}: {}</p>", hub::esc(&receipt.message)));
+                let target = if receipt.target.is_empty() { "Selected file was not recorded; inspect the copies manually." } else { &receipt.target };
+                page.push_str(&format!("<p>Selected file: {}</p>", hub::esc(target)));
+                if !receipt.prior_unconfirmed.is_empty() {
+                    page.push_str("<div role=status><h3>Earlier outcomes still unconfirmed</h3><p>A later successful action does not resolve these earlier attempts. Inspect the protected copies or selected recovery destination before repeating them.</p><ul>");
+                    for earlier in receipt.prior_unconfirmed.iter().take(16) {
+                        let operation = match earlier.operation.as_str() { "protect" => "File protection", "export" => "Recovery export", _ => "Signing action" };
+                        let target = if earlier.target.is_empty() { "Selected file was not recorded; inspect the copies manually." } else { &earlier.target };
+                        page.push_str(&format!("<li>{operation}: {}<br>Selected file: {}</li>", hub::esc(&earlier.message), hub::esc(target)));
+                    }
+                    page.push_str("</ul></div>");
+                    if receipt.prior_unconfirmed.len() >= 16 { page.push_str("<p role=alert>New signing work is held because sixteen earlier outcomes remain unconfirmed.</p>"); }
+                }
+            }
+            Ok(None) => {},
+            Ok(Some(_)) | Err(_) => page.push_str("<p class=notice role=alert>Signing recovery status is unavailable. No successful result can be confirmed from the saved receipt.</p>"),
+        }
+        if !v.has_passphrase || v.handed_over {
+            page.push_str("<p role=status>Signing file actions require the established owner's vault passphrase. Opening on this Windows login alone is insufficient. No file action is available here yet.</p></section>");
+            return page;
+        }
+        for (what, title, path_name, path_label, button) in [("protect", "Protect a local file", "source", "Source file — full local path", "Protect selected file"), ("export", "Export a recovery copy", "destination", "Destination file — full local path", "Export and verify recovery copy")] {
+            let nonce = self.shown_once.mark_signing(what);
+            let selection = if what == "protect" { "<label for='signing-protect-name'>Signing file name — letters, numbers, dot, underscore or hyphen</label><input id='signing-protect-name' name=name required maxlength=80 pattern='[A-Za-z0-9._-]+'>" } else { "<p>This exports all protected signing copies. Keep the recovery copy somewhere you control; Atlas does not move it off this laptop for you.</p>" };
+            let path_help = if what == "protect" { "In File Explorer, select your source file and paste its full local path here." } else { "Choose a local folder you control and enter its full path with a new recovery file name." };
+            page.push_str(&format!("<form method=post action='/hub/signing' autocomplete=off><h3>{title}</h3><input type=hidden name=what value='{what}'><input type=hidden name=nonce value='{}'>{selection}<label for='signing-{what}-path'>{path_label}</label><input id='signing-{what}-path' name='{path_name}' required spellcheck=false aria-describedby='signing-{what}-help'><p id='signing-{what}-help'>{path_help} No file is selected by default; existing destination files are never overwritten. Network and device paths are unsupported.</p><label for='signing-{what}-unlock'>Vault passphrase or recovery key — required for this action</label><input id='signing-{what}-unlock' type=password name=unlock required autocomplete=off><label><input type=checkbox name=recovery value=true> I am using the vault recovery key</label><p>Fresh verification is required for each action. Review the selected file before continuing.</p><button>{button}</button></form>", hub::esc(&nonce)));
+        }
+        page.push_str("</section>");
+        page
     }
 
     /// The Accounts page with its vault section first.
@@ -182,15 +334,17 @@ impl Daemon<'_> {
         }
         let cfg = self.tools_cfg().vault.clone();
         let now = crate::store::now();
-        let state = crate::roots::install_state();
+        let state = self.vault_home.clone();
         let said = match what {
             "set" | "change" => {
                 if what == "set" && has {
                     "There's a passphrase already — change it below, with the current one.".to_string()
                 } else {
-                    match crate::vault::set_passphrase(&mut self.vault, old.reveal(), new.reveal(), again.reveal(), &cfg, now) {
-                        Ok((said, issued)) => match self.vault.save(&state) {
+                    let mut prepared = self.vault.clone();
+                    match crate::vault::set_passphrase(&mut prepared, old.reveal(), new.reveal(), again.reveal(), &cfg, now) {
+                        Ok((said, issued)) => match prepared.save(&state) {
                             Ok(()) => {
+                                self.vault = prepared;
                                 self.log.info("vault passphrase set from the hub");
                                 if issued.is_some() {
                                     self.shown_once.key = issued;
@@ -199,23 +353,26 @@ impl Daemon<'_> {
                             }
                             // Not kept, so the key made with it is not shown:
                             // it would open nothing after a restart.
-                            Err(e) => format!("I couldn't keep that ({e}), so nothing changed on disk. Try again."),
+                            Err(e) => format!("I couldn't confirm the saved change ({e}). The previous in-memory vault is retained; no new recovery key is shown. Check the saved vault before trying again."),
                         },
                         Err(why) => why,
                     }
                 }
             }
-            "recovery" => match crate::vault::make_recovery_key(&mut self.vault, old.reveal(), &cfg, now) {
-                Ok(code) => match self.vault.save(&state) {
+            "recovery" => {
+                let mut prepared = self.vault.clone();
+                match crate::vault::make_recovery_key(&mut prepared, old.reveal(), &cfg, now) {
+                Ok(code) => match prepared.save(&state) {
                     Ok(()) => {
+                        self.vault = prepared;
                         self.log.info("new vault recovery key made from the hub");
                         self.shown_once.key = Some(code);
                         "A new recovery key is made, and any old one has stopped working.".to_string()
                     }
-                    Err(e) => format!("I made a key and couldn't keep it ({e}), so the old one still stands."),
+                    Err(e) => format!("I couldn't confirm the saved recovery-key change ({e}). The previous in-memory vault is retained and the new key is not shown. Check the saved vault before trying again."),
                 },
                 Err(why) => why,
-            },
+            }},
             "unlock" => {
                 // Once, for a vault made before it opened on your sign-in:
                 // the passphrase, or failing that the recovery key, and then

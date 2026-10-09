@@ -135,15 +135,14 @@ pub fn diff_of(path: &str, before: &str, after: &str) -> String {
 }
 
 /// Is cargo-mutants installed where `cargo` runs?
-pub fn available(root: &std::path::Path) -> bool {
-    crate::tools::command("cargo")
-        .args(["mutants", "--version"])
-        .current_dir(root)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+pub fn available(root: &std::path::Path) -> bool { available_controlled(root, None) }
+
+fn available_controlled(root: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> bool {
+    let mut c = crate::tools::command("cargo");
+    c.args(["mutants", "--version"]).current_dir(root);
+    let stop = || budget.is_some_and(|b| b.stopping());
+    let cap = std::time::Duration::from_secs(10);
+    crate::tools::run_scoped(&mut c, budget.map_or(cap, |b| b.remaining(cap)), 64 * 1024, None, Some(&stop)).said(1000).0
 }
 
 /// How long a diff-scoped run may take.
@@ -161,11 +160,13 @@ pub enum Checked {
 }
 
 /// Mutate only the lines in `diff`, in the sandbox copy at `root`.
-pub fn check_diff(root: &std::path::Path, diff: &str) -> Checked {
+
+pub(crate) fn check_diff_controlled(root: &std::path::Path, diff: &str, budget: Option<&crate::tools::WorkBudget<'_>>) -> Checked {
+    if let Some(b) = budget { if let Err(why) = b.check() { return Checked::NotRun(why); } }
     if diff.trim().is_empty() {
         return Checked::AllCaught;
     }
-    if !available(root) {
+    if !available_controlled(root, budget) {
         return Checked::NotRun("cargo-mutants isn't installed (`cargo install cargo-mutants`)".into());
     }
     let diff_file = root.join("atlas-change.diff");
@@ -187,11 +188,13 @@ pub fn check_diff(root: &std::path::Path, diff: &str) -> Checked {
             "--output".into(),
             out.display().to_string(),
         ],
-        timeout_secs: RUN_LIMIT_SECS,
+        timeout_secs: budget.map_or(RUN_LIMIT_SECS, |b| b.remaining(std::time::Duration::from_secs(RUN_LIMIT_SECS)).as_secs().max(1)),
         ..Default::default()
     };
     let mut sb = crate::sandbox::Sandbox { root: root.to_path_buf(), name: "mutants".into(), attempts: Vec::new() };
-    let a = sb.run(&tool, &Default::default(), 4000);
+    let stop = || budget.is_some_and(|b| b.stopping());
+    let a = sb.run_controlled(&tool, &Default::default(), 4000, Some(&stop));
+    if let Some(b) = budget { if let Err(why) = b.check() { return Checked::NotRun(why); } }
     if a.output.contains("stopped after") || a.output.contains("could not start") {
         return Checked::NotRun(a.output.lines().next().unwrap_or("it didn't finish").to_string());
     }

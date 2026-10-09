@@ -414,51 +414,374 @@ pub struct Moved {
 }
 
 pub const MOVED_RECORD: &str = "moved_folders";
+pub const RUNTIME_MOVE_INTENTS: &str = "runtime_move_intents";
 
-/// Copy a folder to its new home, check every byte arrived, then remove the
-/// original and leave a note where it was saying where it went. Nothing is
-/// removed unless the copy matches.
-pub fn move_folder(from: &std::path::Path, to: &std::path::Path, now: u64) -> Result<Moved, String> {
-    fn copy(a: &std::path::Path, b: &std::path::Path) -> std::io::Result<u64> {
-        std::fs::create_dir_all(b)?;
-        let mut n = 0;
-        for e in std::fs::read_dir(a)? {
-            let e = e?;
-            let (src, dst) = (e.path(), b.join(e.file_name()));
-            if e.file_type()?.is_dir() {
-                n += copy(&src, &dst)?;
-            } else {
-                n += std::fs::copy(&src, &dst)?;
-            }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeMoveIntent {
+    pub history_id: u64,
+    pub moved: Moved,
+    pub fingerprint: String,
+    #[serde(default)]
+    pub completed: bool,
+    #[serde(default)]
+    pub quarantine: String,
+}
+
+#[cfg(windows)]
+struct RuntimeFolderCohort { files: Vec<std::fs::File>, directories: Vec<std::fs::File> }
+
+#[cfg(windows)]
+impl RuntimeFolderCohort {
+    fn hold(root: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<Self, String> {
+        use std::os::windows::fs::OpenOptionsExt;
+        fn visit(path: &std::path::Path, cohort: &mut RuntimeFolderCohort, stop: &dyn Fn() -> bool) -> Result<(), String> {
+            if stop() { return Err("Runtime movement stopped before reservation".into()); }
+            if cohort.files.len() + cohort.directories.len() >= 100_000 { return Err("Runtime folder has too many objects to reserve safely".into()); }
+            let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+            if metadata.file_type().is_symlink() { return Err("Runtime folders containing symbolic links cannot be reserved".into()); }
+            // DELETE access supports rename/disposition of this exact object.
+            // Denying WRITE sharing refuses existing writers and future writes
+            // for the entire copy/verification/deletion lifetime.
+            let handle = std::fs::OpenOptions::new().read(true).access_mode(0x8000_0000 | 0x0001_0000).share_mode(1 | 4).custom_flags(0x0020_0000 | if metadata.is_dir() { 0x0200_0000 } else { 0 }).open(path)
+                .map_err(|e| format!("Runtime folder has an active writer or cannot be reserved ({}: {e}); no file moved", path.display()))?;
+            let held = handle.metadata().map_err(|e| e.to_string())?;
+            if held.file_type().is_symlink() || held.is_dir() != metadata.is_dir() || held.is_file() != metadata.is_file() { return Err("Runtime object changed type while being reserved; no file moved".into()); }
+            if metadata.is_dir() {
+                cohort.directories.push(handle);
+                for entry in std::fs::read_dir(path).map_err(|e| e.to_string())? { visit(&entry.map_err(|e| e.to_string())?.path(), cohort, stop)?; }
+            } else if metadata.is_file() { cohort.files.push(handle); }
+            else { return Err("Runtime folder contains an unsupported object".into()); }
+            Ok(())
         }
-        Ok(n)
+        let mut cohort = Self { files: Vec::new(), directories: Vec::new() };
+        visit(root, &mut cohort, stop)?; Ok(cohort)
     }
-    fn bytes(p: &std::path::Path) -> u64 {
-        let Ok(rd) = std::fs::read_dir(p) else { return 0 };
-        rd.flatten()
-            .map(|e| if e.path().is_dir() { bytes(&e.path()) } else { e.metadata().map(|m| m.len()).unwrap_or(0) })
-            .sum()
+
+    fn reserve(self, destination: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<Self, String> {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::{Foundation::HANDLE, Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle}};
+        let mut directories = self.directories;
+        let root = directories.remove(0);
+        // Windows refuses parent-directory rename while children are open.
+        // Keep the exact root object, release the preflight child cohort, and
+        // rename before reacquiring write-denying child handles. A writer that
+        // opens during this interval either prevents rename or fails the new
+        // cohort/hash check; neither route removes any source bytes.
+        drop(self.files); drop(directories);
+        if stop() { return Err("Runtime movement stopped before reservation; original retained".into()); }
+        Self::quarantine(&root, destination)?;
+        let mut reserved = Self::hold(destination, stop)?;
+        fn identity(file: &std::fs::File) -> Result<(u32, u32, u32), String> {
+            let mut info = BY_HANDLE_FILE_INFORMATION::default();
+            unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut info) }.map_err(|e| e.to_string())?;
+            Ok((info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow))
+        }
+        if identity(&root)? != identity(&reserved.directories[0])? { return Err("The quarantined runtime root was replaced; all bytes were retained".into()); }
+        reserved.directories[0] = root;
+        Ok(reserved)
     }
-    if !from.is_dir() {
-        return Err(format!("{} isn't there to move", from.display()));
+
+    fn quarantine(root: &std::fs::File, destination: &std::path::Path) -> Result<(), String> {
+        if crate::safety::rename_held_no_replace(root, destination).map_err(|e| e.to_string())? { Ok(()) }
+        else { Err("Runtime folder reservation failed without replacing another folder; original retained".into()) }
     }
-    let before = bytes(from);
-    copy(from, to).map_err(|e| format!("the copy to {} failed: {e}", to.display()))?;
-    let after = bytes(to);
-    if after != before {
-        return Err(format!(
-            "the copy came to {after} bytes, not {before}, so I've left the original where it was"
-        ));
+
+    fn remove_verified_objects(self, quarantine: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::{Foundation::{BOOLEAN, HANDLE}, Storage::FileSystem::{FileDispositionInfo, FILE_DISPOSITION_INFO, SetFileInformationByHandle, GetFinalPathNameByHandleW, GETFINALPATHNAMEBYHANDLE_FLAGS}};
+        fn dispose(file: std::fs::File, quarantine: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<(), String> {
+            if stop() { return Err("Runtime movement stopped; remaining reserved originals are retained".into()); }
+            let mut buffer = vec![0u16; 32_768];
+            let length = unsafe { GetFinalPathNameByHandleW(HANDLE(file.as_raw_handle()), &mut buffer, GETFINALPATHNAMEBYHANDLE_FLAGS(0)) } as usize;
+            if length == 0 || length >= buffer.len() { return Err("A reserved object no longer has a verifiable location; it was retained".into()); }
+            let actual = String::from_utf16(&buffer[..length]).map_err(|_| "A reserved object location cannot be decoded safely")?.to_lowercase();
+            let root = quarantine.to_string_lossy().to_lowercase();
+            if actual != root && !actual.starts_with(&(root + "\\")) { return Err("A reserved runtime object was moved outside quarantine; it was retained".into()); }
+            let disposition = FILE_DISPOSITION_INFO { DeleteFile: BOOLEAN(1) };
+            // Delete the held object, never a pathname that another program
+            // could replace. A directory with any new child refuses deletion.
+            unsafe { SetFileInformationByHandle(HANDLE(file.as_raw_handle()), FileDispositionInfo, (&disposition as *const FILE_DISPOSITION_INFO).cast(), std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32) }
+                .map_err(|e| format!("New or changed runtime entries remain in the reserved source folder: {e}"))?;
+            drop(file); Ok(())
+        }
+        for file in self.files { dispose(file, quarantine, stop)?; }
+        for directory in self.directories.into_iter().rev() { dispose(directory, quarantine, stop)?; }
+        Ok(())
     }
-    std::fs::remove_dir_all(from).map_err(|e| format!("copied, but I couldn't clear the old folder: {e}"))?;
-    let note = format!(
-        "This folder was moved by Atlas to {} ({} MB), to make room on this drive.\n\
-         Atlas's settings point at the new place. Ask Atlas \"where did you move\" to hear it again.\n",
-        to.display(),
-        before / 1_000_000
-    );
-    crate::kept!(std::fs::write(from.with_extension("MOVED.txt"), note));
-    Ok(Moved { from: from.display().to_string(), to: to.display().to_string(), mb: before / 1_000_000, at: now })
+}
+
+pub(crate) fn folder_fingerprint(folder: &std::path::Path, stopped: &dyn Fn() -> bool) -> Result<(String, u64), String> {
+    use sha2::{Digest, Sha256};
+    fn visit(path: &std::path::Path, hash: &mut Sha256, bytes: &mut u64, count: &mut usize, stop: &dyn Fn() -> bool) -> Result<(), String> {
+        use std::io::Read;
+        if stop() { return Err("Folder movement stopped; original retained".into()); }
+        *count += 1;
+        if *count > 100_000 { return Err("Folder contains too many entries to verify safely".into()); }
+        let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+        if metadata.file_type().is_symlink() { return Err("Symbolic links cannot be moved as a runtime folder".into()); }
+        if metadata.is_dir() {
+            hash.update(b"directory");
+            let mut entries = std::fs::read_dir(path).map_err(|e| e.to_string())?.collect::<std::io::Result<Vec<_>>>().map_err(|e| e.to_string())?;
+            entries.sort_by_key(|entry| entry.file_name());
+            hash.update((entries.len() as u64).to_le_bytes());
+            for entry in entries {
+                let name = entry.file_name().into_string().map_err(|_| "Folder has a file name that cannot be recorded safely")?;
+                hash.update((name.len() as u64).to_le_bytes()); hash.update(name.as_bytes());
+                visit(&entry.path(), hash, bytes, count, stop)?;
+            }
+        } else if metadata.is_file() {
+            hash.update(b"file"); hash.update(metadata.len().to_le_bytes());
+            let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+            let mut buffer = [0u8; 64 * 1024];
+            let mut read = 0u64;
+            loop {
+                if stop() { return Err("Folder movement stopped; original retained".into()); }
+                let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
+                if n == 0 { break; }
+                hash.update(&buffer[..n]); read += n as u64;
+            }
+            if read != metadata.len() { return Err("A runtime file changed while being verified".into()); }
+            *bytes = bytes.checked_add(read).ok_or("Runtime folder byte count overflowed")?;
+        } else { return Err("Runtime folder contains an unsupported file type".into()); }
+        Ok(())
+    }
+    if !std::fs::symlink_metadata(folder).map_err(|e| e.to_string())?.is_dir() { return Err("The runtime folder is not a directory".into()); }
+    let mut hash = Sha256::new(); let mut bytes = 0; let mut count = 0;
+    visit(folder, &mut hash, &mut bytes, &mut count, stopped)?;
+    Ok((format!("{:x}", hash.finalize()), bytes))
+}
+
+/// Reserve a recovery identity before any file mutation. An incomplete intent
+/// is never replayed automatically: its original and destination remain known.
+#[cfg(not(windows))]
+pub fn move_folder_durably(_store: &crate::store::Store, _from: &std::path::Path, _to: &std::path::Path, _now: u64, _stopped: &dyn Fn() -> bool) -> Result<Moved, String> {
+    Err("Runtime-folder reservation is unavailable on this platform; original retained".into())
+}
+
+#[cfg(windows)]
+pub fn move_folder_durably(store: &crate::store::Store, from: &std::path::Path, to: &std::path::Path, now: u64, stopped: &dyn Fn() -> bool) -> Result<Moved, String> {
+    let cohort = RuntimeFolderCohort::hold(from, stopped)?;
+    let source_root = std::fs::canonicalize(from).map_err(|e| e.to_string())?;
+    let destination_parent = prepare_move_parent(to.parent().ok_or("The destination has no parent folder")?, &source_root)?;
+    if destination_parent.starts_with(&source_root) { return Err("A runtime folder cannot be moved inside itself; original retained".into()); }
+    let (fingerprint, bytes) = folder_fingerprint(from, stopped)?;
+    let moved = Moved { from: from.display().to_string(), to: to.display().to_string(), mb: bytes / 1_000_000, at: now };
+    let guard = store.transaction().map_err(|e| format!("Recovery storage was unavailable before movement; no file moved: {e}"))?;
+    let _: Vec<Moved> = store.load_checked(MOVED_RECORD).map_err(|e| format!("Saved movement destinations cannot be read; no file moved: {e}"))?.unwrap_or_default();
+    let mut intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).map_err(|e| e.to_string())?.unwrap_or_default();
+    if intents.iter().any(|intent| !intent.completed && (intent.moved.from == moved.from || intent.moved.to == moved.to)) { return Err("An earlier movement has an unresolved recovery intent; inspect its original and destination before trying again".into()); }
+    let mut history: crate::undo::History = store.load_checked("undo_history").map_err(|e| e.to_string())?.unwrap_or_default();
+    let history_id = history.note(&format!("Reserved runtime folder move from {} to {}; completion is recorded separately", from.display(), to.display()), "files", crate::undo::Undo::You(format!("Inspect {} and {}. Return the saved folder only after verifying its contents; Atlas never retries this move automatically.", from.display(), to.display())), true, now);
+    history.save_merged(store).map_err(|e| e.to_string())?;
+    let quarantine = std::fs::canonicalize(from.parent().ok_or("Runtime source has no parent")?).map_err(|e| e.to_string())?.join(format!(".atlas-reserved-runtime-{}-{history_id}", std::process::id()));
+    intents.push(RuntimeMoveIntent { history_id, moved: moved.clone(), fingerprint: fingerprint.clone(), completed: false, quarantine: quarantine.display().to_string() });
+    store.save(RUNTIME_MOVE_INTENTS, &intents).map_err(|e| format!("The movement intent could not be saved; no file moved: {e}"))?;
+    drop(guard);
+    #[cfg(windows)]
+    {
+        if stopped() { return Err("Runtime movement stopped before source reservation; original retained".into()); }
+        match std::fs::symlink_metadata(to) {
+            Ok(_) => return Err("The runtime destination already exists; original and destination retained".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(error.to_string()),
+        }
+        let cohort = cohort.reserve(&quarantine, stopped).map_err(|error| format!("Runtime reservation may need inspection at {}: {error}; its durable intent is retained", quarantine.display()))?;
+        let transfer = (|| -> Result<(), String> {
+            let verify = |copy: &std::path::Path| -> crate::error::Result<()> {
+                let source = folder_fingerprint(&quarantine, stopped).map_err(crate::error::AtlasError::Platform)?;
+                let copied = folder_fingerprint(copy, stopped).map_err(crate::error::AtlasError::Platform)?;
+                if source.0 != fingerprint || copied != source { return Err(crate::error::AtlasError::Platform("Runtime source changed after reservation; all reserved bytes are retained".into())); }
+                Ok(())
+            };
+            crate::safety::copy_without_overwrite_verified(&quarantine, to, &|| stopped(), &verify).map_err(|e| e.to_string())?;
+            cohort.remove_verified_objects(&quarantine, stopped)?;
+            save_location_note(from, to)
+        })();
+        transfer.map_err(|error| format!("Runtime move requires inspection of {} and {}: {error}. Its durable recovery intent is retained", quarantine.display(), to.display()))?;
+    }
+    let _guard = store.transaction().map_err(|e| format!("Folder reached {}; its recovery intent remains pending because its completion receipt could not be saved: {e}", to.display()))?;
+    let mut current: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).map_err(|e| e.to_string())?.unwrap_or_default();
+    let intent = current.iter_mut().find(|intent| intent.history_id == history_id && intent.fingerprint == fingerprint && intent.moved == moved).ok_or("Folder moved but its recovery identity changed; inspect the saved intent")?;
+    let mut record: Vec<Moved> = store.load_checked(MOVED_RECORD).map_err(|e| e.to_string())?.unwrap_or_default();
+    if !record.contains(&moved) { record.push(moved.clone()); }
+    store.save(MOVED_RECORD, &record).map_err(|e| format!("Folder moved, but its destination receipt could not be saved; the pending recovery intent is retained: {e}"))?;
+    intent.completed = true;
+    store.save(RUNTIME_MOVE_INTENTS, &current).map_err(|e| format!("Folder moved and its destination is saved, but its intent remains pending: {e}"))?;
+    Ok(moved)
+}
+
+/// Historical entry point retained for compatibility with older Atlas builds.
+#[allow(dead_code)]
+pub fn move_folder() {}
+
+
+
+fn prepare_move_parent(parent: &std::path::Path, source: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let mut missing = Vec::new(); let mut existing = parent;
+    loop {
+        match std::fs::symlink_metadata(existing) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err("The destination parent is not an ordinary directory; original retained".into()); }
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let name = existing.file_name().ok_or("The destination has no existing parent")?;
+                missing.push(name.to_os_string()); existing = existing.parent().ok_or("The destination has no existing parent")?;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    let mut resolved = std::fs::canonicalize(existing).map_err(|e| e.to_string())?;
+    if resolved.starts_with(source) { return Err("A runtime folder cannot be moved inside itself; original retained".into()); }
+    for name in missing.into_iter().rev() {
+        resolved.push(name);
+        match std::fs::create_dir(&resolved) { Ok(()) => {}, Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}, Err(error) => return Err(error.to_string()) }
+        let metadata = std::fs::symlink_metadata(&resolved).map_err(|e| e.to_string())?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err("The destination parent changed type; original retained".into()); }
+        resolved = std::fs::canonicalize(&resolved).map_err(|e| e.to_string())?;
+        if resolved.starts_with(source) { return Err("A runtime folder cannot be moved inside itself; original retained".into()); }
+    }
+    Ok(resolved)
+}
+
+fn save_location_note(from: &std::path::Path, to: &std::path::Path) -> Result<(), String> {
+    let note = format!("This folder was moved by Atlas to {}. Its runtime settings may still require confirmation.\n", to.display());
+    use std::io::Write;
+    let note_path = from.with_extension("MOVED.txt");
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&note_path).map_err(|e| format!("Folder moved to {}, but its old-location note could not be created without overwriting: {e}", to.display()))?;
+    file.write_all(note.as_bytes()).and_then(|_| file.sync_all()).map_err(|e| format!("Folder moved, but its old-location note could not be saved: {e}"))?;
+    Ok(())
+}
+
+/// Compatibility helper: no overwrite, content verification, and a checked
+/// location note. Daemon moves use move_folder_durably for recovery receipts.
+
+
+#[cfg(test)]
+mod runtime_folder_recovery_tests {
+    #![cfg(windows)]
+    #[cfg(windows)]
+    #[test]
+    fn missing_destination_parents_are_created_without_moving_inside_the_source() {
+        let (area, store, _existing_source, _existing_destination) = fixture(); let from = area.join("source");
+        std::fs::create_dir(&from).unwrap(); std::fs::write(from.join("file"), b"original").unwrap();
+        let inside = from.join("new").join("destination");
+        assert!(super::move_folder_durably(&store, &from, &inside, 1, &|| false).is_err());
+        assert!(!from.join("new").exists()); assert_eq!(std::fs::read(from.join("file")).unwrap(), b"original");
+        let destination = area.join("new-parent").join("nested").join("destination");
+        super::move_folder_durably(&store, &from, &destination, 2, &|| false).unwrap();
+        assert!(!from.exists()); assert_eq!(std::fs::read(destination.join("file")).unwrap(), b"original");
+        assert!(std::fs::read_to_string(from.with_extension("MOVED.txt")).unwrap().contains(&destination.display().to_string()));
+        crate::heard!(std::fs::remove_dir_all(&area));
+    }
+    use super::*;
+    fn fixture() -> (std::path::PathBuf, crate::store::Store, std::path::PathBuf, std::path::PathBuf) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let area = std::env::temp_dir().join(format!("atlas-runtime-move-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let store = crate::store::Store::new(area.join("state")); store.save("fixture", &1).unwrap();
+        let from = area.join("models"); let to = area.join("destination");
+        std::fs::create_dir(&from).unwrap(); std::fs::create_dir(from.join("empty")).unwrap(); std::fs::write(from.join("model.bin"), b"owner model bytes").unwrap();
+        (area, store, from, to)
+    }
+    #[test] fn failed_intent_save_keeps_every_original_byte() {
+        let (area, store, from, to) = fixture();
+        std::fs::create_dir(store.root().join(format!("{RUNTIME_MOVE_INTENTS}.{}.json.tmp", std::process::id()))).unwrap();
+        assert!(move_folder_durably(&store, &from, &to, 10, &|| false).is_err());
+        assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes"); assert!(!to.exists());
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn destination_collision_preserves_both_folders_and_the_pending_intent() {
+        let (area, store, from, to) = fixture(); std::fs::create_dir(&to).unwrap(); std::fs::write(to.join("model.bin"), b"other owner bytes").unwrap();
+        assert!(move_folder_durably(&store, &from, &to, 10, &|| false).is_err());
+        assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes"); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"other owner bytes");
+        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert_eq!(intents.len(), 1); assert!(!intents[0].completed);
+        assert!(move_folder_durably(&store, &from, &to, 11, &|| false).unwrap_err().contains("unresolved"));
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn complete_move_has_durable_history_destination_and_empty_directories() {
+        let (area, store, from, to) = fixture(); move_folder_durably(&store, &from, &to, 10, &|| false).unwrap();
+        assert!(!from.exists()); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes"); assert!(to.join("empty").is_dir());
+        let reopened = crate::store::Store::new(store.root());
+        let intents: Vec<RuntimeMoveIntent> = reopened.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(intents[0].completed);
+        let destinations: Vec<Moved> = reopened.load_checked(MOVED_RECORD).unwrap().unwrap(); assert_eq!(destinations, vec![intents[0].moved.clone()]);
+        let history: crate::undo::History = reopened.load_checked("undo_history").unwrap().unwrap(); assert!(history.done.iter().any(|row| row.id == intents[0].history_id));
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn failed_location_note_keeps_existing_note_and_recovery_intent_after_move() {
+        let (area, store, from, to) = fixture(); std::fs::write(from.with_extension("MOVED.txt"), b"owner note").unwrap();
+        let error = move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err(); assert!(error.contains("Folder moved"));
+        assert_eq!(std::fs::read(from.with_extension("MOVED.txt")).unwrap(), b"owner note"); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed); assert_eq!(intents[0].moved.to, to.display().to_string());
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn same_length_changed_contents_fail_verification_before_removal() {
+        let (area, _store, from, to) = fixture(); let (identity, _) = folder_fingerprint(&from, &|| false).unwrap();
+        std::fs::write(from.join("model.bin"), b"changed model !!!").unwrap();
+        let verify = |copy: &std::path::Path| {
+            let copied = folder_fingerprint(copy, &|| false).map_err(crate::error::AtlasError::Platform)?;
+            if copied.0 != identity { return Err(crate::error::AtlasError::Platform("The approved folder bytes changed".into())); }
+            Ok(())
+        };
+        assert!(crate::safety::copy_without_overwrite_verified(&from, &to, &|| false, &verify).is_err()); assert!(from.exists()); assert!(!to.exists());
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn failed_destination_receipt_retains_pending_recovery_after_files_arrive() {
+        let (area, store, from, to) = fixture();
+        std::fs::create_dir(store.root().join(format!("{MOVED_RECORD}.{}.json.tmp", std::process::id()))).unwrap();
+        let error = move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err(); assert!(error.contains("destination receipt could not be saved"));
+        assert!(!from.exists()); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        let reopened = crate::store::Store::new(store.root());
+        let intents: Vec<RuntimeMoveIntent> = reopened.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed); assert_eq!(intents[0].moved.to, to.display().to_string());
+        assert!(reopened.load_checked::<Vec<Moved>>(MOVED_RECORD).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn an_active_writer_refuses_reservation_without_moving_or_deleting() {
+        let (area, store, from, to) = fixture();
+        let writer = std::fs::OpenOptions::new().write(true).open(from.join("model.bin")).unwrap();
+        assert!(move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err().contains("active writer"));
+        assert!(from.exists()); assert!(!to.exists()); assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes");
+        assert!(store.load_checked::<Vec<RuntimeMoveIntent>>(RUNTIME_MOVE_INTENTS).unwrap().is_none());
+        drop(writer); let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn new_owner_files_in_reserved_source_are_retained_after_publication() {
+        let (area, store, from, to) = fixture(); let added = std::cell::Cell::new(false);
+        let stop = || {
+            if to.exists() && !added.replace(true) {
+                let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
+                std::fs::write(std::path::Path::new(&intents[0].quarantine).join("new-owner.txt"), b"later owner bytes").unwrap();
+            }
+            false
+        };
+        assert!(move_folder_durably(&store, &from, &to, 10, &stop).is_err()); assert!(added.get());
+        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed);
+        assert_eq!(std::fs::read(std::path::Path::new(&intents[0].quarantine).join("new-owner.txt")).unwrap(), b"later owner bytes");
+        assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn a_new_folder_at_the_old_location_is_never_removed() {
+        let (area, store, from, to) = fixture(); let added = std::cell::Cell::new(false);
+        let stop = || {
+            if !from.exists() && !added.replace(true) { std::fs::create_dir(&from).unwrap(); std::fs::write(from.join("new-owner.txt"), b"later owner bytes").unwrap(); }
+            false
+        };
+        move_folder_durably(&store, &from, &to, 10, &stop).unwrap(); assert!(added.get());
+        assert_eq!(std::fs::read(from.join("new-owner.txt")).unwrap(), b"later owner bytes"); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn a_writer_opened_between_preflight_and_reservation_keeps_original_bytes() {
+        let (area, store, from, to) = fixture();
+        let writer = std::cell::RefCell::new(None::<std::fs::File>);
+        let stop = || {
+            if store.root().join(format!("{RUNTIME_MOVE_INTENTS}.json")).exists() && writer.borrow().is_none() {
+                if let Ok(opened) = std::fs::OpenOptions::new().write(true).open(from.join("model.bin")) { *writer.borrow_mut() = Some(opened); }
+            }
+            false
+        };
+        assert!(move_folder_durably(&store, &from, &to, 10, &stop).is_err()); assert!(writer.borrow().is_some());
+        assert!(from.exists()); assert!(!to.exists()); assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes");
+        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed);
+        drop(writer); let _ = std::fs::remove_dir_all(area);
+    }
 }
 
 
@@ -1714,10 +2037,11 @@ pub fn may_move_into(dest: &std::path::Path, from_dir: &std::path::Path) -> Resu
 /// Move one file, never over another: a name already taken gets " (2)".
 /// Across drives a rename can't work, so it's copied, the copy's size
 /// checked, and only then the original removed.
-fn move_one_recorded(
+fn move_one_controlled(
     from: &std::path::Path,
     dest_dir: &std::path::Path,
     before: &mut impl FnMut(&std::path::Path, &std::path::Path) -> Result<(), String>,
+    stopped: &impl Fn() -> bool,
 ) -> Result<std::path::PathBuf, String> {
     let name = from
         .file_name()
@@ -1725,6 +2049,7 @@ fn move_one_recorded(
     let mut to = dest_dir.join(name);
     let mut n = 2;
     while std::fs::symlink_metadata(&to).is_ok() {
+        if stopped() { return Err("Stopped before the next file move.".into()); }
         let stem = std::path::Path::new(name)
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -1736,33 +2061,43 @@ fn move_one_recorded(
         to = dest_dir.join(format!("{stem} ({n}){ext}"));
         n += 1;
     }
-    before(from, &to)?;
-    move_exact(from, &to)?;
+    crate::safety::move_without_overwrite_recorded(from, &to, stopped, &mut || before(from, &to).map_err(crate::error::AtlasError::Platform)).map_err(|e| e.to_string())?;
     Ok(to)
 }
 
-fn move_exact(from: &std::path::Path, to: &std::path::Path) -> Result<(), String> {
-    crate::safety::move_without_overwrite(from, to).map_err(|e| e.to_string())
-}
 
-/// Move each file into `dest` (made if it isn't there). Returns each move
-/// that happened, as (where it was, where it is), and why each other didn't.
-pub fn move_files_into(
-    files: &[std::path::PathBuf],
-    dest: &std::path::Path,
-) -> (Vec<(std::path::PathBuf, std::path::PathBuf)>, Vec<String>) {
-    move_files_into_recorded(files, dest, &mut |_, _| Ok(()))
-}
+
+
 
 /// The exact collision-free destination is durably recorded before each move.
 /// A rejected record leaves that file in its original location.
-pub fn move_files_into_recorded(
+
+
+/// A worker records new folders and each exact file intent before acting.
+/// Stop/pause safe points surround each move; a cross-volume copy already
+/// running completes its current file under the existing safe move primitive.
+pub fn move_files_into_controlled(
     files: &[std::path::PathBuf],
     dest: &std::path::Path,
+    before_dirs: &mut impl FnMut(&[std::path::PathBuf]) -> Result<(), String>,
     before: &mut impl FnMut(&std::path::Path, &std::path::Path) -> Result<(), String>,
+    stopped: &impl Fn() -> bool,
 ) -> (Vec<(std::path::PathBuf, std::path::PathBuf)>, Vec<String>) {
     let mut done = Vec::new();
     let mut not = Vec::new();
+    if stopped() { return (done, vec!["Stopped before creating the destination; files were left in place.".into()]); }
+    let mut missing = Vec::new();
+    let mut next = dest;
+    while !next.exists() {
+        missing.push(next.to_path_buf());
+        let Some(parent) = next.parent() else { break };
+        next = parent;
+    }
+    missing.reverse();
+    if !missing.is_empty() {
+        if let Err(why) = before_dirs(&missing) { return (done, vec![why]); }
+        if stopped() { return (done, vec!["Stopped after recording folder intent; files were left in place.".into()]); }
+    }
     if let Err(e) = std::fs::create_dir_all(dest) {
         return (
             done,
@@ -1770,7 +2105,8 @@ pub fn move_files_into_recorded(
         );
     }
     for f in files {
-        match move_one_recorded(f, dest, before) {
+        if stopped() { not.push("Stopped; remaining files were left in place.".into()); break; }
+        match move_one_controlled(f, dest, before, stopped) {
             Ok(to) => done.push((f.clone(), to)),
             Err(e) => not.push(e),
         }
@@ -1778,33 +2114,7 @@ pub fn move_files_into_recorded(
     (done, not)
 }
 
-/// Put moved files back where they were. A file whose old place has
-/// something new in it is left where it is, and said.
-pub fn move_back(moves: &[(std::path::PathBuf, std::path::PathBuf)]) -> (usize, Vec<String>) {
-    let mut back = 0;
-    let mut not = Vec::new();
-    for (was, is) in moves {
-        if was.exists() {
-            not.push(format!(
-                "{} has something new in its old place",
-                was.display()
-            ));
-            continue;
-        }
-        if !is.exists() {
-            not.push(format!("{} isn't where I moved it any more", is.display()));
-            continue;
-        }
-        if let Some(dir) = was.parent() {
-            crate::heard!(std::fs::create_dir_all(dir));
-        }
-        match move_exact(is, was) {
-            Ok(()) => back += 1,
-            Err(e) => not.push(e),
-        }
-    }
-    (back, not)
-}
+
 
 // ---------- reading the request, and taking things back ----------
 
@@ -1919,9 +2229,17 @@ impl RecordedMove {
             fingerprint: Some(file_fingerprint(from)?),
         })
     }
+
+    pub(crate) fn new_controlled(from: &std::path::Path, to: &std::path::Path, stopped: &impl Fn() -> bool) -> Result<Self, String> {
+        Ok(Self { from: from.into(), to: to.into(), fingerprint: Some(file_fingerprint_controlled(from, stopped)?) })
+    }
 }
 
 fn file_fingerprint(path: &std::path::Path) -> Result<String, String> {
+    file_fingerprint_controlled(path, &|| false)
+}
+
+pub(crate) fn file_fingerprint_controlled(path: &std::path::Path, stopped: &impl Fn() -> bool) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let meta = std::fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -1935,6 +2253,7 @@ fn file_fingerprint(path: &std::path::Path) -> Result<String, String> {
     let mut hash = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
     loop {
+        if stopped() { return Err("Stopped while checking the file; it was left in place.".into()); }
         let n = input
             .read(&mut buffer)
             .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -1943,22 +2262,30 @@ fn file_fingerprint(path: &std::path::Path) -> Result<String, String> {
         }
         hash.update(&buffer[..n]);
     }
+    let after = std::fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if after.len() != meta.len() || after.modified().ok() != meta.modified().ok() || after.file_type().is_symlink() {
+        return Err("The file changed while it was being checked; it was left in place.".into());
+    }
     Ok(format!("{:x}", hash.finalize()))
 }
 
 pub const TUNE_UNDO_RECORD: &str = "tune_undo";
 
-/// Take one back: what happened, or why it couldn't be (and then it stays
-/// in the record, to try again).
-pub fn undo_tune_change(u: &TuneUndo) -> Result<String, String> {
-    undo_tune_change_with_checkpoint(u, &mut |_| Ok(()))
-}
+
 
 /// Persist identity before undo, and each completion afterward. Failed or
 /// interrupted saves can be reconciled using the saved fingerprint on retry.
 pub fn undo_tune_change_with_checkpoint(
     u: &TuneUndo,
     checkpoint: &mut impl FnMut(&TuneUndo) -> Result<(), String>,
+) -> Result<String, String> {
+    undo_tune_change_controlled(u, checkpoint, &|| false)
+}
+
+pub(crate) fn undo_tune_change_controlled(
+    u: &TuneUndo,
+    checkpoint: &mut impl FnMut(&TuneUndo) -> Result<(), String>,
+    stopped: &impl Fn() -> bool,
 ) -> Result<String, String> {
     if let TuneUndo::Startup(e) = u {
         return set_startup(e, true)
@@ -1973,7 +2300,7 @@ pub fn undo_tune_change_with_checkpoint(
                 .map(|(from, to)| RecordedMove {
                     from: from.clone(),
                     to: to.clone(),
-                    fingerprint: file_fingerprint(to).ok(),
+                    fingerprint: file_fingerprint_controlled(to, stopped).ok(),
                 })
                 .collect();
             let made = match u {
@@ -1991,6 +2318,7 @@ pub fn undo_tune_change_with_checkpoint(
     let mut not = Vec::new();
     let mut i = 0;
     loop {
+        if stopped() { return Err(format!("Stopped undo after returning {back} of {total}; remaining recovery entries are retained.")); }
         let current = match &next {
             TuneUndo::RecordedMoves { moves, .. } => moves.get(i).cloned(),
             _ => None,
@@ -2004,7 +2332,7 @@ pub fn undo_tune_change_with_checkpoint(
             if current
                 .fingerprint
                 .as_ref()
-                .is_some_and(|f| file_fingerprint(was).as_ref() == Ok(f))
+                .is_some_and(|f| file_fingerprint_controlled(was, stopped).as_ref() == Ok(f))
             {
                 Ok(()) // Already returned, or recorded just before the move.
             } else {
@@ -2023,18 +2351,22 @@ pub fn undo_tune_change_with_checkpoint(
         } else {
             // Editing the moved file is fine. Persist its current identity
             // before returning it so a crash afterward remains recognizable.
-            let fingerprint = file_fingerprint(is)
+            let fingerprint = file_fingerprint_controlled(is, stopped)
                 .map_err(|e| format!("Put {back} of {total} back; the rest remain pending ({e})."))?;
             if let TuneUndo::RecordedMoves { moves, .. } = &mut next {
-                moves[i].fingerprint = Some(fingerprint);
+                moves[i].fingerprint = Some(fingerprint.clone());
             }
             checkpoint(&next)
                 .map_err(|e| format!("Put {back} of {total} back; couldn't save the next recovery intent ({e}). The rest were left in place."))?;
+            if stopped() || file_fingerprint_controlled(is, stopped).as_ref() != Ok(&fingerprint) { return Err(format!("Undo stopped because {} changed while recovery was acknowledged; no next file moved.", is.display())); }
             if let Some(parent) = was.parent() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("Put {back} of {total} back; the rest remain pending ({}: {e}).", parent.display()))?;
             }
-            move_exact(is, was)
+            crate::safety::move_without_overwrite_recorded(is, was, stopped, &mut || {
+                if file_fingerprint_controlled(is, stopped).as_ref() != Ok(&fingerprint) { return Err(crate::error::AtlasError::Platform("Undo source changed before its native reservation; file retained".into())); }
+                Ok(())
+            }).map_err(|e| e.to_string())
         };
         match result {
             Ok(()) => {
@@ -2053,6 +2385,7 @@ pub fn undo_tune_change_with_checkpoint(
     if not.is_empty() {
         if let TuneUndo::RecordedMoves { made, .. } = &next {
             for dir in made.iter().rev() {
+                if stopped() { return Err("Undo stopped before removing another empty folder; recovery remains available".into()); }
                 crate::heard!(std::fs::remove_dir(dir));
             }
         }

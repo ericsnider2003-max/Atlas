@@ -504,3 +504,67 @@ fn atlas_refuses_an_outdated_change_and_says_why_and_whats_queued_names_it() {
     let queued = d.execute_timed(&Intent::Queued, "what's queued");
     assert!(queued.contains("date parser") && queued.contains("out of date"), "{queued}");
 }
+
+#[test]
+fn search_measurement_keeps_no_success_until_its_history_is_saved() {
+    let mut cfg = Config::load(Path::new("config")).unwrap();
+    cfg.tools.as_mut().unwrap().recall.semantic = false;
+    let p = plat();
+    for fault in [false, true] {
+        let store = Store::new(scratch(if fault { "measurement-save-fault" } else { "measurement-held" }));
+        let mut d = Daemon::new(&cfg, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        d.library = notes();
+        if fault { std::fs::create_dir(store.root().join("search_checks.json")).unwrap(); }
+        let guard = store.transaction().unwrap();
+        assert!(d.start_search_check().starts_with("Measuring"));
+        std::thread::sleep(Duration::from_millis(80));
+        assert!(!store.root().join("search_checks.json").is_file(), "refused write must not publish a measurement");
+        drop(guard);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut out = Vec::new();
+        while d.crew.errands().iter().any(|e| e.name == "search-check") && Instant::now() < deadline {
+            out.extend(d.tick(atlas::store::now() + 50));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if fault {
+            assert!(!out.iter().any(|line| line.starts_with("Search check,")), "save failure falsely reported success: {out:?}");
+            assert!(out.iter().any(|line| line.contains("history") || line.contains("not recorded")), "save failure was hidden: {out:?}");
+        } else {
+            assert_eq!(store.load::<Vec<atlas::recall::SearchCheck>>("search_checks").len(), 1);
+            assert_eq!(out.iter().filter(|line| line.starts_with("Search check,")).count(), 1);
+        }
+    }
+}
+
+#[test]
+fn incomplete_meaning_measurement_never_becomes_word_only_success() {
+    let lib = notes();
+    let questions = atlas::recall::questions_from(&lib, 40);
+    let calls = std::cell::Cell::new(0);
+    let encoder = |_: &str| {
+        calls.set(calls.get() + 1);
+        Err("Disposable encoder failed".to_string())
+    };
+    let result = atlas::recall::measure_until(&lib, &questions, Some(&encoder), &atlas::recall::RecallConfig::default(), 1, &|| false);
+    assert!(result.unwrap_err().contains("encoder failed"));
+    assert_eq!(calls.get(), 1, "failure must stop the pass immediately");
+    let canceled = atlas::recall::measure_until(&lib, &questions, Some(&encoder), &atlas::recall::RecallConfig::default(), 1, &|| true);
+    assert!(canceled.is_err());
+    assert_eq!(calls.get(), 1, "canceled work must not invoke the encoder");
+}
+#[cfg(windows)]
+#[test]
+fn search_encoder_child_is_bounded_and_failed_output_is_not_a_score() {
+    let vars = atlas::tools::Vars::new();
+    let encoder = |script: &str| atlas::meaning::MeaningConfig {
+        encoder: Some(atlas::tools::ExternalTool { command: "powershell.exe".into(), args: vec!["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script.into()], timeout_secs: 20, ..Default::default() })
+    };
+    let complete = atlas::meaning::embed_stoppable(&encoder("Write-Output '[0.25,0.5,0.75,1,0.25,0.5,0.75,1,0.25,0.5,0.75,1,0.25,0.5,0.75,1]'"), &vars, "Disposable search question", &|| false).unwrap();
+    assert_eq!(complete, [0.25, 0.5, 0.75, 1.0].repeat(4));
+    assert!(atlas::meaning::embed_stoppable(&encoder("Write-Output '[0.25,0.5,0.75]'"), &vars, "Disposable search question", &|| false).is_err(), "undersized vectors must be rejected");
+    assert!(atlas::meaning::embed_stoppable(&encoder("Write-Output 'no vector'"), &vars, "Disposable search question", &|| false).is_err());
+    let start = Instant::now();
+    let canceled = atlas::meaning::embed_stoppable(&encoder("Start-Sleep -Seconds 20; Write-Output '[1,0]'"), &vars, "Disposable search question", &|| start.elapsed() >= Duration::from_millis(100));
+    assert!(canceled.is_err(), "cancellation must not produce a meaning score");
+    assert!(start.elapsed() < Duration::from_secs(2), "owned encoder cancellation did not reach its child");
+}

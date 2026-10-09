@@ -75,6 +75,9 @@ pub struct Work {
     pub needs_screen: bool,
     /// What it's blocked on, if anything.
     pub blocked_on: Option<String>,
+    /// The workflow runner's actual position, including a failed step being retried.
+    #[serde(default)]
+    pub runner_position: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,6 +86,9 @@ pub struct Step {
     pub done: bool,
     /// Failed, with the reason.
     pub failed: Option<String>,
+    /// The action's actual reply, not an independent verification.
+    #[serde(default)]
+    pub reported_output: Option<String>,
 }
 
 impl Work {
@@ -97,6 +103,7 @@ impl Work {
             background,
             needs_screen: false,
             blocked_on: None,
+            runner_position: None,
         }
     }
 
@@ -114,7 +121,7 @@ impl Work {
     pub fn plan(&mut self, steps: &[String]) {
         self.steps = steps
             .iter()
-            .map(|s| Step { what: s.clone(), done: false, failed: None })
+            .map(|s| Step { what: s.clone(), done: false, failed: None, reported_output: None })
             .collect();
     }
 
@@ -122,6 +129,14 @@ impl Work {
         if let Some(s) = self.steps.get_mut(index) {
             s.done = failed.is_none();
             s.failed = failed;
+        }
+    }
+
+    /// Keep the result at the same seam that records step completion.
+    pub fn report_step(&mut self, index: usize, output: &str, ok: bool) {
+        self.finish_step(index, (!ok).then(|| output.to_string()));
+        if let Some(step) = self.steps.get_mut(index) {
+            step.reported_output = Some(output.to_string());
         }
     }
 

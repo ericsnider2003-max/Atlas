@@ -35,8 +35,9 @@ fn the_background_atlas_picks_the_microphone_this_machine_has() {
     let pick = daemon.find("pick_the_microphone(").expect("run_daemon doesn't pick a microphone");
     let voice = daemon.find("Voice::new(").expect("run_daemon builds no Voice");
     assert!(pick < voice, "the microphone is picked after the recorder was built from tools.yaml");
-    let daemon_new = daemon.find("Daemon::new(").expect("run_daemon builds no Daemon");
+    let daemon_new = daemon.find("Daemon::try_new(").expect("run_daemon builds no checked Daemon");
     assert!(pick < daemon_new, "the daemon was given the unpicked configuration");
+    assert!(daemon.contains("cfg_owned.tools = Some(tc_owned.clone())") && daemon.contains("let cfg = &cfg_owned"), "the checked constructor must receive the microphone-adjusted configuration");
 }
 
 #[test]

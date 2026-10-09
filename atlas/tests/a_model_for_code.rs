@@ -176,9 +176,22 @@ impl ChatRoom for Room {
 }
 
 fn coder_with(fails: bool, free: Arc<AtomicU64>, need_mb: u64) -> (Coder, Arc<AtomicUsize>) {
+    struct BoundedCoderFixture;
+    impl Llm for BoundedCoderFixture {
+        fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> { Ok("```python\nprint('from the coder')\n```".into()) }
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, _: &atlas::brain::ChatRequest, text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
+            let mut reply = String::new();
+            for chunk in ["```python\n", "print('from the coder')\n", "```"] {
+                if !keep() || !text(chunk) { return Err(atlas::error::AtlasError::Platform("fixture coder stopped".into())); }
+                reply.push_str(chunk);
+            }
+            Ok(atlas::brain::ChatReply::from_text(&reply))
+        }
+    }
     let starts = Arc::new(AtomicUsize::new(0));
     let engine = StandIn { up: Arc::new(AtomicBool::new(false)), starts: starts.clone(), fails };
-    let conn: Arc<dyn Llm> = Arc::new(MockLlm("```python\nprint('from the coder')\n```".into()));
+    let conn: Arc<dyn Llm> = Arc::new(BoundedCoderFixture);
     let f = free.clone();
     let mut brain = DeepBrain::new(Box::new(engine), conn, Size::Seven.id(), need_mb, Duration::ZERO, Box::new(move || f.load(Ordering::SeqCst)));
     brain.load_limit = Duration::from_secs(5);
@@ -315,6 +328,19 @@ fn the_coding_model_writes_first_and_is_named() {
 
 #[test]
 fn a_build_says_the_coding_model_writes_it() {
+    struct BoundedFixture;
+    impl Llm for BoundedFixture {
+        fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> { Ok("```python\nprint('hi')\n```".into()) }
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, _: &atlas::brain::ChatRequest, text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
+            let mut reply = String::new();
+            for chunk in ["```python\n", "print('hi')\n", "```"] {
+                if !keep() || !text(chunk) { return Err(atlas::error::AtlasError::Platform("fixture generation stopped".into())); }
+                reply.push_str(chunk);
+            }
+            Ok(atlas::brain::ChatReply::from_text(&reply))
+        }
+    }
     use atlas::config::Config;
     use atlas::daemon::Daemon;
     use atlas::platform::mock::MockPlatform;
@@ -323,7 +349,7 @@ fn a_build_says_the_coding_model_writes_it() {
     use atlas::store::Store;
     let c = Config::load(Path::new("config")).unwrap();
     let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let llm: Arc<dyn Llm> = Arc::new(MockLlm("```python\nprint('hi')\n```".into()));
+    let llm: Arc<dyn Llm> = Arc::new(BoundedFixture);
     let mut d = Daemon::new(&c, &p, Some(llm), Store::new(tmp("daemon")), Proactive::new(ProactiveConfig::default()));
     d.find_coding_agents_with_for_test(|_| None);
     let (coder, _) = coder_with(false, Arc::new(AtomicU64::new(64_000)), 5_000);
@@ -534,6 +560,25 @@ struct Doubler {
 }
 
 impl Llm for Doubler {
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, request: &atlas::brain::ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
+        let mut user = String::new();
+        for message in &request.messages {
+            if !keep() { return Err(atlas::error::AtlasError::Platform("fixture generation stopped".into())); }
+            user.push_str(&message.content);
+            user.push('\n');
+        }
+        // This fixture performs only bounded in-memory work. Each emitted
+        // chunk honors both controls; it never delegates a blocking call.
+        if !keep() { return Err(atlas::error::AtlasError::Platform("fixture generation stopped".into())); }
+        let text = self.complete("", &user)?;
+        for chunk in text.as_bytes().chunks(32) {
+            if !keep() || !on_text(std::str::from_utf8(chunk).unwrap()) {
+                return Err(atlas::error::AtlasError::Platform("fixture generation stopped".into()));
+            }
+        }
+        Ok(atlas::brain::ChatReply { text, ..Default::default() })
+    }
     fn complete(&self, _: &str, user: &str) -> atlas::error::Result<String> {
         if user.contains("The tool said") {
             self.fixes.lock().unwrap().push(user.to_string());
@@ -544,6 +589,16 @@ impl Llm for Doubler {
         }
         Ok("It doubles a number.".into())
     }
+}
+
+#[test]
+fn the_fixture_model_honors_cancel_before_generation_and_during_output() {
+    let model = Doubler { fixes: Mutex::new(Vec::new()) };
+    let request = atlas::brain::ChatRequest::default();
+    let mut chunks = 0;
+    assert!(model.chat_until(&request, &mut |_| { chunks += 1; true }, &|| false).is_err());
+    assert_eq!(chunks, 0);
+    assert!(model.chat_until(&request, &mut |_| false, &|| true).is_err());
 }
 
 #[test]

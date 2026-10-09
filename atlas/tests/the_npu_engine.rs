@@ -81,7 +81,7 @@ fn the_runtime_path_gives_the_same_answers_as_tract() {
     let n = 32i64;
     let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|x| (x.clone(), vec![1, n])).collect();
     let s = npu::Session::open(&root, &model, &shapes, npu::Where::Cpu).expect("opens on the processor");
-    assert_eq!(s.on, npu::Where::Cpu);
+    assert_eq!(s.on(), npu::Where::Cpu);
     // "hello world" as the encoder's own ids, padded to 32.
     let mut enc = atlas::meaningnative::Native::load(&root).expect("model and words");
     let tract = enc.embed_on_processor("hello world").unwrap();
@@ -177,4 +177,22 @@ fn the_real_search_model_takes_fixed_sizes() {
     let back = npu::Session::input_names(&root, &out).unwrap();
     assert_eq!(back, names);
     let _ = std::fs::remove_file(out);
+}
+
+
+#[test]
+fn the_actual_private_worker_entry_refuses_malformed_frames_without_starting_atlas() {
+    use std::{io::{Read,Write},net::{TcpListener,Ipv4Addr},process::{Command,Stdio},time::{Duration,Instant}};
+    let listener=TcpListener::bind((Ipv4Addr::LOCALHOST,0)).unwrap();listener.set_nonblocking(true).unwrap();
+    let mut command=Command::new(env!("CARGO_BIN_EXE_atlas"));
+    command.arg("--npu-worker").env("ATLAS_NPU_WORKER_PORT",listener.local_addr().unwrap().port().to_string()).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x0800_0000);}
+    let mut child=command.spawn().unwrap();
+    struct Reap<'a>(&'a mut std::process::Child);impl Drop for Reap<'_>{fn drop(&mut self){atlas::heard!(self.0.kill());atlas::heard!(self.0.wait());}}
+    let guard=Reap(&mut child);guard.0.stdin.take().unwrap().write_all(&[7;32]).unwrap();
+    let deadline=Instant::now()+Duration::from_secs(5);
+    let mut stream=loop{match listener.accept(){Ok((stream,peer))=>{assert!(peer.ip().is_loopback());stream.set_nonblocking(false).unwrap();break stream},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{assert!(Instant::now()<deadline,"actual helper never connected");std::thread::sleep(Duration::from_millis(5));},Err(e)=>panic!("{e}")}};
+    stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();let mut token=[0;32];stream.read_exact(&mut token).unwrap();assert_eq!(token,[7;32]);
+    stream.write_all(&1u32.to_le_bytes()).unwrap();stream.write_all(b"!").unwrap();
+    loop{if let Some(status)=guard.0.try_wait().unwrap(){assert_eq!(status.code(),Some(2));break;}assert!(Instant::now()<deadline,"malformed worker was not reaped");std::thread::sleep(Duration::from_millis(5));}
 }

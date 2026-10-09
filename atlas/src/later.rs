@@ -69,6 +69,7 @@ impl Later {
         if let Some(added) = added {
             self.items.push(Item { what: what.into(), added });
         }
+        self.items.sort_by(|a, b| a.added.cmp(&b.added).then_with(|| a.what.to_lowercase().cmp(&b.what.to_lowercase())));
         true
     }
     pub fn add(&mut self, what: &str, t: u64) -> bool {
@@ -123,6 +124,20 @@ mod sync_recovery {
             device: device.into(), seq: 1, at, hlc: crate::hlc::Stamp::ZERO,
             what: crate::sync::What::Changed { id: "later:write the script".into(), field: "later".into(), to: to.into() },
         }
+    }
+
+    #[test]
+    fn distinct_items_have_the_same_order_after_opposite_delivery() {
+        let first = event("phone", 10, "10");
+        let mut second = event("laptop", 20, "20");
+        second.what = crate::sync::What::Changed { id: "later:record the video".into(), field: "later".into(), to: "20".into() };
+        let mut a = Later::default();
+        a.apply_synced(&first);
+        a.apply_synced(&second);
+        let mut b = Later::default();
+        b.apply_synced(&second);
+        b.apply_synced(&first);
+        assert_eq!(a, b, "the visible list must converge, including order");
     }
 
     #[test]

@@ -140,6 +140,11 @@ fn browser_links_is_the_page_link_reader() {
 
 struct NeverCalled;
 impl atlas::brain::Llm for NeverCalled {
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, _: &atlas::brain::ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
+        if !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+        panic!("no sources were found, so nothing should reach the bounded model");
+    }
     fn complete(&self, _s: &str, _u: &str) -> atlas::error::Result<String> {
         panic!("no sources were found, so nothing should reach the model");
     }
@@ -148,22 +153,20 @@ impl atlas::brain::Llm for NeverCalled {
 /// A search that returns a page with no links in it -- what a challenge page
 /// looks like -- but that does have a web address a browser could open.
 fn research_with(browser: Option<BrowserConfig>) -> Research {
+    let synthetic = |text: &str, url: bool| ExternalTool {
+        command: if cfg!(windows) { "cmd" } else { "sh" }.into(),
+        args: if cfg!(windows) {
+            let mut args = vec!["/d".into(), "/c".into(), format!("echo {text}")];
+            if url { args.push("https://html.duckduckgo.com/html/?q={query}".into()); } args
+        } else {
+            let mut args = vec!["-c".into(), format!("echo '{text}'")];
+            if url { args.push("https://html.duckduckgo.com/html/?q={query}".into()); } args
+        }, ..Default::default()
+    };
     let cfg = ResearchConfig {
         enabled: true,
-        search: Some(ExternalTool {
-            command: "sh".into(),
-            args: vec![
-                "-c".into(),
-                "echo 'please enable javascript'".into(),
-                "https://html.duckduckgo.com/html/?q={query}".into(),
-            ],
-            ..Default::default()
-        }),
-        fetch: Some(ExternalTool {
-            command: "sh".into(),
-            args: vec!["-c".into(), "echo unused".into()],
-            ..Default::default()
-        }),
+        search: Some(synthetic("please enable javascript", true)),
+        fetch: Some(synthetic("unused", false)),
         ..ResearchConfig::default()
     };
     Research { cfg, vars: Vars::new(), browser }

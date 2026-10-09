@@ -871,24 +871,23 @@ pub struct SortDone {
     pub not: Vec<String>,
 }
 
-/// Carry the plan out: each move judged by `system::judge` (the switch,
-/// the folders Atlas may work in), a file open elsewhere skipped, never over
-/// a file already there (`tune::move_files_into` gives it " (2)"), and
-/// nothing deleted.
-pub fn carry_out_moves(plan: &SortPlan, sys: &crate::system::SystemConfig, now: u64) -> SortDone {
-    carry_out_moves_recorded(plan, sys, now, &mut |_, _| Ok(()))
-}
+
 
 /// Production sorting records the actual destination before touching a file.
-pub fn carry_out_moves_recorded(
+
+
+pub fn carry_out_moves_controlled(
     plan: &SortPlan,
     sys: &crate::system::SystemConfig,
     now: u64,
+    before_dirs: &mut impl FnMut(&[PathBuf]) -> Result<(), String>,
     before: &mut impl FnMut(&Path, &Path) -> Result<(), String>,
+    stopped: &impl Fn() -> bool,
 ) -> SortDone {
     let mut done = SortDone::default();
     let mut groups: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
     for m in &plan.moves {
+        if stopped() { done.not.push("Stopped; remaining files were left in place.".into()); break; }
         let name = name_of(&m.from);
         let change = crate::system::Change::MoveFile { from: m.from.display().to_string(), to: m.into.join(&name).display().to_string() };
         if let crate::system::Verdict::Refuse(why) = crate::system::judge(&change, sys) {
@@ -906,6 +905,7 @@ pub fn carry_out_moves_recorded(
         groups.entry(m.into.clone()).or_default().push(m.from.clone());
     }
     for (dir, files) in groups {
+        if stopped() { done.not.push("Stopped; remaining files were left in place.".into()); break; }
         // Each folder this is about to make, outermost first, for undo.
         let mut missing = Vec::new();
         let mut d = dir.as_path();
@@ -916,7 +916,7 @@ pub fn carry_out_moves_recorded(
                 None => break,
             }
         }
-        let (moved, not) = crate::tune::move_files_into_recorded(&files, &dir, before);
+        let (moved, not) = crate::tune::move_files_into_controlled(&files, &dir, before_dirs, before, stopped);
         if !moved.is_empty() || dir.exists() {
             for m in missing.into_iter().rev() {
                 if !done.made.contains(&m) {
@@ -928,33 +928,4 @@ pub fn carry_out_moves_recorded(
         done.not.extend(not);
     }
     done
-}
-
-/// What was done, said.
-pub fn done_said(plan: &SortPlan, done: &SortDone) -> String {
-    let mut s = if done.moved.is_empty() {
-        "Nothing moved.".to_string()
-    } else {
-        let review = done.moved.iter().filter(|(_, to)| to.components().any(|c| c.as_os_str() == TO_REVIEW)).count();
-        let sorted = done.moved.len() - review;
-        let mut parts = Vec::new();
-        if sorted > 0 {
-            parts.push(format!("{} into folders by kind", count(sorted, "file", "files")));
-        }
-        if review > 0 {
-            parts.push(format!("{} into \"{TO_REVIEW}\"", review));
-        }
-        let names: Vec<String> = plan.folders.iter().map(|f| name_of(f)).collect();
-        format!("Moved {} in {}. Nothing was deleted; say \"undo that\" to put every one back.", parts.join(" and "), names.join(", "))
-    };
-    if !done.not.is_empty() {
-        let shown: Vec<&String> = done.not.iter().take(4).collect();
-        let more = done.not.len().saturating_sub(shown.len());
-        s.push_str(&format!(
-            " Not moved: {}{}.",
-            shown.iter().map(|x| x.as_str()).collect::<Vec<_>>().join("; "),
-            if more > 0 { format!(" and {more} more") } else { String::new() }
-        ));
-    }
-    s
 }

@@ -129,7 +129,7 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Request {
     pub method: String,
     /// The path alone. The query is in [`Request::query`] — keeping them
@@ -157,6 +157,14 @@ pub struct Request {
     ///    so it is now held on purpose.
     pub token_from_url: bool,
     pub body: String,
+}
+
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Request").field("method", &self.method).field("path", &self.path)
+            .field("query", &"[redacted]").field("token", &"[redacted]")
+            .field("body", &"[redacted]").finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,6 +206,13 @@ pub const COOKIE: &str = "atlas_hub";
 /// passphrases).
 #[derive(Clone, PartialEq, Eq, Default)]
 pub struct Secret(String);
+
+/// Signing work supports ordinary local absolute paths, not UNC/device IO.
+pub(crate) fn signing_local_path(path: &str) -> bool {
+    !path.is_empty() && std::path::Path::new(path).is_absolute()
+        && !path.starts_with("\\\\") && !path.starts_with("//")
+        && !path.chars().any(char::is_control)
+}
 
 
 /// What the API can be asked to do.
@@ -291,6 +306,8 @@ pub enum Action {
     /// or make a recovery key (`what` = set | change | recovery). `nonce` is
     /// the form's one-time mark, so a refresh cannot send it twice.
     Vault { what: String, old: Secret, new: Secret, again: Secret, nonce: String },
+    /// Owner-selected signing file work; unlock is never a plain form/job string.
+    Signing { what: String, name: String, source: String, destination: String, unlock: Secret, recovery: bool, nonce: String },
     /// "Take it back" on the Accounts page, while handed over.
     TakeBack { phrase: Secret, nonce: String },
     /// "Use a key from another device" on the Sync page.
@@ -562,6 +579,9 @@ pub struct HubDoor {
     shut: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Talk page messages given up on (`LateTalk`).
     late: LateTalk,
+    snapshots: ReadOnlySnapshots,
+    pause_requested: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    cancel_requested: std::sync::Arc<std::sync::Mutex<Vec<FastCancel>>>,
 }
 
 /// The hub's end of a `HubDoor`: what a listener, bound now or later, feeds.
@@ -574,7 +594,25 @@ struct Serving {
     news: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     shut: std::sync::Arc<std::sync::atomic::AtomicBool>,
     late: LateTalk,
+    snapshots: ReadOnlySnapshots,
 }
+
+type ReadOnlySnapshots = std::sync::Arc<std::sync::Mutex<Option<ReadOnlySnapshot>>>;
+
+struct ReadOnlySnapshot {
+    made: std::time::Instant,
+    install_state: std::path::PathBuf,
+    owner_state: std::path::PathBuf,
+    permissions: Vec<Option<Vec<u8>>>,
+    pages: Vec<(crate::hub::Page, Reply)>,
+    pause: Option<std::sync::Arc<dyn Fn(bool) + Send + Sync>>,
+    pause_requested: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    cancellations: Vec<(FastCancel, std::sync::Arc<dyn Fn() + Send + Sync>)>,
+    cancel_requested: std::sync::Arc<std::sync::Mutex<Vec<FastCancel>>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FastCancel { pub key: String, pub worker: Option<u64>, pub files: Option<u64> }
 
 
 /// How `open_hub` waits for a port that's taken. Production values in

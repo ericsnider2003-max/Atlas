@@ -220,6 +220,15 @@ fn a_figure_must_be_in_the_pages_it_came_from() {
 /// Writes a brief with one made-up figure.
 struct Inventive;
 impl Llm for Inventive {
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, request: &atlas::brain::ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
+        if !keep() { return Err(atlas::error::AtlasError::Platform("synthetic research stopped".into())); }
+        let system = request.messages.iter().find(|message| message.role == atlas::brain::Role::System).map(|message| message.content.as_str()).unwrap_or("");
+        let user = request.messages.iter().find(|message| message.role == atlas::brain::Role::User).map(|message| message.content.as_str()).unwrap_or("");
+        let text = self.complete(system, user)?;
+        if !keep() || !on_text(&text) || !keep() { return Err(atlas::error::AtlasError::Platform("synthetic research stopped".into())); }
+        Ok(atlas::brain::ChatReply { text, tool_calls: vec![] })
+    }
     fn complete(&self, system: &str, _user: &str) -> Result<String> {
         if system.contains("research brief") && !system.contains("Copy every number") {
             return Ok("The brief wasn't told to copy figures exactly.".into());

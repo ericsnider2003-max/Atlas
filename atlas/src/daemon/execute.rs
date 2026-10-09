@@ -56,6 +56,7 @@ impl<'a> Daemon<'a> {
     }
 
     pub fn execute(&mut self, intent: &Intent) -> String {
+        self.execution_receipt = None;
         // The last line, and the one that catches the callers a gate placed
         // in `turn_from` alone never sees.
         //
@@ -72,6 +73,7 @@ impl<'a> Daemon<'a> {
         // answering out of your notes on the way past.
         if let Some(refusal) = self.handed_over_refusal(intent) {
             self.log.info(&format!("refused while handed over: {}", kind_of(intent)));
+            self.execution_receipt = Some((intent.clone(), crate::taskloop::Outcome::Failed(refusal.clone())));
             return refusal;
         }
 
@@ -80,6 +82,7 @@ impl<'a> Daemon<'a> {
         // line — and when two candidates are equally likely it asks rather
         // than picking.
         if let Some(question) = self.resolve_subject(intent) {
+            self.execution_receipt = Some((intent.clone(), crate::taskloop::Outcome::NeedsYou(question.clone())));
             return question;
         }
         self.last_executed = Some(kind_of(intent).to_string());
@@ -100,7 +103,7 @@ impl<'a> Daemon<'a> {
         let said = self.execute_inner(intent);
         // Say how sure it is, where being wrong would matter. Answers that
         // are just Atlas reporting its own state don't need it.
-        let said = match intent {
+        let mut said = match intent {
             // `Why` reads back decisions Atlas recorded itself — the most
             // grounded thing it can say. It was scored as invention: these
             // answers are full of the word "your" ("your workspace", "your
@@ -150,7 +153,10 @@ impl<'a> Daemon<'a> {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             self.history.note(&what, area, undo, true, now);
-            let _ = self.store.save("undo_history", &self.history);
+            if let Err(error) = self.history.save_merged(&self.store) {
+                self.log.info(&format!("history acknowledgment retained for retry: {error}"));
+                said.push_str(" The history record is pending a durable save; I retained it for retry.");
+            }
         }
         said
     }
@@ -955,7 +961,10 @@ impl<'a> Daemon<'a> {
         }
         self.drop_pending_turn(crate::store::now(), "Paused before I answered -- nothing was done.");
         self.hold_task_loop(true);
-        self.attention.pause(self.current_work(), crate::store::now())
+        self.pause_files(true);
+        let mut said = self.attention.pause(self.current_work(), crate::store::now());
+        if let Some(status) = self.file_pause_status() { said.push(' '); said.push_str(status); }
+        said
     }
 
     fn on_resume(&mut self) -> String {
@@ -982,6 +991,7 @@ impl<'a> Daemon<'a> {
             self.take_it_back()
         } else {
             let msg = self.attention.resume(crate::store::now());
+            self.pause_files(false);
             let held = self.attention.release();
             let names: Vec<String> = held
                 .iter()
@@ -1060,25 +1070,12 @@ impl<'a> Daemon<'a> {
     }
 
     fn on_outstanding_plain(&mut self) -> String {
-        let b = self.brief_now(crate::store::now());
-        let head = crate::brief::spoken(&b);
-        let tail = self.backlog.summary();
-        // On screen as well as spoken. A list read aloud is gone the
-        // moment it finishes; this is the one you can look back at.
-        //
-        // The brief's items rather than the backlog's, so the panel
-        // shows the handoff at the door and the job that failed
-        // overnight alongside what Atlas could not finish — the
-        // backlog is one source of several now, and a panel that
-        // showed only it would disagree with the line just spoken.
-        let lines: Vec<String> = b
-            .yours
-            .iter()
-            .chain(b.drafted.iter())
-            .map(|i| format!("{} — {}", i.source.plain(), i.headline()))
-            .collect();
-        self.show_panel(crate::window::Panel::Outstanding, "Outstanding", lines);
-        if b.is_empty() { tail } else { format!("{head} {tail}") }
+        self.brief_requested_explicitly = true;
+        self.brief_requested_panel = true;
+        match self.request_brief(crate::store::now()) {
+            Ok(()) => "I'm preparing your brief. I'll show it when it's ready.".into(),
+            Err(why) => { self.brief_requested_explicitly = false; self.brief_requested_panel = false; why }
+        }
     }
 
     pub(crate) fn on_queued(&mut self) -> String {
@@ -1201,8 +1198,10 @@ impl<'a> Daemon<'a> {
             _ => (channel.trim().to_string(), None),
         };
         let ch = channel_named(&channel);
+        let previous_publisher = self.publisher.clone();
         let Some(about) = about else {
             let id = self.publisher.draft(ch, "");
+            if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("I couldn't keep a new draft ({e}); nothing was posted."); }
             return format!("Drafting for {channel}. What should it say? (#{id})");
         };
         // Written by the model when there is one; never posted -- a draft
@@ -1214,11 +1213,12 @@ impl<'a> Daemon<'a> {
         match written {
             Some(text) => {
                 let id = self.publisher.draft(ch, &text);
-                let _ = self.publisher.save(&self.store);
+                if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("I wrote the proposed words but couldn't keep the draft ({e}); nothing was posted."); }
                 format!("A draft for {channel} (#{id}), not posted:\n\n{text}\n\nIt waits in your drafts; nothing goes out until you say so.")
             }
             None => {
                 let id = self.publisher.draft(ch, "");
+                if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("I couldn't keep a new draft ({e}); nothing was posted."); }
                 format!("Drafting for {channel} about {about}. What should it say? (#{id})")
             }
         }
@@ -1282,7 +1282,8 @@ impl<'a> Daemon<'a> {
 
     fn on_back_up(&mut self) -> String {
         let cfg = self.backup_cfg();
-        match back_up(self.store.root(), &cfg, crate::store::now()) {
+        if let Err(error) = crate::safety::check_configured_scope(&self.store, &self.notes_dir(), std::path::Path::new(&self.trash.cfg.dir)) { return format!("I couldn't back up: {error}"); }
+        match crate::safety::back_up_with_inputs(self.store.root(), &cfg, crate::store::now(), &self.notes_dir(), std::path::Path::new(&self.trash.cfg.dir)) {
             Ok(b) => {
                 prune_backups(&cfg);
                 // back_up() just wrote every file itself and counted as it went, so
@@ -2727,11 +2728,12 @@ impl<'a> Daemon<'a> {
             .map(|p| p.id)
             .next_back();
         if let Some(id) = open_draft {
+            let previous_publisher = self.publisher.clone();
             let final_text =
                 if fixed_count > 0 { corrected.as_str() } else { what };
             if self.publisher.edit(id, final_text) {
                 if let Some(q) = self.publisher.request_approval(id) {
-                    let _ = self.publisher.save(&self.store);
+                    if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("The edited draft couldn't be saved ({e}); its previous words remain and no new approval was recorded."); }
                     // The question now waits for its answer (G2):
                     // before this, a yes went nowhere and no post
                     // could ever be approved.
@@ -2874,7 +2876,7 @@ impl<'a> Daemon<'a> {
     /// finish or be called off — said so, rather than claimed paused.
     pub(super) const HOLDS_AT_A_SAFE_POINT: &'static [&'static str] = &[
         "research", "council", "build", "improve", "mail", "unsubscribe", "outreach",
-        "outlook-connect", "search-check", "video",
+        "outlook-connect", "search-check", "video", "signing protection",
     ];
 }
 

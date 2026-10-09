@@ -45,13 +45,16 @@ pub(crate) struct TaskLoop {
     tainted: bool,
     /// The crew job whose typed completion the dependent worker is awaiting.
     waiting_for: Option<u64>,
+    waiting_for_file_move: Option<u64>,
     /// Kept-file path retained while the edit and original decisions are pending.
     waiting_for_media: Option<String>,
     /// Await the entire app goal, including its questions and multiple crew turns.
     waiting_for_operating: bool,
     waiting_for_approval: Option<Intent>,
+    waiting_for_question: Option<String>,
     waiting_for_scan: bool,
     completed: Vec<String>,
+    checkpoint_pending: bool,
 }
 
 impl TaskLoop {
@@ -144,6 +147,86 @@ pub(super) enum Several {
 }
 
 impl<'a> Daemon<'a> {
+    fn save_task_loop_checkpoint(&self, tl: &TaskLoop) -> crate::error::Result<()> {
+        use super::running::{LeftWaiting, LEFT_WAITING};
+        let at = crate::store::now();
+        let mut waiting: Vec<LeftWaiting> = self.session.all_approvals().into_iter()
+            .map(|(_, what)| LeftWaiting { what, asked: true, at }).collect();
+        if self.current_flow.is_none() {
+            if let crate::session::Pending::Clarification(question) = &self.session.pending {
+                waiting.push(LeftWaiting { what: question.clone(), asked: true, at });
+            }
+        }
+        waiting.push(LeftWaiting { what: tl.in_words(), asked: false, at });
+        self.store.save(LEFT_WAITING, &waiting)
+    }
+    pub(crate) fn cancel_scheduled_job(&mut self, id: u64) -> bool {
+        let worker = self.scheduler.jobs.iter().find(|job| job.id == id).and_then(|job| job.worker_id);
+        let files = self.scheduler.jobs.iter().find(|job| job.id == id).and_then(|job| job.file_move_id);
+        let cancelled = self.scheduler.cancel(id);
+        if let Some(worker) = worker { self.stop_linked_worker(worker, crate::store::now()); }
+        if let Some(files) = files { self.stop_file_move(files); }
+        cancelled
+    }
+    /// A worker's real result settles only the queued requests that own it.
+    pub(super) fn finish_queued_worker(&mut self, worker: u64, outcome: &crate::taskloop::Outcome, now: u64) {
+        self.finish_phone_worker(worker, outcome, now);
+        self.finish_queued_owner(worker, outcome, now, false);
+    }
+    pub(super) fn finish_file_move_job(&mut self, id: u64, outcome: &crate::taskloop::Outcome, now: u64) {
+        self.finish_queued_owner(id, outcome, now, true);
+        if let Some(tl) = self.task_loop.as_mut() {
+            if tl.waiting_for_file_move == Some(id) {
+                tl.waiting_for_file_move = None;
+                let _ = tl.reply.send(outcome.clone());
+            }
+        }
+    }
+    fn finish_queued_owner(&mut self, worker: u64, outcome: &crate::taskloop::Outcome, now: u64, file_move: bool) {
+        use crate::taskloop::Outcome;
+        if matches!(outcome, Outcome::Started(_)) { return; }
+        let tasks: Vec<(u64, String, bool)> = self.queue.tasks.iter()
+            .filter(|task| task.state == crate::lanes::TaskState::Running && if file_move { task.file_move_id == Some(worker) } else { task.worker_id == Some(worker) })
+            .map(|task| (task.id, task.command.clone(), task.stop_requested)).collect();
+        let scheduled: Vec<(u64, String)> = self.scheduler.jobs.iter()
+            .filter(|job| job.in_flight && if file_move { job.file_move_id == Some(worker) } else { job.worker_id == Some(worker) })
+            .map(|job| (job.id, job.command.clone())).collect();
+        for (id, command) in &scheduled {
+            let ok = matches!(outcome, Outcome::Done(_));
+            self.scheduler.complete(*id, now, outcome.text(), ok);
+            // A question or cancellation is not permission to repeat a
+            // recurring action at its next time without owner review.
+            if !ok {
+                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == *id) {
+                    if job.state != crate::scheduler::JobState::Cancelled {
+                        job.state = crate::scheduler::JobState::Failed;
+                        job.interrupted = true;
+                    }
+                }
+            }
+            self.journal.record_at(Act::Scheduled, command, ok, now);
+        }
+        if !scheduled.is_empty() {
+            if let Err(e) = self.scheduler.save(&self.store) {
+                self.log.warn(&format!("Scheduled completion couldn't be saved: {e}. Its saved fence prevents replay."));
+            }
+        }
+        if tasks.is_empty() { return; }
+        for (id, command, stop_requested) in tasks {
+            let ok = matches!(outcome, Outcome::Done(_));
+            let text = if ok && stop_requested {
+                format!("Finished before the stop request took effect. {}", outcome.text())
+            } else { outcome.text().to_string() };
+            self.queue.finish(id, &text, ok);
+            if matches!(outcome, Outcome::NeedsYou(_)) {
+                if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.interrupted = true; }
+            }
+            self.journal.record_at(Act::Scheduled, &command, ok, now);
+        }
+        if let Err(e) = self.queue.save(&self.store) {
+            self.log.warn(&format!("A queued worker result couldn't be saved: {e}. Its saved start fence prevents replay after restart."));
+        }
+    }
     /// Is this a request of several parts, and how should they be worked?
     /// `None` for one thing -- and for words meant to be kept whole: a note,
     /// a message, a translation, dictation (their "and" is part of the text).
@@ -205,6 +288,10 @@ impl<'a> Daemon<'a> {
         let Some(intent) = crate::intent::from_tool(&call.name, &call.arguments, said) else {
             return Outcome::Failed(format!("There's no tool called {} that I may use.", call.name));
         };
+        if let Intent::Ask(question) = &intent {
+            self.session.ask(question);
+            return Outcome::NeedsYou(question.clone());
+        }
         self.act_tainted(&intent, true, tainted)
     }
 
@@ -256,10 +343,16 @@ impl<'a> Daemon<'a> {
                 return Outcome::NeedsYou(q);
             }
         }
-        let before = self.crew.active() + self.crew.queued();
+        self.last_crew_handoff = None;
+        let pending_before = self.session.pending.clone();
+        let operating_before = self.operating.is_some();
+        let files_before = self.active_file_move_id();
         let text = self.execute(intent);
-        let after = self.crew.active() + self.crew.queued();
-        if after > before {
+        if let Some((_, outcome)) = self.execution_receipt.as_ref().filter(|(executed, _)| executed == intent) {
+            outcome.clone()
+        } else if self.session.pending != pending_before && !matches!(self.session.pending, crate::session::Pending::Nothing) {
+            Outcome::NeedsYou(text)
+        } else if self.last_crew_handoff.is_some() || (self.active_file_move_id().is_some() && self.active_file_move_id() != files_before) || (!operating_before && self.operating.is_some()) {
             Outcome::Started(text)
         } else {
             Outcome::Done(text)
@@ -355,11 +448,14 @@ impl<'a> Daemon<'a> {
             started: std::time::Instant::now(),
             tainted: false,
             waiting_for: None,
+            waiting_for_file_move: None,
             waiting_for_media: None,
             waiting_for_operating: false,
             waiting_for_approval: None,
+            waiting_for_question: None,
             waiting_for_scan: false,
             completed: Vec::new(),
+            checkpoint_pending: false,
         });
         let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
         let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
@@ -440,17 +536,24 @@ impl<'a> Daemon<'a> {
     pub(super) fn execute_approved_step(&mut self, intent: &Intent) -> String {
         self.last_crew_handoff = None;
         let operating_before = self.operating.is_some();
+        let files_before = self.active_file_move_id();
         let said = self.execute(intent);
+        let files = self.active_file_move_id().filter(|id| Some(*id) != files_before);
         let handoff = self.last_crew_handoff;
+        let receipt = self.execution_receipt.as_ref().filter(|(executed, _)| executed == intent).map(|(_, outcome)| outcome.clone());
         if let Some(tl) = self.task_loop.as_mut() {
             if tl.waiting_for_approval.as_ref() == Some(intent) {
                 tl.waiting_for_approval = None;
-                if let Some(id) = handoff.filter(|id| self.crew_links.get(id).is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media"))) {
+                if let Some(id) = files {
+                    tl.waiting_for_file_move = Some(id);
+                } else if let Some(id) = handoff.filter(|id| self.crew_links.get(id).is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media" | "studio" | "creator planning"))) {
                     tl.waiting_for = Some(id);
                 } else if !operating_before && self.operating.is_some() {
                     tl.waiting_for_operating = true;
                 } else {
-                    let outcome = if handoff.is_some() {
+                    let outcome = if let Some(receipt) = receipt {
+                        receipt
+                    } else if handoff.is_some() {
                         crate::taskloop::Outcome::Started(said.clone())
                     } else if !matches!(self.session.pending, crate::session::Pending::Nothing) {
                         crate::taskloop::Outcome::NeedsYou(said.clone())
@@ -475,10 +578,18 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn abandon_dependent_question(&mut self) {
         if let Some(tl) = self.task_loop.as_mut() {
-            if tl.waiting_for_approval.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_scan) {
+            if tl.waiting_for_approval.take().is_some() || tl.waiting_for_question.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_scan) {
                 let _ = tl.reply.send(crate::taskloop::Outcome::Failed("The approval question was dropped or expired; dependent steps were not run.".into()));
             }
         }
+    }
+
+    pub(super) fn answer_dependent_question(&mut self, question: &str, answer: &str) -> bool {
+        let Some(tl) = self.task_loop.as_mut() else { return false };
+        if tl.waiting_for_question.as_deref() != Some(question) { return false; }
+        tl.waiting_for_question = None;
+        let _ = tl.reply.send(crate::taskloop::Outcome::Done(format!("The owner answered your clarification question '{question}': {answer}")));
+        true
     }
 
     pub(super) fn park_scan_decision(&mut self, id: u64) -> bool {
@@ -520,12 +631,19 @@ impl<'a> Daemon<'a> {
     pub(super) fn take_task_loop_news(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
         let Some(mut tl) = self.task_loop.take() else { return out };
+        if tl.checkpoint_pending && !tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
+            if self.save_task_loop_checkpoint(&tl).is_err() {
+                self.task_loop = Some(tl);
+                return out;
+            }
+            tl.checkpoint_pending = false;
+        }
         // A pause holds it at its next step; a resume lets it go on.
         let paused = self.attention.is_paused();
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
-        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating) || tl.waiting_for_approval.take().is_some() || std::mem::take(&mut tl.waiting_for_scan)) {
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_file_move.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating) || tl.waiting_for_approval.take().is_some() || tl.waiting_for_question.take().is_some() || std::mem::take(&mut tl.waiting_for_scan)) {
             let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
         }
         // A model call already in flight can submit a tool while paused.
@@ -542,6 +660,7 @@ impl<'a> Daemon<'a> {
                 Ok(LoopNews::Act(call)) => {
                     self.last_crew_handoff = None;
                     let operating_before = self.operating.is_some();
+                    let files_before = self.active_file_move_id();
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
                         crate::taskloop::Outcome::Failed("Stopped before this step.".into())
                     } else {
@@ -550,13 +669,21 @@ impl<'a> Daemon<'a> {
                     // The handoff's exact id also identifies a queued or joined
                     // job. Counting workers cannot distinguish those cases.
                     let waiting = self.last_crew_handoff.take().filter(|id| self.crew_links.get(id)
-                        .is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media")));
+                        .is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media" | "studio" | "creator planning")));
                     let approval = if matches!(outcome, crate::taskloop::Outcome::NeedsYou(_)) {
                         crate::intent::from_tool(&call.name, &call.arguments, &tl.said).filter(|i| self.session.all_approvals().iter().any(|(pending, _)| pending == i))
                     } else { None };
                     if let Some(intent) = approval {
                         out.push(outcome.text().to_string());
                         tl.waiting_for_approval = Some(intent);
+                    } else if call.name == "ask" && matches!(outcome, crate::taskloop::Outcome::NeedsYou(_)) {
+                        if let crate::session::Pending::Clarification(question) = &self.session.pending {
+                            tl.waiting_for_question = Some(question.clone());
+                            out.push(outcome.text().to_string());
+                        } else { let _ = tl.reply.send(outcome); }
+                    } else if self.active_file_move_id().is_some() && self.active_file_move_id() != files_before {
+                        tl.waiting_for_file_move = self.active_file_move_id();
+                        out.push(outcome.text().to_string());
                     } else if call.name == "operate" && !operating_before && self.operating.is_some() {
                         out.push(outcome.text().to_string());
                         tl.waiting_for_operating = true;
@@ -577,7 +704,13 @@ impl<'a> Daemon<'a> {
                     };
                     let _ = tl.reply.send(outcome);
                 }
-                Ok(LoopNews::Progress(line)) => { tl.completed.push(line.clone()); out.push(line); },
+                Ok(LoopNews::Progress(line)) => {
+                    tl.completed.push(line.clone()); out.push(line);
+                    if self.save_task_loop_checkpoint(&tl).is_err() {
+                        tl.checkpoint_pending = true;
+                        break;
+                    }
+                },
                 Ok(LoopNews::Done(run)) => {
                     finished = Some(run);
                     break;
@@ -777,11 +910,14 @@ impl<'a> Daemon<'a> {
             started: std::time::Instant::now(),
             tainted: false,
             waiting_for: None,
+            waiting_for_file_move: None,
             waiting_for_media: None,
             waiting_for_operating: false,
             waiting_for_approval: None,
+            waiting_for_question: None,
             waiting_for_scan: false,
             completed: Vec::new(),
+            checkpoint_pending: false,
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),

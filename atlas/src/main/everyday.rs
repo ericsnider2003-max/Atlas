@@ -305,7 +305,10 @@ pub(super) fn run_shared(args: &[String]) {
 /// phone's contacts or a business card (`.vcf`).
 pub(super) fn run_clients(args: &[String]) {
     let store = atlas::roots::store();
-    let mut list = atlas::clients::ClientList::load(&store);
+    let list = match atlas::clients::ClientList::load_checked(&store) {
+        Ok(list) => list,
+        Err(error) => { println!("Your client list could not be read: {error}. Saved contacts were left untouched."); return; }
+    };
     let now = atlas::store::now();
     match args.first().map(|s| s.to_lowercase()).as_deref() {
         None | Some("list") => {
@@ -322,19 +325,25 @@ pub(super) fn run_clients(args: &[String]) {
         Some("add") => match args.get(1) {
             Some(address) if address.contains('@') => {
                 let name = args[2..].join(" ");
-                list.add(address, &name, "", now);
-                keep(list.save(&store), "your clients");
+                let saved = match atlas::clients::ClientList::change(&store, |current| {
+                    current.add(address, &name, "", now);
+                    Ok(current.clone())
+                }) {
+                    Ok(saved) => saved,
+                    Err(error) => { println!("That client was not added: {error}"); return; }
+                };
                 println!("Added {address}.");
-                for d in list.likely_duplicates().iter().filter(|d| d.contains(&address.to_lowercase())) {
+                for d in saved.likely_duplicates().iter().filter(|d| d.contains(&address.to_lowercase())) {
                     println!("  Worth a look: {d}");
                 }
             }
             _ => println!("atlas clients add <address> [name]"),
         },
         Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
-            Some(Ok(text)) => match list.import_vcf(&text, now) {
+            Some(Ok(text)) => match atlas::clients::ClientList::change(&store, |current| {
+                current.import_vcf(&text, now).map_err(atlas::error::AtlasError::Platform)
+            }) {
                 Ok((added, skipped, notes)) => {
-                    keep(list.save(&store), "your clients");
                     println!("Brought in {added} client{}.", if added == 1 { "" } else { "s" });
                     if skipped > 0 {
                         println!("Skipped {skipped} card{} with no email address — a client is recognised by address.", if skipped == 1 { "" } else { "s" });
@@ -682,6 +691,10 @@ fn your_zone() -> atlas::tz::Zone {
 pub(super) fn run_calendar(args: &[String]) {
     let store = atlas::roots::store();
     let mut cal = atlas::calendar::Calendar::load(&store);
+    if cal.availability_error().is_some() {
+        println!("Your saved calendar is unavailable. Refresh or recover it before importing or exporting; no calendar file was written.");
+        return;
+    }
     let now = atlas::store::now();
     let zone = your_zone();
     if zone.is_utc() {
@@ -693,7 +706,10 @@ pub(super) fn run_calendar(args: &[String]) {
         Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
             Some(Ok(text)) => match cal.import_ics(&text, now, &zone) {
                 Ok((n, unknown)) => {
-                    keep(cal.save(&store), "your calendar");
+                    if let Err(error) = cal.save(&store) {
+                        println!("I couldn't confirm saving your calendar: {error}. The import is not confirmed; refresh before trying again.");
+                        return;
+                    }
                     println!("{n} event{} added or updated.", if n == 1 { "" } else { "s" });
                     for id in &unknown {
                         println!("  (The file names a time zone I don't know, \"{id}\"; those times were read as {}.)", zone.name);
@@ -1492,7 +1508,7 @@ pub(super) fn run_backups(args: &[String]) {
     let store = atlas::roots::store();
     let cfg = Config::load(&atlas::roots::config_dir()).ok();
     let backup_cfg =
-        cfg.as_ref().and_then(|c| c.tools.as_ref()).map(|t| t.backup.clone()).unwrap_or_default();
+        cfg.as_ref().and_then(|c| c.tools.as_ref()).map(|t| t.backup.clone()).unwrap_or_default().resolved(&store.install_root());
 
     match args.first().map(|s| s.to_lowercase()).as_deref() {
         None | Some("list") => {
@@ -1541,7 +1557,9 @@ pub(super) fn run_backups(args: &[String]) {
                 .unwrap_or_default();
             let trash =
                 atlas::safety::Trash::new(trash_cfg.resolved(&atlas::roots::install_root()));
-            match atlas::safety::restore(&b.path, store.root(), &trash, &mine) {
+            let notes: std::path::PathBuf = cfg.as_ref().and_then(|config| config.tools.as_ref()).map(|tools| tools.research.clone()).unwrap_or_default().resolved(&store.install_root()).notes_dir.into();
+            if let Err(error) = atlas::safety::check_configured_scope(&store, &notes, std::path::Path::new(&trash.cfg.dir)) { println!("Couldn't restore that: {error}"); return; }
+            match atlas::safety::restore_with_notes(&b.path, store.root(), &trash, &mine, &notes) {
                 Ok(count) => println!("Restored {count} file(s)."),
                 Err(e) => println!("Couldn't restore that: {e}"),
             }

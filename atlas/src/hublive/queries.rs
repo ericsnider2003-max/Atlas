@@ -191,13 +191,25 @@ impl Daemon<'_> {
                 crate::hubpages::shared_tasks_page(&rows, &businesses, field_of(&fields, "b").as_deref(), view, today)
             }
             Page::Clients => {
-                let list = crate::clients::ClientList::load(&self.store);
-                let sent = crate::outbox::Outbox::load(&self.store);
+                let list = match crate::clients::ClientList::load_checked(&self.store) {
+                    Ok(list) => list,
+                    Err(error) => return crate::hubpages::clients_page(&[], None, Some(&format!("Client list unavailable: {error}. Saved contacts were left untouched; the number of clients is unknown."))),
+                };
+                let sent = crate::outbox::Outbox::load_checked(&self.store);
                 let rows: Vec<crate::hubpages::ClientRow> = list
                     .all()
                     .iter()
                     .map(|c| {
-                        let to_them = sent.sent_to(&c.address);
+                        let to_them = sent.as_ref().map(|s| s.sent_to(&c.address)).unwrap_or_default();
+                        let mail_receipt_status = match &sent {
+                            Ok(outbox) => {
+                                let program = to_them.iter().filter(|r| outbox.delivery_receipt(&r.id) == Some(crate::outbox::MailReceipt::ProgramAccepted)).count();
+                                let owner = to_them.iter().filter(|r| outbox.delivery_receipt(&r.id) == Some(crate::outbox::MailReceipt::OwnerConfirmedSent)).count();
+                                let uncertain = outbox.unconfirmed().iter().filter(|r| r.to_address.eq_ignore_ascii_case(&c.address)).count();
+                                format!("Recorded as sent: {}. Service acceptance receipts: {program}; owner checks: {owner}; older entries without receipts: {}. Unconfirmed submissions: {uncertain}. Recipient delivery is not independently verified.", to_them.len(), to_them.len().saturating_sub(program + owner))
+                            },
+                            Err(_) => "Mail receipt history unavailable: the saved outbox could not be read. Sent and unconfirmed counts are unknown.".into(),
+                        };
                         crate::hubpages::ClientRow {
                             address: c.address.clone(),
                             name: c.name_or_address().to_string(),
@@ -206,6 +218,7 @@ impl Daemon<'_> {
                             added: when(c.added_at),
                             sent: to_them.len(),
                             last_sent: to_them.iter().map(|r| r.created_at).max().map(when).unwrap_or_default(),
+                            mail_receipt_status,
                         }
                     })
                     .collect();
@@ -350,17 +363,42 @@ impl Daemon<'_> {
                 crate::hubpages::give_page(&recent, notice.as_deref(), draft.as_deref())
             }
             Page::Offline => {
-                let online = self.connectivity.status_now(now) == crate::connectivity::Reach::Online;
-                let mut waiting: Vec<(String, String)> = Vec::new();
+                let reach = self.connectivity.status_now(now);
+                let connection_wait = if reach == crate::connectivity::Reach::Offline { "Waiting for connection" } else { "Queued; connection and execution checks pending" };
+                let mut waiting: Vec<(String, String, String)> = Vec::new();
                 for (room, m) in self.chats.outbox() {
                     let name = self.chats.room(room).map(|r| r.name.clone()).unwrap_or_default();
-                    waiting.push((format!("A message to {name}"), when(m.sent_at)));
+                    waiting.push((format!("A message to {name}"), connection_wait.into(), when(m.sent_at)));
                 }
-                for r in crate::outbox::Outbox::load(&self.store).waiting() {
-                    waiting.push((format!("A reply to {}", r.to_name), when(r.created_at)));
+                match crate::outbox::Outbox::load_checked(&self.store) {
+                    Ok(outbox) => {
+                        for r in outbox.waiting() { waiting.push((format!("A reply to {}", r.to_name), "Awaiting approval or standing authorization check".into(), when(r.created_at))); }
+                        for r in outbox.unconfirmed() { waiting.push((format!("A reply to {}", r.to_name), "Submission unconfirmed; check the service before repeating".into(), when(r.created_at))); }
+                    },
+                    Err(_) => waiting.push(("Mail draft and submission coverage unavailable".into(), "Saved outbox unreadable; counts and outcomes unknown".into(), String::new())),
                 }
                 for t in self.queue.tasks.iter().filter(|t| t.needs_net && !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed)) {
-                    waiting.push((sentence(&t.command), when(t.created)));
+                    let dependency = match t.state {
+                        crate::lanes::TaskState::Running => "Worker result pending",
+                        crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work",
+                        _ => connection_wait,
+                    };
+                    waiting.push((sentence(&t.command), dependency.into(), when(t.created)));
+                }
+                // Display existing publication states only; rendering never approves or submits.
+                for post in &self.publisher.posts {
+                    use crate::publish::PostState;
+                    let dependency = match post.state {
+                        PostState::Draft => "Draft; approval not confirmed",
+                        PostState::AwaitingApproval => "Awaiting approval",
+                        PostState::Scheduled => "Scheduled; approval and connection rechecked at send time",
+                        PostState::ReadyToSend => connection_wait,
+                        PostState::Held => "Held; check the publication result",
+                        PostState::PendingSubmission | PostState::Uncertain => "Submission outcome unknown; review before retrying",
+                        PostState::Failed => "Failed; check the publication result",
+                        PostState::Sent | PostState::Cancelled => continue,
+                    };
+                    waiting.push((post.describe(), dependency.into(), when(post.created)));
                 }
                 let live = vec![
                     "Your calendar".to_string(),
@@ -369,7 +407,7 @@ impl Daemon<'_> {
                     "Projects and builds, in a copy".to_string(),
                     "Voice, on this machine".to_string(),
                 ];
-                crate::hubpages::offline_page(&crate::hubpages::OfflineView { online, live, waiting })
+                crate::hubpages::offline_page(&crate::hubpages::OfflineView { reach, live, waiting })
             }
             Page::Talk => {
                 let ex: Vec<(String, String)> = self

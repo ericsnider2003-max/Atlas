@@ -635,6 +635,7 @@ header .tool.icon::-webkit-details-marker{display:none}
 .sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 /* Focus is always visible, and never hidden under the sticky top bar. */
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
+.files-io label.btn:focus-within{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
 main:focus{outline:none}
 html{scroll-padding-top:64px}
 /* Targets are at least 24px (WCAG 2.5.8), 44px on touch screens. */
@@ -646,7 +647,7 @@ a.nav,summary.nav,button,.btn,.go,select,input,textarea,.tab,.view,.segmented a,
 /* Windows' high-contrast themes: use the system's colours as they are. */
 @media (forced-colors:active){
   .pill,.count,.tag,.area,.chipd{border:1px solid CanvasText}
-  :focus-visible{outline:3px solid Highlight}
+  :focus-visible,.files-io label.btn:focus-within{outline:3px solid Highlight}
   .sw .knob{background:ButtonText}
   .brief,.item,.card,.tile{border:1px solid CanvasText}
 }

@@ -354,36 +354,80 @@ fn inside(root: &Path, path: &Path) -> bool {
     path.starts_with(&root)
 }
 
-/// Carry out a plan. Returns bytes reclaimed.
-///
-/// `root` is the only place deletion is permitted, and every path is checked
-/// against it here rather than trusted from the plan.
-///
-/// This is the one irreversible operation in the module, and it used to take
-/// whatever path a `Plan::Delete` carried. That was safe only because the one
-/// caller happened to build its plans from a survey of `data`. `Plan` is
-/// public, serialisable, and reaches disk, so "the only caller is careful" is
-/// a property of today rather than of the code — and the point of no return is
-/// exactly where a check is worth having, not one frame earlier.
-///
-/// Directories are refused outright: `remove_file` would fail on one anyway,
-/// but saying so is better than a silent no-op that reads as success.
-pub fn apply(plans: &[Plan], root: &Path) -> u64 {
+
+
+/// Worker-only cleanup: contention retains the current attempt, while stop
+/// and changed file metadata prevent a delayed plan deleting fresh output.
+pub fn apply_until(plans: &[Plan], root: &Path, stopped: &dyn Fn() -> bool) -> std::io::Result<u64> {
     let mut freed = 0;
-    for p in plans {
-        let Plan::Delete { path, .. } = p else { continue };
-        if !inside(root, path) {
-            continue;
-        }
-        let Ok(md) = std::fs::metadata(path) else { continue };
-        if !md.is_file() {
-            continue;
-        }
-        if std::fs::remove_file(path).is_ok() {
-            freed += md.len();
+    for plan in plans {
+        let Plan::Delete { path, .. } = plan else { continue };
+        if !inside(root, path) { continue; }
+        let original = match std::fs::metadata(path) { Ok(metadata) if metadata.is_file() => metadata, _ => continue };
+        let state = crate::store::state_root_for(path)?;
+        let started = std::time::Instant::now();
+        loop {
+            if stopped() { return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "cleanup stopped before the next deletion")); }
+            let attempt = (|| -> std::io::Result<bool> {
+                let _guard = state.as_ref().map(|state| crate::store::state_transaction(state)).transpose()?;
+                let current = match std::fs::metadata(path) {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+                    Err(error) => return Err(error),
+                };
+                if !current.is_file() || current.len() != original.len() || current.modified().ok() != original.modified().ok() { return Ok(false); }
+                crate::store::remove_owned_file(path)?;
+                Ok(true)
+            })();
+            match attempt {
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && started.elapsed() < std::time::Duration::from_secs(10) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(error) => return Err(error),
+                Ok(deleted) => { if deleted { freed += original.len(); } break; },
+            }
         }
     }
-    freed
+    Ok(freed)
+}
+
+#[cfg(test)]
+mod contended_cleanup {
+    use super::*;
+    fn exercise(cancel: bool, replace: bool) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let area = std::env::temp_dir().join(format!("atlas-retention-lock-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let store = crate::store::Store::new(area.join("data/state")); store.save("test", &1).unwrap();
+        let root = area.join("data"); let file = root.join("notes/old.wav");
+        crate::store::bind_owned_output(store.root(), file.parent().unwrap()).unwrap();
+        std::fs::write(&file, b"old scratch bytes").unwrap();
+        let guard = store.transaction().unwrap();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)); let worker_stop = stop.clone();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let worker_root = root.clone(); let worker_file = file.clone();
+        let worker = std::thread::spawn(move || {
+            let notified = std::cell::Cell::new(false);
+            apply_until(&[Plan::Delete { path: worker_file, why: "expired scratch fixture".into() }], &worker_root, &|| {
+                if !notified.replace(true) { ready_tx.send(()).unwrap(); }
+                worker_stop.load(std::sync::atomic::Ordering::SeqCst)
+            })
+        });
+        ready_rx.recv().unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"old scratch bytes");
+        if cancel { stop.store(true, std::sync::atomic::Ordering::SeqCst); }
+        if replace { std::fs::write(&file, b"fresh owner output with different length").unwrap(); }
+        if cancel {
+            assert_eq!(worker.join().unwrap().unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+            assert!(file.exists()); drop(guard);
+        } else {
+            drop(guard);
+            let freed = worker.join().unwrap().unwrap();
+            if replace { assert_eq!(freed, 0); assert_eq!(std::fs::read(&file).unwrap(), b"fresh owner output with different length"); }
+            else { assert!(freed > 0); assert!(!file.exists()); }
+        }
+        let _ = std::fs::remove_dir_all(area);
+    }
+    #[test] fn cleanup_retries_after_the_snapshot_releases_its_lock() { exercise(false, false); }
+    #[test] fn cancelled_cleanup_keeps_its_file_while_snapshot_is_still_held() { exercise(true, false); }
+    #[test] fn a_delayed_cleanup_does_not_delete_new_owner_output() { exercise(false, true); }
 }
 
 /// Everything `apply` would refuse to touch, and why.
@@ -418,7 +462,7 @@ pub fn discard_audio(path: &std::path::Path, cfg: &RetentionConfig) -> bool {
     if !cfg.delete_audio_after_transcribing {
         return false;
     }
-    std::fs::remove_file(path).is_ok()
+    crate::store::remove_owned_file(path).is_ok()
 }
 
 /// A recording that removes itself however the transcription ends.
@@ -432,7 +476,7 @@ pub fn discard_audio(path: &std::path::Path, cfg: &RetentionConfig) -> bool {
 /// off. Neither did anything.
 ///
 /// The two places that convert audio did their own cleanup instead, with a
-/// hard-coded `let _ = std::fs::remove_file(&wav)` on the last line of the
+/// hard-coded `let _ = crate::store::remove_owned_file(&wav)` on the last line of the
 /// happy path. So the setting was ignored, the result was discarded, and —
 /// the part that matters — **every early return leaked the file**:
 ///

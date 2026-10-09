@@ -121,6 +121,14 @@ pub struct Browser {
     timeout: Duration,
 }
 
+#[cfg(test)]
+mod fixture_browser {
+    use super::*;
+    impl Browser {
+        pub(crate) fn from_test_cdp(cdp: Cdp) -> Browser { Browser { cdp, timeout: Duration::from_millis(30) } }
+    }
+}
+
 impl Browser {
     /// Attach to a Chrome already listening on the debug port.
     pub fn attach(cfg: &BrowserConfig) -> Result<Browser> {
@@ -301,6 +309,24 @@ impl Browser {
         self.cdp.click(&btn)
     }
 
+    /// An enabled click proves submission only. A newly shown receipt link
+    /// in the provider's confirmation toast is required to claim publication.
+    pub fn publish_verified(&mut self, p: &SiteProfile) -> Result<Option<String>> {
+        let before = self.cdp.eval(&publication_receipt_js(&p.name))?;
+        // Once the click is attempted, a transport failure is ambiguous.
+        if self.publish(p).is_err() { return Ok(None); }
+        let deadline = std::time::Instant::now() + self.timeout;
+        loop {
+            match self.cdp.eval(&publication_receipt_js(&p.name)) {
+                Ok(value) if value != before => if let Some(receipt) = value.as_str().filter(|s| !s.is_empty()) { return Ok(Some(receipt.to_string())); },
+                Err(_) => return Ok(None),
+                _ => {}
+            }
+            if std::time::Instant::now() >= deadline { return Ok(None); }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
     /// Press the one control on the page labelled with the words for this
     /// change, after the read-back and your yes (`confirmed`). Waits for the
     /// page to settle first; never types anything.
@@ -361,6 +387,74 @@ impl Browser {
     pub fn quit(mut self) {
         crate::heard!(self.cdp.call("Browser.close", serde_json::json!({})));
         self.cdp.close();
+    }
+}
+
+fn publication_receipt_js(site: &str) -> String {
+    let (host, path) = match site {
+        "x" => ("x.com", "/status/"),
+        "linkedin" => ("linkedin.com", "/feed/update/"),
+        _ => return "null".into(),
+    };
+    format!("(() => {{ for (const a of document.querySelectorAll('[role=status] a[href], [data-testid=toast] a[href]')) {{ try {{ const u = new URL(a.href); if (u.protocol === 'https:' && (u.hostname === '{host}' || u.hostname === 'www.{host}') && u.pathname.includes('{path}')) return u.href; }} catch (_) {{}} }} return null; }})()")
+}
+
+#[cfg(test)]
+mod publication_receipts {
+    use super::*;
+    use std::io::{Read, Write};
+    use serde_json::{json, Value};
+
+    // Local protocol peer: a click can succeed while the provider never
+    // confirms it. No Chrome, account, or outside network is involved.
+    fn peer(receipt: Option<&str>, stale: bool) -> (Browser, std::thread::JoinHandle<usize>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}/test", listener.local_addr().unwrap());
+        let receipt = receipt.map(str::to_string);
+        let handle = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut headers = Vec::new(); let mut byte = [0];
+            while !headers.ends_with(b"\r\n\r\n") { socket.read_exact(&mut byte).unwrap(); headers.push(byte[0]); }
+            socket.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n").unwrap();
+            let mut clicks = 0;
+            loop {
+                let mut frame = [0; 2]; if socket.read_exact(&mut frame).is_err() { break; }
+                let mut len = (frame[1] & 127) as usize;
+                if len == 126 { let mut bytes = [0; 2]; socket.read_exact(&mut bytes).unwrap(); len = u16::from_be_bytes(bytes) as usize; }
+                assert!(len < 65536);
+                let mut mask = [0; 4]; socket.read_exact(&mut mask).unwrap();
+                let mut bytes = vec![0; len]; socket.read_exact(&mut bytes).unwrap(); crate::ws::unmask(&mut bytes, mask);
+                let call: Value = serde_json::from_slice(&bytes).unwrap();
+                let expression = call["params"]["expression"].as_str().unwrap_or("");
+                let value = if expression.contains("querySelectorAll") { if stale || clicks > 0 { receipt.clone().map(Value::String).unwrap_or(Value::Null) } else { Value::Null } }
+                    else { if expression.contains("e.click()") { clicks += 1; } Value::Bool(true) };
+                let body = json!({"id": call["id"], "result": {"result": {"value": value}}}).to_string();
+                let bytes = body.as_bytes(); let mut reply = vec![0x81];
+                if bytes.len() < 126 { reply.push(bytes.len() as u8); } else { reply.push(126); reply.extend_from_slice(&(bytes.len() as u16).to_be_bytes()); }
+                reply.extend_from_slice(bytes); if socket.write_all(&reply).is_err() { break; }
+            }
+            clicks
+        });
+        let timeout = Duration::from_millis(30);
+        (Browser { cdp: Cdp::connect(&url, Duration::from_secs(2)).unwrap(), timeout }, handle)
+    }
+
+    #[test]
+    fn a_successful_click_without_a_receipt_is_not_publication() {
+        let (mut browser, peer) = peer(None, false);
+        assert_eq!(browser.publish_verified(&default_sites()[0]).unwrap(), None);
+        drop(browser); assert_eq!(peer.join().unwrap(), 1);
+    }
+
+    #[test]
+    fn only_a_new_confirmation_receipt_confirms_publication() {
+        for stale in [false, true] {
+            let receipt = "https://x.com/me/status/123";
+            let (mut browser, peer) = peer(Some(receipt), stale);
+            assert_eq!(browser.publish_verified(&default_sites()[0]).unwrap(), if stale { None } else { Some(receipt.into()) });
+            drop(browser); assert_eq!(peer.join().unwrap(), 1);
+        }
     }
 }
 

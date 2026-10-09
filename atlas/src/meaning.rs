@@ -67,6 +67,16 @@ pub fn embed(cfg: &MeaningConfig, vars: &Vars, text: &str) -> Result<Vec<f32>> {
     crate::speaker::parse_embedding(&tool.run(&v, Some(text))?)
 }
 
+/// The encoder owns a scoped child; cancellation never becomes word-only success.
+pub fn embed_stoppable(cfg: &MeaningConfig, vars: &Vars, text: &str, stop: &dyn Fn() -> bool) -> Result<Vec<f32>> {
+    let tool = cfg.encoder.as_ref().ok_or_else(|| AtlasError::Platform(NO_ENCODER.into()))?;
+    let mut vars = vars.clone();
+    vars.insert("text".into(), text.into());
+    let output = tool.run_stoppable(&vars, Some(text), stop)?
+        .ok_or_else(|| AtlasError::Platform("Search measurement stopped before the encoder finished.".into()))?;
+    crate::speaker::parse_embedding(&output)
+}
+
 /// Can this machine make meaning vectors at all?
 ///
 /// Checked by looking for the program, not at the config — a configured

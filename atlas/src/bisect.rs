@@ -145,54 +145,70 @@ pub fn verdict_of_run(passed: bool, output: &str) -> Verdict {
     Verdict::Fails
 }
 
-fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let out = crate::tools::command("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .map_err(|e| format!("couldn't run git: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+fn git(dir: &Path, args: &[&str]) -> Result<String, String> { git_controlled(dir, args, None) }
+
+fn git_controlled(dir: &Path, args: &[&str], budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<String, String> {
+    if let Some(b) = budget { b.check()?; }
+    let mut c = crate::tools::command("git");
+    c.args(args).current_dir(dir);
+    let cap = std::time::Duration::from_secs(30);
+    let stop = || budget.is_some_and(|b| b.stopping());
+    let (passed, text) = crate::tools::run_scoped(&mut c, budget.map_or(cap, |b| b.remaining(cap)), 2 * 1024 * 1024, None, Some(&stop)).said(2 * 1024 * 1024);
+    if let Some(b) = budget { b.check()?; }
+    if passed { Ok(text.trim().to_string()) } else { Err(text) }
 }
 
 /// Find the change in `repo` that made `test` (a program and its arguments,
 /// run in the checkout) start failing, looking back at most `look_back`
 /// commits along the first-parent line, each run stopped at `limit_secs`.
-pub fn what_broke(repo: &Path, test: &[String], look_back: usize, limit_secs: u64) -> Result<Outcome, String> {
+
+pub fn what_broke_until(repo: &Path, test: &[String], look_back: usize, limit_secs: u64, total_limit: std::time::Duration, stop: &(dyn Fn() -> bool + Sync)) -> Result<Outcome, String> {
+    let budget = crate::tools::WorkBudget::new(total_limit, stop);
+    what_broke_controlled(repo, test, look_back, limit_secs, &budget)
+}
+
+fn what_broke_controlled(repo: &Path, test: &[String], look_back: usize, limit_secs: u64, budget: &crate::tools::WorkBudget<'_>) -> Result<Outcome, String> {
+    budget.check()?;
     let Some((program, args)) = test.split_first() else {
         return Err("no test to run".into());
     };
-    let listed = git(repo, &["rev-list", "--first-parent", &format!("--max-count={}", look_back.max(2)), "HEAD"])?;
+    let listed = git_controlled(repo, &["rev-list", "--first-parent", &format!("--max-count={}", look_back.max(2)), "HEAD"], Some(budget))?;
     let mut commits: Vec<String> = listed.lines().map(str::to_string).collect();
     commits.reverse();
     let base = crate::roots::tmp_dir().join("selffix");
     let _ = std::fs::create_dir_all(&base); // unheard-ok: the worktree add below fails, and says so, if it couldn't be made
-    let dir = base.join(format!("bisect-{}", std::process::id()));
-    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]); // unheard-ok: clearing a leftover from an earlier run; usually there is none
+    static NEXT_WORKTREE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let unique = NEXT_WORKTREE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = base.join(format!("bisect-{}-{unique}", std::process::id()));
+    let _ = git_controlled(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()], Some(budget)); // unheard-ok: clearing a leftover from an earlier run; usually there is none
     let _ = std::fs::remove_dir_all(&dir); // unheard-ok: as above
-    git(repo, &["worktree", "add", "--detach", &dir.to_string_lossy(), "HEAD"])?;
+    git_controlled(repo, &["worktree", "add", "--detach", &dir.to_string_lossy(), "HEAD"], Some(budget))?;
     // The crate may sit in a folder of the repo (Atlas's is `atlas/`): the
     // test runs where it does in the checkout you gave.
-    let top = git(repo, &["rev-parse", "--show-toplevel"]).map(std::path::PathBuf::from).unwrap_or_else(|_| repo.to_path_buf());
+    let top = git_controlled(repo, &["rev-parse", "--show-toplevel"], Some(budget)).map(std::path::PathBuf::from).unwrap_or_else(|_| repo.to_path_buf());
     let inner = repo.canonicalize().ok().and_then(|r| top.canonicalize().ok().and_then(|t| r.strip_prefix(t).ok().map(|p| p.to_path_buf()))).unwrap_or_default();
     let run_in = dir.join(&inner);
     let args: Vec<String> = args.to_vec();
     let outcome = find_first_bad(&commits, |c| {
-        if crate::goodbye::asked_to_stop() {
+        if budget.stopping() {
             return Verdict::CantTell("you asked me to stop".into());
         }
-        if let Err(e) = git(&dir, &["checkout", "-q", "--detach", c]) {
+        if let Err(e) = git_controlled(&dir, &["checkout", "-q", "--detach", c], Some(budget)) {
             return Verdict::CantTell(format!("couldn't check it out: {e}"));
         }
-        let (passed, out) = crate::sandbox::run_within(program, &args, &[], &run_in, limit_secs, 20_000);
+        let (passed, out) = crate::sandbox::run_within_controlled(program, &args, &[], &run_in, budget.remaining(std::time::Duration::from_secs(limit_secs)).as_secs().max(1), 20_000, Some(&|| budget.stopping()));
         verdict_of_run(passed, &out)
     });
-    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]); // unheard-ok: tidying up; a leftover is removed by the next run's first step
-    let _ = std::fs::remove_dir_all(&dir); // unheard-ok: as above
+    // Cleanup has a separate short budget: an expired/canceled investigation
+    // must still remove only its own worktree, never wait indefinitely.
+    let cleanup_stop = || false;
+    let cleanup = crate::tools::WorkBudget::new(std::time::Duration::from_secs(30), &cleanup_stop);
+    git_controlled(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()], Some(&cleanup))
+        .map_err(|why| format!("The investigation ended, but its temporary worktree remains at {}: {why}", dir.display()))?;
+    budget.check()?;
     Ok(outcome)
 }
+
 
 /// The answer in words, with what the change was.
 pub fn told(repo: &Path, test: &str, o: &Outcome) -> String {

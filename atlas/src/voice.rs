@@ -662,7 +662,12 @@ impl<'a> Voice<'a> {
     /// whisper hears it best, and what whisper writes for
     /// a quiet room ("you", "Thanks for watching") is dropped
     /// (`not_really_said`). 29 Sep 2026.
-    fn transcribe_heard(&self, vars: &Vars) -> Result<String> {
+    fn transcribe_heard(&self, vars: &Vars) -> Result<String> { self.transcribe_heard_until(vars, &|| false) }
+
+    fn transcribe_heard_until(&self, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<String> {
+        let epoch = crate::parakeet::cancellation_epoch();
+        let canceled = || stop() || crate::parakeet::cancellation_epoch() != epoch;
+        if stop() { return Ok(String::new()); }
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         if let Ok(bytes) = std::fs::read(&in_wav) {
             if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
@@ -685,23 +690,30 @@ impl<'a> Voice<'a> {
         let english = vars.get("lang_val").is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
             && vars.get("task_opt").is_none_or(|t| t.trim().is_empty());
         if english && !self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper") {
-            if let Some(Ok(text)) = crate::parakeet::transcribe_file(&crate::roots::install_root(), std::path::Path::new(&in_wav)) {
-                let text = clean_transcript(&text);
-                return Ok(if not_really_said(&text) { String::new() } else { text });
+            match crate::parakeet::transcribe_file_until(&crate::roots::install_root(), std::path::Path::new(&in_wav), &canceled) {
+                Some(Ok(Some(text))) => {
+                    let text = clean_transcript(&text);
+                    return Ok(if not_really_said(&text) { String::new() } else { text });
+                }
+                Some(Ok(None)) => return Ok(String::new()),
+                _ => {}
             }
         }
-        let raw = self.cfg.stt.run(vars, None)?;
+        if canceled() { return Ok(String::new()); }
+        let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else { return Ok(String::new()); };
         let text = clean_transcript(&raw);
         Ok(if not_really_said(&text) { String::new() } else { text })
     }
 
     /// Words for audio already recorded: written where speech-to-text reads
     /// and transcribed. Used for what you said over Atlas while it spoke.
-    fn transcribe_samples(&self, samples: &[i16]) -> Result<String> {
+    fn transcribe_samples(&self, samples: &[i16]) -> Result<String> { self.transcribe_samples_until(samples, &|| false) }
+
+    fn transcribe_samples_until(&self, samples: &[i16], stop: &dyn Fn() -> bool) -> Result<String> {
         let vars = self.vars()?;
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         std::fs::write(&in_wav, crate::audio::wav_bytes(samples, RECORD_RATE_HZ))?;
-        let raw = self.transcribe_heard(&vars)?;
+        let raw = self.transcribe_heard_until(&vars, stop)?;
         Ok(clean_transcript(&raw))
     }
 
@@ -967,7 +979,7 @@ impl<'a> Voice<'a> {
                 drop(stream);
                 let recorded = t0.elapsed().as_millis();
                 let t1 = std::time::Instant::now();
-                let text = self.transcribe_samples(&kept)?;
+                let text = self.transcribe_samples_until(&kept, stop)?;
                 self.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
                 return Ok((!text.is_empty()).then_some(text));
             }
@@ -980,7 +992,7 @@ impl<'a> Voice<'a> {
         }
         let recorded = t0.elapsed().as_millis();
         let t1 = std::time::Instant::now();
-        let raw = self.transcribe_heard(&vars)?;
+        let raw = self.transcribe_heard_until(&vars, stop)?;
         self.last_listen.store(
             pack(recorded, t1.elapsed().as_millis()),
             std::sync::atomic::Ordering::Relaxed,
@@ -1165,7 +1177,7 @@ impl Voice<'_> {
             return;
         }
         let Ok(synth) = self.kokoro_synth() else { return };
-        let sentences: Vec<String> = crate::speech::split(reply)
+        let sentences: Vec<String> = crate::speech::playback_chunks(reply)
             .iter()
             .map(|c| crate::pronounce::for_speech(&crate::spoken_form::for_speech(c), &self.cfg.pronounce))
             .collect();
@@ -1179,7 +1191,7 @@ impl Voice<'_> {
             return;
         }
         let Ok(synth) = self.kokoro_synth() else { return };
-        let sentences: Vec<String> = crate::speech::split(more)
+        let sentences: Vec<String> = crate::speech::playback_chunks(more)
             .iter()
             .map(|c| crate::pronounce::for_speech(&crate::spoken_form::for_speech(c), &self.cfg.pronounce))
             .collect();
@@ -1207,7 +1219,9 @@ impl Voice<'_> {
             }
         };
         let spoken = crate::pronounce::for_speech(text, &self.cfg.pronounce);
-        let sentences = crate::speech::split(&spoken);
+        // Preserve the prepared chunk as the same queue key. Re-splitting a
+        // balanced multi-sentence opening would discard its one-ahead audio.
+        let sentences = if self.ahead.has(&spoken) { vec![spoken] } else { crate::speech::playback_chunks(&spoken) };
         // A reply `prepare` was given is already queued. Anything else of
         // more than one sentence (a line from `Daemon::say`) is queued here,
         // so its second sentence is made while its first plays. A single
@@ -1460,7 +1474,7 @@ impl Voice<'_> {
                     continue;
                 }
                 if ep.heard_anything {
-                    let said = self.heard_in(&kept, &vars).unwrap_or_default();
+                    let said = self.heard_in(&kept, &vars, stop).unwrap_or_default();
                     if let Some(rest) = words_after_name(&said, phrase) {
                         heard = Some(rest);
                         break 'stream;
@@ -1479,17 +1493,17 @@ impl Voice<'_> {
         let _ = child.wait();
         // The stream ended mid-sentence: what was said so far still counts.
         if heard.is_none() && ep.heard_anything && !stop() {
-            let said = self.heard_in(&kept, &vars).unwrap_or_default();
+            let said = self.heard_in(&kept, &vars, stop).unwrap_or_default();
             heard = words_after_name(&said, phrase);
         }
         Ok(Some(heard))
     }
 
     /// Words in samples already recorded, through the usual hearing.
-    fn heard_in(&self, samples: &[i16], vars: &Vars) -> Result<String> {
+    fn heard_in(&self, samples: &[i16], vars: &Vars, stop: &dyn Fn() -> bool) -> Result<String> {
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         std::fs::write(&in_wav, crate::audio::wav_bytes(samples, RECORD_RATE_HZ))?;
-        Ok(clean_transcript(&self.transcribe_heard(vars)?))
+        Ok(clean_transcript(&self.transcribe_heard_until(vars, stop)?))
     }
 
     /// `wake_once_until`, keeping what was said after the name in the same
@@ -1535,7 +1549,7 @@ impl Voice<'_> {
             let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
             return Ok(name_alone(crate::wakeword::heard(&samples, rate, &model)));
         }
-        let raw = self.transcribe_heard(&vars)?;
+        let raw = self.transcribe_heard_until(&vars, stop)?;
         Ok(words_after_name(&clean_transcript(&raw), &wake.phrase))
     }
 }
@@ -2067,4 +2081,22 @@ pub fn kokoro_stopped_at(sentences: &[String], at: usize) -> Kokoro {
         return Kokoro::Unavailable;
     }
     Kokoro::Rest(sentences[at.min(sentences.len())..].join(" "))
+}
+
+#[cfg(test)]
+mod recognition_cancel_tests {
+    use super::*;
+    #[test]
+    fn canceled_request_never_starts_whisper_and_next_request_is_independent() {
+        let mut cfg = ToolsConfig::default();
+        cfg.stt_engine = "whisper".into();
+        cfg.stt.command = "atlas-disposable-nonexistent-stt-proof".into();
+        let voice = Voice::new(&cfg);
+        let vars = Vars::new();
+        assert_eq!(voice.transcribe_heard_until(&vars, &|| true).unwrap(), "");
+        let checks = std::cell::Cell::new(0);
+        let cancel_before_fallback = || { let n = checks.get(); checks.set(n + 1); n > 0 };
+        assert_eq!(voice.transcribe_heard_until(&vars, &cancel_before_fallback).unwrap(), "");
+        assert!(voice.transcribe_heard_until(&vars, &|| false).is_err(), "next request must reach its own configured engine rather than inherit cancellation");
+    }
 }

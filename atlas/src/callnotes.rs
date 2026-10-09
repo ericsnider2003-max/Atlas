@@ -271,7 +271,7 @@ impl Notes {
                 if let Some(r) = call.theirs.take() {
                     let path = r.path.clone();
                     crate::heard!(r.finish());
-                    crate::heard!(std::fs::remove_file(path));
+                    crate::heard!(crate::store::remove_owned_file(&path));
                 }
                 said.lines.push(why);
             }
@@ -290,7 +290,7 @@ impl Notes {
             if let Some(r) = call.theirs.take() {
                 let path = r.path.clone();
                 crate::heard!(r.finish());
-                crate::heard!(std::fs::remove_file(path));
+                crate::heard!(crate::store::remove_owned_file(&path));
             }
             said.lines.push("I've stopped recording their side and deleted what I had of it.".into());
         }
@@ -497,7 +497,7 @@ impl Notes {
             match r.finish() {
                 Ok(secs) if secs >= 1.0 => Some(p),
                 _ => {
-                    crate::heard!(std::fs::remove_file(&p));
+                    crate::heard!(crate::store::remove_owned_file(&p));
                     None
                 }
             }
@@ -581,7 +581,7 @@ pub fn transcribe_side(wav: &Path, timed: &crate::tools::ExternalTool, vars: &cr
         let mut tool = timed.clone();
         tool.timeout_secs = tool.timeout_secs.max(transcribe_timeout_secs(wav));
         let text = tool.run(&v, None).map_err(|e| format!("transcribing {} failed: {e}", wav.display()));
-        crate::heard!(std::fs::remove_file(&srt));
+        crate::heard!(crate::store::remove_owned_file(&srt));
         Ok(crate::viewing::read_timed(&text?))
     }
 }
@@ -615,7 +615,7 @@ fn write_up_from(
     let text = notes_text(&done.app, minutes, summary.as_deref(), &transcript, done.theirs.is_some());
     std::fs::create_dir_all(notes_dir).map_err(|e| format!("couldn't make the notes folder: {e}"))?;
     let path = free_name(notes_dir, &notes_name(&done.app, done.started));
-    std::fs::write(&path, text).map_err(|e| format!("couldn't write the notes: {e}"))?;
+    crate::store::write_owned_file(&path, text.as_bytes()).map_err(|e| format!("couldn't write the notes: {e}"))?;
     Ok(WrittenUp { path, summary_ms, prompt_chars, reply_chars, summary: asked, follow })
 }
 

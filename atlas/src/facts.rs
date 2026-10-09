@@ -52,6 +52,81 @@ pub enum Kind {
     Noticed,
 }
 
+#[cfg(test)]
+mod sync_fact_recovery {
+    use super::*;
+    #[test]
+    fn interrupted_shard_migration_preserves_missing_facts_without_resurrection() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-fact-migration-{}-{stamp}", std::process::id()));
+        let store = crate::store::Store::new(root.clone());
+        let first = Fact::new("studio", "Old studio", "Old studio", Kind::Project, 100);
+        let other_name = (0..100).map(|n| format!("subject-{n}")).find(|name| shard_of(name) != shard_of(&first.name)).unwrap();
+        let other = Fact::new(&other_name, "Keep this fact", "Keep this fact", Kind::Project, 100);
+        let mut legacy = Book::default();
+        legacy.facts = vec![first.clone(), other.clone()];
+        store.save("facts", &legacy).unwrap();
+        store.save(&format!("facts-{}", shard_of(&first.name)), &Vec::<Fact>::new()).unwrap();
+        let mut recovered = Book::load_checked(&store).unwrap();
+        assert!(recovered.get(&first.name).is_none());
+        assert_eq!(recovered.get(&other.name).unwrap().body, other.body);
+        recovered.save(&store).unwrap();
+        // Completed migration no longer depends on obsolete legacy bytes.
+        std::fs::write(root.join("facts.json"), b"{obsolete broken legacy").unwrap();
+        let restarted = Book::load_checked(&store).unwrap();
+        assert!(restarted.get(&first.name).is_none());
+        assert!(restarted.get(&other.name).is_some());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    fn event(device: &str, body: &str) -> crate::sync::Event {
+        let fact = Fact::new("studio", body, body, Kind::Project, 100);
+        let mut log = crate::sync::Log::new(device);
+        log.append(crate::sync::What::Changed { id: "fact:studio".into(), field: "fact".into(), to: serde_json::to_string(&fact).unwrap() }, 100);
+        log.events.remove(0)
+    }
+    #[test]
+    fn equal_fact_dates_converge_in_opposite_orders_and_survive_restart() {
+        let a = event("laptop", "Use the small studio");
+        let b = event("phone", "Use the large studio");
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-fact-sync-{}-{stamp}", std::process::id()));
+        let store = crate::store::Store::new(root.clone());
+        let mut left = Book::default();
+        assert!(left.apply_synced(&a));
+        assert!(left.apply_synced(&b));
+        left.save(&store).unwrap();
+        let mut restarted = Book::load(&store);
+        assert!(!restarted.apply_synced(&a));
+        let mut right = Book::default();
+        assert!(right.apply_synced(&b));
+        assert!(!right.apply_synced(&a));
+        assert_eq!(restarted.get("studio"), right.get("studio"));
+        assert_eq!(restarted.get("studio").unwrap().body, "Use the large studio");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn a_mismatched_fact_identity_cannot_replace_another_subject() {
+        let mut bad = event("phone", "An unrelated fact");
+        if let crate::sync::What::Changed { id, .. } = &mut bad.what { *id = "fact:other-subject".into(); }
+        let mut book = Book::default();
+        assert!(!book.apply_synced(&bad));
+        assert!(book.facts.is_empty());
+    }
+    #[test]
+    fn a_corrupt_fact_shard_is_refused_without_rebuilding_or_overwriting_it() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-fact-corrupt-{}-{stamp}", std::process::id()));
+        let store = crate::store::Store::new(root.clone());
+        store.save("facts-0", &vec![Fact::new("studio", "Use the studio", "Use the studio", Kind::Project, 100)]).unwrap();
+        let path = root.join("facts-0.json");
+        assert!(path.is_file());
+        std::fs::write(&path, b"{broken fact shard").unwrap();
+        assert!(Book::load_checked(&store).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"{broken fact shard");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 impl Kind {
     /// How long this kind stays true by default.
     ///
@@ -155,6 +230,10 @@ pub struct Fact {
     /// a wrong correction can be undone. At most `HISTORY_KEPT`.
     #[serde(default)]
     pub history: Vec<(u64, String)>,
+    /// The causal sync version is saved with the fact in its shard, so a
+    /// restart cannot separate the accepted value from its ordering decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_version: Option<crate::sync::Version>,
 }
 
 /// A password, a code, a key: never carried into a prompt unasked, whether
@@ -373,6 +452,7 @@ impl Fact {
             attribute,
             value,
             history: Vec::new(),
+            sync_version: None,
         }
     }
 
@@ -691,31 +771,31 @@ impl Book {
     /// immediately. Falls back to the pre-sharding single `facts` file the
     /// first time, then writes shards from then on.
     pub fn load(store: &crate::store::Store) -> Book {
+        Self::load_checked(store).unwrap_or_else(|error| panic!("Atlas could not safely read its saved facts: {error}"))
+    }
+
+    pub fn load_checked(store: &crate::store::Store) -> crate::error::Result<Book> {
+        let _transaction = store.transaction()?;
         let mut facts: Vec<Fact> = Vec::new();
-        let mut any_shard = false;
+        let mut present = [false; SHARDS];
         for s in 0..SHARDS {
-            let shard: Vec<Fact> = store.load(&format!("facts-{s}"));
-            if !shard.is_empty() {
-                any_shard = true;
-            }
-            facts.extend(shard);
+            let shard: Option<Vec<Fact>> = store.load_checked(&format!("facts-{s}"))?;
+            if let Some(shard) = shard { present[s] = true; facts.extend(shard); }
         }
         let mut b = Book::default();
-        if any_shard {
-            b.facts = facts;
-            // Loaded cleanly from shards; nothing to rewrite until a change.
-        } else {
-            // Migrate the old single file, if there is one, and mark every
-            // shard to be written once so the next save lays them down.
-            let legacy: Book = store.load("facts");
-            b.facts = legacy.facts;
-            if !b.facts.is_empty() {
-                b.dirty = [true; SHARDS];
+        b.facts = facts;
+        if present.iter().any(|exists| !exists) {
+            // Resume interrupted migration only for absent shards. A present
+            // empty shard is authoritative and must not resurrect old facts.
+            let legacy: Book = store.load_checked("facts")?.unwrap_or_default();
+            if !legacy.facts.is_empty() {
+                b.facts.extend(legacy.facts.into_iter().filter(|fact| !present[shard_of(&fact.name)]));
+                for s in 0..SHARDS { b.dirty[s] = !present[s]; }
             }
         }
-        b.aliases = store.load("fact-aliases");
+        b.aliases = store.load_checked("fact-aliases")?.unwrap_or_default();
         b.reindex();
-        b
+        Ok(b)
     }
 
     /// Write only the shards that changed since the last save. A single new
@@ -888,6 +968,37 @@ impl Book {
         }
         self.dirty[s] = true;
         self.reindex();
+    }
+
+    pub fn note_sync_version(&mut self, event: &crate::sync::Event) -> bool {
+        let crate::sync::What::Changed { id, field, to } = &event.what else { return false };
+        let Some(name) = id.strip_prefix("fact:").filter(|_| field == "fact") else { return false };
+        let version = crate::sync::Version::of(event);
+        let Some(fact) = self.facts.iter_mut().find(|fact| fact.name == name) else { return false };
+        let Ok(mut observed) = serde_json::from_str::<Fact>(to) else { return false };
+        observed.sync_version = fact.sync_version.clone();
+        if observed != *fact { return false; }
+        if fact.sync_version.as_ref().is_some_and(|old| old >= &version) { return false; }
+        fact.sync_version = Some(version);
+        self.dirty[shard_of(name)] = true;
+        true
+    }
+
+    pub fn apply_synced(&mut self, event: &crate::sync::Event) -> bool {
+        let crate::sync::What::Changed { id, field, to } = &event.what else { return false };
+        let Some(name) = id.strip_prefix("fact:").filter(|_| field == "fact") else { return false };
+        let Ok(mut fact) = serde_json::from_str::<Fact>(to) else { return false };
+        if fact.name != name || name != slug(name) { return false; }
+        let version = crate::sync::Version::of(event);
+        if let Some(old) = self.get(name) {
+            if old.sync_version.as_ref().is_some_and(|old| old >= &version)
+                || (old.sync_version.is_none() && old.as_of > fact.as_of) { return false; }
+        }
+        fact.sync_version = Some(version);
+        self.put(fact);
+        self.facts.sort_by(|a, b| a.name.cmp(&b.name));
+        self.reindex();
+        true
     }
 
     /// Learn a fact, merging it into an existing one when it restates something

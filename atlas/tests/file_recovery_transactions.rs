@@ -1,6 +1,6 @@
 //! Recovery must survive a blocked destination and a failed durable record.
 use atlas::safety::{Trash, TrashConfig};
-use atlas::tune::{undo_tune_change, TuneUndo};
+use atlas::tune::{undo_tune_change_with_checkpoint, TuneUndo};
 use std::fs;
 
 struct Area(std::path::PathBuf);
@@ -51,7 +51,7 @@ fn a_partial_undo_is_not_complete_and_can_be_retried() {
     assert_eq!(fs::read_to_string(&a).unwrap(), "first");
     assert_eq!(fs::read_to_string(&b).unwrap(), "new occupant");
     fs::remove_file(&b).unwrap();
-    undo_tune_change(&saved).expect("retry only attempts files still pending");
+    undo_tune_change_with_checkpoint(&saved, &mut |_| Ok(())).expect("retry only attempts files still pending");
     assert_eq!(fs::read_to_string(&b).unwrap(), "second");
 }
 
@@ -184,10 +184,10 @@ fn a_failed_sorting_record_prevents_the_filesystem_move() {
         .unwrap()
         .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
         .unwrap();
-    let done = atlas::organize::carry_out_moves_recorded(
+    let done = atlas::organize::carry_out_moves_controlled(
         &plan,
         &sys,
-        atlas::store::now(),
+        atlas::store::now(), &mut |_| Ok(()),
         &mut |from, to| {
             store
                 .save(
@@ -198,8 +198,7 @@ fn a_failed_sorting_record_prevents_the_filesystem_move() {
                     )],
                 )
                 .map_err(|e| e.to_string())
-        },
-    );
+        }, &|| false);
     assert_eq!(fs::read_to_string(original).unwrap(), "keep me");
     assert!(!into.join("file.txt").exists());
     assert!(done.moved.is_empty());
@@ -232,7 +231,7 @@ fn a_saved_move_intent_recovers_after_a_crash_at_either_side_of_the_move() {
             .unwrap();
         let record: Vec<(u64, TuneUndo)> =
             atlas::store::Store::new(store.root()).load(atlas::tune::TUNE_UNDO_RECORD);
-        undo_tune_change(&record[0].1).unwrap();
+        undo_tune_change_with_checkpoint(&record[0].1, &mut |_| Ok(())).unwrap();
         assert_eq!(fs::read_to_string(original).unwrap(), "keep me");
         assert!(!held.exists());
     }
@@ -245,10 +244,10 @@ fn a_destination_created_after_planning_is_never_overwritten() {
     fs::write(&original, "source").unwrap();
     let dest = dir.path().join("dest");
     let (moved, errors) =
-        atlas::tune::move_files_into_recorded(&[original.clone()], &dest, &mut |_, to| {
+        atlas::tune::move_files_into_controlled(&[original.clone()], &dest, &mut |_| Ok(()), &mut |_, to| {
             fs::write(to, "new occupant").unwrap();
             Ok(())
-        });
+        }, &|| false);
     assert!(moved.is_empty());
     assert_eq!(errors.len(), 1);
     assert_eq!(fs::read_to_string(&original).unwrap(), "source");
@@ -270,7 +269,7 @@ fn an_unrelated_original_is_not_mistaken_for_a_completed_move() {
         moves: vec![intent],
         made: Vec::new(),
     };
-    let error = undo_tune_change(&undo).unwrap_err();
+    let error = undo_tune_change_with_checkpoint(&undo, &mut |_| Ok(())).unwrap_err();
     assert!(error.contains("can't confirm"), "{error}");
     assert_eq!(
         fs::read_to_string(original).unwrap(),
@@ -303,12 +302,12 @@ fn an_edited_returned_file_is_recognized_after_a_failed_completion_save() {
     });
     assert!(result.unwrap_err().contains("retry is safe"));
     assert_eq!(fs::read_to_string(&original).unwrap(), "edited file");
-    undo_tune_change(&saved).unwrap();
+    undo_tune_change_with_checkpoint(&saved, &mut |_| Ok(())).unwrap();
     assert_eq!(fs::read_to_string(original).unwrap(), "edited file");
 }
 
 #[test]
-fn a_restore_parent_failure_reports_every_file_already_replaced() {
+fn a_restore_parent_failure_leaves_every_original_file_intact() {
     let dir = Area::new();
     let backup = dir.path().join("backup");
     let state = dir.path().join("state");
@@ -322,26 +321,19 @@ fn a_restore_parent_failure_reports_every_file_already_replaced() {
         dir: dir.path().join("trash").display().to_string(),
         keep_days: 30,
     });
-    let error = atlas::safety::restore(
+    let error = atlas::safety::restore_with_notes(
         &backup,
         &state,
         &trash,
-        &atlas::household::Household::default(),
-    )
+        &atlas::household::Household::default(), &state.parent().unwrap().join("notes"))
     .unwrap_err()
     .to_string();
-    assert!(
-        error.contains("restored 1 file(s)") && error.contains("Replaced so far: a.txt"),
-        "{error}"
-    );
+    assert!(!error.is_empty());
     assert_eq!(
         fs::read_to_string(state.join("a.txt")).unwrap(),
-        "new version"
-    );
-    assert_eq!(
-        fs::read_to_string(&trash.ledger()[0].held).unwrap(),
         "old version"
     );
+    assert!(trash.ledger().is_empty());
     assert_eq!(
         fs::read_to_string(state.join("z-blocked")).unwrap(),
         "occupying file"
@@ -366,14 +358,27 @@ fn ordinary_undo_keeps_partial_file_recovery_available_for_retry() {
     let id = daemon.history.note("sorted two files", "files", atlas::undo::Undo::Atlas("move them back".into()), true, at);
     daemon.store.save(atlas::tune::TUNE_UNDO_RECORD, &vec![(id, TuneUndo::Moves(vec![(original_a.clone(), moved_a), (original_b.clone(), moved_b)]))]).unwrap();
     daemon.turn("undo", at + 1);
-    let partial = daemon.turn("yes", at + 2);
+    let mut partial = daemon.turn("yes", at + 2);
+    assert!(!partial.starts_with("Undone"), "worker acceptance is not completion");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        if let Some(result) = daemon.tick(at + 2).into_iter().find(|line| line.contains("Still pending")) { partial = result; break; }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     assert!(partial.contains("Still pending") && !partial.starts_with("Undone"), "{partial}");
     assert!(!daemon.history.done.iter().find(|entry| entry.id == id).unwrap().undone);
+    assert_eq!(fs::read_to_string(&original_a).unwrap(), "first");
+    assert_eq!(fs::read_to_string(&original_b).unwrap(), "new occupant");
     let pending: Vec<(u64, TuneUndo)> = daemon.store.load(atlas::tune::TUNE_UNDO_RECORD);
     assert!(matches!(&pending[0].1, TuneUndo::RecordedMoves { moves, .. } if moves.len() == 1));
     fs::remove_file(&original_b).unwrap();
     daemon.turn("undo", at + 3);
-    let complete = daemon.turn("yes", at + 4);
+    let mut complete = daemon.turn("yes", at + 4);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        if let Some(result) = daemon.tick(at + 4).into_iter().find(|line| line.starts_with("Undone")) { complete = result; break; }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     assert!(complete.starts_with("Undone"), "{complete}");
     assert_eq!(fs::read_to_string(original_a).unwrap(), "first");
     assert_eq!(fs::read_to_string(original_b).unwrap(), "second");

@@ -48,9 +48,17 @@ impl Undo {
 pub struct History {
     pub done: Vec<Did>,
     next_id: u64,
+    #[serde(default)]
+    append_identities: std::collections::BTreeMap<u64, String>,
+    #[serde(skip)]
+    pending: Vec<HistoryDelta>,
 }
 
+#[derive(Debug, Clone)]
+enum HistoryDelta { Append(Did, String), Undone(Did, Option<String>) }
+
 impl History {
+    pub(crate) fn identity(&self, id: u64) -> Option<&str> { self.append_identities.get(&id).map(String::as_str) }
     pub fn note(&mut self, what: &str, area: &str, undo: Undo, you_asked: bool, now: u64) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
@@ -63,6 +71,10 @@ impl History {
             undone: false,
             you_asked,
         });
+        static NEXT_APPEND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let identity = format!("{}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(), NEXT_APPEND.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        self.append_identities.insert(id, identity.clone());
+        self.pending.push(HistoryDelta::Append(self.done.last().unwrap().clone(), identity));
         if self.done.len() > 2000 {
             self.done.drain(0..500);
         }
@@ -93,10 +105,45 @@ impl History {
         match self.done.iter_mut().find(|d| d.id == id) {
             Some(d) => {
                 d.undone = true;
+                self.pending.push(HistoryDelta::Undone(d.clone(), self.append_identities.get(&id).cloned()));
                 true
             }
             None => false,
         }
+    }
+
+    /// Merge only retained local changes into a fresh durable history. A
+    /// numeric collision is held for review rather than remapping recovery IDs.
+    pub fn save_merged(&mut self, store: &crate::store::Store) -> crate::error::Result<()> {
+        if self.pending.is_empty() { return Ok(()); }
+        let _guard = store.transaction()?;
+        let mut current = store.load_checked::<History>("undo_history")?.unwrap_or_default();
+        for delta in &self.pending {
+            match delta {
+                HistoryDelta::Append(row, identity) => {
+                    if let Some(existing) = current.done.iter().find(|item| item.id == row.id) {
+                        let known = current.append_identities.get(&row.id);
+                        if known != Some(identity) && !(known.is_none() && existing == row) {
+                            return Err(crate::error::AtlasError::Platform("history has a conflicting recovery identifier; the pending record was retained for review".into()));
+                        }
+                    } else {
+                        current.done.push(row.clone());
+                    }
+                    current.append_identities.insert(row.id, identity.clone());
+                    current.next_id = current.next_id.max(row.id);
+                }
+                HistoryDelta::Undone(row, identity) => {
+                    let known = current.append_identities.get(&row.id);
+                    let existing = current.done.iter_mut().find(|item| item.id == row.id).ok_or_else(|| crate::error::AtlasError::Platform("the recovery row is missing; its pending undo acknowledgment was retained".into()))?;
+                    let same = identity.as_ref().is_some_and(|key| known == Some(key)) || (identity.is_none() && existing.what == row.what && existing.area == row.area && existing.at == row.at && existing.undo == row.undo);
+                    if !same { return Err(crate::error::AtlasError::Platform("the recovery row changed identity; its pending undo acknowledgment was retained".into())); }
+                    existing.undone = true;
+                }
+            }
+        }
+        store.save("undo_history", &current)?;
+        *self = current;
+        Ok(())
     }
 
     /// Things Atlas did without being asked, which is what you'd want to
@@ -281,5 +328,69 @@ pub fn say(r: &Reversal) -> String {
             format!("I can't take back \"{what}\" — that one's {where_}.")
         }
         Reversal::Cannot { what, why } => format!("\"{what}\" can't be undone: {why}."),
+    }
+}
+
+#[cfg(test)]
+mod durable_history_deltas {
+    use super::*;
+    struct Area(std::path::PathBuf);
+    impl Area {
+        fn new() -> Self { static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); Self(std::env::temp_dir().join(format!("atlas-history-delta-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)))) }
+        fn store(&self) -> crate::store::Store { crate::store::Store::new(self.0.join("data/state")) }
+    }
+    impl Drop for Area { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+
+    #[test]
+    fn undo_acknowledgment_preserves_a_fresh_worker_completion() {
+        let area = Area::new(); let store = area.store();
+        let mut original = History::default();
+        let id = original.note("moving requested", "files", Undo::Atlas("put back".into()), true, 10);
+        original.save_merged(&store).unwrap();
+        let mut stale = original.clone();
+        let mut worker: History = store.load_checked("undo_history").unwrap().unwrap();
+        worker.done[0].what = "moved five files".into();
+        store.save("undo_history", &worker).unwrap();
+        stale.mark_undone(id);
+        stale.save_merged(&store).unwrap();
+        let saved: History = store.load_checked("undo_history").unwrap().unwrap();
+        assert_eq!(saved.done[0].what, "moved five files");
+        assert!(saved.done[0].undone);
+    }
+
+    #[test]
+    fn conflicting_numeric_recovery_ids_are_retained_without_remapping() {
+        let area = Area::new(); let store = area.store();
+        let mut first = History::default(); let mut other = History::default();
+        first.note("first owner's action", "files", Undo::Atlas("first".into()), true, 10);
+        other.note("another action", "files", Undo::Atlas("other".into()), true, 11);
+        first.save_merged(&store).unwrap();
+        assert!(other.save_merged(&store).unwrap_err().to_string().contains("conflicting"));
+        assert_eq!(other.pending.len(), 1);
+        let saved: History = store.load_checked("undo_history").unwrap().unwrap();
+        assert_eq!(saved.done.len(), 1);
+        assert_eq!(saved.done[0].what, "first owner's action");
+        assert_eq!(other.done[0].id, saved.done[0].id);
+    }
+
+    #[test]
+    fn backup_contention_retains_append_until_a_successful_retry() {
+        let area = Area::new(); let store = area.store();
+        store.save("test", &1).unwrap();
+        let root = store.root().to_path_buf();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || { let _guard = crate::store::state_transaction(&root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); });
+        ready_rx.recv().unwrap();
+        let mut history = History::default();
+        history.note("owner requested action", "settings", Undo::Cannot("completed".into()), true, 10);
+        assert!(history.save_merged(&store).is_err());
+        assert_eq!(history.pending.len(), 1);
+        release_tx.send(()).unwrap(); worker.join().unwrap();
+        history.save_merged(&store).unwrap();
+        history.save_merged(&store).unwrap();
+        assert!(history.pending.is_empty());
+        let saved: History = store.load_checked("undo_history").unwrap().unwrap();
+        assert_eq!(saved.done.len(), 1);
     }
 }

@@ -206,8 +206,8 @@ fn at_the_build_stage_it_reaches_for_the_fix_rather_than_punting() {
     // It got as far as the file and now wants a model to draft with — the loop
     // is closed, so it no longer punts with "nothing writes a candidate fix".
     assert!(
-        said.contains("need a model to draft the fix"),
-        "at Build with the file found and no model, it should ask for a model: {said}"
+        said.contains("Working on a fix") && said.contains("background") && said.contains("nothing lands without your yes"),
+        "Build must start the bounded local-recipe path and retain approval before changes: {said}"
     );
     assert!(
         !said.contains("writes a candidate fix"),

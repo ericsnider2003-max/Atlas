@@ -395,6 +395,7 @@ fn each_request_says_which_tools_are_the_every_turn_ones() {
         stable_tools: stable,
         aside,
         stronger: false,
+        output_schema: None,
     };
     let sent_as = |stable: usize, aside: bool| {
         let (url, rx) = one_request_server();

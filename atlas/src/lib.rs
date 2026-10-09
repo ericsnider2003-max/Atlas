@@ -219,6 +219,7 @@ pub mod phonemode;
 pub mod connect;
 pub mod connecting;
 pub mod connectors;
+pub mod connection_removal;
 pub mod oauthlink;
 pub mod when;
 pub mod notify;

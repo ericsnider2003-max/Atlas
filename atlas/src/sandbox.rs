@@ -175,10 +175,14 @@ impl Sandbox {
     /// item 1). A run past its limit is stopped -- the whole process tree, so
     /// cargo's compilers go with it -- and reads as failed, saying why.
     pub fn run(&mut self, tool: &ExternalTool, vars: &Vars, max_output: usize) -> Attempt {
+        self.run_controlled(tool, vars, max_output, None)
+    }
+
+    pub(crate) fn run_controlled(&mut self, tool: &ExternalTool, vars: &Vars, max_output: usize, stop: Option<&dyn Fn() -> bool>) -> Attempt {
         let (cmd, args) = tool.resolved(vars);
         let limit = if tool.timeout_secs == 0 { DEFAULT_LIMIT_SECS } else { tool.timeout_secs };
         let command = format!("{cmd} {}", args.join(" "));
-        let attempt = match run_limited(&cmd, &args, &self.root, std::time::Duration::from_secs(limit)) {
+        let attempt = match run_limited_controlled(&cmd, &args, &[], &self.root, std::time::Duration::from_secs(limit), stop) {
             Ran::Finished { passed, text } => Attempt { command, passed, output: trim_output(&text, max_output), at: now() },
             Ran::TooLong { text } => Attempt {
                 command,
@@ -318,18 +322,16 @@ enum Ran {
     NoStart(String),
 }
 
-/// Run a program in `dir`, reading its output as it comes (a full pipe would
-/// stall it), and stop it -- with everything it started -- at `limit` or when
-/// Atlas is asked to stop.
-fn run_limited(cmd: &str, args: &[String], dir: &Path, limit: std::time::Duration) -> Ran {
-    run_limited_with(cmd, args, &[], dir, limit)
-}
 
 /// Run a program in `dir` with extra environment, for no longer than
 /// `limit`: whether it passed, and what it said (head and tail kept, with
 /// every result line). Stopped past the limit, it reads as failed and says so.
 pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit_secs: u64, max_output: usize) -> (bool, String) {
-    match run_limited_with(cmd, args, env, dir, std::time::Duration::from_secs(limit_secs)) {
+    run_within_controlled(cmd, args, env, dir, limit_secs, max_output, None)
+}
+
+pub(crate) fn run_within_controlled(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit_secs: u64, max_output: usize, stop: Option<&dyn Fn() -> bool>) -> (bool, String) {
+    match run_limited_controlled(cmd, args, env, dir, std::time::Duration::from_secs(limit_secs), stop) {
         Ran::Finished { passed, text } => (passed, trim_output(&text, max_output)),
         Ran::TooLong { .. } => (false, format!("error: stopped after {limit_secs} seconds -- it was still running")),
         Ran::Stopped => (false, "error: stopped because you asked me to stop".into()),
@@ -356,55 +358,22 @@ fn is_cargo(cmd: &str) -> bool {
         .is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("cargo"))
 }
 
-fn run_limited_with(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration) -> Ran {
-    let mut c = crate::tools::command(cmd);
-    c.args(args).current_dir(dir).stdin(std::process::Stdio::null());
-    for (k, v) in env {
-        c.env(k, v);
-    }
-    warm_cargo(&mut c, cmd, env);
-    c.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    let mut child = match c.spawn() {
-        Ok(ch) => ch,
-        Err(e) => return Ran::NoStart(e.to_string()),
-    };
-    crate::childjob::tie(&child);
-    // Read on their own threads so a chatty program can't fill a pipe and
-    // stall (`selfwork::drain`, the one copy since audit Q3).
-    let text = crate::selfwork::drain(&mut child);
-    let deadline = std::time::Instant::now() + limit;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Ran::Finished { passed: status.success(), text: text() },
-            Ok(None) => {}
-            Err(e) => return Ran::NoStart(format!("lost track of it: {e}")),
-        }
-        let stopping = crate::goodbye::asked_to_stop();
-        if stopping || std::time::Instant::now() >= deadline {
-            stop_tree(&mut child);
-            // The readers are not joined: something the program started may
-            // still hold the pipes open, and waiting on them is the hang this
-            // limit exists to prevent. They end when the pipes close.
-            drop(text);
-            return if stopping { Ran::Stopped } else { Ran::TooLong { text: String::new() } };
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-}
 
-/// Stop a process and everything it started. `Child::kill` alone leaves
-/// cargo's compilers and test binaries running on Windows.
-fn stop_tree(child: &mut std::process::Child) {
-    #[cfg(windows)]
-    {
-        crate::heard!(crate::tools::command("taskkill")
-            .args(["/T", "/F", "/PID", &child.id().to_string()])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status());
+fn run_limited_controlled(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration, stop: Option<&dyn Fn() -> bool>) -> Ran {
+    let mut c = crate::tools::command(cmd);
+    c.args(args).current_dir(dir);
+    for (k, v) in env { c.env(k, v); }
+    warm_cargo(&mut c, cmd, env);
+    let run = crate::tools::run_scoped(&mut c, limit, 8 * 1024 * 1024, None, stop);
+    match &run.end {
+        crate::tools::ProcessEnd::Stopped => Ran::Stopped,
+        crate::tools::ProcessEnd::TimedOut => Ran::TooLong { text: String::new() },
+        crate::tools::ProcessEnd::Failed(why) => Ran::NoStart(why.clone()),
+        crate::tools::ProcessEnd::Exited(_) => {
+            let (passed, text) = run.said(8 * 1024 * 1024);
+            Ran::Finished { passed, text }
+        }
     }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 /// Compilers produce megabytes. Keep the head and the tail — the head has the

@@ -706,30 +706,28 @@ pub fn changes_to_carry(store: &Store, my_key: &str) -> Vec<(String, String, Str
     out
 }
 
-/// Take in a group list or a device key from your other device.
-///
-/// A group list is checked by its signature, so it's taken from any bundle.
-/// A device key is taken only from a bundle sealed with your household key
-/// -- it becomes a device you vouch for, able to change your groups.
-pub fn take_synced(store: &Store, me: Option<&Identity>, subject: &str, value: &str, sealed: bool) -> Option<String> {
-    let mut groups = Groups::load(store);
-    let mut told: Told = store.load(SYNC_TOLD);
+
+
+pub fn take_synced_checked(store: &Store, me: Option<&Identity>, subject: &str, value: &str, sealed: bool) -> Result<Option<String>, String> {
+    let _transaction = store.transaction().map_err(|error| error.to_string())?;
+    let mut groups: Groups = store.load_checked(FILE).map_err(|error| error.to_string())?.unwrap_or_default();
+    let mut told: Told = store.load_checked(SYNC_TOLD).map_err(|error| error.to_string())?.unwrap_or_default();
     let said = if subject.starts_with(SYNC_GROUP) {
-        let signed: Signed = serde_json::from_str(value).ok()?;
-        let taken = groups.take(signed).ok()?;
+        let signed: Signed = serde_json::from_str(value).map_err(|error| format!("Invalid group change: {error}"))?;
+        let taken = groups.take(signed)?;
         for (gid, h) in &groups.held {
             let v = told.versions.entry(gid.clone()).or_insert(0);
             *v = (*v).max(h.state.version);
         }
         (taken == Taken::New).then(String::new)
     } else {
-        let device = subject.strip_prefix(SYNC_DEVICE)?;
+        let Some(device) = subject.strip_prefix(SYNC_DEVICE) else { return Ok(None) };
         if !sealed || !peerkey::is_public_key(device) || device != value {
-            return None;
+            return Ok(None);
         }
-        let me = me?;
+        let Some(me) = me else { return Err("Cannot save device trust without this device's identity".into()) };
         if device == me.public() || groups.my_devices.iter().any(|d| d == device) {
-            return None;
+            return Ok(None);
         }
         groups.my_devices.push(device.to_string());
         let n = groups.vouch_everywhere(me, device);
@@ -739,9 +737,27 @@ pub fn take_synced(store: &Store, me: Option<&Identity>, subject: &str, value: &
             String::new()
         })
     };
-    groups.save(store).ok()?;
-    let _ = store.save(SYNC_TOLD, &told);
-    said.filter(|s| !s.is_empty())
+    groups.save(store).map_err(|error| error.to_string())?;
+    store.save(SYNC_TOLD, &told).map_err(|error| error.to_string())?;
+    Ok(said.filter(|s| !s.is_empty()))
+}
+
+#[cfg(test)]
+mod durable_sync_receipts {
+    use super::*;
+    #[test]
+    fn corrupt_group_state_is_not_replaced_or_acknowledged_as_an_empty_group_list() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-group-sync-{}-{stamp}", std::process::id()));
+        let store = Store::new(root.clone());
+        store.save(FILE, &Groups::default()).unwrap();
+        let path = root.join(format!("{FILE}.json"));
+        std::fs::write(&path, b"{broken saved group state").unwrap();
+        let result = take_synced_checked(&store, None, "device:invalid", "invalid", true);
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(path).unwrap(), b"{broken saved group state");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// Change groups by name, the way the hub and `atlas group` both do it.
@@ -954,7 +970,7 @@ mod tests {
 
         // The laptop's lists reach the phone (checked by signature, sealed or not).
         for (sub, _, val) in changes_to_carry(&laptop, &eric().public()) {
-            take_synced(&phone, Some(&phone_key), &sub, &val, false);
+            take_synced_checked(&phone, Some(&phone_key), &sub, &val, false).unwrap();
         }
         assert!(Groups::load(&phone).held.contains_key(&id));
 
@@ -963,14 +979,14 @@ mod tests {
         let device: Vec<_> = from_phone.iter().filter(|(s, _, _)| s.starts_with(SYNC_DEVICE)).collect();
         assert_eq!(device.len(), 1);
         let (sub, _, val) = device[0];
-        assert!(take_synced(&laptop, Some(&eric()), sub, val, false).is_none());
+        assert!(take_synced_checked(&laptop, Some(&eric()), sub, val, false).unwrap().is_none());
         assert!(!Groups::load(&laptop).held[&id].state.may_change(&phone_key.public()));
-        assert!(take_synced(&laptop, Some(&eric()), sub, val, true).is_some());
+        assert!(take_synced_checked(&laptop, Some(&eric()), sub, val, true).unwrap().is_some());
         assert!(Groups::load(&laptop).held[&id].state.may_change(&phone_key.public()));
 
         // The vouched list goes back to the phone, which can now change the group.
         for (sub, _, val) in changes_to_carry(&laptop, &eric().public()) {
-            take_synced(&phone, Some(&phone_key), &sub, &val, true);
+            take_synced_checked(&phone, Some(&phone_key), &sub, &val, true).unwrap();
         }
         let mut on_phone = Groups::load(&phone);
         on_phone.add(&phone_key, &id, &maya().public(), "Maya", Role::Member).unwrap();

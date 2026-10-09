@@ -13,7 +13,6 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 const OP_TEXT: u8 = 0x1;
-const OP_BINARY: u8 = 0x2;
 const OP_CLOSE: u8 = 0x8;
 const OP_PING: u8 = 0x9;
 const OP_PONG: u8 = 0xA;
@@ -101,18 +100,6 @@ impl WebSocket {
             *b = (self.next_rand() & 0xFF) as u8;
         }
         let frame = encode_frame(OP_TEXT, payload.as_bytes(), mask);
-        self.stream.write_all(&frame)?;
-        self.stream.flush()?;
-        Ok(())
-    }
-
-    /// One binary message (the hearing server takes its audio this way).
-    pub fn send_binary(&mut self, payload: &[u8]) -> Result<()> {
-        let mut mask = [0u8; 4];
-        for b in mask.iter_mut() {
-            *b = (self.next_rand() & 0xFF) as u8;
-        }
-        let frame = encode_frame(OP_BINARY, payload, mask);
         self.stream.write_all(&frame)?;
         self.stream.flush()?;
         Ok(())

@@ -380,7 +380,7 @@ pub fn is_set_up(root: &Path) -> bool {
 pub fn mark_set_up(root: &Path) -> std::io::Result<()> {
     let dir = root.join("data").join("state");
     std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join("set_up"), crate::store::now().to_string())
+    crate::store::write_whole_in_state(&dir, &dir.join("set_up"), crate::store::now().to_string().as_bytes())
 }
 
 /// What opening Atlas (a double-click, the Start menu, the tray's "Open

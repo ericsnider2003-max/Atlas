@@ -99,6 +99,35 @@ fn cfg_in(zone: &str) -> Config {
     c
 }
 
+#[test]
+fn calendar_cli_refuses_unknown_export_and_does_not_claim_a_failed_import() {
+    let root = tmp("calendar-cli-truth");
+    let run = |args: &[&str]| {
+        let result = std::process::Command::new(env!("CARGO_BIN_EXE_atlas"))
+            .args(args).current_dir(&root).env("ATLAS_HOME", &root)
+            .env("ATLAS_UPDATE_PROBE", "1").output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        String::from_utf8_lossy(&result.stdout).into_owned()
+    };
+    run(&["calendar"]); // first-run setup belongs to this disposable install
+    let store = Store::new(root.join("data").join("state"));
+    let corrupt = store.root().join("calendar.json");
+    std::fs::write(&corrupt, b"{broken").unwrap();
+    let destination = root.join("existing.ics");
+    std::fs::write(&destination, b"keep this existing export").unwrap();
+    let said = run(&["calendar", "export", destination.to_str().unwrap()]);
+    assert!(said.contains("calendar is unavailable") && !said.contains("Wrote 0 events"), "{said}");
+    assert_eq!(std::fs::read(&destination).unwrap(), b"keep this existing export");
+    std::fs::remove_file(&corrupt).unwrap();
+    let source = root.join("incoming.ics");
+    std::fs::write(&source, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:cli-synthetic\r\nDTSTART:20261009T120000Z\r\nDTEND:20261009T130000Z\r\nSUMMARY:Synthetic calendar import\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    let lock = store.transaction().unwrap();
+    let said = run(&["calendar", "import", source.to_str().unwrap()]);
+    assert!(said.contains("import is not confirmed") && !said.contains("event added or updated"), "{said}");
+    drop(lock);
+    assert!(atlas::calendar::Calendar::load(&store).is_empty(), "failed import must not be persisted");
+}
+
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
 }
@@ -883,14 +912,14 @@ fn zipread_find_the_note_inside_a_zip_and_refuse_a_bomb() {
     assert_eq!(got.len(), 3);
 }
 
-/// 1 Oct 2026 security pass: a "client" mail with no word from its server
-/// that it's genuine is drafted to, never answered automatically.
+/// Authentication failure still warns, even with a signature; passing headers
+/// are not authorization for an automatic client reply.
 #[test]
-fn only_mail_its_server_vouched_for_is_answered_unasked() {
-    use atlas::lookalike::vouched_for;
-    assert!(vouched_for("mx.google.com; dkim=pass header.i=@client.com; spf=pass; dmarc=pass"));
-    assert!(vouched_for("mx; dkim=pass header.i=@client.com"));
-    assert!(!vouched_for(""), "no header at all");
-    assert!(!vouched_for("mx; spf=pass"), "SPF alone says nothing about the From line");
-    assert!(!vouched_for("mx; dkim=pass; dmarc=fail"), "a DMARC fail outweighs a signature");
+fn sender_checks_preserve_explicit_failure_even_with_a_signature() {
+    let known = vec!["client.com".to_string()];
+    let from = "Dana <dana@client.com>";
+    assert!(atlas::lookalike::sender_warning(from, "mx; dkim=pass; dmarc=fail", &known).unwrap().contains("DMARC"));
+    assert!(atlas::lookalike::sender_warning(from, "mx; spf=fail; dkim=fail", &known).unwrap().contains("SPF"));
+    assert!(atlas::lookalike::sender_warning(from, "mx; dkim=pass; dmarc=pass", &known).is_none());
+    assert!(atlas::lookalike::sender_warning("Dana <dana@c1ient.com>", "mx; dkim=pass", &known).is_some());
 }

@@ -636,6 +636,7 @@ pub struct ClientRow {
     /// Replies Atlas has sent them for you, and when the last went.
     pub sent: usize,
     pub last_sent: String,
+    pub mail_receipt_status: String,
 }
 
 pub fn clients_page(clients: &[ClientRow], open: Option<&str>, notice: Option<&str>) -> String {
@@ -686,7 +687,7 @@ pub fn clients_page(clients: &[ClientRow], open: Option<&str>, notice: Option<&s
             phone = if c.phone.is_empty() { "—".to_string() } else { esc(&c.phone) },
             added = esc(&c.added),
             notes = if c.notes.is_empty() { "—".to_string() } else { esc(&c.notes) },
-            sent = if c.sent == 0 {
+            sent = if !c.mail_receipt_status.is_empty() { esc(&c.mail_receipt_status) } else if c.sent == 0 {
                 "Nothing has been sent to them through Atlas.".to_string()
             } else {
                 format!("{} {} sent through Atlas, the last {}.", c.sent, if c.sent == 1 { "reply" } else { "replies" }, esc(&c.last_sent))
@@ -1060,41 +1061,43 @@ pub fn give_page(recent: &[(String, String, String, String)], notice: Option<&st
 
 // ---------------------------------------------------------------- Offline
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OfflineView {
-    pub online: bool,
+    pub reach: crate::connectivity::Reach,
     /// What works right now, in words.
     pub live: Vec<String>,
-    /// (what's waiting, since)
-    pub waiting: Vec<(String, String)>,
+    /// (what is saved, its current dependency, saved time)
+    pub waiting: Vec<(String, String, String)>,
+}
+
+impl Default for OfflineView {
+    fn default() -> Self {
+        Self { reach: crate::connectivity::Reach::Unknown, live: Vec::new(), waiting: Vec::new() }
+    }
 }
 
 pub fn offline_page(v: &OfflineView) -> String {
-    let banner = if v.online {
-        format!("<div class='banner ok' role=status>{} You're online. Anything queued is going out.</div>", word_tag("ok", "Online"))
-    } else {
-        format!(
-            "<div class='banner wait' role=status>{} You're offline, and Atlas is still working. What needs the \
-             internet is queued, and goes by itself, in order, with its original time, when you reconnect.</div>",
-            word_tag("wait", "Offline")
-        )
+    let banner = match v.reach {
+        crate::connectivity::Reach::Online => format!("<div class='banner ok' role=status>{} You're online. Saved work still follows its approval and execution checks.</div>", word_tag("ok", "Online")),
+        crate::connectivity::Reach::Offline => format!("<div class='banner wait' role=status>{} You're offline. Local work remains available; saved items below show what they need next.</div>", word_tag("wait", "Offline")),
+        crate::connectivity::Reach::Unknown => format!("<div class='banner wait' role=status>{} Connection status has not been confirmed. Saved items below keep their own approval and execution checks.</div>", word_tag("wait", "Connection unknown")),
     };
     let mut live = String::from("<section><h2>Working now</h2><ul class=plainlist>");
     for l in &v.live {
         live.push_str(&format!("<li>{}{}</li>", word_tag("ok", "Live"), esc(l)));
     }
     live.push_str("</ul></section>");
-    let mut wait = String::from("<section><h2>Waiting for a connection</h2>");
+    let mut wait = String::from("<section><h2>Saved work and messages</h2>");
     if v.waiting.is_empty() {
-        wait.push_str(&empty("Nothing is waiting."));
+        wait.push_str(&empty("Nothing is waiting here."));
     } else {
         wait.push_str("<ul class=plainlist>");
-        for (w, since) in &v.waiting {
-            wait.push_str(&format!("<li>{}<span>{}</span><span class=meta>{}</span></li>", word_tag("wait", "Queued"), esc(w), esc(since)));
+        for (w, dependency, since) in &v.waiting {
+            wait.push_str(&format!("<li>{}<span>{}</span><span class=meta>{}</span></li>", word_tag("wait", "Saved locally"), esc(w), format!("{} · Saved {}", esc(dependency), esc(since))));
         }
         wait.push_str("</ul>");
     }
-    wait.push_str("</section>");
+    wait.push_str("<p class=meta>Submission acceptance and recipient delivery are not confirmed by this list. Acceptance times are not recorded here.</p></section>");
     shell_at(Some(Page::Offline), "Offline", &format!("{banner}<div class=two>{live}{wait}</div>"))
 }
 

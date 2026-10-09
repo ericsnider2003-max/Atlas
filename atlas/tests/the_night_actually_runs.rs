@@ -187,7 +187,15 @@ fn work_happens_while_you_are_gone_and_is_reported_when_you_are_back() {
     // problem name alone would pass on that instead -- which is what the
     // first version of this assertion did.
     d.turn("morning", at_hour(101, 8));
-    let morning = d.tick(at_hour(101, 8) + 60).join(" | ");
+    let now = at_hour(101, 8) + 60;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut lines = Vec::new();
+    loop {
+        lines.extend(d.tick(now));
+        if lines.iter().any(|line| line.contains("While you were out:")) || std::time::Instant::now() >= deadline { break; }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let morning = lines.join(" | ");
 
     // "While you were out", not "Overnight" -- and that is the point rather
     // than an inconvenience. This daemon has no fortnight of watching behind
@@ -204,7 +212,9 @@ fn work_happens_while_you_are_gone_and_is_reported_when_you_are_back() {
     );
 
     // And only once. A write-up repeated every tick is worse than a late one.
-    let later = d.tick(at_hour(101, 8) + 120).join(" | ");
+    let mut later = Vec::new();
+    for _ in 0..30 { later.extend(d.tick(at_hour(101, 8) + 120)); std::thread::sleep(std::time::Duration::from_millis(5)); }
+    let later = later.join(" | ");
     assert!(!later.contains("While you were out:"), "it was said twice: {later}");
 }
 

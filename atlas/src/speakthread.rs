@@ -45,6 +45,241 @@ pub trait SpeakWork: Send {
     fn speak(&mut self, text: &str) -> Result<()>;
 }
 
+/// Short announcements never hold the control loop while the speaker runs.
+/// Text is printed before enqueueing; a full queue or failed speaker is reported
+/// to the loop rather than silently pretending the announcement was heard.
+pub(crate) struct Announcements {
+    sender: std::sync::mpsc::SyncSender<(usize, String, Box<dyn SpeakWork>)>,
+    generation: std::sync::Arc<AtomicUsize>,
+    active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    failures: std::sync::Mutex<Receiver<String>>,
+    failure_sender: Sender<String>,
+}
+
+impl Announcements {
+    pub(crate) fn start() -> std::io::Result<Self> {
+        let (sender, jobs) = std::sync::mpsc::sync_channel::<(usize, String, Box<dyn SpeakWork>)>(16);
+        let (errors, failures) = channel();
+        let failure_sender = errors.clone();
+        let generation = std::sync::Arc::new(AtomicUsize::new(0));
+        let active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (epoch, speaking) = (generation.clone(), active.clone());
+        std::thread::Builder::new().name("atlas-announcements".into()).spawn(move || {
+            for (expected, text, mut voice) in jobs {
+                // A reply owns the voice first. Waiting for it happens here,
+                // and remains cancellable when pause invalidates the queue.
+                let guard = loop {
+                    if epoch.load(Ordering::SeqCst) != expected || crate::goodbye::asked_to_stop() {
+                        break None;
+                    }
+                    if QUEUED.load(Ordering::SeqCst) == 0 {
+                        match ONE_VOICE.try_lock() {
+                            Ok(g) => break Some(g),
+                            Err(std::sync::TryLockError::Poisoned(p)) => break Some(p.into_inner()),
+                            Err(std::sync::TryLockError::WouldBlock) => {}
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                };
+                let Some(_guard) = guard else { continue };
+                speaking.store(true, Ordering::SeqCst);
+                crate::micthread::clear_cut();
+                if epoch.load(Ordering::SeqCst) != expected {
+                    speaking.store(false, Ordering::SeqCst);
+                    continue;
+                }
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::micthread::with_playback_generation(epoch.clone(), expected, || voice.speak(&text))
+                }));
+                speaking.store(false, Ordering::SeqCst);
+                let failure = match result {
+                    Ok(Ok(())) => None,
+                    Ok(Err(e)) => Some(e.to_string()),
+                    Err(_) => Some("the announcement voice stopped unexpectedly".into()),
+                };
+                if let Some(why) = failure {
+                    let _ = errors.send(format!("I couldn't say this out loud: {text}. {why}"));
+                }
+                // A voice/talk-key interruption also discards stale pending
+                // announcements instead of speaking them over the next turn.
+                if crate::micthread::playback_cut() {
+                    let _ = epoch.compare_exchange(expected, expected.wrapping_add(1), Ordering::SeqCst, Ordering::SeqCst);
+                }
+            }
+        })?;
+        Ok(Self { sender, generation, active, failures: std::sync::Mutex::new(failures), failure_sender })
+    }
+
+    pub(crate) fn enqueue(&self, text: String, work: Box<dyn SpeakWork>) -> std::result::Result<(), &'static str> {
+        self.sender.try_send((self.generation.load(Ordering::SeqCst), text, work)).map_err(|e| {
+            let (why, text) = match e {
+                std::sync::mpsc::TrySendError::Full((_, text, _)) => ("The speaker queue is full; this announcement is shown in text only.", text),
+                std::sync::mpsc::TrySendError::Disconnected((_, text, _)) => ("The announcement speaker stopped; this announcement is shown in text only.", text),
+            };
+            let _ = self.failure_sender.send(format!("{why} {text}"));
+            why
+        })
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        if self.active.load(Ordering::SeqCst) {
+            crate::micthread::cut_playback();
+        }
+    }
+
+    pub(crate) fn cancellation(&self) -> std::sync::Arc<dyn Fn() + Send + Sync> {
+        let (generation, active) = (self.generation.clone(), self.active.clone());
+        std::sync::Arc::new(move || {
+            generation.fetch_add(1, Ordering::SeqCst);
+            if active.load(Ordering::SeqCst) { crate::micthread::cut_playback(); }
+        })
+    }
+
+    pub(crate) fn take_failures(&self) -> Vec<String> {
+        self.failures.lock().unwrap_or_else(|p| p.into_inner()).try_iter().collect()
+    }
+}
+
+impl Drop for Announcements {
+    fn drop(&mut self) {
+        self.cancel();
+        // Dropping the sender ends the worker. Do not join a stuck audio
+        // driver on the control loop or during shutdown.
+    }
+}
+
+#[cfg(test)]
+mod announcement_tests {
+    use super::*;
+    #[test]
+    fn stalled_reply_finishes_bounded_and_cannot_revive_after_next_reply() {
+        let _serial = SERIAL.lock().unwrap();
+        crate::micthread::clear_cut();
+        struct Silent;
+        impl Mouth for Silent { fn speak(&self, _: &str) -> Result<()> { panic!("fixture must use owned playback") } }
+        struct Blocked { started: Sender<()>, release: Receiver<()>, canceled: Sender<bool> }
+        impl SpeakWork for Blocked {
+            fn speak(&mut self, _: &str) -> Result<()> {
+                self.started.send(()).unwrap();
+                self.release.recv_timeout(Duration::from_secs(3)).unwrap();
+                self.canceled.send(crate::micthread::playback_cut()).unwrap();
+                Ok(())
+            }
+        }
+        struct QuietHost;
+        impl Host for QuietHost { fn line(&mut self, _: &str) {} fn between(&mut self) {} }
+        let (begun, started) = channel(); let (release, blocked) = channel(); let (canceled, observed) = channel();
+        let mouth = Silent;
+        let mut old = Saying::start(&mouth, false, None);
+        old.player = Player::start(Box::new(Blocked { started: begun, release: blocked, canceled }));
+        old.add("Old reply.");
+        old.add("Stale queued reply.");
+        started.recv_timeout(Duration::from_secs(1)).unwrap();
+        old.cut("stop");
+        let begin = Instant::now(); let receipt = old.finish();
+        assert!(begin.elapsed() < Duration::from_millis(600), "finish joined a blocked speaker");
+        assert!(receipt.delivery.spoken.is_empty());
+        assert_eq!(receipt.delivery.unspoken.len(), 2);
+        let (played, heard) = channel();
+        let mut next = Saying::start(&mouth, false, None);
+        next.player = Player::start(Box::new(Heard(played)));
+        crate::micthread::clear_cut();
+        next.add("New reply.");
+        // Starting the next reply clears the global cut; the old reply's
+        // private cancellation still has to reach its native playback.
+        release.send(()).unwrap();
+        assert!(observed.recv_timeout(Duration::from_secs(1)).unwrap());
+        assert_eq!(heard.recv_timeout(Duration::from_secs(1)).unwrap(), "New reply.");
+        next.wait(&mut QuietHost, &mut || None);
+        assert_eq!(next.finish().delivery.spoken, vec!["New reply."]);
+    }
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct Held { started: Sender<()>, release: Receiver<()>, finished: Sender<()> }
+    impl SpeakWork for Held {
+        fn speak(&mut self, _: &str) -> Result<()> {
+            self.started.send(()).unwrap();
+            while self.release.try_recv().is_err() && !crate::micthread::playback_cut() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            self.finished.send(()).unwrap();
+            Ok(())
+        }
+    }
+    struct Heard(Sender<String>);
+    impl SpeakWork for Heard {
+        fn speak(&mut self, text: &str) -> Result<()> {
+            assert!(!crate::micthread::playback_cut());
+            self.0.send(text.to_string()).unwrap();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn announcement_enqueue_returns_while_audio_is_busy_and_pause_discards_pending() {
+        let _serial = SERIAL.lock().unwrap();
+        crate::micthread::clear_cut();
+        let speaker = Announcements::start().unwrap();
+        let (started, start_rx) = channel();
+        let (_release, release) = channel();
+        let (finished, finish_rx) = channel();
+        speaker.enqueue("long announcement".into(), Box::new(Held { started, release, finished })).unwrap();
+        start_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (heard, heard_rx) = channel();
+        speaker.enqueue("stale".into(), Box::new(Heard(heard.clone()))).unwrap();
+        speaker.cancel();
+        // A following reply clears the shared cut switch. The old worker
+        // must still stop, and stale pending speech must not return.
+        crate::micthread::clear_cut();
+        finish_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        speaker.enqueue("new turn".into(), Box::new(Heard(heard))).unwrap();
+        assert_eq!(heard_rx.recv_timeout(Duration::from_secs(2)).unwrap(), "new turn");
+        drop(hold_voice());
+        assert!(heard_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn announcement_queue_full_reports_text_only_instead_of_blocking() {
+        let _serial = SERIAL.lock().unwrap();
+        crate::micthread::clear_cut();
+        let speaker = Announcements::start().unwrap();
+        let (started, start_rx) = channel();
+        let (release_tx, release) = channel();
+        let (finished, finish_rx) = channel();
+        speaker.enqueue("held".into(), Box::new(Held { started, release, finished })).unwrap();
+        start_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (heard, _) = channel();
+        for _ in 0..16 { speaker.enqueue("pending".into(), Box::new(Heard(heard.clone()))).unwrap(); }
+        assert!(speaker.enqueue("overflow".into(), Box::new(Heard(heard))).unwrap_err().contains("text only"));
+        assert!(speaker.take_failures().iter().any(|n| n.contains("overflow") && n.contains("text only")));
+        speaker.cancel();
+        release_tx.send(()).unwrap();
+        finish_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        drop(hold_voice());
+        crate::micthread::clear_cut();
+    }
+
+    #[test]
+    fn failed_announcement_keeps_its_text_and_next_announcement_still_plays() {
+        struct Broken;
+        impl SpeakWork for Broken {
+            fn speak(&mut self, _: &str) -> Result<()> {
+                Err(std::io::Error::other("speaker unplugged").into())
+            }
+        }
+        let _serial = SERIAL.lock().unwrap();
+        crate::micthread::clear_cut();
+        let speaker = Announcements::start().unwrap();
+        speaker.enqueue("Safety warning".into(), Box::new(Broken)).unwrap();
+        let (heard, receiver) = channel();
+        speaker.enqueue("Recovered".into(), Box::new(Heard(heard))).unwrap();
+        assert_eq!(receiver.recv_timeout(Duration::from_secs(2)).unwrap(), "Recovered");
+        drop(hold_voice());
+        assert!(speaker.take_failures().iter().any(|n| n.contains("Safety warning") && n.contains("speaker unplugged")));
+    }
+}
+
 /// How long the loop waits on the player between looks at everything else.
 const SLICE: Duration = Duration::from_millis(15);
 
@@ -70,18 +305,7 @@ pub(crate) fn hold_voice() -> std::sync::MutexGuard<'static, ()> {
     ONE_VOICE.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-/// Is a reply playing on its own thread?
-fn playing() -> bool {
-    QUEUED.load(Ordering::SeqCst) > 0
-}
 
-/// Wait (up to `max`) until no reply is playing.
-pub fn wait_quiet(max: Duration) {
-    let until = Instant::now() + max;
-    while playing() && Instant::now() < until {
-        std::thread::sleep(Duration::from_millis(5));
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Outcome {
@@ -106,6 +330,7 @@ struct Player {
     /// `micthread::playback_cut`, which your voice sets from the
     /// microphone's thread before the loop has heard about it.
     cut: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    generation: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Player {
@@ -114,6 +339,8 @@ impl Player {
         let (ev, rx) = channel::<Event>();
         let cut = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cut2 = cut.clone();
+        let generation = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let playback_generation = generation.clone();
         let is_cut = move || cut2.load(Ordering::SeqCst) || crate::micthread::playback_cut();
         let handle = std::thread::Builder::new()
             .name("atlas-speaking".into())
@@ -139,8 +366,18 @@ impl Player {
                     let _ = ev.send(Event::Started(i));
                     // Caught: a panic in the voice costs the reply, not Atlas.
                     let r = {
-                        let _voice = hold_voice();
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work.speak(&text)))
+                        let guard = loop {
+                            if is_cut() { break None; }
+                            match ONE_VOICE.try_lock() {
+                                Ok(guard) => break Some(guard),
+                                Err(std::sync::TryLockError::Poisoned(poison)) => break Some(poison.into_inner()),
+                                Err(std::sync::TryLockError::WouldBlock) => std::thread::sleep(Duration::from_millis(5)),
+                            }
+                        };
+                        if guard.is_none() { let _ = ev.send(Event::Done(i, Outcome::Cut)); continue; }
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            crate::micthread::with_playback_generation(playback_generation.clone(), 0, || work.speak(&text))
+                        }))
                     };
                     let o = if is_cut() {
                         Outcome::Cut
@@ -161,7 +398,7 @@ impl Player {
                 }
             });
         match handle {
-            Ok(h) => Some(Player { tx: Some(tx), rx, handle: Some(h), cut }),
+            Ok(h) => Some(Player { tx: Some(tx), rx, handle: Some(h), cut, generation }),
             Err(_) => None,
         }
     }
@@ -189,8 +426,10 @@ impl Player {
 impl Drop for Player {
     fn drop(&mut self) {
         self.tx = None;
+        self.cut.store(true, Ordering::SeqCst);
+        self.generation.fetch_add(1, Ordering::SeqCst);
         if let Some(h) = self.handle.take() {
-            let _ = h.join();
+            if h.is_finished() { let _ = h.join(); }
         }
     }
 }
@@ -245,11 +484,13 @@ pub struct Saying<'m> {
     /// `Host::hush` said nothing when the reply began: only a change counts
     /// (a reply said while already paused -- "I'm paused" -- is said).
     hush_armed: Option<bool>,
+    calendar_delivery_ids: Vec<String>,
 }
 
 /// How a reply went.
 pub struct Said {
     pub delivery: crate::speech::Delivery,
+    pub(crate) calendar_delivery_ids: Vec<String>,
     /// What you said over it by voice (not a stop or a pause), to answer next.
     pub words: Option<String>,
 }
@@ -267,7 +508,11 @@ impl<'m> Saying<'m> {
         if let Some(l) = &link {
             l.watch(true);
         }
-        Saying { mouth, typed, player, link, chunks: Vec::new(), said: 0, through: 0, stop: None, words: None, cut_since: None, hush_armed: None }
+        Saying { mouth, typed, player, link, chunks: Vec::new(), said: 0, through: 0, stop: None, words: None, cut_since: None, hush_armed: None, calendar_delivery_ids: Vec::new() }
+    }
+
+    pub(crate) fn bind_calendar_deliveries(&mut self, ids: Vec<String>) {
+        self.calendar_delivery_ids = ids;
     }
 
     /// Is some of what was handed over still to be said?
@@ -288,6 +533,7 @@ impl<'m> Saying<'m> {
     fn halt(&mut self, why: Stop) {
         if let Some(p) = &self.player {
             p.cut.store(true, Ordering::SeqCst);
+            p.generation.fetch_add(1, Ordering::SeqCst);
         }
         // The real player (on the thread) listens to the stop switch; on
         // the loop, nothing is playing by the time this is decided.
@@ -309,7 +555,7 @@ impl<'m> Saying<'m> {
         }
         if self.stop.is_some() {
             // Cut off already: kept, unsaid, for "carry on".
-            self.chunks.extend(crate::speech::split(text));
+            self.chunks.extend(crate::speech::playback_chunks(text));
             return;
         }
         if !self.typed {
@@ -320,7 +566,7 @@ impl<'m> Saying<'m> {
                 self.mouth.prepare_more(text);
             }
         }
-        for chunk in crate::speech::split(text) {
+        for chunk in crate::speech::playback_chunks(text) {
             let i = self.chunks.len();
             if let Some(p) = &self.player {
                 // The speaker gets the spoken form; the screen and the log
@@ -528,7 +774,18 @@ impl<'m> Saying<'m> {
             p.close();
             // Whatever is still queued is skipped at once when cut; otherwise
             // `wait` has already let it all play.
-            while let Ok(ev) = p.rx.recv() {
+            let until = Instant::now() + Duration::from_millis(250);
+            while let Some(left) = until.checked_duration_since(Instant::now()) {
+                let ev = match p.rx.recv_timeout(left) {
+                    Ok(event) => event,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        p.cut.store(true, Ordering::SeqCst);
+                        p.generation.fetch_add(1, Ordering::SeqCst);
+                        if self.stop.is_none() { self.stop = Some(Stop::Failed); }
+                        break;
+                    }
+                };
                 if let Event::Done(i, Outcome::Whole) = ev {
                     if i == self.said {
                         self.said += 1;
@@ -549,6 +806,7 @@ impl<'m> Saying<'m> {
         Said {
             delivery: crate::speech::Delivery { spoken: self.chunks[..said].to_vec(), unspoken, interrupted_by },
             words: self.words.take(),
+            calendar_delivery_ids: std::mem::take(&mut self.calendar_delivery_ids),
         }
     }
 }

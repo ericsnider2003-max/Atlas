@@ -175,7 +175,16 @@ fn work_blocked_by_being_offline_lands_on_the_outstanding_list() {
 
     d.turn("research the quic v1 spec", 100);
     assert_eq!(d.backlog.outstanding().len(), 1, "must be kept, not dropped");
-    assert!(d.turn("what's outstanding", 110).contains("One thing"));
+    let pending = d.turn("what's outstanding", 110);
+    assert!(pending.contains("preparing"), "{pending}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let brief = loop {
+        if let Some(result) = d.poll_brief() { break result.expect("the actual outstanding brief must be prepared"); }
+        assert!(std::time::Instant::now() < deadline, "outstanding preparation never finished");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    assert!(brief.yours.iter().any(|item| item.subject.contains("quic v1")), "the prepared brief lost the offline request: {brief:?}");
+    assert_eq!(d.backlog.outstanding().len(), 1, "preparing the brief must not consume unfinished offline work");
 }
 
 #[test]

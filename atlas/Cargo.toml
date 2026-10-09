@@ -229,6 +229,7 @@ windows = { version = "0.58", features = [
     # process list (ToolHelp, ProcessStatus), and which session it runs in,
     # so Windows' services are never offered for closing (2 Oct 2026).
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_ProcessStatus",
     "Win32_System_RemoteDesktop",
 ] }
@@ -237,6 +238,10 @@ windows = { version = "0.58", features = [
 [[test]]
 name = "all"
 path = "tests/all.rs"
+
+[[test]]
+name = "truthful_publication_and_calendars"
+path = "tests/truthful_publication_and_calendars.rs"
 # Its own process: the "Google data held" flag is process-wide.
 [[test]]
 name = "google_data_stays_here"
@@ -371,6 +376,10 @@ path = "tests/updating_without_reinstalling.rs"
 [[test]]
 name = "what_a_stranger_gets"
 path = "tests/what_a_stranger_gets.rs"
+
+[[test]]
+name = "reliability_jobs"
+path = "tests/reliability_jobs.rs"
 
 [profile.release]
 opt-level = 3

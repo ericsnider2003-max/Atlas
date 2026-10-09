@@ -86,25 +86,25 @@ fn a_zip_unpacks_beside_itself_whole() {
     std::fs::copy(fixture("photos.zip"), &zip).unwrap();
     let dest = atlas::unpack::folder_beside(&zip);
     assert_eq!(dest, dir.join("photos"));
-    let files = atlas::unpack::unzip(&zip, &dest, &FilesConfig::default()).unwrap();
+    let files = atlas::unpack::unzip_stoppable(&zip, &dest, &FilesConfig::default(), &|| false).unwrap();
     assert_eq!(files.len(), 2);
     assert!(std::fs::read_to_string(dest.join("trip").join("notes.txt")).unwrap().starts_with("Packed the tripod"));
     assert_eq!(std::fs::read(dest.join("trip").join("tides.pdf")).unwrap(), std::fs::read(fixture("reportlab.pdf")).unwrap());
     // Never over what's there: the next one gets its own name.
     assert_eq!(atlas::unpack::folder_beside(&zip), dir.join("photos (2)"));
-    assert!(atlas::unpack::unzip(&zip, &dest, &FilesConfig::default()).is_err());
+    assert!(atlas::unpack::unzip_stoppable(&zip, &dest, &FilesConfig::default(), &|| false).is_err());
 }
 
 #[test]
 fn a_zip_that_climbs_out_or_balloons_is_refused_before_a_byte_is_written() {
     let dir = scratch("bad-zip");
     let dest = dir.join("out");
-    let e = atlas::unpack::unzip(&fixture("climbs-out.zip"), &dest, &FilesConfig::default()).unwrap_err();
+    let e = atlas::unpack::unzip_stoppable(&fixture("climbs-out.zip"), &dest, &FilesConfig::default(), &|| false).unwrap_err();
     assert!(e.contains("climb out"), "{e}");
     assert!(!dest.exists(), "nothing written");
 
     let small = FilesConfig { max_unpacked_mb: 10, ..FilesConfig::default() };
-    let e = atlas::unpack::unzip(&fixture("balloon.zip"), &dest, &small).unwrap_err();
+    let e = atlas::unpack::unzip_stoppable(&fixture("balloon.zip"), &dest, &small, &|| false).unwrap_err();
     assert!(e.contains("30MB"), "{e}");
     assert!(!dest.exists());
 }
@@ -118,7 +118,43 @@ fn a_word_file_reads_as_its_paragraphs() {
 
 // ------------------------------------------------------------------ the scan
 
+#[test]
+fn cancelled_unpack_preserves_archive_and_reports_partial_files() {
+    let dir = scratch("zip-stopped");
+    let zip = fixture("photos.zip");
+    let before = std::fs::read(&zip).unwrap();
+    let dest = dir.join("out");
+    let stopped = || dest.join("trip/notes.txt").exists();
+    let error = atlas::unpack::unzip_stoppable(&zip, &dest, &FilesConfig::default(), &stopped).unwrap_err();
+    assert!(error.contains("Stopped"), "{error}");
+    assert_eq!(std::fs::read(&zip).unwrap(), before);
+    let entries = atlas::unpack::entries_of(&before).unwrap();
+    let notes = entries.iter().find(|e| e.name == "trip/notes.txt").unwrap();
+    assert_eq!(std::fs::read(dest.join("trip/notes.txt")).unwrap(), atlas::unpack::read_entry(&before, notes).unwrap());
+    assert!(!dest.join("trip/tides.pdf").exists());
+    let error = atlas::unpack::unzip_stoppable(&zip, &dest, &FilesConfig::default(), &|| false).unwrap_err();
+    assert!(error.contains("already there"), "{error}");
+}
+
+#[test]
+fn stopped_scanner_never_starts_a_command() {
+    let verdict = atlas::unpack::scan_stoppable(&fixture("letter.pdf"), &ScanConfig {
+        command: "this-command-must-not-start".into(), args: vec![], threat_exit: 2,
+    }, &|| true);
+    assert!(matches!(verdict, Verdict::NotScanned(reason) if reason.contains("before starting")));
+}
+
+#[test]
+fn archive_size_limit_does_not_round_small_archives_down_to_zero() {
+    let dir = scratch("zip-zero-budget");
+    let dest = dir.join("out");
+    let config = FilesConfig { max_unpacked_mb: 0, ..FilesConfig::default() };
+    assert!(atlas::unpack::unzip_stoppable(&fixture("photos.zip"), &dest, &config, &|| false).is_err());
+    assert!(!dest.exists());
+}
+
 /// A stand-in scanner: a script that exits as Defender would.
+#[cfg(unix)]
 fn scanner(dir: &Path, exit: i32, says: &str) -> ScanConfig {
     let s = dir.join(format!("scan-{exit}.sh"));
     std::fs::write(&s, format!("#!/bin/sh\necho '{says}'\nexit {exit}\n")).unwrap();
@@ -135,14 +171,14 @@ fn scanner(dir: &Path, exit: i32, says: &str) -> ScanConfig {
 fn the_scanner_s_answer_is_taken_as_it_gives_it() {
     let dir = scratch("scanner");
     let f = fixture("letter.pdf");
-    assert_eq!(atlas::unpack::scan(&f, &scanner(&dir, 0, "no threats")), Verdict::Clean);
+    assert_eq!(atlas::unpack::scan_stoppable(&f, &scanner(&dir, 0, "no threats"), &|| false), Verdict::Clean);
     assert_eq!(
-        atlas::unpack::scan(&f, &scanner(&dir, 2, "Threat                  : Virus:DOS/EICAR_Test_File")),
+        atlas::unpack::scan_stoppable(&f, &scanner(&dir, 2, "Threat                  : Virus:DOS/EICAR_Test_File"), &|| false),
         Verdict::Threat("Virus:DOS/EICAR_Test_File".into())
     );
-    assert!(matches!(atlas::unpack::scan(&f, &scanner(&dir, 5, "")), Verdict::NotScanned(_)));
+    assert!(matches!(atlas::unpack::scan_stoppable(&f, &scanner(&dir, 5, ""), &|| false), Verdict::NotScanned(_)));
     assert!(matches!(
-        atlas::unpack::scan(&f, &ScanConfig { command: "/no/such/scanner".into(), args: vec![], threat_exit: 2 }),
+        atlas::unpack::scan_stoppable(&f, &ScanConfig { command: "/no/such/scanner".into(), args: vec![], threat_exit: 2 }, &|| false),
         Verdict::NotScanned(_)
     ));
     // The shipped default on Windows is Defender, reporting only.

@@ -317,7 +317,9 @@ fn fetch_calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Res
 pub fn revoke_google(net: &dyn Net, refresh_token: &str) -> Result<(), String> {
     let r = net.post_form("oauth2.googleapis.com", "/revoke", &format!("token={}", enc(refresh_token)))?;
     // 400 invalid_token: already gone, which is what was wanted.
-    if (200..300).contains(&r.status) || r.body.contains("invalid_token") {
+    let already_gone = r.status == 400 && serde_json::from_str::<serde_json::Value>(&r.body).ok().is_some_and(|body| body.get("error").and_then(|error| error.as_str()) == Some("invalid_token"));
+    if (200..300).contains(&r.status) || already_gone {
+        crate::connect::forget_access(&format!("calendar {} {refresh_token}", Provider::Google.key()));
         return Ok(());
     }
     Err(format!("Google answered {}", r.status))
@@ -431,7 +433,7 @@ pub fn ics_from_google(body: &str) -> Result<String, String> {
         if it.get("status").and_then(|s| s.as_str()) == Some("cancelled") {
             continue;
         }
-        let (Some(start), Some(end)) = (when(it.get("start")), when(it.get("end"))) else { continue };
+        let (Some(start), Some(end)) = (when(it.get("start")), when(it.get("end"))) else { return Err("Google calendar event has invalid times; cached events kept".into()) };
         evs.push(Ev {
             uid: format!("google-{}", it.get("iCalUID").or(it.get("id")).and_then(|u| u.as_str()).unwrap_or("")),
             summary: it.get("summary").and_then(|s| s.as_str()).unwrap_or("").to_string(),
@@ -455,16 +457,16 @@ pub fn ics_from_graph(body: &str) -> Result<String, String> {
         }
         let all_day = it.get("isAllDay").and_then(|c| c.as_bool()) == Some(true);
         let at = |k: &str| it.get(k).and_then(|x| x.get("dateTime")).and_then(|t| t.as_str()).map(str::to_string);
-        let (Some(s), Some(e)) = (at("start"), at("end")) else { continue };
+        let (Some(s), Some(e)) = (at("start"), at("end")) else { return Err("Outlook calendar event has missing times; cached events kept".into()) };
         let (start, end) = if all_day {
             match (day_of(&s), day_of(&e)) {
                 (Some(a), Some(b)) => (Err(a), Err(b)),
-                _ => continue,
+                _ => return Err("Outlook calendar event has invalid dates; cached events kept".into()),
             }
         } else {
             match (epoch_of(&s), epoch_of(&e)) {
                 (Some(a), Some(b)) => (Ok(a), Ok(b)),
-                _ => continue,
+                _ => return Err("Outlook calendar event has invalid times; cached events kept".into()),
             }
         };
         evs.push(Ev {
@@ -479,33 +481,81 @@ pub fn ics_from_graph(body: &str) -> Result<String, String> {
 }
 
 /// Read the calendar from now - a week to now + ten weeks, as iCalendar.
-pub fn calendar_ics(net: &dyn Net, p: Provider, refresh_token: &str, now: u64) -> Result<String, String> {
+
+/// Read explicitly selected calendars; empty selection retains the default
+/// calendar. Every page must succeed before a snapshot can replace the cache.
+pub fn calendar_ics_selected(net: &dyn Net, p: Provider, refresh_token: &str, now: u64, selected: &[String]) -> Result<String, String> {
     let token = calendar_access(net, p, refresh_token)?;
+    calendar_snapshot_with_access(net, p, &token, now, selected)
+}
+
+/// Snapshot seam: supplied access token, no account setup or environment lookup.
+pub fn calendar_snapshot_with_access(net: &dyn Net, p: Provider, token: &str, now: u64, selected: &[String]) -> Result<String, String> {
     let auth = format!("Bearer {token}");
     let (from, to) = (utc_stamp(now.saturating_sub(BACK_SECS)), utc_stamp(now + AHEAD_SECS));
-    match p {
-        Provider::Google => {
-            let path = format!(
-                "/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=500&timeMin={}&timeMax={}",
-                enc(&from),
-                enc(&to)
-            );
-            let r = net.get("www.googleapis.com", &path, &[("Authorization", &auth)])?;
-            if r.status == 403 {
-                return Err("Google Calendar refused (the Calendar API may be switched off in Atlas's Google project)".into());
+    let defaults = vec![if p == Provider::Google { "primary".to_string() } else { String::new() }];
+    let calendars = if selected.is_empty() { &defaults } else { selected };
+    let mut all = Vec::new();
+    for calendar in calendars {
+        let (host, field, base) = match p {
+            Provider::Google => ("www.googleapis.com", "items", format!("/calendar/v3/calendars/{}/events?singleEvents=true&orderBy=startTime&maxResults=500&timeMin={}&timeMax={}", enc(calendar), enc(&from), enc(&to))),
+            Provider::Microsoft => ("graph.microsoft.com", "value", format!("/v1.0/me/{}calendarView?startDateTime={}&endDateTime={}&$top=500&$select=id,iCalUId,subject,start,end,location,isAllDay,isCancelled", if calendar.is_empty() { String::new() } else { format!("calendars/{}/", enc(calendar)) }, enc(&from), enc(&to))),
+        };
+        let mut path = base.clone();
+        let mut seen = std::collections::BTreeSet::new();
+        loop {
+            if seen.len() >= 1000 || !seen.insert(path.clone()) { return Err("calendar pagination did not finish; cached events kept".into()); }
+            let reply = net.get(host, &path, &[("Authorization", &auth), ("Prefer", "outlook.timezone=\"UTC\"")])?;
+            if !(200..300).contains(&reply.status) { return Err(format!("calendar answered {}; cached events kept", reply.status)); }
+            let page = json(&reply.body, "Calendar")?;
+            let items = page.get(field).and_then(|v| v.as_array()).ok_or("calendar reply has no event list; cached events kept")?;
+            for item in items {
+                let mut item = item.clone();
+                // Expanded recurring occurrences must not overwrite one another.
+                let identity = item.get("id").or(item.get("iCalUID")).or(item.get("iCalUId")).and_then(|v| v.as_str()).unwrap_or("");
+                if identity.is_empty() { return Err("calendar event has no identity; cached events kept".into()); }
+                let identity = format!("{}:{identity}", crate::digest::sha256_hex(calendar.as_bytes()));
+                item[if p == Provider::Google { "iCalUID" } else { "iCalUId" }] = serde_json::Value::String(identity);
+                all.push(item);
             }
-            ics_from_google(&r.body)
-        }
-        Provider::Microsoft => {
-            let path = format!(
-                "/v1.0/me/calendarView?startDateTime={}&endDateTime={}&$top=500&$select=id,iCalUId,subject,start,end,location,isAllDay,isCancelled",
-                enc(&from),
-                enc(&to)
-            );
-            let r = net.get("graph.microsoft.com", &path, &[("Authorization", &auth), ("Prefer", "outlook.timezone=\"UTC\"")])?;
-            ics_from_graph(&r.body)
+            let next = match p {
+                Provider::Google => page.get("nextPageToken").and_then(|v| v.as_str()).map(|t| format!("{base}&pageToken={}", enc(t))),
+                Provider::Microsoft => match page.get("@odata.nextLink").and_then(|v| v.as_str()) {
+                    Some(link) => Some(link.strip_prefix("https://graph.microsoft.com").filter(|s| s.starts_with("/v1.0/")).ok_or("calendar continuation points outside Microsoft; cached events kept")?.to_string()),
+                    None => None,
+                },
+            };
+            match next { Some(next) => path = next, None => break }
         }
     }
+    let combined = serde_json::json!({ (if p == Provider::Google { "items" } else { "value" }): all }).to_string();
+    if p == Provider::Google { ics_from_google(&combined) } else { ics_from_graph(&combined) }
+}
+
+pub fn snapshot_window(now: u64) -> (u64, u64) { (now.saturating_sub(BACK_SECS), now.saturating_add(AHEAD_SECS)) }
+
+/// Calendar names for the user's picker. Continuation URLs never carry the
+/// access token outside the provider's host.
+pub fn available_calendars(net: &dyn Net, provider: Provider, refresh_token: &str) -> Result<Vec<(String, String)>, String> {
+    let auth = format!("Bearer {}", calendar_access(net, provider, refresh_token)?);
+    let (host, field, base) = if provider == Provider::Google { ("www.googleapis.com", "items", "/calendar/v3/users/me/calendarList?maxResults=250") } else { ("graph.microsoft.com", "value", "/v1.0/me/calendars?$top=100&$select=id,name") };
+    let mut path = base.to_string(); let mut seen = std::collections::BTreeSet::new(); let mut out = Vec::new();
+    loop {
+        if seen.len() >= 1000 || !seen.insert(path.clone()) { return Err("calendar list did not finish".into()); }
+        let reply = net.get(host, &path, &[("Authorization", &auth)])?;
+        if !(200..300).contains(&reply.status) { return Err(format!("calendar list answered {}", reply.status)); }
+        let page = json(&reply.body, "Calendar list")?;
+        for entry in page.get(field).and_then(|v| v.as_array()).ok_or("calendar list missing")? {
+            let id = entry.get("id").and_then(|v| v.as_str()).ok_or("calendar identity missing")?;
+            let name = entry.get(if provider == Provider::Google { "summary" } else { "name" }).and_then(|v| v.as_str()).unwrap_or("Untitled calendar");
+            out.push((id.into(), name.into()));
+        }
+        let next = if provider == Provider::Google { page.get("nextPageToken").and_then(|v| v.as_str()).map(|token| format!("{base}&pageToken={}", enc(token))) } else {
+            match page.get("@odata.nextLink").and_then(|v| v.as_str()) { Some(link) => Some(link.strip_prefix("https://graph.microsoft.com").filter(|s| s.starts_with("/v1.0/")).ok_or("calendar list continuation left Microsoft")?.into()), None => None }
+        };
+        match next { Some(next) => path = next, None => break }
+    }
+    Ok(out)
 }
 
 /// How an OAuth calendar is named in the calendar list's `url` field, so

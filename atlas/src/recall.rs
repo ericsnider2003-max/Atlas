@@ -589,6 +589,25 @@ pub fn measure(
 }
 
 /// A measurement, kept so the next one has something to compare with.
+pub fn measure_until(
+    lib: &Library, questions: &[KnownQuestion],
+    embed: Option<&dyn Fn(&str) -> std::result::Result<Vec<f32>, String>>,
+    cfg: &RecallConfig, now: u64, stop: &dyn Fn() -> bool,
+) -> std::result::Result<Scores, String> {
+    let mut scores = Scores::default();
+    for question in questions {
+        if stop() { return Err("Search measurement stopped before it was complete; no scores were saved.".into()); }
+        let vector = match embed { Some(encoder) => Some(encoder(&question.ask)?), None => None };
+        let fixed = |_: &str| vector.clone();
+        let one = measure(lib, std::slice::from_ref(question), vector.as_ref().map(|_| &fixed as &dyn Fn(&str) -> Option<Vec<f32>>), cfg, now);
+        scores.recall_at_5 += one.recall_at_5; scores.mrr += one.mrr; scores.ndcg_at_5 += one.ndcg_at_5; scores.asked += 1;
+    }
+    let n = scores.asked.max(1) as f32;
+    scores.recall_at_5 /= n; scores.mrr /= n; scores.ndcg_at_5 /= n;
+    Ok(scores)
+}
+
+/// A measurement, kept so the next one has something to compare with.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SearchCheck {
     pub at: u64,

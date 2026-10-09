@@ -209,8 +209,25 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
+        let canceled_reminder = matches!(hear(said), Some(Heard::Cancel)) && self.cancel_pending_reminder_edit();
+        let canceled_brief = matches!(hear(said), Some(Heard::Cancel | Heard::Panic)) && self.explicitly_cancel_brief_preparation(t);
         // Pause and resume are heard before anything else, so they work even
         // mid-task and mid-sentence.
+        if self.active_file_move_id().is_some() || self.approved_undo.is_some() {
+            let lower = said.to_lowercase();
+            let plain = lower.trim().trim_end_matches(['.', '!']);
+            if matches!(plain, "stop" | "stop that" | "stop it" | "cancel" | "cancel that" | "never mind" | "stop working on that") {
+                let undo = self.cancel_approved_undo();
+                if self.active_file_move_id().is_none() && undo {
+                    return if canceled_reminder { "Canceled the waiting undo and reminder change. No restore was performed; the reminder change was not saved.".into() } else { "Canceled the waiting undo. No restore was performed.".into() };
+                }
+                self.stop_files();
+                return if canceled_reminder { "Stopping the file moves and canceled the waiting reminder change, which was not saved. Unfinished copies keep their originals; I will report the result.".into() } else { "Stopping the file moves. Unfinished copies keep their originals, and remaining files will stay in place. I'll report the result.".into() };
+            }
+        }
+        if canceled_reminder {
+            return "Canceled the waiting reminder change. It was not saved.".into();
+        }
         match hear(said) {
             // "stop everything" / "halt" / "emergency stop" / "drop
             // everything". THIS WAS NOT HANDLED, and it is the one phrase
@@ -239,6 +256,7 @@ impl<'a> Daemon<'a> {
             // just Atlas asking and starting things. The endings still
             // arrive through `settle`, reported rather than swallowed.
             Some(Heard::Panic) => {
+                let canceled_reminder = self.cancel_pending_reminder_edit();
                 // A job in an app ends where it is.
                 // unheard-ok: returns `Option<String>`, not a Result
                 let _ = self.stop_operating();
@@ -247,8 +265,12 @@ impl<'a> Daemon<'a> {
                 self.drop_pending_turn(t, "Stopped before I answered -- nothing was done.");
                 // A request of several steps ends at its next step.
                 self.stop_task_loop();
+                self.stop_files();
+                self.cancel_approved_undo();
+                self.cancel_calendar_delivery();
                 let asked = self.crew.ask_everyone_to_stop();
-                let halted = self.attention.halt(t);
+                let mut halted = self.attention.halt(t);
+                if canceled_reminder { halted.push_str(" Canceled the waiting reminder change; it was not saved."); }
                 // `halt`'s own doc says "queues emptied, work abandoned" —
                 // and nothing ever emptied this queue, so a later resume
                 // quietly restarted the exact work you panicked about.
@@ -288,9 +310,11 @@ impl<'a> Daemon<'a> {
                 self.drop_pending_turn(t, "Paused before I answered -- nothing was done.");
                 // A request of several steps holds before its next step.
                 self.hold_task_loop(true);
+                self.pause_files(true);
                 // "Pause" is total: the errands hold too, at their safe
                 // points, and nothing they have done is lost.
-                let msg = self.attention.pause(self.current_work(), t);
+                let mut msg = self.attention.pause(self.current_work(), t);
+                if let Some(status) = self.file_pause_status() { msg.push(' '); msg.push_str(status); }
                 let held = self.hold_every_errand();
                 return if held > 0 && msg != "Already paused." {
                     format!(
@@ -307,6 +331,7 @@ impl<'a> Daemon<'a> {
             // thing entirely.
             Some(Heard::Resume) if self.attention.is_paused() => {
                 let m = self.attention.resume(t);
+                self.pause_files(false);
                 for id in std::mem::take(&mut self.held_by_pause) {
                     self.crew.resume(id);
                 }
@@ -349,6 +374,16 @@ impl<'a> Daemon<'a> {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
+        }
+
+        // Let a bare stop choose among running errands before consuming it as
+        // a calendar-delivery cancellation. Otherwise a pending reminder can
+        // hide the actual two-job choice from the owner.
+        if matches!(hear(said), Some(Heard::Cancel)) && self.cancel_calendar_delivery() {
+            return "Stopped pending calendar booking and reminder delivery. Any event already saved remains on the calendar; unconfirmed delivery will not repeat automatically.".into();
+        }
+        if canceled_brief && matches!(hear(said), Some(Heard::Cancel)) {
+            return "Canceled the brief preparation. Nothing was marked delivered; I won't offer it again today unless you ask.".into();
         }
 
         // While paused, nothing else gets through — asked of `allows`,
@@ -1014,10 +1049,11 @@ impl<'a> Daemon<'a> {
                     .filter(|n| !n.is_empty())
                 {
                     let before = self.publisher.get(id).map(|p| p.body.clone()).unwrap_or_default();
-                    self.learned_from_your_edit(&before, &new, t);
+                    let previous_publisher = self.publisher.clone();
                     if self.publisher.edit(id, &new) {
                         if let Some(q) = self.publisher.request_approval(id) {
-                            let _ = self.publisher.save(&self.store);
+                            if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("Those edited words couldn't be saved ({e}); review the previous draft before approving it."); }
+                            self.learned_from_your_edit(&before, &new, t);
                             self.session.ask(&q);
                             self.pending_post_approval = Some(id);
                             return q;
@@ -1033,9 +1069,10 @@ impl<'a> Daemon<'a> {
                         self.pending_post_approval = Some(id);
                         return format!("I can't find {path}. Say the whole path, like attach C:\\Users\\you\\Pictures\\photo.jpg.");
                     }
+                    let previous_publisher = self.publisher.clone();
                     self.publisher.attach(id, &path);
                     if let Some(q) = self.publisher.request_approval(id) {
-                        let _ = self.publisher.save(&self.store);
+                        if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("That attachment change couldn't be saved ({e}); nothing was newly approved."); }
                         self.session.ask(&q);
                         self.pending_post_approval = Some(id);
                         return q;
@@ -1233,6 +1270,9 @@ impl<'a> Daemon<'a> {
             // again cannot loop.
             self.session.pending = Pending::Nothing;
             if !q.trim().is_empty() && !offer_dropped {
+                if self.answer_dependent_question(&q, said) {
+                    return "Thanks. Carrying on with your original request.".into();
+                }
                 self.answering = Some(q);
             }
         }

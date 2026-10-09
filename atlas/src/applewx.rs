@@ -276,6 +276,7 @@ impl CarriedToken {
     }
 
     pub fn save(&self, state_dir: &std::path::Path) -> std::io::Result<()> {
+        let _state = crate::store::state_transaction(state_dir)?;
         std::fs::create_dir_all(state_dir)?;
         crate::store::write_whole(&state_dir.join(CARRIED_FILE), &serde_json::to_vec(self).map_err(std::io::Error::other)?)
     }

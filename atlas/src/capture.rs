@@ -321,6 +321,8 @@ impl Default for CaptureConfig {
 pub struct Notebook {
     pub notes: Vec<Note>,
     next_id: u64,
+    #[serde(default)]
+    synced_captures: std::collections::BTreeSet<(String, u64)>,
 }
 
 impl Notebook {
@@ -345,6 +347,15 @@ impl Notebook {
 
     pub fn save(&self, store: &crate::store::Store) -> crate::error::Result<()> {
         store.save(Self::FILE, self)
+    }
+
+    pub fn capture_synced(&mut self, event: &crate::sync::Event, cfg: &CaptureConfig) -> bool {
+        let crate::sync::What::Captured { text, .. } = &event.what else { return false };
+        let key = (event.device.clone(), event.seq);
+        if self.synced_captures.contains(&key) { return false; }
+        self.capture(text, None, event.at, cfg);
+        self.synced_captures.insert(key);
+        true
     }
 
     /// Save it. No questions, no folder, no title.

@@ -6,6 +6,28 @@
 use super::*;
 
 impl Daemon<'_> {
+    pub(super) fn outstanding_page_live(&self, now: u64) -> String {
+        let mut html = hub::outstanding_page(&self.open_work(now));
+        let mut review = String::new();
+        match self.calendar_review_rows() {
+            Ok(rows) if !rows.is_empty() => {
+                review.push_str("<section aria-labelledby=calendar-recovery><h2 id=calendar-recovery>Calendar outcomes to review</h2><p>A reminder may already have reached you. Retrying can repeat it. Dismiss records your review; it does not claim delivery or remove a saved event.</p>");
+                for (id, explanation, token) in rows {
+                    review.push_str(&format!("<div class=item><p>{}</p><form method=post action='/hub/calendar/review'><input type=hidden name=id value='{}'><input type=hidden name=token value='{}'>", hub::esc(&explanation), hub::esc(&id), hub::esc(&token)));
+                    if id.starts_with("reminder:") {
+                        review.push_str("<button name=what value=retry>Retry this reminder, even if already received</button> ");
+                    }
+                    review.push_str("<button name=what value=dismiss>I've reviewed this; dismiss</button></form></div>");
+                }
+                review.push_str("</section>");
+            }
+            Ok(_) => {}
+            Err(_) => review.push_str("<p role=alert>Calendar recovery records are unavailable. No previous outcome can be confirmed; refresh or recover the saved records before deciding.</p>"),
+        }
+        if let Some(at) = html.rfind("</main>") { html.insert_str(at, &review); }
+        html
+    }
+
     /// Validate a setting, then keep it, then take it up at once. The one
     /// path every settings form uses (Settings, Sound & voice), so a switch
     /// can't report success and write nothing.
@@ -108,6 +130,28 @@ impl Daemon<'_> {
             drops.blocked.push(Some(format!("b:{}", i.id)));
         }
         let mut in_progress: Vec<(String, String)> = Vec::new();
+        for job in &self.scheduler.jobs {
+            if job.in_flight {
+                let status = if job.state == crate::scheduler::JobState::Cancelled { "Stopping; its result is not confirmed yet." } else { "Running now; its result is not confirmed yet." };
+                in_progress.push((sentence(&job.command), status.into()));
+                drops.in_progress.push((job.worker_id.is_some() || job.file_move_id.is_some()).then(|| format!("s:{}", job.id)));
+            } else if job.interrupted {
+                blocked.push(hub::Stopped { what: sentence(&job.command), tried: format!("To {}.", job.command.trim().trim_end_matches('.')),
+                    stopped: job.last_result.clone().unwrap_or_else(|| "Previous outcome is unconfirmed.".into()),
+                    needs: "Check the previous result before asking Atlas to try again.".into(), area: None });
+                drops.blocked.push(Some(format!("s:{}", job.id)));
+            }
+        }
+        for task in self.queue.tasks.iter().filter(|task| task.interrupted) {
+            blocked.push(hub::Stopped {
+                what: sentence(&task.command),
+                tried: format!("To {}.", task.command.trim().trim_end_matches('.')),
+                stopped: task.result.clone().unwrap_or_else(|| "Previous outcome not confirmed.".into()),
+                needs: "Check the previous result before asking Atlas to try again.".into(),
+                area: None,
+            });
+            drops.blocked.push(Some(format!("t:{}", task.id)));
+        }
         for t in self
             .queue
             .tasks
@@ -115,15 +159,13 @@ impl Daemon<'_> {
             .filter(|t| !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed))
         {
             let how = match t.state {
+                crate::lanes::TaskState::Running if t.stop_requested => "Stopping; the worker has not finished yet.",
                 crate::lanes::TaskState::Running => "Running now.",
                 crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work.",
                 _ => "Next in line.",
             };
             in_progress.push((sentence(&t.command), how.to_string()));
-            // A queued task runs inside the tick, start to finish, with no
-            // way to be told to stop part way: one marked running gets no
-            // button rather than one that can't do what it says.
-            drops.in_progress.push((t.state != crate::lanes::TaskState::Running).then(|| format!("t:{}", t.id)));
+            drops.in_progress.push((t.state != crate::lanes::TaskState::Running || t.worker_id.is_some() || t.file_move_id.is_some()).then(|| format!("t:{}", t.id)));
         }
         for e in self.crew.errands() {
             in_progress.push((e.name.clone(), "Handed to a worker — I check what comes back before you see it.".into()));
@@ -220,12 +262,40 @@ impl Daemon<'_> {
                 let kept = self.store.save("workspace", &self.workspace);
                 Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
             }
+            "s" => {
+                let id: u64 = rest.parse().map_err(|_| gone())?;
+                let job = self.scheduler.jobs.iter().find(|job| job.id == id).ok_or_else(gone)?;
+                if !job.in_flight && !job.interrupted { return Err(gone()); }
+                if job.in_flight && job.worker_id.is_none() && job.file_move_id.is_none() {
+                    return Err("That scheduled job is running without a cancellable worker; its result is not confirmed yet.".into());
+                }
+                let title = job.command.trim().to_string();
+                let stopping = job.in_flight;
+                if !self.cancel_scheduled_job(id) { return Err(gone()); }
+                let kept = self.scheduler.save(&self.store);
+                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping, can_bring_back: false })
+            }
             "t" => {
                 let id: u64 = rest.parse().map_err(|_| gone())?;
                 let t = self.queue.tasks.iter().find(|t| t.id == id).ok_or_else(gone)?;
                 match t.state {
                     crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap => {}
+                    crate::lanes::TaskState::Failed if t.interrupted => {}
                     crate::lanes::TaskState::Running => {
+                        if let Some(files) = t.file_move_id {
+                            let title = t.command.trim().to_string();
+                            if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.stop_requested = true; }
+                            self.stop_file_move(files);
+                            let kept = self.queue.save(&self.store);
+                            return Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: true, can_bring_back: false });
+                        }
+                        if let Some(worker) = t.worker_id {
+                            let title = t.command.trim().to_string();
+                            if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.stop_requested = true; }
+                            let stopping = self.stop_linked_worker(worker, now);
+                            let kept = self.queue.save(&self.store);
+                            return Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping, can_bring_back: false });
+                        }
                         return Err("That one's already running, and a queued job can't be stopped part way. It'll be off the list when it finishes.".into())
                     }
                     _ => return Err(gone()),
@@ -241,8 +311,7 @@ impl Daemon<'_> {
                 // Not waited on: the errand stops at its next safe point and
                 // its ending comes back through `settle` like any other. One
                 // still waiting for a hand is simply dropped.
-                self.crew.ask_to_stop(id);
-                let stopping = self.crew.in_hand(id);
+                let stopping = self.stop_linked_worker(id, now);
                 Ok(OffTheList { title: e.name, unsaved: None, stopping, can_bring_back: false })
             }
             "c" => {
@@ -381,5 +450,71 @@ impl Daemon<'_> {
                 .any(|(name, _)| c.name.contains(name) || name.contains(c.name)),
             crate::credentials::Kept::PlainConfig => true,
         }
+    }
+}
+
+#[cfg(test)]
+mod calendar_review_ui_tests {
+    use super::*;
+    #[test]
+    fn unreadable_recovery_is_visible_and_ambiguous_post_cannot_change_it() {
+        let root = std::env::temp_dir().join(format!("atlas-calendar-review-ui-{}-{}", std::process::id(), crate::store::now()));
+        let store = crate::store::Store::new(&root);
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let path = store.root().join("calendar_reminder_receipts.json");
+        std::fs::write(&path, b"{broken").unwrap();
+        let page = d.outstanding_page_live(crate::store::now());
+        assert!(page.contains("role=alert") && page.contains("Calendar recovery records are unavailable"));
+        let reply = crate::hublive::reply(&mut d, crate::server::Action::HubPost {
+            path: "/hub/calendar/review".into(), fields: vec![("id".into(), "reminder:synthetic".into()), ("token".into(), "synthetic-stale-token".into()), ("what".into(), "retry".into()), ("what".into(), "dismiss".into())],
+        });
+        assert!(reply.body.contains("nothing"), "{}", reply.body);
+        assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
+        drop(d);
+        crate::heard!(std::fs::remove_dir_all(root));
+    }
+}
+
+#[cfg(test)]
+mod scheduled_status_tests {
+    use super::*;
+    #[test]
+    fn live_worker_is_running_and_restart_requires_review_without_retry() {
+        let root = std::env::temp_dir().join(format!("atlas-scheduled-projection-{}-{}", std::process::id(), crate::store::now()));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
+        let mut d = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let id = d.scheduler.every("prepare the report", 60, 1);
+        d.scheduler.start_durably(id, &store).unwrap();
+        d.scheduler.jobs[0].worker_id = Some(98765);
+        d.scheduler.save(&store).unwrap();
+        let (needs_you, day) = crate::brief::from_jobs(&d.scheduler, 2);
+        assert!(needs_you.is_empty(), "live work was presented as failed");
+        assert!(day.iter().any(|item| item.what.starts_with("Running:")));
+        let open = d.open_work(2);
+        assert!(open.in_progress.iter().any(|(what, status)| what == &sentence("prepare the report") && status.contains("Running now")));
+        assert!(open.drops.in_progress.iter().any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
+        assert!(!open.blocked.iter().any(|item| item.what == sentence("prepare the report")));
+        d.scheduler = crate::scheduler::Scheduler::load(&store);
+        let prior = d.scheduler.jobs[0].last_result.clone();
+        let (needs_you, day) = crate::brief::from_jobs(&d.scheduler, 3);
+        assert!(day.is_empty());
+        assert!(needs_you.iter().any(|item| item.subject.contains("Check the previous result before retrying") && item.conflicts_with.as_deref().is_some_and(|text| text.contains("unconfirmed"))));
+        let open = d.open_work(3);
+        assert!(open.blocked.iter().any(|item| item.what == sentence("prepare the report") && item.stopped.contains("unconfirmed")));
+        assert!(open.drops.blocked.iter().any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
+        assert!(!open.in_progress.iter().any(|(what, _)| what == &sentence("prepare the report")));
+        assert!(d.scheduler.due(1000).is_empty());
+        let result = d.drop_outstanding(&format!("s:{id}"), 4).unwrap();
+        assert!(!result.stopping && result.unsaved.is_none());
+        assert_eq!(d.scheduler.jobs[0].state, crate::scheduler::JobState::Cancelled);
+        assert!(!d.scheduler.jobs[0].interrupted);
+        assert_eq!(d.scheduler.jobs[0].last_result, prior);
+        let restored = crate::scheduler::Scheduler::load(&store);
+        assert!(restored.due(1000).is_empty());
     }
 }

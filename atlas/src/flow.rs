@@ -92,6 +92,12 @@ pub struct Run {
     /// turned out to be, against what you still allow that add-on.
     #[serde(default)]
     pub plugin: Option<String>,
+    /// A scheduled occurrence is fenced before every effect and never replayed
+    /// on restart. Older saved flows without this identity still load.
+    #[serde(default)]
+    pub scheduled_claim: Option<String>,
+    #[serde(default)]
+    pub approved_position: Option<usize>,
 }
 
 /// What the caller should do next.
@@ -117,6 +123,8 @@ impl Run {
             attempts: 0,
             started: now(),
             plugin: None,
+            scheduled_claim: None,
+            approved_position: None,
         }
     }
 

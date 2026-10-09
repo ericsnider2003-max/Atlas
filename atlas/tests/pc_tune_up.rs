@@ -21,7 +21,7 @@ use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
 use atlas::tune::{
-    atlas_family, cpu_share, look_at_space, may_move_into, move_back, move_destination, move_files_into, parse_logon_tasks,
+    atlas_family, cpu_share, look_at_space, may_move_into, move_destination, move_files_into_controlled, parse_logon_tasks,
     parse_reg_values, pick_startup_to_stop, pick_to_close, sample_load, startup_switched_off, startup_words, tune_ask, Load,
     Plan, Proc, Spare, StartupEntry, StartupFrom, TuneAsk, TuneUndo,
 };
@@ -354,14 +354,16 @@ fn moved_files_go_back_and_nothing_is_overwritten() {
     std::fs::write(from.join("b.iso"), b"second").unwrap();
     // Already a file of that name where they're going.
     std::fs::write(to.join("a.zip"), b"was here").unwrap();
-    let (moved, failed) = move_files_into(&[from.join("a.zip"), from.join("b.iso"), from.join("missing.bin")], &to);
+    let (moved, failed) = move_files_into_controlled(&[from.join("a.zip"), from.join("b.iso"), from.join("missing.bin")], &to, &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     assert_eq!(moved.len(), 2);
     assert_eq!(failed.len(), 1, "the missing one is said, not skipped silently");
     assert_eq!(std::fs::read(to.join("a.zip")).unwrap(), b"was here");
     assert_eq!(std::fs::read(to.join("a (2).zip")).unwrap(), b"first");
-    let (back, not) = move_back(&moved);
-    assert_eq!((back, not.len()), (2, 0));
+    let undo = atlas::tune::TuneUndo::Moves(moved.clone());
+    let result = atlas::tune::undo_tune_change_with_checkpoint(&undo, &mut |_| Ok(()));
+    assert_eq!(result.unwrap(), "Moved 2 of 2 back.");
     assert_eq!(std::fs::read(from.join("a.zip")).unwrap(), b"first");
+    assert_eq!(std::fs::read(from.join("b.iso")).unwrap(), b"second");
     assert!(from.join("b.iso").exists() && !to.join("b.iso").exists());
 }
 
@@ -426,7 +428,7 @@ fn undo_moves_the_files_back_through_the_ordinary_undo() {
     let from = tmp("undo-from");
     let to = tmp("undo-to");
     std::fs::write(from.join("big.iso"), b"disc").unwrap();
-    let (moved, _) = move_files_into(&[from.join("big.iso")], &to);
+    let (moved, _) = move_files_into_controlled(&[from.join("big.iso")], &to, &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     let t = 1_790_991_000;
     // What `carry_out_optimize` writes when it moves files.
     let id = d.history.note(
@@ -439,9 +441,16 @@ fn undo_moves_the_files_back_through_the_ordinary_undo() {
     d.store.save(atlas::tune::TUNE_UNDO_RECORD, &vec![(id, TuneUndo::Moves(moved))]).unwrap();
     let asked = d.turn("undo", t + 5);
     assert!(asked.contains("moved 1 file from Downloads"), "{asked}");
-    let done = d.turn("yes", t + 10);
+    let mut done = d.turn("yes", t + 10);
+    assert!(!done.starts_with("Undone"), "worker acceptance is not completion: {done}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        if let Some(result) = d.tick(t + 11).into_iter().find(|line| line.starts_with("Undone")) { done = result; break; }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     assert!(done.starts_with("Undone") && done.contains("Moved 1 of 1 back"), "{done}");
     assert!(from.join("big.iso").exists() && !to.join("big.iso").exists());
+    assert_eq!(std::fs::read(from.join("big.iso")).unwrap(), b"disc");
     let left: Vec<(u64, TuneUndo)> = d.store.load(atlas::tune::TUNE_UNDO_RECORD);
     assert!(left.is_empty(), "taken back once, not twice");
 }

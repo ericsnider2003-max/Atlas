@@ -318,6 +318,7 @@ fn now_is_a_stream_with_its_rail_not_a_log() {
         working: true,
         background: vec![],
         held: vec![],
+        receipt: None,
     };
     let html = hub::now_page(&v);
     for l in ["◇ Plan", "⌞ Delegated", "↝ Rerouted", "✓ Checked", "▷ Now", "◷ Next"] {

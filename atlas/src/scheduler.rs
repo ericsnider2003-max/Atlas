@@ -46,6 +46,16 @@ pub struct Job {
     /// time; only `FAILS_BEFORE_STOPPING` in a row stop it.
     #[serde(default)]
     pub fails_in_a_row: u32,
+    #[serde(default)]
+    pub in_flight: bool,
+    #[serde(default)]
+    pub worker_id: Option<u64>,
+    #[serde(default)]
+    pub file_move_id: Option<u64>,
+    #[serde(default)]
+    pub interrupted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_version: Option<crate::sync::Version>,
 }
 
 /// Failed runs in a row after which a repeating job stops (29 Sep 2026: one
@@ -60,10 +70,34 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn load(store: &Store) -> Scheduler {
-        store.load("schedule")
+        let mut schedule: Scheduler = store.load("schedule");
+        for job in &mut schedule.jobs {
+            if job.in_flight {
+                job.in_flight = false;
+                job.worker_id = None;
+                job.file_move_id = None;
+                job.state = JobState::Failed;
+                job.interrupted = true;
+                job.last_result = Some("Interrupted by restart; previous outcome is unconfirmed. Check before retrying.".into());
+            }
+        }
+        schedule
     }
     pub fn save(&self, store: &Store) -> Result<()> {
         store.save("schedule", self)
+    }
+
+    /// Terminal to an old release, and never due again while a worker runs.
+    pub fn start_durably(&mut self, id: u64, store: &Store) -> Result<()> {
+        let before = self.clone();
+        if let Some(job) = self.jobs.iter_mut().find(|j| j.id == id) {
+            job.state = JobState::Failed;
+            job.in_flight = true;
+            job.interrupted = true;
+            job.last_result = Some("Running; outcome is not confirmed yet.".into());
+        }
+        if let Err(e) = self.save(store) { *self = before; return Err(e); }
+        Ok(())
     }
 
     pub fn at(&mut self, command: &str, due: u64) -> u64 {
@@ -111,6 +145,11 @@ impl Scheduler {
             runs: 0,
             approved: false,
             fails_in_a_row: 0,
+            in_flight: false,
+            worker_id: None,
+            file_move_id: None,
+            interrupted: false,
+            sync_version: None,
         });
         id
     }
@@ -130,8 +169,14 @@ impl Scheduler {
     /// twenty-four runs of an hourly job.
     pub fn complete(&mut self, id: u64, t: u64, result: &str, ok: bool) {
         if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
+            let cancelled = j.state == JobState::Cancelled;
+            j.in_flight = false;
+            j.worker_id = None;
+            j.file_move_id = None;
+            j.interrupted = false;
             j.runs += 1;
             j.last_result = Some(result.to_string());
+            if cancelled { return; }
             j.fails_in_a_row = if ok { 0 } else { j.fails_in_a_row + 1 };
             let keep_going = ok || j.fails_in_a_row < FAILS_BEFORE_STOPPING;
             let next_on = j.on.as_deref().and_then(|on| next_on(on, j.due.max(t)));
@@ -160,7 +205,7 @@ impl Scheduler {
     pub fn approve(&mut self, id: u64) {
         if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
             j.approved = true;
-            if j.state == JobState::AwaitingApproval {
+            if j.state == JobState::AwaitingApproval && !j.in_flight {
                 j.state = JobState::Pending;
             }
         }
@@ -170,6 +215,7 @@ impl Scheduler {
         match self.jobs.iter_mut().find(|j| j.id == id) {
             Some(j) => {
                 j.state = JobState::Cancelled;
+                if !j.in_flight { j.interrupted = false; }
                 true
             }
             None => false,
@@ -179,14 +225,14 @@ impl Scheduler {
     pub fn active(&self) -> Vec<&Job> {
         self.jobs
             .iter()
-            .filter(|j| matches!(j.state, JobState::Pending | JobState::AwaitingApproval))
+            .filter(|j| j.in_flight || j.interrupted || matches!(j.state, JobState::Pending | JobState::AwaitingApproval))
             .collect()
     }
 
     /// Drop finished jobs so the file doesn't grow forever.
     pub fn prune(&mut self) {
         self.jobs.retain(|j| {
-            matches!(j.state, JobState::Pending | JobState::AwaitingApproval)
+            j.in_flight || j.interrupted || matches!(j.state, JobState::Pending | JobState::AwaitingApproval)
                 || j.every.is_some()
                 || j.on.is_some()
         });
@@ -228,4 +274,50 @@ fn next_on(on: &str, after: u64) -> Option<u64> {
     // A wall-clock time inside the spring gap maps to just after it; never
     // hand back a time at or before `after`, which would fire twice.
     Some(utc.max(after as i64 + 1) as u64)
+}
+
+#[cfg(test)]
+mod execution_fence_tests {
+    use super::*;
+    fn store() -> Store {
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        Store::new(std::env::temp_dir().join(format!("atlas-scheduled-fence-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed))))
+    }
+    #[test]
+    fn interrupted_recurring_run_is_held_and_never_replayed() {
+        let store = store();
+        let mut scheduler = Scheduler::default();
+        let id = scheduler.every("send approved update", 60, 1);
+        scheduler.start_durably(id, &store).unwrap();
+        assert!(scheduler.due(1000).is_empty());
+        let mut restarted = Scheduler::load(&store);
+        assert!(restarted.due(1000).is_empty());
+        assert!(restarted.jobs[0].interrupted);
+        restarted.prune();
+        assert_eq!(restarted.jobs.len(), 1);
+        let wire: serde_json::Value = serde_json::to_value(&scheduler).unwrap();
+        assert_eq!(wire["jobs"][0]["state"], "failed", "legacy releases must not run it again");
+    }
+    #[test]
+    fn failed_start_save_does_not_grant_execution() {
+        let store = store();
+        std::fs::create_dir_all(store.root().join("schedule.json")).unwrap();
+        let mut scheduler = Scheduler::default();
+        let id = scheduler.at("change a file", 1);
+        assert!(scheduler.start_durably(id, &store).is_err());
+        assert_eq!(scheduler.due(1), vec![id]);
+        assert!(!scheduler.jobs[0].in_flight);
+    }
+    #[test]
+    fn late_worker_completion_cannot_reactivate_a_cancelled_recurring_job() {
+        let store = store();
+        let mut scheduler = Scheduler::default();
+        let id = scheduler.every("prepare update", 60, 1);
+        scheduler.start_durably(id, &store).unwrap();
+        scheduler.cancel(id);
+        scheduler.complete(id, 2, "finished before stop took effect", true);
+        assert_eq!(scheduler.jobs[0].state, JobState::Cancelled);
+        assert!(scheduler.due(1000).is_empty());
+        assert!(!scheduler.jobs[0].in_flight);
+    }
 }

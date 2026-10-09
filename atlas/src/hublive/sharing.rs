@@ -351,6 +351,7 @@ impl Daemon<'_> {
     /// Keep or bin something a friend handed you (the Documents page).
     /// Keeping is the moment it becomes something Atlas may read.
     pub(super) fn take_handoff(&mut self, id: u64, keep: bool) -> String {
+        let _state = match self.store.transaction() { Ok(guard) => guard, Err(e) => return format!("Couldn't keep that change yet: {e}") };
         let mut inbox = crate::household::Inbox::load(&self.store);
         let Some(got) = inbox.take(id) else {
             return "That's no longer waiting.".into();
@@ -360,7 +361,7 @@ impl Daemon<'_> {
                 return format!("Couldn't save that: {e}");
             }
             if let Some(f) = &got.file {
-                crate::heard!(std::fs::remove_file(self.store.root().join(&f.stored_at)));
+                crate::heard!(crate::store::remove_state_file(self.store.root(), &self.store.root().join(&f.stored_at)));
             }
             return format!("Binned the one from {}.", got.from);
         }
@@ -377,7 +378,7 @@ impl Daemon<'_> {
             Ok(_) => match self.tray.save(&self.store).and_then(|()| inbox.save(&self.store)) {
                 Ok(()) => {
                     if let Some(f) = &got.file {
-                        crate::heard!(std::fs::remove_file(self.store.root().join(&f.stored_at)));
+                        crate::heard!(crate::store::remove_state_file(self.store.root(), &self.store.root().join(&f.stored_at)));
                     }
                     format!("Kept the one from {}. It's with your documents.", got.from)
                 }

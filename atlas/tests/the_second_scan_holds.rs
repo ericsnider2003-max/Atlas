@@ -487,7 +487,7 @@ fn a_request(n_history: usize) -> ChatRequest {
     messages.push(Msg::user("User said: hello"));
     // `stable_tools` and `aside` since 28 Sep 2026 (the every-turn tools, and
     // a call beside the conversation); neither here.
-    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false, stronger: false }
+    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false, stronger: false, output_schema: None }
 }
 
 #[test]
@@ -1084,5 +1084,13 @@ fn a_reminder_that_fires_is_said() {
     for t in [1_060, 1_130, 1_200] {
         heard.extend(d.tick(t));
     }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !heard.iter().any(|line| line.to_lowercase().contains("stretch") && !line.contains("couldn't")) && std::time::Instant::now() < deadline {
+        heard.extend(d.tick(1_200));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     assert!(heard.iter().any(|l| l.to_lowercase().contains("stretch")), "the reminder fired and wasn't said: {heard:?}");
+    for _ in 0..30 { heard.extend(d.tick(1_200)); std::thread::sleep(std::time::Duration::from_millis(5)); }
+    let delivered = heard.iter().filter(|line| line.trim().eq_ignore_ascii_case("stretch") || line.contains("Reminder: stretch")).count();
+    assert_eq!(delivered, 1, "the reminder must actually be delivered once: {heard:?}");
 }

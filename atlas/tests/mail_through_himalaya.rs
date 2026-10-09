@@ -9,15 +9,14 @@
 //! stand-in `himalaya` -- a Python script, skipped where there's none.
 
 use atlas::config::Config;
+#[cfg(unix)]
 use atlas::daemon::Daemon;
 use atlas::himalaya;
-use atlas::intent::Intent;
-use atlas::mail::Account;
-use atlas::platform::mock::MockPlatform;
-use atlas::platform::Monitor;
-use atlas::proactive::{Proactive, ProactiveConfig};
-use atlas::store::Store;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use atlas::{intent::Intent, mail::Account, platform::{mock::MockPlatform, Monitor}, proactive::{Proactive, ProactiveConfig}, store::Store};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 
 const ENVELOPES: &str = r#"{"envelopes": [
   {"id": "4021", "message-id": "abc@mail.example.com", "in-reply-to": [], "flags": [],
@@ -88,6 +87,7 @@ fn the_commands_it_is_given_read_without_marking_anything_read() {
 
 // ================= a whole check, through the daemon =================
 
+#[cfg(unix)]
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-himalaya-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);

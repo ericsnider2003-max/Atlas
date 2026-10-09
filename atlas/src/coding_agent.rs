@@ -129,92 +129,69 @@ pub struct Ran {
 }
 
 /// Run an agent on a task in `folder`, for no longer than `limit_secs`.
-pub fn run(agent: Agent, program: &str, folder: &Path, task_text: &str, limit_secs: u64) -> Ran {
-    run_with_stdin(program, &agent.args(), folder, task_text, limit_secs)
-}
 
 /// One program, with `input` on its stdin, in `folder`, stopped at the limit
 /// or when Atlas is asked to stop.
-fn run_with_stdin(program: &str, args: &[String], folder: &Path, input: &str, limit_secs: u64) -> Ran {
-    use std::io::{Read, Write};
-    let mut c = crate::tools::command(program);
-    c.args(args)
-        .current_dir(folder)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    let mut child = match c.spawn() {
-        Ok(ch) => ch,
-        Err(e) => return Ran { finished: false, said: format!("{program} wouldn't start: {e}") },
-    };
-    crate::childjob::tie(&child);
-    if let Some(mut stdin) = child.stdin.take() {
-        crate::heard!(stdin.write_all(input.as_bytes()));
-    }
-    let read = |r: Option<Box<dyn Read + Send>>| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            if let Some(mut r) = r {
-                crate::heard!(r.read_to_end(&mut buf));
-            }
-            buf
-        })
-    };
-    let out = read(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
-    let err = read(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(limit_secs);
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let o = String::from_utf8_lossy(&out.join().unwrap_or_default()).to_string();
-                let e = String::from_utf8_lossy(&err.join().unwrap_or_default()).to_string();
-                let text = if o.trim().is_empty() { e } else { o };
-                return Ran { finished: status.success(), said: crate::sandbox::trim_output(text.trim(), 2000) };
-            }
-            Ok(None) => {}
-            Err(e) => return Ran { finished: false, said: format!("lost track of {program}: {e}") },
-        }
-        if crate::goodbye::asked_to_stop() || std::time::Instant::now() >= until {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Ran { finished: false, said: format!("stopped it after {} minutes -- it was still going", limit_secs / 60) };
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
+
+pub(crate) fn run_controlled(agent: Agent, program: &str, folder: &Path, task_text: &str, limit_secs: u64, stop: &dyn Fn() -> bool) -> Ran {
+    run_with_stdin_controlled(program, &agent.args(), folder, task_text, limit_secs, Some(stop))
+}
+
+fn run_with_stdin_controlled(program: &str, args: &[String], folder: &Path, input: &str, limit_secs: u64, stop: Option<&dyn Fn() -> bool>) -> Ran {
+    let mut command = crate::tools::command(program);
+    command.args(args).current_dir(folder);
+    let (finished, said) = crate::tools::run_scoped(&mut command,
+        std::time::Duration::from_secs(limit_secs), 8 * 1024 * 1024, Some(input.into()), stop).said(2000);
+    Ran { finished, said }
 }
 
 /// Folders never copied into a backup: what a build makes again.
 const NOT_COPIED: &[&str] = &[".git", "target", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".mypy_cache", ".ruff_cache"];
 
-/// Keep a copy of a project folder before an agent changes it: every file
-/// under 2 MB, at most `most_bytes` in all, build output and `.git` left out
+/// Keep a copy of a project folder before an agent changes it: every source
+/// file within `most_bytes` in all, build output and `.git` left out
 /// (git has its own history). Returns where the copy is, or why there isn't
 /// one -- in which case the agent isn't run.
-pub fn keep_a_copy(folder: &Path, into: &Path, most_bytes: u64) -> Result<PathBuf, String> {
-    fn walk(from: &Path, to: &Path, left: &mut u64) -> Result<(), String> {
+pub(crate) fn keep_a_copy_controlled(folder: &Path, into: &Path, most_bytes: u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<PathBuf, String> {
+    fn walk(from: &Path, to: &Path, left: &mut u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<(), String> {
+        if let Some(b) = budget { b.check()?; }
         std::fs::create_dir_all(to).map_err(|e| format!("couldn't make {}: {e}", to.display()))?;
         let entries = std::fs::read_dir(from).map_err(|e| format!("couldn't read {}: {e}", from.display()))?;
-        for entry in entries.flatten() {
+        for entry in entries {
+            if let Some(b) = budget { b.check()?; }
+            let entry = entry.map_err(|error| format!("project copy could not read an entry: {error}"))?;
             let name = entry.file_name();
             let path = entry.path();
-            let Ok(meta) = entry.metadata() else { continue };
+            let meta = std::fs::symlink_metadata(&path).map_err(|error| format!("project copy could not inspect {}: {error}", path.display()))?;
+            if meta.file_type().is_symlink() { return Err(format!("{} is a link; no complete recovery copy was made", path.display())); }
             if meta.is_dir() {
                 if NOT_COPIED.iter().any(|n| name == *n) {
                     continue;
                 }
-                walk(&path, &to.join(&name), left)?;
-            } else if meta.is_file() && meta.len() <= 2 * 1024 * 1024 {
+                walk(&path, &to.join(&name), left, budget)?;
+            } else if meta.is_file() {
                 if meta.len() > *left {
                     return Err(format!("{} is bigger than I'll copy before letting an agent loose on it", from.display()));
                 }
-                *left -= meta.len();
-                std::fs::copy(&path, to.join(&name)).map_err(|e| format!("couldn't copy {}: {e}", path.display()))?;
+                use std::io::{Read, Write};
+                let mut source = std::fs::File::open(&path).map_err(|error| error.to_string())?;
+                let mut copy = std::fs::File::create(to.join(&name)).map_err(|error| error.to_string())?;
+                let mut bytes = [0u8; 64 * 1024];
+                loop {
+                    if let Some(b) = budget { b.check()?; }
+                    let read = source.read(&mut bytes).map_err(|error| error.to_string())?;
+                    if read == 0 { break; }
+                    if read as u64 > *left { return Err("The project grew beyond its recovery copy budget; the agent was not run.".into()); }
+                    *left -= read as u64;
+                    copy.write_all(&bytes[..read]).map_err(|error| error.to_string())?;
+                }
+                copy.sync_all().map_err(|error| error.to_string())?;
             }
         }
         Ok(())
     }
     let mut left = most_bytes;
-    walk(folder, into, &mut left)?;
+    walk(folder, into, &mut left, budget)?;
     Ok(into.to_path_buf())
 }
 
@@ -272,6 +249,22 @@ mod tests {
     }
 
     #[test]
+    fn recovery_copy_includes_large_files_and_stops_before_start() {
+        let root = std::env::temp_dir().join(format!("atlas-agent-controlled-copy-{}", std::process::id()));
+        let src = root.join("source"); std::fs::create_dir_all(&src).unwrap();
+        let bytes = vec![13u8; 2 * 1024 * 1024 + 17];
+        std::fs::write(src.join("large.data"), &bytes).unwrap();
+        let kept = keep_a_copy_controlled(&src, &root.join("complete"), bytes.len() as u64, None).unwrap();
+        assert_eq!(std::fs::read(kept.join("large.data")).unwrap(), bytes);
+        let stopped = || true;
+        let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(10), &stopped);
+        assert!(keep_a_copy_controlled(&src, &root.join("canceled"), 10_000_000, Some(&budget)).is_err());
+        assert!(!root.join("canceled").exists());
+        assert_eq!(std::fs::read(src.join("large.data")).unwrap(), bytes);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn a_copy_leaves_out_build_output_and_refuses_a_folder_too_big() {
         let root = std::env::temp_dir().join(format!("atlas-agent-copy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -280,10 +273,10 @@ mod tests {
         std::fs::create_dir_all(src.join("src")).unwrap();
         std::fs::write(src.join("src/main.py"), "print(1)\n").unwrap();
         std::fs::write(src.join("target/big.bin"), vec![0u8; 100]).unwrap();
-        let kept = keep_a_copy(&src, &root.join("copy"), 1_000_000).unwrap();
+        let kept = keep_a_copy_controlled(&src, &root.join("copy"), 1_000_000, None).unwrap();
         assert!(kept.join("src/main.py").is_file());
         assert!(!kept.join("target").exists());
-        assert!(keep_a_copy(&src, &root.join("copy2"), 3).is_err());
+        assert!(keep_a_copy_controlled(&src, &root.join("copy2"), 3, None).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

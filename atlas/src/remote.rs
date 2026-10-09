@@ -21,6 +21,9 @@ pub struct Request {
     pub needs: Needs,
     pub asked_at: u64,
     pub state: State,
+    /// Additive receipt provenance; older readers retain the safe existing state.
+    #[serde(default)]
+    pub receipt_status: Option<String>,
     /// How you want to hear.
     pub tell_me: How,
 }
@@ -115,6 +118,7 @@ impl Queue {
             needs,
             asked_at: now,
             state: State::Waiting,
+            receipt_status: None,
             tell_me,
         });
         id
@@ -351,7 +355,7 @@ pub fn read_answer(id: &str, to: &str) -> Option<(String, u64, String, String, b
         n.parse().ok()?,
         v.get("what")?.as_str()?.into(),
         v.get("text")?.as_str()?.into(),
-        v.get("done").and_then(|d| d.as_bool()).unwrap_or(true),
+        v.get("done")?.as_bool()?,
     ))
 }
 

@@ -8,7 +8,7 @@
 //! only caller is careful" is a property of today, not of the code, and the
 //! point of no return is exactly where the check belongs.
 
-use atlas::retention::{apply, out_of_bounds, Plan};
+use atlas::retention::{ out_of_bounds, Plan};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -47,7 +47,7 @@ impl Drop for Tree {
 #[test]
 fn a_file_inside_the_tree_is_deleted() {
     let t = Tree::new("inside");
-    let freed = apply(&[t.del("root/keep.txt")], &t.root());
+    let freed = atlas::retention::apply_until(&[t.del("root/keep.txt")], &t.root(), &|| false).unwrap();
     assert_eq!(freed, 4);
     assert!(!t.base.join("root/keep.txt").exists());
 }
@@ -55,13 +55,13 @@ fn a_file_inside_the_tree_is_deleted() {
 #[test]
 fn nested_files_are_still_reachable() {
     let t = Tree::new("nested");
-    assert_eq!(apply(&[t.del("root/nested/deep.txt")], &t.root()), 4);
+    assert_eq!(atlas::retention::apply_until(&[t.del("root/nested/deep.txt")], &t.root(), &|| false).unwrap(), 4);
 }
 
 #[test]
 fn a_sibling_of_the_tree_is_not_touched() {
     let t = Tree::new("sibling");
-    let freed = apply(&[t.del("outside.txt")], &t.root());
+    let freed = atlas::retention::apply_until(&[t.del("outside.txt")], &t.root(), &|| false).unwrap();
     assert_eq!(freed, 0, "it deleted a file outside the tree");
     assert!(t.base.join("outside.txt").exists());
 }
@@ -75,7 +75,7 @@ fn dot_dot_does_not_climb_out() {
         path: t.root().join("../outside.txt"),
         why: "test".into(),
     };
-    assert_eq!(apply(&[plan], &t.root()), 0, "`..` climbed out of the tree");
+    assert_eq!(atlas::retention::apply_until(&[plan], &t.root(), &|| false).unwrap(), 0, "`..` climbed out of the tree");
     assert!(t.base.join("outside.txt").exists());
 }
 
@@ -84,10 +84,9 @@ fn one_stray_path_does_not_stop_the_rest() {
     // Refusing the whole batch would mean a single bad plan blocks
     // housekeeping forever, and the disk fills up instead.
     let t = Tree::new("mixed");
-    let freed = apply(
+    let freed = atlas::retention::apply_until(
         &[t.del("outside.txt"), t.del("root/keep.txt")],
-        &t.root(),
-    );
+        &t.root(), &|| false).unwrap();
     assert_eq!(freed, 4);
     assert!(t.base.join("outside.txt").exists());
     assert!(!t.base.join("root/keep.txt").exists());
@@ -96,20 +95,20 @@ fn one_stray_path_does_not_stop_the_rest() {
 #[test]
 fn a_directory_is_refused_rather_than_silently_failing() {
     let t = Tree::new("dir");
-    assert_eq!(apply(&[t.del("root/nested")], &t.root()), 0);
+    assert_eq!(atlas::retention::apply_until(&[t.del("root/nested")], &t.root(), &|| false).unwrap(), 0);
     assert!(t.base.join("root/nested").exists());
 }
 
 #[test]
 fn a_path_that_no_longer_exists_frees_nothing() {
     let t = Tree::new("gone");
-    assert_eq!(apply(&[t.del("root/never-existed.txt")], &t.root()), 0);
+    assert_eq!(atlas::retention::apply_until(&[t.del("root/never-existed.txt")], &t.root(), &|| false).unwrap(), 0);
 }
 
 #[test]
 fn keep_is_not_a_deletion() {
     let t = Tree::new("keep");
-    assert_eq!(apply(&[Plan::Keep], &t.root()), 0);
+    assert_eq!(atlas::retention::apply_until(&[Plan::Keep], &t.root(), &|| false).unwrap(), 0);
     assert!(t.base.join("root/keep.txt").exists());
 }
 
@@ -137,7 +136,7 @@ fn an_unreadable_root_deletes_nothing() {
     // comparing strings.
     let t = Tree::new("noroot");
     assert_eq!(
-        apply(&[t.del("root/keep.txt")], Path::new("/definitely/not/here")),
+        atlas::retention::apply_until(&[t.del("root/keep.txt")], Path::new("/definitely/not/here"), &|| false).unwrap(),
         0
     );
     assert!(t.base.join("root/keep.txt").exists());

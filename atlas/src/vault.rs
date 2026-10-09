@@ -17,6 +17,11 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "vault/signing_assets.rs"]
+mod signing_assets;
+pub use signing_assets::{export_protected_signing_backup, recover_protected_signing_backup, SigningUnlock};
+pub(crate) use signing_assets::{prepare_signing_copy, SigningPrepared, signing_export_until};
+
 /// What's stored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Secret {
@@ -209,7 +214,30 @@ pub struct Wrap {
     pub made: u64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
+enum DiskIdentity {
+    #[default]
+    Missing,
+    Known([u8; 32]),
+    Unusable,
+}
+
+#[derive(Default)]
+struct DiskBaseline(std::sync::Mutex<DiskIdentity>);
+
+impl std::fmt::Debug for DiskBaseline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("DiskBaseline(redacted)") }
+}
+
+impl Clone for DiskBaseline {
+    fn clone(&self) -> Self {
+        // A clone is another snapshot, never a shared permission to overwrite.
+        let value = match self.0.lock() { Ok(value) => value.clone(), Err(_) => DiskIdentity::Unusable };
+        Self(std::sync::Mutex::new(value))
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Vault {
     pub secrets: Vec<Secret>,
     /// Every way into this vault. Empty on a vault written before the
@@ -269,12 +297,53 @@ pub struct Vault {
     /// filled from the set-aside file by `load`.
     #[serde(skip)]
     pub set_aside: Vec<String>,
+    #[serde(skip)]
+    disk_baseline: DiskBaseline,
+}
+
+impl<'de> Deserialize<'de> for Vault {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Wire {
+            secrets: Vec<Secret>,
+            #[serde(default)] wraps: Vec<Wrap>,
+            #[serde(default)] salt: Vec<u8>,
+            #[serde(default)] check: Vec<u8>,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        let mut vault = Self { secrets: wire.secrets, wraps: wire.wraps, salt: wire.salt, check: wire.check, ..Default::default() };
+        let identity = vault.disk_identity().map_err(serde::de::Error::custom)?;
+        vault.disk_baseline = DiskBaseline(std::sync::Mutex::new(DiskIdentity::Known(identity)));
+        Ok(vault)
+    }
 }
 
 /// Words a guesser aiming at this vault would try first.
 const VAULT_WORDS: &[&str] = &["atlas", "vault", "passphrase", "recovery"];
 
 impl Vault {
+    fn disk_identity(&self) -> std::result::Result<[u8; 32], serde_json::Error> {
+        use sha2::Digest;
+        Ok(sha2::Sha256::digest(serde_json::to_vec(self)?).into())
+    }
+
+    fn verify_saved_identity(state: &crate::store::Store, expected: &DiskIdentity) -> crate::error::Result<()> {
+        let saved: Option<Vault> = state.load_checked(Self::FILE)?;
+        let matches = match (expected, saved.as_ref()) {
+            (DiskIdentity::Missing, None) => true,
+            (DiskIdentity::Known(before), Some(saved)) => saved.disk_identity().map_err(|e| crate::error::AtlasError::Platform(e.to_string()))? == *before,
+            _ => false,
+        };
+        if matches { Ok(()) } else {
+            Err(crate::error::AtlasError::Platform("The saved vault changed after this snapshot was opened. Nothing was overwritten; reload and unlock the current vault before trying again.".into()))
+        }
+    }
+
+    pub(crate) fn verify_saved(&self, state: &crate::store::Store) -> crate::error::Result<()> {
+        let expected = self.disk_baseline.0.lock().map_err(|_| crate::error::AtlasError::Platform("The vault snapshot could not be verified; the saved vault was left untouched.".into()))?;
+        Self::verify_saved_identity(state, &expected)
+    }
+
     pub fn state(&self) -> State {
         if self.key.is_some() {
             State::Open
@@ -797,7 +866,13 @@ impl Vault {
     /// including the first unlock, which is when the salt and the check value
     /// come into existence.
     pub fn save(&self, state: &crate::store::Store) -> crate::error::Result<()> {
-        state.save(Self::FILE, self)
+        let _guard = state.transaction()?;
+        let mut expected = self.disk_baseline.0.lock().map_err(|_| crate::error::AtlasError::Platform("The vault snapshot could not be verified; the saved vault was left untouched.".into()))?;
+        Self::verify_saved_identity(state, &expected)?;
+        let next = self.disk_identity().map_err(|e| crate::error::AtlasError::Platform(e.to_string()))?;
+        state.save(Self::FILE, self)?;
+        *expected = DiskIdentity::Known(next);
+        Ok(())
     }
 
     /// Change the passphrase.
@@ -1580,6 +1655,8 @@ fn names_set_aside(state: &crate::store::Store) -> Vec<String> {
 /// replaced after the old one is safely set aside; if anything fails,
 /// nothing on disk has changed except, at most, a copy of the old vault.
 pub fn move_to_sign_in(state: &crate::store::Store, old: &Vault, now: u64) -> Result<Vault, String> {
+    let _guard = state.transaction().map_err(|e| format!("The vault migration could not reserve local storage: {e}"))?;
+    old.verify_saved(state).map_err(|e| e.to_string())?;
     if old.is_brand_new() || old.sealed_to_this_login() {
         return Err("this vault already opens with your sign-in".into());
     }
@@ -1593,6 +1670,9 @@ pub fn move_to_sign_in(state: &crate::store::Store, old: &Vault, now: u64) -> Re
         }
     }
     let mut fresh = Vault::default();
+    // This explicit replacement carries the old snapshot's compare condition.
+    // Its generic save still refuses a newer disk vault.
+    fresh.disk_baseline = old.disk_baseline.clone();
     fresh.start_on_this_login(now)?;
     state.save(SET_ASIDE, old).map_err(|e| format!("I couldn't set the old vault aside: {e}"))?;
     fresh.save(state).map_err(|e| format!("I couldn't write the new vault: {e}"))?;
@@ -1655,4 +1735,108 @@ pub fn bring_in_set_aside(
     }
     into.set_aside = names_set_aside(state);
     Ok(brought)
+}
+
+#[cfg(test)]
+mod snapshot_save_tests {
+    use super::*;
+    const PHRASE: &str = "disposable vault fixture original phrase";
+    const NEXT: &str = "disposable vault fixture replacement phrase";
+    fn fixture(tag: &str) -> (std::path::PathBuf, crate::store::Store) {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-vault-cas-{tag}-{}-{unique}", std::process::id()));
+        let state = root.join("data/state"); std::fs::create_dir_all(&state).unwrap();
+        (root, crate::store::Store::new(state))
+    }
+    fn initial(store: &crate::store::Store) -> Vault {
+        let mut v = Vault::default();
+        v.open(PHRASE, 100, &VaultConfig::default()).unwrap();
+        v.put("disposable original", Kind::Login, "synthetic original only", 100).unwrap();
+        v.save(store).unwrap(); v
+    }
+    #[test]
+    fn cloned_snapshot_cannot_inherit_a_later_save_baseline() {
+        let (root, store) = fixture("clone"); let mut live = initial(&store);
+        let mut stale = live.clone();
+        live.put("disposable newer", Kind::Login, "synthetic newer only", 101).unwrap();
+        live.save(&store).unwrap();
+        stale.put("disposable stale", Kind::Login, "synthetic stale only", 102).unwrap();
+        assert!(stale.save(&store).unwrap_err().to_string().contains("changed after"));
+        live.put("disposable newest", Kind::Login, "synthetic newest only", 103).unwrap();
+        live.save(&store).unwrap();
+        let kept: Vault = store.load_checked(Vault::FILE).unwrap().unwrap();
+        assert!(kept.secrets.iter().any(|s| s.name == "disposable newer"));
+        assert!(kept.secrets.iter().any(|s| s.name == "disposable newest"));
+        assert!(!kept.secrets.iter().any(|s| s.name == "disposable stale"));
+        let wire = serde_json::to_value(&live).unwrap();
+        assert!(wire.get("disk_baseline").is_none() && wire.get("key").is_none());
+        assert_eq!(format!("{:?}", live.disk_baseline), "DiskBaseline(redacted)");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn checked_cli_snapshot_updates_survive_a_cached_daemon_while_its_lease_is_held() {
+        let (root, store) = fixture("cli"); initial(&store);
+        let lease = crate::onlyone::OnlyOne::at(&root.join("data")).hold(100).unwrap();
+        let mut daemon = Vault::load(&store); daemon.open(PHRASE, 101, &VaultConfig::default()).unwrap();
+        let mut cli: Vault = store.load_checked(Vault::FILE).unwrap().unwrap();
+        cli.change_passphrase(PHRASE, NEXT, 102, &VaultConfig::default()).unwrap();
+        cli.open(NEXT, 103, &VaultConfig::default()).unwrap();
+        cli.put("disposable CLI credential", Kind::Login, "synthetic CLI value only", 103).unwrap();
+        cli.save(&store).unwrap();
+        let expected = std::fs::read(store.root().join("vault.json")).unwrap();
+        // A fresh same-process load advances Store's global SEEN but cannot
+        // grant the cached daemon a new per-instance comparison baseline.
+        let _: Vault = store.load_checked(Vault::FILE).unwrap().unwrap();
+        daemon.put("disposable daemon credential", Kind::Login, "synthetic stale value only", 104).unwrap();
+        assert!(daemon.save(&store).is_err());
+        assert_eq!(std::fs::read(store.root().join("vault.json")).unwrap(), expected);
+        let mut kept: Vault = store.load_checked(Vault::FILE).unwrap().unwrap();
+        kept.open(NEXT, 105, &VaultConfig::default()).unwrap();
+        assert_eq!(kept.get("disposable original", 105).unwrap(), "synthetic original only");
+        assert_eq!(kept.get("disposable CLI credential", 105).unwrap(), "synthetic CLI value only");
+        assert!(kept.get("disposable daemon credential", 105).is_err());
+        drop(lease); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn default_and_poisoned_snapshots_cannot_replace_an_existing_vault() {
+        let (root, store) = fixture("failclosed"); let live = initial(&store);
+        let before = std::fs::read(store.root().join("vault.json")).unwrap();
+        assert!(Vault::default().save(&store).is_err());
+        let poisoned = live.clone();
+        let _panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = poisoned.disk_baseline.0.lock().unwrap(); panic!("disposable baseline poison");
+        }));
+        assert!(poisoned.save(&store).is_err());
+        assert!(poisoned.clone().save(&store).is_err());
+        assert_eq!(std::fs::read(store.root().join("vault.json")).unwrap(), before);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn legacy_wire_deserialization_captures_its_own_baseline() {
+        let (root, store) = fixture("wire"); let original = initial(&store);
+        let raw = serde_json::to_vec(&original).unwrap();
+        std::fs::write(store.root().join("vault.json"), &raw).unwrap();
+        let mut legacy: Vault = store.load_checked(Vault::FILE).unwrap().unwrap();
+        legacy.open(PHRASE, 101, &VaultConfig::default()).unwrap();
+        legacy.put("disposable legacy change", Kind::Login, "synthetic legacy only", 101).unwrap();
+        legacy.save(&store).unwrap();
+        let stale: Vault = serde_json::from_slice(&raw).unwrap();
+        assert!(stale.save(&store).is_err());
+        assert!(store.load_checked::<Vault>(Vault::FILE).unwrap().unwrap().secrets.iter().any(|s| s.name == "disposable legacy change"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn stale_migration_preserves_current_vault_and_matching_existing_set_aside() {
+        let (root, store) = fixture("stale-migration"); let old = initial(&store);
+        let mut newer = old.clone();
+        newer.put("disposable new migration credential", Kind::Login, "synthetic newer migration value", 101).unwrap();
+        newer.save(&store).unwrap();
+        store.save(SET_ASIDE, &newer).unwrap();
+        let saved = std::fs::read(store.root().join("vault.json")).unwrap();
+        let backup = std::fs::read(store.root().join(format!("{SET_ASIDE}.json"))).unwrap();
+        assert!(move_to_sign_in(&store, &old, 102).unwrap_err().contains("changed after"));
+        assert_eq!(std::fs::read(store.root().join("vault.json")).unwrap(), saved);
+        assert_eq!(std::fs::read(store.root().join(format!("{SET_ASIDE}.json"))).unwrap(), backup);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

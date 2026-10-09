@@ -234,6 +234,12 @@ pub fn calls_invocation(text: &str, name: &str) -> bool {
 /// A doc comment that merely mentions the attribute is left alone, because
 /// the line must *begin* with it.
 pub fn split_production_and_tests(text: &str) -> (String, String) {
+    // An inner file attribute applies to the whole module, including a
+    // private test module loaded through #[path] by its production parent.
+    if text.lines().take_while(|line| line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!"))
+        .any(|line| line.trim_end() == "#![cfg(test)]") {
+        return (String::new(), text.to_string());
+    }
     let lines: Vec<&str> = text.split('\n').collect();
     let (mut prod, mut tests) = (Vec::new(), Vec::new());
     let mut i = 0;
@@ -482,7 +488,9 @@ pub fn source_of(name: &str) -> String {
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str(&text);
+        // Source guards parse logical lines. Windows checkouts may contain
+        // CRLF even when the same source is LF on CI.
+        out.push_str(&text.replace("\r\n", "\n"));
     }
     out
 }

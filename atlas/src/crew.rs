@@ -80,6 +80,14 @@ pub struct Control {
     holding: Arc<AtomicBool>,
 }
 
+#[cfg(test)]
+mod fixture_control {
+    use super::*;
+    impl Control {
+        pub(crate) fn for_fixture() -> Self { Self::new() }
+    }
+}
+
 impl Control {
     fn new() -> Control {
         Control {
@@ -93,6 +101,23 @@ impl Control {
     pub fn stopping(&self) -> bool {
         self.stop.load(Ordering::SeqCst)
     }
+
+    /// A held worker still obeys its own deadline and cancellation.
+    pub(crate) fn checkpoint_until(&self, deadline: std::time::Instant) -> bool {
+        while self.pause.load(Ordering::SeqCst) && !self.stopping() && std::time::Instant::now() < deadline {
+            self.holding.store(true, Ordering::SeqCst);
+            let seen = crate::doorbell::rung();
+            crate::doorbell::wait_after(seen, 20);
+        }
+        self.holding.store(false, Ordering::SeqCst);
+        self.stopping() || std::time::Instant::now() >= deadline
+    }
+
+    pub(crate) fn set_paused(&self, on: bool) {
+        self.pause.store(on, Ordering::SeqCst);
+        crate::doorbell::ring();
+    }
+    pub(crate) fn request_stop(&self) { self.stop.store(true, Ordering::SeqCst); crate::doorbell::ring(); }
 
     /// A safe point. If the errand is paused, this is where it holds —
     /// parked, with everything it has built so far intact — until it is
@@ -447,6 +472,10 @@ impl Crew {
     pub fn in_hand(&self, id: u64) -> bool {
         self.hands.iter().any(|h| h.id == id) || self.waiting.iter().any(|p| p.id == id)
     }
+    /// A durable signing ACK must not publish after its worker was stopped.
+    pub(crate) fn cancellation_requested(&self, id: u64) -> bool {
+        self.hands.iter().any(|h| h.id == id && h.stop_requested_at.is_some())
+    }
 
     /// Take on an errand as one-core work. Returns `None` only when the
     /// waiting list is full — see [`hand_job`](Crew::hand_job).
@@ -569,6 +598,19 @@ impl Crew {
         }
         self.waiting.clear();
         self.hands.len()
+    }
+
+    /// Finish winding down workers after a shutdown request. The daemon uses
+    /// this before writing restart checkpoints so a worker cannot persist a
+    /// stale in-flight state after the checkpoint has been saved.
+    pub fn wait_for_stop(&mut self) {
+        let deadline = Instant::now() + Duration::from_secs(SHUTDOWN_DEADLINE_SECS);
+        for h in self.hands.drain(..) {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let _ = h.rx.recv_timeout(remaining);
+            // The handle is intentionally dropped after the bounded wait.
+            // A non-cooperating worker must not block shutdown forever.
+        }
     }
 
     /// Called once a tick. Never blocks. Reports what finished, vanished, or
@@ -755,6 +797,12 @@ impl Crew {
         }
         false
     }
+
+    /// Cloned flags only: a hub request cannot mutate job results or queues.
+    pub(crate) fn pause_handles(&self) -> Vec<Control> {
+        self.hands.iter().map(|h| h.ctl.clone()).collect()
+    }
+    pub(crate) fn control_handle(&self, id: u64) -> Option<Control> { self.hands.iter().find(|h| h.id == id).map(|h| h.ctl.clone()) }
 
     /// Let a paused errand carry on from where it held. `false` when there is
     /// no such errand or it wasn't paused.
@@ -944,16 +992,7 @@ impl Crew {
 impl Drop for Crew {
     fn drop(&mut self) {
         self.ask_everyone_to_stop();
-        let deadline = Instant::now() + Duration::from_secs(SHUTDOWN_DEADLINE_SECS);
-        for h in self.hands.drain(..) {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            // Best effort: wait for a result up to what's left of the
-            // deadline. Whether it arrives or not, the thread handle is
-            // simply dropped rather than joined — a JoinHandle dropped
-            // without joining detaches the thread rather than killing it,
-            // which is the "leave it running" half of the rule.
-            let _ = h.rx.recv_timeout(remaining);
-        }
+        self.wait_for_stop();
     }
 }
 

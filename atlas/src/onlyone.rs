@@ -33,6 +33,10 @@
 
 use std::path::{Path, PathBuf};
 
+// The heartbeat remains readable by older Atlas versions. This native lease
+// is the authority for new versions: sleep and stalled beats never free it.
+static RUNNING_LEASES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, std::fs::File>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
 /// How often the holder refreshes the lock.
 pub const BEAT_EVERY_SECS: u64 = 30;
 
@@ -111,6 +115,9 @@ pub struct OnlyOne {
     path: PathBuf,
 }
 
+pub struct RunningGuard(OnlyOne);
+impl Drop for RunningGuard { fn drop(&mut self) { self.0.release(); } }
+
 impl OnlyOne {
     pub fn at(dir: &Path) -> OnlyOne {
         OnlyOne { path: dir.join("running.lock") }
@@ -118,6 +125,11 @@ impl OnlyOne {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn hold(&self, now: u64) -> Result<RunningGuard, String> {
+        self.take(now)?;
+        Ok(RunningGuard(self.clone()))
     }
 
     /// Who, if anyone, is already here.
@@ -183,6 +195,18 @@ impl OnlyOne {
 
     /// Take it, or say why not.
     pub fn take(&self, now: u64) -> Result<Found, String> {
+        let parent = self.path.parent().ok_or("the running lock has no directory")?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create the running lock directory: {e}"))?;
+        let native_path = std::fs::canonicalize(parent).map_err(|e| e.to_string())?.join("running.os.lock");
+        let mut leases = RUNNING_LEASES.lock().or_else(crate::crash::unpoison).map_err(|_| "the running lock could not be checked")?;
+        if leases.contains_key(&native_path) {
+            return Err("Atlas is already running. Close the other one first to prevent both copies writing over each other's state; an old heartbeat does not release a live Atlas.".into());
+        }
+        if std::fs::symlink_metadata(&native_path).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err("the native running lock is a symbolic link; startup was stopped".into());
+        }
+        let native = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&native_path).map_err(|e| format!("couldn't open the native running lock: {e}"))?;
+        native.try_lock().map_err(|e| format!("Atlas is already running. Close the other one first to prevent both copies writing over each other's state; its native running lock is held ({e})."))?;
         let found = self.look(now);
         if !found.can_take() {
             // Say WHERE, and say how long. `plain()` alone tells you to
@@ -281,6 +305,7 @@ impl OnlyOne {
             .map_err(|e| format!("couldn't take the lock at {}: {e}", self.path.display()));
         crate::heard!(std::fs::remove_file(&claim));
         wrote?;
+        leases.insert(native_path, native);
         Ok(found)
     }
 
@@ -356,6 +381,11 @@ impl OnlyOne {
     /// design that needs one is a design that breaks on the first power cut.
     pub fn release(&self) {
         crate::heard!(std::fs::remove_file(&self.path));
+        if let Some(parent) = self.path.parent() {
+            if let Ok(parent) = std::fs::canonicalize(parent) {
+                if let Ok(mut leases) = RUNNING_LEASES.lock().or_else(crate::crash::unpoison) { leases.remove(&parent.join("running.os.lock")); }
+            }
+        }
     }
 }
 
@@ -476,4 +506,20 @@ pub fn is_atlas_program(p: &Path) -> bool {
     let full = p.to_string_lossy().to_lowercase();
     let name = full.rsplit(['/', '\\']).next().unwrap_or("").to_string();
     name == "atlas" || name.starts_with("atlas.exe") || (name.starts_with("atlas") && name.ends_with(".exe"))
+}
+
+#[cfg(test)]
+mod poisoned_native_lease {
+    use super::*;
+    #[test]
+    fn release_after_a_registry_panic_still_allows_a_new_holder() {
+        let folder = std::env::temp_dir().join(format!("atlas-native-lease-poison-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let lock = OnlyOne::at(&folder); lock.release(); lock.take(1000).unwrap();
+        let _ = std::thread::spawn(|| { let _guard = RUNNING_LEASES.lock().or_else(crate::crash::unpoison).unwrap(); panic!("fixture registry panic"); }).join();
+        assert!(RUNNING_LEASES.is_poisoned());
+        lock.release();
+        assert!(lock.take(1001).is_ok(), "a poisoned registry retained the released native holder");
+        lock.release(); let _ = std::fs::remove_dir_all(folder);
+    }
 }

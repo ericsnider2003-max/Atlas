@@ -9,6 +9,17 @@ use atlas::onlyone::*;
 use std::fs;
 use std::path::PathBuf;
 
+#[test]
+fn a_live_native_holder_cannot_be_replaced_after_sleep() {
+    let d = Dir::new("native-sleep");
+    d.lock().take(1000).unwrap();
+    fs::write(d.lock().path(), "1000").unwrap();
+    assert!(d.lock().take(1000 + 8 * 3600).unwrap_err().contains("already running"));
+    d.lock().release();
+    assert!(d.lock().take(1000 + 8 * 3600).is_ok());
+    d.lock().release();
+}
+
 struct Dir(PathBuf);
 impl Dir {
     fn new(tag: &str) -> Dir {
@@ -36,6 +47,7 @@ impl Dir {
 }
 impl Drop for Dir {
     fn drop(&mut self) {
+        self.lock().release();
         let _ = fs::remove_dir_all(&self.0);
     }
 }
@@ -84,7 +96,7 @@ fn a_lock_left_by_a_crash_is_taken_over() {
     // A design that needs a clean shutdown is one that breaks on the first
     // power cut.
     let d = Dir::new("crash");
-    d.lock().take(1000).unwrap();
+    fs::write(d.lock().path(), "1000").unwrap(); // crashed legacy holder, no live native lease
     let much_later = d.age_it(GONE_AFTER_SECS + 60);
     match d.lock().look(much_later) {
         Found::Abandoned { silent_for_secs } => assert!(silent_for_secs > GONE_AFTER_SECS),
@@ -96,7 +108,7 @@ fn a_lock_left_by_a_crash_is_taken_over() {
 #[test]
 fn taking_over_says_it_is_doing_so() {
     let d = Dir::new("says");
-    d.lock().take(1000).unwrap();
+    fs::write(d.lock().path(), "1000").unwrap();
     let later = d.age_it(GONE_AFTER_SECS + 300);
     let found = d.lock().take(later).unwrap();
     assert!(found.plain().contains("crash"), "got: {}", found.plain());
@@ -214,7 +226,7 @@ fn a_lock_whose_holder_was_asleep_is_not_taken_over_when_it_wakes() {
 #[test]
 fn a_lock_whose_holder_is_really_gone_is_still_taken_after_the_wait() {
     let d = Dir::new("slept-gone");
-    d.lock().take(1000).unwrap();
+    fs::write(d.lock().path(), "1000").unwrap();
     let later = d.age_it(8 * 3600);
     let found = d
         .lock()

@@ -186,15 +186,11 @@ pub(super) fn read_project_context(folder: &str, request: &str, context_tokens: 
     crate::projectread::relevant(root, request, crate::projectread::budget_for(context_tokens)).text
 }
 
-/// The project's own tests, run with the draft in place of `rel` in a copy
-/// of the project, as a fix round's check (2 Oct 2026: the fix rounds only
-/// ever saw the draft compiled on its own, and the project's tests ran once,
-/// after the last round, with nothing to fix from them). `None` when they
-/// can't tell anything -- they couldn't run, or there are none -- and the
-/// draft is checked on its own instead.
-pub(super) fn check_in_project(root: &std::path::Path, rel: &str, test_cmd: &str, code: &str, base: &std::path::Path) -> Option<crate::build_it::Check> {
+
+pub(super) fn check_in_project_controlled(root: &std::path::Path, rel: &str, test_cmd: &str, code: &str, base: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> Option<crate::build_it::Check> {
+    if let Some(b) = budget { if let Err(why) = b.check() { return Some(crate::build_it::Check::Failed(why)); } }
     let edits = vec![crate::selfwork::Edit { path: rel.to_string(), content: code.to_string(), reason: String::new() }];
-    let proof = crate::selfwork::prove_in_project(root, test_cmd, &edits, base).ok()?;
+    let proof = crate::selfwork::prove_in_project_controlled(root, test_cmd, &edits, base, budget).map_err(|why| why).ok()?;
     if proof.built_and_passed {
         return Some(crate::build_it::Check::Passed(Vec::new()));
     }
@@ -211,54 +207,57 @@ pub(super) fn ext_for(lang: crate::craft::Lang) -> &'static str {
     lang.ext()
 }
 
-/// Copy the tree's compile inputs into a scratch directory, so a candidate
-/// self-fix can be built and tested in isolation from the tree you run.
-///
-/// Everything a `cargo test` needs and nothing it produces: `src/`, `tests/`,
-/// `config/`, `benches/`, the manifests and `build.rs` — never `target/`,
-/// `.git/`, or another sandbox, which are huge and rebuildable. A cold build is
-/// the cost of not touching your real files; that is the trade this makes on
-/// purpose.
-pub(super) fn copy_compile_inputs(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+
+pub(super) fn copy_compile_inputs_controlled(from: &std::path::Path, to: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> std::io::Result<()> {
+    let mut copied = (0usize, 0u64);
     const TOP: &[&str] = &["src", "tests", "config", "benches", "examples"];
     const FILES: &[&str] = &["Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml"];
     std::fs::create_dir_all(to)?;
     for d in TOP {
         let src = from.join(d);
         if src.is_dir() {
-            copy_dir_shallowly(&src, &to.join(d))?;
+            copy_dir_controlled(&src, &to.join(d), budget, &mut copied)?;
         }
     }
     for f in FILES {
         let src = from.join(f);
         if src.is_file() {
-            std::fs::copy(&src, to.join(f))?;
+            copy_file_controlled(&src, &to.join(f), budget, &mut copied)?;
         }
     }
     Ok(())
 }
 
-/// Recursively copy a directory, following the same "no symlinks, no target"
-/// rule the rest of the tree uses for copies.
-pub(super) fn copy_dir_shallowly(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+
+fn copy_file_controlled(from: &std::path::Path, to: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>, copied: &mut (usize, u64)) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+    let check = || budget.map_or(Ok(()), |b| b.check().map_err(std::io::Error::other));
+    check()?;
+    let size = std::fs::symlink_metadata(from)?;
+    if !size.is_file() || size.file_type().is_symlink() { return Err(std::io::Error::other("repair inputs include a link or non-file; no complete copy was made")); }
+    copied.0 = copied.0.saturating_add(1);
+    copied.1 = copied.1.saturating_add(size.len());
+    if copied.0 > 8192 || copied.1 > 128 * 1024 * 1024 { return Err(std::io::Error::other("repair inputs exceed the bounded copy budget; no complete copy was made")); }
+    let mut input = std::fs::File::open(from)?;
+    let mut output = std::fs::File::create(to)?;
+    let mut bytes = [0u8; 64 * 1024];
+    loop { check()?; let n = input.read(&mut bytes)?; if n == 0 { break; } output.write_all(&bytes[..n])?; }
+    check()
+}
+
+fn copy_dir_controlled(from: &std::path::Path, to: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>, copied: &mut (usize, u64)) -> std::io::Result<()> {
+    if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; }
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
+        if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; }
         let entry = entry?;
         let ty = entry.file_type()?;
-        if ty.is_symlink() {
-            continue;
-        }
+        if ty.is_symlink() { return Err(std::io::Error::other("repair inputs include a symbolic link; no complete copy was made")); }
         let name = entry.file_name();
-        // Never carry a build dir or a nested VCS/scratch tree along.
-        if matches!(name.to_str(), Some("target") | Some(".git")) {
-            continue;
-        }
+        if matches!(name.to_str(), Some("target") | Some(".git")) { continue; }
         let dst = to.join(&name);
-        if ty.is_dir() {
-            copy_dir_shallowly(&entry.path(), &dst)?;
-        } else {
-            std::fs::copy(entry.path(), dst)?;
-        }
+        if ty.is_dir() { copy_dir_controlled(&entry.path(), &dst, budget, copied)?; }
+        else { copy_file_controlled(&entry.path(), &dst, budget, copied)?; }
     }
     Ok(())
 }
@@ -277,6 +276,11 @@ pub(super) fn check_draft_in_sandbox(
     lang: crate::craft::Lang,
     code: &str,
 ) -> crate::build_it::Check {
+    check_draft_in_sandbox_controlled(sandbox, lang, code, None)
+}
+
+pub(super) fn check_draft_in_sandbox_controlled(sandbox: &mut crate::sandbox::Sandbox, lang: crate::craft::Lang, code: &str, budget: Option<&crate::tools::WorkBudget<'_>>) -> crate::build_it::Check {
+    if let Some(b) = budget { if let Err(why) = b.check() { return crate::build_it::Check::Failed(why); } }
     // Lay the draft down as something the toolchain can act on. The scaffold
     // is the language's own (a Rust crate, a Go module, a tsconfig beside the
     // file), so the ladder's commands always have what they expect.
@@ -291,12 +295,12 @@ pub(super) fn check_draft_in_sandbox(
     if lang == crate::craft::Lang::Python {
         let deps = crate::build_it::python_deps(code);
         if !deps.is_empty() {
-            if let Err(missing) = install_python_deps(&sandbox.root, &deps) {
+            if let Err(missing) = install_python_deps_controlled(&sandbox.root, &deps, budget) {
                 return crate::build_it::Check::CannotCheck(missing);
             }
         }
     }
-    let check = run_ladder_in(&sandbox.root, lang, true);
+    let check = run_ladder_in_controlled(&sandbox.root, lang, true, budget);
     // What the formatter and the toolchain's own fixes changed is the code
     // now: handed over as it passed, not as the model wrote it.
     let main = lang.draft_files(code).into_iter().find(|(_, c)| c == code).map(|(p, _)| p);
@@ -306,10 +310,8 @@ pub(super) fn check_draft_in_sandbox(
     }
 }
 
-/// A Python draft's packages into `dir/.deps`, with the files that point the
-/// checks at them. `Err` names what couldn't be had, as the thing that isn't
-/// on this computer.
-pub(super) fn install_python_deps(dir: &std::path::Path, deps: &[String]) -> std::result::Result<(), String> {
+
+fn install_python_deps_controlled(dir: &std::path::Path, deps: &[String], budget: Option<&crate::tools::WorkBudget<'_>>) -> std::result::Result<(), String> {
     let root = crate::roots::install_root();
     let Some(uv) = crate::codetools::uv_program(&root) else {
         return Err(format!("uv (to install {})", deps.join(", ")));
@@ -327,7 +329,7 @@ pub(super) fn install_python_deps(dir: &std::path::Path, deps: &[String]) -> std
     args.extend(deps.iter().cloned());
     let cache = root.join("tools/uv-cache");
     let cache = cache.to_string_lossy().into_owned();
-    let (ok, said) = crate::sandbox::run_within(&uv.to_string_lossy(), &args, &[("UV_CACHE_DIR", cache.as_str())], dir, 300, 2000);
+    let (ok, said) = run_project_command(&uv.to_string_lossy(), &args, &[("UV_CACHE_DIR", cache.as_str())], dir, 300, 2000, budget);
     if ok {
         Ok(())
     } else {
@@ -336,16 +338,13 @@ pub(super) fn install_python_deps(dir: &std::path::Path, deps: &[String]) -> std
     }
 }
 
-/// Run `craft`'s ladder for `lang` in `dir`, as a `build_it::Check`. In a
-/// sandbox the formatting gates run too; in a folder of yours
-/// (`run_ladder_in(folder, lang, false)`, 2 Oct 2026, after a coding agent
-/// changed it) they don't -- a check reads your files, it doesn't rewrite
-/// them. A project with no tests isn't failed for having none.
-pub(super) fn run_ladder_in(dir: &std::path::Path, lang: crate::craft::Lang, rewrite_allowed: bool) -> crate::build_it::Check {
+
+pub(super) fn run_ladder_in_controlled(dir: &std::path::Path, lang: crate::craft::Lang, rewrite_allowed: bool, budget: Option<&crate::tools::WorkBudget<'_>>) -> crate::build_it::Check {
     use crate::craft::{ladder, read_ladder, Next, Ran, Tells};
     let mut ran: Vec<Ran> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
     for gate in ladder(lang) {
+        if let Some(b) = budget { if let Err(why) = b.check() { return crate::build_it::Check::Failed(why); } }
         if !rewrite_allowed && gate.tells == Tells::Shape {
             continue;
         }
@@ -367,14 +366,14 @@ pub(super) fn run_ladder_in(dir: &std::path::Path, lang: crate::craft::Lang, rew
         // Generous against the gate's rough estimate; a compile that runs
         // far past it is stuck, not slow.
         let limit = (gate.seconds as u64) * 4 + 30;
-        let (mut passed, mut output) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 4000);
+        let (mut passed, mut output) = run_project_command(&program, &args, &[], dir, limit, 4000, budget);
         // The toolchain's own fixes first (`craft::autofix_for`), in a copy
         // only: a check of a folder of yours never rewrites it. Run again
         // after; what's left is what the next round works on.
         if !passed && rewrite_allowed {
             if let Some(fix) = crate::craft::autofix_for(&gate) {
-                if let Some(done) = toolchain_fix(dir, &fix, limit) {
-                    let (again, out) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 4000);
+                if let Some(done) = toolchain_fix(dir, &fix, limit, budget) {
+                    let (again, out) = run_project_command(&program, &args, &[], dir, limit, 4000, budget);
                     if again {
                         notes.push(format!("the toolchain fixed what it found itself ({done})"));
                     }
@@ -407,10 +406,19 @@ pub(super) fn run_ladder_in(dir: &std::path::Path, lang: crate::craft::Lang, rew
     }
 }
 
+fn run_project_command(program: &str, args: &[String], env: &[(&str, &str)], dir: &std::path::Path, limit: u64, max: usize, budget: Option<&crate::tools::WorkBudget<'_>>) -> (bool, String) {
+    if let Some(b) = budget { if let Err(why) = b.check() { return (false, format!("error: {why}")); } }
+    let stop = || budget.is_some_and(|b| b.stopping());
+    let limit = budget.map_or(limit, |b| b.remaining(std::time::Duration::from_secs(limit)).as_secs().max(1));
+    let result = crate::sandbox::run_within_controlled(program, args, env, dir, limit, max, Some(&stop));
+    if let Some(b) = budget { if let Err(why) = b.check() { return (false, format!("error: {why}")); } }
+    result
+}
+
 /// Run a toolchain's own fixer (`craft::autofix_for`) in `dir`, resolving
 /// its program as the gates do. `Some(command)` when it ran; `None` when its
 /// program isn't here or wouldn't start -- then nothing was changed.
-fn toolchain_fix(dir: &std::path::Path, fix: &str, limit: u64) -> Option<String> {
+fn toolchain_fix(dir: &std::path::Path, fix: &str, limit: u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Option<String> {
     let mut parts = fix.split_whitespace();
     let first = parts.next()?;
     let args: Vec<String> = parts.map(str::to_string).collect();
@@ -418,7 +426,7 @@ fn toolchain_fix(dir: &std::path::Path, fix: &str, limit: u64) -> Option<String>
     if let Some(p) = crate::codetools::llvm_program(&program, &crate::roots::install_root()) {
         program = p.to_string_lossy().into_owned();
     }
-    let (_ok, out) = crate::sandbox::run_within(&program, &args, &[], dir, limit, 2000);
+    let (_ok, out) = run_project_command(&program, &args, &[], dir, limit, 2000, budget);
     let low = out.to_lowercase();
     if low.starts_with("couldn't run") || low.starts_with("could not start") {
         return None;
@@ -430,6 +438,16 @@ fn toolchain_fix(dir: &std::path::Path, fix: &str, limit: u64) -> Option<String>
 mod the_toolchain_fixes_first {
     use crate::build_it::Check;
     use crate::craft::Lang;
+
+    #[test]
+    fn canceled_project_check_starts_no_tool_or_scaffold() {
+        let root = std::env::temp_dir().join(format!("atlas-check-stopped-{}", std::process::id()));
+        let stopped = || true;
+        let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(10), &stopped);
+        let result = super::run_ladder_in_controlled(&root, Lang::Rust, true, Some(&budget));
+        assert!(matches!(result, Check::Failed(ref text) if text.contains("stop")));
+        assert!(!root.exists());
+    }
 
     fn have(program: &str, args: &[&str]) -> bool {
         std::process::Command::new(program).args(args).output().is_ok_and(|o| o.status.success())

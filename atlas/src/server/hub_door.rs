@@ -80,6 +80,7 @@ impl Clone for Serving {
             news: self.news.clone(),
             shut: self.shut.clone(),
             late: self.late.clone(),
+            snapshots: self.snapshots.clone(),
         }
     }
 }
@@ -150,9 +151,9 @@ impl Serving {
                 continue;
             }
             self.open.fetch_add(1, Ordering::SeqCst);
-            let (s, tx, still_open, per, late) = (s.clone(), self.tx.clone(), self.open.clone(), self.per_address.clone(), self.late.clone());
+            let (s, tx, still_open, per, late, snapshots) = (s.clone(), self.tx.clone(), self.open.clone(), self.per_address.clone(), self.late.clone(), self.snapshots.clone());
             let spawned = std::thread::Builder::new().name("atlas-hub-conn".into()).spawn(move || {
-                s.serve_on_its_own(stream, &tx, &late);
+                s.serve_on_its_own(stream, &tx, &late, &snapshots);
                 still_open.fetch_sub(1, Ordering::SeqCst);
                 by_address_give_back(&per, from);
             });
@@ -364,10 +365,32 @@ impl Server {
 
     /// One connection, on its own thread: read and check it, hand an
     /// authenticated action to the daemon, wait for the answer, send it.
-    pub(super) fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &crate::doorbell::Sender<Waiting>, late: &LateTalk) {
+    pub(super) fn serve_on_its_own(&self, stream: TcpStream, to_daemon: &crate::doorbell::Sender<Waiting>, late: &LateTalk, snapshots: &ReadOnlySnapshots) {
         let Ok(Some(mut asked)) = self.read_asked(stream) else {
             return;
         };
+        // Authentication and origin checks above still run for every request.
+        if let Action::Pause(on) = &asked.action {
+            if let Some(reply) = fast_pause(snapshots, *on) {
+                self.answer(&mut asked, reply);
+                return;
+            }
+        }
+        if let Action::HubPost { path, fields } = &asked.action {
+            if path == "/hub/outstanding" && fields.iter().any(|(name, value)| name == "what" && value == "drop") {
+                if let Some((_, key)) = fields.iter().find(|(name, _)| name == "key") {
+                    if let Some(reply) = fast_cancel(snapshots, key) { self.answer(&mut asked, reply); return; }
+                }
+            }
+        }
+        // Only explicitly published, query-free observational pages bypass
+        // the loop; actions and GETs with side effects stay on its own path.
+        if let Action::Hub(page) = &asked.action {
+            if let Some(reply) = cached_readonly(snapshots, *page) {
+                self.answer(&mut asked, reply);
+                return;
+            }
+        }
         let what = match &asked.page {
             Some((m, p)) => format!("{m} {p}"),
             None => "peer".to_string(),
@@ -430,6 +453,40 @@ impl Reply {
 }
 
 impl HubDoor {
+    /// Publish only observational pages. Rendering never runs on a socket
+    /// thread; the last completed state remains readable during slow work.
+    pub(crate) fn publish_readonly(&self, pages: Vec<(crate::hub::Page, Reply)>, install_state: std::path::PathBuf, owner_state: std::path::PathBuf) {
+        let Some(permissions) = permission_records(&install_state) else { self.invalidate_readonly(); return };
+        if crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone()) != owner_state {
+            self.invalidate_readonly();
+            return;
+        }
+        let mut cache = self.snapshots.lock().unwrap_or_else(|p| p.into_inner());
+        *cache = Some(ReadOnlySnapshot { made: std::time::Instant::now(), install_state, owner_state, permissions, pages, pause: None, pause_requested: self.pause_requested.clone(), cancellations: Vec::new(), cancel_requested: self.cancel_requested.clone() });
+    }
+
+    pub(crate) fn publish_pause(&self, pause: std::sync::Arc<dyn Fn(bool) + Send + Sync>) {
+        if let Some(snapshot) = self.snapshots.lock().unwrap_or_else(|p| p.into_inner()).as_mut() { snapshot.pause = Some(pause); }
+    }
+
+    pub(crate) fn take_pause_requested(&self) -> Option<bool> {
+        match self.pause_requested.swap(0, std::sync::atomic::Ordering::SeqCst) { 1 => Some(false), 2 => Some(true), _ => None }
+    }
+    pub(crate) fn publish_cancellations(&self, controls: Vec<(FastCancel, std::sync::Arc<dyn Fn() + Send + Sync>)>) {
+        if let Some(snapshot) = self.snapshots.lock().unwrap_or_else(|p| p.into_inner()).as_mut() { snapshot.cancellations = controls; }
+    }
+    pub(crate) fn take_cancel_requested(&self) -> Vec<FastCancel> {
+        std::mem::take(&mut *self.cancel_requested.lock().unwrap_or_else(|p| p.into_inner()))
+    }
+
+    pub(crate) fn readonly_due(&self) -> bool {
+        self.snapshots.lock().unwrap_or_else(|p| p.into_inner()).as_ref().is_none_or(|s| s.made.elapsed() >= std::time::Duration::from_secs(1))
+    }
+
+    pub(crate) fn invalidate_readonly(&self) {
+        *self.snapshots.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
+
     /// A door with nothing listening yet, and its serving end.
     pub(super) fn waiting() -> (HubDoor, Serving) {
         let (tx, asks) = crate::doorbell::channel::<Waiting>();
@@ -438,6 +495,7 @@ impl HubDoor {
         let news = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let shut = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let late: LateTalk = Default::default();
+        let snapshots: ReadOnlySnapshots = Default::default();
         let serving = Serving {
             server: server.clone(),
             tx,
@@ -447,8 +505,9 @@ impl HubDoor {
             news: news.clone(),
             shut: shut.clone(),
             late: late.clone(),
+            snapshots: snapshots.clone(),
         };
-        (HubDoor { server, asks, port, news, shut, late }, serving)
+        (HubDoor { server, asks, port, news, shut, late, snapshots, pause_requested: Default::default(), cancel_requested: Default::default() }, serving)
     }
 
     /// Talk page messages given up on since last asked, oldest first.
@@ -515,6 +574,236 @@ impl HubDoor {
     }
 }
 
+// These small non-secret records govern handover/profile visibility. Compare
+// their contents on each request, not timestamps which can miss rapid edits.
+// Unreadable or oversized records disable the cache instead of guessing.
+fn permission_records(root: &std::path::Path) -> Option<Vec<Option<Vec<u8>>>> {
+    use std::io::Read;
+    ["handover.json", "profiles.json"].into_iter().map(|name| {
+        let mut file = match std::fs::File::open(root.join(name)) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(None),
+            Err(_) => return None,
+        };
+        let mut bytes = Vec::new();
+        Read::by_ref(&mut file).take(65_537).read_to_end(&mut bytes).ok()?;
+        if bytes.len() > 65_536 { return None; }
+        let record: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+        // Match Store's current envelope and its legacy plain-record reader.
+        // Unsupported schemas disable snapshots without mutating state.
+        let data = if let Some(schema) = record.get("schema") {
+            if schema.as_u64() != Some(u64::from(crate::store::SCHEMA)) { return None; }
+            record.get("data")?.clone()
+        } else { record };
+        if name == "handover.json" {
+            let permission: crate::handover::Handover = serde_json::from_value(data).ok()?;
+            if permission.stance.handed_over() { return None; }
+        } else {
+            let _: crate::profiles::Profiles = serde_json::from_value(data).ok()?;
+        }
+        Some(Some(bytes))
+    }).collect()
+}
+
+fn cached_readonly(cache: &ReadOnlySnapshots, page: crate::hub::Page) -> Option<Reply> {
+    if !matches!(page, crate::hub::Page::Now | crate::hub::Page::Outstanding) { return None; }
+    let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
+    let snapshot = cache.as_ref()?;
+    if permission_records(&snapshot.install_state).as_ref() != Some(&snapshot.permissions) {
+        *cache = None;
+        return None;
+    }
+    if crate::profiles::active_dir(&snapshot.install_state).unwrap_or_else(|| snapshot.install_state.clone()) != snapshot.owner_state {
+        *cache = None;
+        return None;
+    }
+    let mut reply = snapshot.pages.iter().find(|(p, _)| *p == page)?.1.clone();
+    let age = snapshot.made.elapsed().as_secs();
+    let note = if age > 2 {
+        format!("Status has not refreshed for {age} seconds. Atlas may be busy or unresponsive; this view may have changed. {}", if snapshot.pause.is_some() { "Pause requests reach the active workers now; other buttons still wait for Atlas." } else { "Buttons still wait for Atlas to respond." })
+    } else {
+        if snapshot.pause.is_some() { "This is the latest completed status. Pause requests reach active workers; other buttons wait for Atlas to handle them.".to_string() }
+        else { "This is the latest completed status. Buttons wait for Atlas to handle them.".to_string() }
+    };
+    reply.body = crate::hub::with_said(reply.body, Some(&note));
+    Some(reply)
+}
+
+fn fast_pause(cache: &ReadOnlySnapshots, on: bool) -> Option<Reply> {
+    let cache = cache.lock().unwrap_or_else(|p| p.into_inner());
+    let snapshot = cache.as_ref()?;
+    if permission_records(&snapshot.install_state).as_ref() != Some(&snapshot.permissions)
+        || crate::profiles::active_dir(&snapshot.install_state).unwrap_or_else(|| snapshot.install_state.clone()) != snapshot.owner_state {
+        return Some(Reply { status: 503, ..Reply::html("<p>The active owner changed. No pause or resume was applied to the old profile. Refresh after Atlas has switched profiles.</p>") });
+    }
+    let pause = snapshot.pause.clone()?;
+    let pending = snapshot.pause_requested.clone();
+    pending.store(if on { 2 } else { 1 }, std::sync::atomic::Ordering::SeqCst);
+    pause(on);
+    drop(cache);
+    crate::doorbell::ring();
+    let notice = if on { "Pause requested. Active workers will hold at their next safe point. Atlas will pause its microphone and update its status when the control loop handles this request." } else { "Resume requested. Active workers can continue; Atlas will update its microphone and status when the control loop handles this request." };
+    let (title, next, button) = if on { ("Pause requested", "resume", "Resume") } else { ("Resume requested", "pause", "Pause") };
+    Some(Reply { status: 202, ..Reply::html(format!("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{title} — Atlas</title><style>body{{font:16px system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}}button{{font:inherit;min-height:44px;padding:.5em 1em}}</style></head><body><h1>{title}</h1><p role=status>{notice}</p><form method=post action='/hub/pause'><input type=hidden name=what value={next}><button type=submit>{button}</button></form><p><a href='/hub/now'>Back to Now</a></p></body></html>")) })
+}
+
+fn fast_cancel(cache: &ReadOnlySnapshots, key: &str) -> Option<Reply> {
+    let cache = cache.lock().unwrap_or_else(|p| p.into_inner());
+    let snapshot = cache.as_ref()?;
+    if permission_records(&snapshot.install_state).as_ref() != Some(&snapshot.permissions)
+        || crate::profiles::active_dir(&snapshot.install_state).unwrap_or_else(|| snapshot.install_state.clone()) != snapshot.owner_state {
+        return Some(Reply { status: 503, ..Reply::html("<p>The active owner changed. This old worker was not asked to stop. Refresh Outstanding after Atlas has switched profiles.</p>") });
+    }
+    let (request, stop) = snapshot.cancellations.iter().find(|(request, _)| request.key == key)?;
+    let mut pending = snapshot.cancel_requested.lock().unwrap_or_else(|p| p.into_inner());
+    if !pending.contains(request) {
+        if pending.len() >= 32 { return Some(Reply { status: 503, ..Reply::html("<p>Too many control requests are waiting. This worker was not asked to stop; try again shortly.</p>") }); }
+        pending.push(request.clone());
+    }
+    stop(); crate::doorbell::ring();
+    Some(Reply { status: 202, ..Reply::html("<p role=status>Stop requested for that worker. Its result is not confirmed yet; Atlas will record its final outcome when the control loop responds.</p><p><a href='/hub/outstanding'>Back to Outstanding</a></p>") })
+}
+
+#[cfg(test)]
+mod readonly_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::sync::atomic::Ordering;
+    const TOKEN: &str = "snapshot-test-token-is-long-enough";
+
+    #[test]
+    fn authenticated_pause_reaches_control_flags_without_daemon_and_owner_switch_blocks_it() {
+        let cfg = ServerConfig { enabled: true, port: 0, ..Default::default() };
+        let mut server = Server::bind(&cfg, TOKEN).unwrap();
+        server.answer_wait = std::time::Duration::from_millis(80);
+        let port = server.port(); let door = server.threaded().unwrap();
+        let root = std::env::temp_dir().join(format!("atlas-fast-pause-{}-{port}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        crate::handover::Handover::default().save(&store).unwrap();
+        crate::profiles::Profiles::default().save(&root).unwrap();
+        door.publish_readonly(vec![(crate::hub::Page::Now, Reply::html("<h1>Status</h1>"))], root.clone(), root.clone());
+        let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let control = crate::crew::Control::for_fixture();
+        let flags = control.clone();
+        let flag = paused.clone(); door.publish_pause(std::sync::Arc::new(move |on| { flag.store(on, Ordering::SeqCst); flags.set_paused(on); }));
+        let post = |on: bool, authorized: bool| {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let body = if on { "what=pause" } else { "what=resume" };
+            let auth = if authorized { format!("X-Atlas-Token: {TOKEN}\r\n") } else { String::new() };
+            write!(stream, "POST /hub/pause HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+            let mut reply = String::new(); stream.read_to_string(&mut reply).unwrap(); reply
+        };
+        assert!(post(true, false).starts_with("HTTP/1.1 401")); assert!(!paused.load(Ordering::SeqCst));
+        let start = std::time::Instant::now(); let reply = post(true, true);
+        assert!(reply.starts_with("HTTP/1.1 202"), "{reply}"); assert!(reply.contains("next safe point"));
+        assert!(start.elapsed() < std::time::Duration::from_secs(1)); assert!(paused.load(Ordering::SeqCst)); assert_eq!(door.take_pause_requested(), Some(true));
+        let (done, finished) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || { done.send(control.checkpoint()).unwrap(); });
+        assert!(matches!(finished.recv_timeout(std::time::Duration::from_millis(40)), Err(std::sync::mpsc::RecvTimeoutError::Timeout)), "the worker passed its safe point while paused");
+        assert!(post(false, true).starts_with("HTTP/1.1 202")); assert!(!paused.load(Ordering::SeqCst)); assert_eq!(door.take_pause_requested(), Some(false));
+        assert!(!finished.recv_timeout(std::time::Duration::from_secs(1)).unwrap()); worker.join().unwrap();
+        let cancel_control = crate::crew::Control::for_fixture();
+        let exact = FastCancel { key: "t:7".into(), worker: Some(17), files: None };
+        let flag = cancel_control.clone();
+        door.publish_cancellations(vec![(exact.clone(), std::sync::Arc::new(move || flag.request_stop()))]);
+        let cancel = |authorized: bool| {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let body = "what=drop&key=t%3A7";
+            let auth = if authorized { format!("X-Atlas-Token: {TOKEN}\r\n") } else { String::new() };
+            write!(stream, "POST /hub/outstanding HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+            let mut reply = String::new(); stream.read_to_string(&mut reply).unwrap(); reply
+        };
+        assert!(cancel(false).starts_with("HTTP/1.1 401"));
+        assert!(!cancel_control.checkpoint());
+        assert!(door.take_cancel_requested().is_empty());
+        assert!(cancel(true).starts_with("HTTP/1.1 202"));
+        assert!(cancel_control.checkpoint(), "authorized cancellation must reach the owned worker before daemon dispatch");
+        assert_eq!(door.take_cancel_requested(), vec![exact]);
+        let mut profiles = crate::profiles::Profiles::default(); profiles.add("Owner", crate::profiles::Role::Owner).unwrap(); profiles.add("Guest", crate::profiles::Role::Guest).unwrap(); profiles.switch("guest", 1).unwrap(); profiles.save(&root).unwrap();
+        let rejected_pause = post(true, true);
+        assert!(rejected_pause.starts_with("HTTP/1.1 503"), "{rejected_pause}"); assert!(!paused.load(Ordering::SeqCst)); assert_eq!(door.take_pause_requested(), None);
+        let rejected = cancel(true);
+        assert!(rejected.starts_with("HTTP/1.1 503"), "{rejected}"); assert!(door.take_cancel_requested().is_empty());
+        drop(door); let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn request(port: u16, path: &str, authorized: bool, method: &str) -> String {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
+        let auth = if authorized { format!("X-Atlas-Token: {TOKEN}\r\n") } else { String::new() };
+        stream.write_all(format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Content-Length: 0\r\n\r\n").as_bytes()).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    }
+
+    #[test]
+    fn readonly_pages_answer_without_loop_but_auth_actions_queries_and_permissions_still_gate() {
+        let cfg = ServerConfig { enabled: true, port: 0, ..Default::default() };
+        let mut server = Server::bind(&cfg, TOKEN).unwrap();
+        server.answer_wait = std::time::Duration::from_millis(80);
+        let port = server.port();
+        let door = server.threaded().unwrap();
+        let root = std::env::temp_dir().join(format!("atlas-readonly-{}-{}", std::process::id(), port));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(root.clone());
+        crate::handover::Handover::default().save(&store).unwrap();
+        crate::profiles::Profiles::default().save(&root).unwrap();
+        door.publish_readonly(vec![(crate::hub::Page::Now, Reply::html("<html><body><h1>First status</h1></body></html>"))], root.clone(), root.clone());
+        // No daemon answers requests during this entire fixture.
+        let status = request(port, "/hub/now", true, "GET");
+        assert!(status.starts_with("HTTP/1.1 200"), "{status}");
+        assert!(status.contains("First status"));
+        assert!(status.contains("latest completed status"));
+        assert!(request(port, "/hub/now", false, "GET").starts_with("HTTP/1.1 401"));
+        assert!(request(port, "/hub/now?said=test", true, "GET").starts_with("HTTP/1.1 503"));
+        assert!(request(port, "/hub/messages", true, "GET").starts_with("HTTP/1.1 503"));
+        assert!(!request(port, "/hub/outstanding", true, "POST").starts_with("HTTP/1.1 200"));
+        // A changed permission record prevents serving the owner's old view.
+        let mut handover = crate::handover::Handover::default();
+        handover.hand_over("test guest", 1);
+        handover.save(&store).unwrap();
+        let changed = request(port, "/hub/now", true, "GET");
+        assert!(changed.starts_with("HTTP/1.1 503"));
+        assert!(!changed.contains("First status"));
+        drop(door);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn snapshot_age_is_visible_and_publish_replaces_the_previous_status() {
+        let (door, _) = HubDoor::waiting();
+        let root = std::env::temp_dir().join(format!("atlas-snapshot-age-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(root.clone());
+        crate::handover::Handover::default().save(&store).unwrap();
+        let mut profiles = crate::profiles::Profiles::default();
+        profiles.save(&root).unwrap();
+        let page = crate::hub::Page::Now;
+        door.publish_readonly(vec![(page, Reply::html("<html><body><h1>Old</h1></body></html>"))], root.clone(), root.clone());
+        door.snapshots.lock().unwrap().as_mut().unwrap().made -= std::time::Duration::from_secs(10);
+        let old = cached_readonly(&door.snapshots, page).unwrap();
+        assert!(old.body.contains("Status has not refreshed for"));
+        assert!(old.body.contains("busy or unresponsive"));
+        door.publish_readonly(vec![(page, Reply::html("<html><body><h1>New</h1></body></html>"))], root.clone(), root.clone());
+        let new = cached_readonly(&door.snapshots, page).unwrap();
+        assert!(new.body.contains("New"));
+        assert!(!new.body.contains("Old"));
+        profiles.add("Owner", crate::profiles::Role::Owner).unwrap();
+        profiles.add("Guest", crate::profiles::Role::Guest).unwrap();
+        profiles.switch("guest", 1).unwrap();
+        profiles.save(&root).unwrap();
+        assert!(cached_readonly(&door.snapshots, page).is_none());
+        // Old-owner status cannot be republished after a profile switch.
+        door.publish_readonly(vec![(page, Reply::html("<h1>Old owner</h1>"))], root.clone(), root.clone());
+        assert!(cached_readonly(&door.snapshots, page).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 impl Drop for HubDoor {
     fn drop(&mut self) {
         self.shut.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -524,6 +813,7 @@ impl Drop for HubDoor {
 /// Write where the hub is. Written whole to a new file and moved over the
 /// old one, so a reader never sees half of it.
 pub fn record_door(state_dir: &std::path::Path, door: &Door) -> std::io::Result<()> {
+    let _state = crate::store::state_transaction(state_dir)?;
     std::fs::create_dir_all(state_dir)?;
     let text = serde_json::to_string(door).map_err(|e| std::io::Error::other(e.to_string()))?;
     let tmp = state_dir.join(format!("{DOOR_FILE}.new"));

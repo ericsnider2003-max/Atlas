@@ -16,7 +16,7 @@
 //! back where it was with nothing deleted.
 
 use atlas::daemon::Daemon;
-use atlas::organize::{carry_out_moves, plan_folders, plan_said, read_sort_request, FileKind, Reason, TO_REVIEW};
+use atlas::organize::{carry_out_moves_controlled, plan_folders, plan_said, read_sort_request, FileKind, Reason, TO_REVIEW};
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
@@ -154,7 +154,7 @@ fn copies_are_found_by_size_then_hash_then_bytes_and_only_copies_move() {
     // Carried out: the copies are in "To review", the original where it was,
     // every byte still on the disk.
     let before = everything(&d);
-    let done = carry_out_moves(&plan, &may_work_in(&d), now());
+    let done = carry_out_moves_controlled(&plan, &may_work_in(&d), now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     assert_eq!(done.moved.len(), 2, "{:?}", done.not);
     assert!(d.join("photo.jpg").exists() && d.join(TO_REVIEW).join("Duplicates").join("photo (1).jpg").exists());
     let after = everything(&d);
@@ -172,7 +172,7 @@ fn nothing_is_ever_written_over() {
     put(&d.join("Documents").join("report.pdf"), b"the one already filed", 50);
     put(&d.join("report.pdf"), b"the loose one", 3);
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(10));
-    let done = carry_out_moves(&plan, &may_work_in(&d), now());
+    let done = carry_out_moves_controlled(&plan, &may_work_in(&d), now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     assert_eq!(done.moved.len(), 1, "{:?}", done.not);
     assert_eq!(std::fs::read(d.join("Documents").join("report.pdf")).unwrap(), b"the one already filed");
     assert_eq!(std::fs::read(d.join("Documents").join("report (2).pdf")).unwrap(), b"the loose one");
@@ -196,7 +196,7 @@ fn hidden_system_and_unfinished_files_and_project_folders_are_left() {
     assert_eq!(plan.in_use, vec![d.join("being-saved.docx")]);
     let said = plan_said(&plan);
     assert!(said.contains("hidden and system files") && said.contains("open in another program"), "{said}");
-    carry_out_moves(&plan, &may_work_in(&d), now());
+    carry_out_moves_controlled(&plan, &may_work_in(&d), now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     for f in [".secret.pdf", "desktop.ini", "Atlas.lnk", "movie.mp4.crdownload", "being-saved.docx"] {
         assert!(d.join(f).exists(), "{f} was touched");
     }
@@ -224,10 +224,10 @@ fn the_switch_and_the_folders_atlas_may_work_in_are_kept_to() {
     put(&d.join("a.pdf"), b"a", 3);
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(10));
     let off = SystemConfig { enabled: false, ..may_work_in(&d) };
-    let done = carry_out_moves(&plan, &off, now());
+    let done = carry_out_moves_controlled(&plan, &off, now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     assert!(done.moved.is_empty() && done.not[0].contains("switched off"), "{:?}", done.not);
     let elsewhere = SystemConfig { file_roots: vec![tmp("gate-other").display().to_string()], ..may_work_in(&d) };
-    let done = carry_out_moves(&plan, &elsewhere, now());
+    let done = carry_out_moves_controlled(&plan, &elsewhere, now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
     assert!(done.moved.is_empty() && done.not[0].contains("outside the folders"), "{:?}", done.not);
     assert!(d.join("a.pdf").exists());
 }
@@ -316,16 +316,41 @@ fn yes_sorts_it_and_undo_that_puts_every_file_back_through_the_daemon() {
     assert!(plan.contains("Go ahead?") && plan.contains("copy"), "{plan}");
     assert!(d.join("taxes.pdf").exists(), "nothing moves before the yes");
 
-    let done = d_.turn("yes", t + 10);
-    assert!(done.starts_with("Moved") && done.contains("undo that"), "{done}");
+    let started = d_.turn("yes", t + 10);
+    assert!(started.starts_with("Started moving"), "{started}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut terminal = None;
+    let mut heard = Vec::new();
+    while std::time::Instant::now() < deadline {
+        let lines = d_.tick(t + 11);
+        terminal = lines.iter().find(|line| line.starts_with("Finished sorting the approved files:")).cloned();
+        heard.extend(lines);
+        if terminal.is_some() { break; }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let done = terminal.unwrap_or_else(|| panic!("sorting never confirmed completion: {heard:?}"));
+    assert!(done.contains("moved 5 file(s)") && done.contains("0 planned file(s) were not moved"), "{done}");
     assert!(d.join("Documents").join("taxes.pdf").exists());
     assert!(d.join(TO_REVIEW).join("Duplicates").join("holiday copy.jpg").exists());
     assert!(d.join(TO_REVIEW).join("Old installers").join("Setup-x64.msi").exists());
     assert_eq!(everything(&d).len(), before.len(), "nothing deleted");
 
     let asked = d_.turn("undo that", t + 20);
-    assert!(asked.contains("sorted 5 files"), "{asked}");
-    let undone = d_.turn("yes", t + 30);
+    assert!(asked.contains("moved 5 file(s)"), "{asked}");
+    let mut undone = d_.turn("yes", t + 30);
+    if undone.contains("approved undo is waiting") {
+        assert!(d.join("Documents").join("taxes.pdf").exists(), "waiting must not move any file");
+        assert!(!d.join("taxes.pdf").exists(), "waiting must not restore early");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            let lines = d_.tick(t + 31);
+            if let Some(result) = lines.into_iter().find(|line| line.starts_with("Undone")) {
+                undone = result;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
     assert!(undone.starts_with("Undone") && undone.contains("Put 5 of 5 back"), "{undone}");
     assert_eq!(everything(&d), before, "every file back at its own path, with its own bytes");
     // And the folders the sorting made are gone again; yours stays.

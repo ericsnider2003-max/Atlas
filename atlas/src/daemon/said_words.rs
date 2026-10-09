@@ -43,6 +43,9 @@ impl crate::speakthread::Host for Daemon<'_> {
         self.answer_tray(crate::store::now());
     }
     fn hush(&mut self) -> Option<String> {
+        if !self.calendar_delivery_current(&self.calendar_active_delivery_ids) {
+            return Some("Calendar delivery stopped because ownership or the event changed.".into());
+        }
         // Paused on the hub or the icon mid-reply (possible now that the hub
         // is answered while a sentence plays): quiet at once, the rest kept
         // for "carry on".

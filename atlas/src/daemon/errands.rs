@@ -6,6 +6,13 @@
 use super::*;
 
 impl<'a> Daemon<'a> {
+    pub(crate) fn hand_off_signing(&mut self, t: u64, work: crew::Work) -> Option<u64> {
+        self.hand_off_as("signing protection", t, work, None, SpeakPolicy::ViaWatcher)
+    }
+    pub(crate) fn queue_google_revocation(&mut self, id: u64, token: String, at: u64) -> String {
+        let work = crate::connection_removal::google_revocation_work(self.store.clone(), self.vault_home.clone(), id, token);
+        if self.hand_off("Google grant removal", at, work, None, SpeakPolicy::Always) { "Google grant revocation queued; provider permission remains unconfirmed until its receipt returns.".into() } else { "Google revocation could not be queued; local access is removed, provider permission remains unconfirmed. No automatic retry.".into() }
+    }
     /// Every errand in hand, as `which_errand` chooses between them.
     pub(super) fn errand_candidates(&self) -> Vec<crate::which_errand::Candidate> {
         let mut all = self.crew_candidates();
@@ -157,7 +164,18 @@ impl<'a> Daemon<'a> {
         if verb == Verb::Cancel && target.trim().is_empty() {
             return None; // "cancel" alone is about the last thing said, not an errand
         }
-        match crate::which_errand::pick(verb, &target, &cands, &recent, t) {
+        // A routine backup must not steal an unqualified stop from the
+        // foreground conversations Eric explicitly asked Atlas to handle.
+        // Named controls still search every candidate, including maintenance.
+        let foreground: Vec<_> = cands.iter().filter(|candidate| candidate.id >= WINDOW_JOB_IDS).cloned().collect();
+        let bare_stop = said.trim().trim_end_matches(['.', '!']).eq_ignore_ascii_case("stop");
+        let pool = if bare_stop && !foreground.is_empty() { &foreground } else { &cands };
+        let selection = if bare_stop && foreground.len() > 1 {
+            Pick::Ask(foreground.iter().map(|candidate| candidate.id).collect())
+        } else {
+            crate::which_errand::pick(verb, &target, pool, &recent, t)
+        };
+        match selection {
             Pick::These(chosen, why) => Some(self.apply_errand_pick(verb, &chosen, why, &cands, t)),
             Pick::Ask(ids) => {
                 let among: Vec<&crate::which_errand::Candidate> = cands.iter().filter(|c| ids.contains(&c.id)).collect();
@@ -455,6 +473,22 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// Waiting workers are removed without an ending by Crew; settle their
+    /// dependent requests here rather than leaving them Running forever.
+    pub(crate) fn stop_linked_worker(&mut self, id: u64, now: u64) -> bool {
+        self.crew.ask_to_stop(id);
+        if self.crew.in_hand(id) { return true; }
+        let outcome = crate::taskloop::Outcome::Failed("Cancelled before the worker started.".into());
+        self.finish_queued_worker(id, &outcome, now);
+        self.finish_background_step(id, outcome);
+        if let Some(link) = self.crew_links.remove(&id) {
+            self.long_work.update(link.watch_id, crate::watching::Outcome::Failed, "Cancelled before starting", now);
+        }
+        self.unfinished.remove(&id);
+        self.keep_unfinished();
+        false
+    }
+
     /// The Status page's "Look for space" (`hubvault`): the disk survey,
     /// on the crew so the tick never waits for a walk of the disk. Reported
     /// through the watcher; not written down for `resume`, which skips it.
@@ -644,6 +678,9 @@ impl<'a> Daemon<'a> {
         let mut out = Vec::new();
         for news in self.crew.settle(t) {
             let Some(link) = self.crew_links.remove(&news.id) else { continue };
+            if link.label == "backup" && matches!(&news.ending, crew::Ending::Done(Ok(_))) {
+                self.last_backup = t;
+            }
             if self.unfinished.remove(&news.id).is_some() {
                 self.keep_unfinished();
             }
@@ -730,12 +767,7 @@ impl<'a> Daemon<'a> {
             // A search measurement: kept, and said against the last one.
             if link.label == "search-check" {
                 if let crew::Ending::Done(Ok(json)) = &news.ending {
-                    if let Ok(check) = serde_json::from_str::<crate::recall::SearchCheck>(json) {
-                        let mut kept: Vec<crate::recall::SearchCheck> = self.store.load("search_checks");
-                        let said = check.said(kept.last());
-                        kept.push(check);
-                        let keep_from = kept.len().saturating_sub(50);
-                        let _ = self.store.save("search_checks", &kept[keep_from..].to_vec());
+                    if let Ok(said) = serde_json::from_str::<String>(json) {
                         self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
                         out.push(said);
                         continue;
@@ -809,6 +841,7 @@ impl<'a> Daemon<'a> {
                 let said = completion.text().to_string();
                 let watched = if matches!(completion, Outcome::NeedsYou(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
                 self.long_work.update(link.watch_id, watched, &said, t);
+                self.finish_queued_worker(news.id, &completion, t);
                 if matches!(completion, Outcome::NeedsYou(_)) && self.park_media_decision(news.id) {
                     out.push(said);
                 } else if !self.finish_background_step(news.id, completion) { out.push(said); }
@@ -840,6 +873,7 @@ impl<'a> Daemon<'a> {
                 let watched = if matches!(completion, Outcome::Done(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
                 self.long_work.update(link.watch_id, watched, completion.text(), t);
                 let said = completion.text().to_string();
+                self.finish_queued_worker(news.id, &completion, t);
                 if matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id) {
                     out.push(said);
                 } else if !self.finish_background_step(news.id, completion) {
@@ -850,6 +884,28 @@ impl<'a> Daemon<'a> {
                 }
                 continue;
             }
+            if matches!(link.label, "studio" | "creator planning") {
+                use crate::taskloop::Outcome;
+                let completion = match &news.ending {
+                    crew::Ending::Done(Ok(json)) => match crate::content::parse_review_worker(json) {
+                        Ok(review) if review.kind == if link.label == "studio" { "studio_review" } else { "creator_review" } => {
+                            if review.outcome == "needs_you" { Outcome::NeedsYou(review.text) } else { Outcome::Failed(review.text) }
+                        }
+                        Ok(_) => Outcome::Failed("The preparation returned a result for a different job; its outcome is unconfirmed.".into()),
+                        Err(e) => Outcome::Failed(format!("The preparation's outcome couldn't be verified: {e}.")),
+                    },
+                    crew::Ending::Done(Err(e)) => Outcome::Failed(format!("Preparation did not finish: {e}")),
+                    crew::Ending::Stopped => Outcome::Failed("Preparation stopped; review any saved partial files before retrying.".into()),
+                    crew::Ending::Vanished => Outcome::Failed("Preparation ended without a confirmed outcome.".into()),
+                };
+                let watched = if matches!(completion, Outcome::NeedsYou(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
+                self.long_work.update(link.watch_id, watched, completion.text(), t);
+                self.finish_queued_worker(news.id, &completion, t);
+                let said = completion.text().to_string();
+                if !self.finish_background_step(news.id, completion) { out.push(said); }
+                if let Some(job) = self.long_work.jobs.iter_mut().find(|job| job.id == link.watch_id) { job.reported = true; }
+                continue;
+            }
             if link.label == "move-files" {
                 self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.moved_news(&news.ending) {
@@ -858,10 +914,20 @@ impl<'a> Daemon<'a> {
                 continue;
             }
             if link.label == "post" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
-                if let Some(said) = self.post_news(&news.ending, t) {
+                let confirmed = matches!(&news.ending, crew::Ending::Done(Ok(line)) if line.split('\t').nth(1) == Some("sent"));
+                let watched = if confirmed { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
+                self.long_work.update(link.watch_id, watched, if confirmed { "Publication confirmed" } else { "Publication not confirmed; check its result" }, t);
+                if let Some(said) = self.post_news(news.id, &news.ending, t) {
                     out.push(said);
                 }
+                continue;
+            }
+            if link.label == "post approval" {
+                let completion = self.post_approval_news(&news.ending, t);
+                self.long_work.update(link.watch_id, if matches!(completion, crate::taskloop::Outcome::Failed(_)) { crate::watching::Outcome::Failed } else { crate::watching::Outcome::Finished }, completion.text(), t);
+                self.finish_queued_worker(news.id, &completion, t);
+                let said = completion.text().to_string();
+                if !self.finish_background_step(news.id, completion) { out.push(said); }
                 continue;
             }
             if matches!(link.label, "mail-sort" | "mail-sort-apply") {
@@ -1153,6 +1219,7 @@ impl<'a> Daemon<'a> {
                 } else {
                     crate::taskloop::Outcome::Failed(result.clone())
                 };
+                self.finish_queued_worker(news.id, &outcome, t);
                 continued = self.finish_background_step(news.id, outcome);
             }
 
@@ -1233,7 +1300,8 @@ impl Daemon<'_> {
     /// Take a connected account off (`connecting`): `false` when it wasn't
     /// one Atlas connected (one listed in tools.yaml stays yours to edit).
     pub(crate) fn drop_connected_account(&mut self, address: &str) -> std::result::Result<bool, String> {
-        let mut kept: Vec<crate::mail::Account> = self.store.load(CONNECTED_ACCOUNTS);
+        let _guard = self.store.transaction().map_err(|error| error.to_string())?;
+        let mut kept: Vec<crate::mail::Account> = self.store.load_checked(CONNECTED_ACCOUNTS).map_err(|error| error.to_string())?.unwrap_or_default();
         let before = kept.len();
         kept.retain(|a| !a.address.eq_ignore_ascii_case(address));
         if kept.len() == before {

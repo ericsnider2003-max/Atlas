@@ -477,6 +477,7 @@ impl Tray {
         at: u64,
         root: &std::path::Path,
     ) -> Result<u64, String> {
+        let _state = crate::store::state_transaction(root).map_err(|e| format!("I couldn't keep that: {e}"))?;
         if bytes.is_empty() {
             return Err("That file was empty.".into());
         }
@@ -617,6 +618,8 @@ impl Tray {
             return false;
         };
         if let Some(path) = self.items[pos].stored_at.clone() {
+            let root = match crate::store::state_root_for(std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("."))) { Ok(root) => root, Err(_) => return false };
+            let _state = match root.as_ref().map(|root| crate::store::state_transaction(root)).transpose() { Ok(guard) => guard, Err(_) => return false };
             // Only delete a copy Atlas made. A file taken in by reference
             // (`owned == false`) is your original, sitting where you keep it,
             // and forgetting the tray item must never reach out and delete it.

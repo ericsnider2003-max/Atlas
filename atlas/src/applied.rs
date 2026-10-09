@@ -198,19 +198,4 @@ impl Applications {
         lines.join("\n")
     }
 
-    /// The ones quiet for a week that haven't been mentioned yet, marked as
-    /// mentioned. The lines to say.
-    pub fn due_follow_ups(&mut self, now: u64) -> Vec<String> {
-        let mut out = Vec::new();
-        for a in self.all.iter_mut() {
-            if a.stage == Stage::Applied && !a.nudged && now.saturating_sub(a.moved_at) >= FOLLOW_UP_AFTER_SECS {
-                a.nudged = true;
-                out.push(format!(
-                    "No word from {} in a week since you applied. A short follow-up note is normal now.",
-                    a.to
-                ));
-            }
-        }
-        out
-    }
 }

@@ -74,9 +74,8 @@ impl Unheard {
 const MOST_KEPT: usize = 128;
 static FAILURES: Mutex<Vec<Unheard>> = Mutex::new(Vec::new());
 
-/// Record one failure. Used by the macros; call it directly only when there
-/// is no `Result` to hand (e.g. a thread that ended unexpectedly).
-pub fn record(cost: Cost, module: &'static str, line: u32, doing: &'static str, error: &str) {
+/// Record a failure reported by this module's result adapter.
+fn record(cost: Cost, module: &'static str, line: u32, doing: &'static str, error: &str) {
     let Ok(mut v) = FAILURES.lock().or_else(crate::crash::unpoison) else { return };
     if let Some(u) = v.iter_mut().find(|u| u.module == module && u.line == line) {
         u.times = u.times.saturating_add(1);

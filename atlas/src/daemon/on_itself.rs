@@ -79,7 +79,7 @@ impl<'a> Daemon<'a> {
                 let dir = self.notes_dir();
                 crate::heard!(std::fs::create_dir_all(&dir));
                 let path = dir.join(format!("look-back-{}-{t}.md", p.id));
-                let filed = std::fs::write(&path, note).is_ok();
+                let filed = crate::store::write_whole_in_state(self.store.root(), &path, note.as_bytes()).is_ok();
                 return format!(
                     "Sorry that didn't work. I've added it to what I know goes wrong with {}{} — no blame, just why and what changes. Why do you think it happened?",
                     p.goal,
@@ -645,11 +645,7 @@ impl<'a> Daemon<'a> {
             );
         }
 
-        let Some(llm) = self.llm.clone() else {
-            return "I've got the diagnosis and the file, but I need a model to draft the fix and \
-                    none is configured."
-                .into();
-        };
+        let llm = self.llm.clone();
 
         // Drafting the fix and proving it -- a model call, then the whole
         // suite twice in a copy of the tree -- is minutes of work. It ran
@@ -665,13 +661,29 @@ impl<'a> Daemon<'a> {
             (tc.strategy.clone(), tc.handoff.clone(), tc.consult.clone())
         };
         let work: crate::crew::Work = Box::new(move |c: &crate::crew::Control| {
-            let candidate = crate::selfwork::draft_fix(&thought, &instruction, &current, llm.as_ref())
+            let stop = || c.stopping();
+            let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(2 * 3600), &stop);
+            budget.check()?;
+            // Local structured recipes are tested before any model is needed.
+            for (recipe, candidate) in crate::selfwork::recipe_candidates(&current) {
+                budget.check()?;
+                if let Ok(proved) = prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget)) {
+                    if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
+                        *s = Some(SelfFixDone { thought, current, candidate, proved: Ok(proved) });
+                    }
+                    return Ok(format!("the local repair recipe was proven: {recipe}"));
+                }
+            }
+            budget.check()?;
+            let Some(llm) = llm.as_ref() else { return Err("No local recipe proved a fix, and no bounded model connection is configured. Nothing was changed in the source.".into()); };
+            let bounded_model = crate::selfwork::BoundedModel { model: llm.as_ref(), budget: &budget };
+            let candidate = crate::selfwork::draft_fix(&thought, &instruction, &current, &bounded_model)
                 .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
             if c.stopping() {
                 return Err("stopped before proving the fix".into());
             }
             let mut candidate = candidate;
-            let mut proved = prove_in_a_copy(&thought, &candidate, &scfg, &root);
+            let mut proved = prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget));
             // One draft didn't hold: the fix loop works the proving test from
             // several angles, the real test output fed back each time, before
             // giving up (`fixloop`; research report, Stage 2 item 15 -- it
@@ -681,8 +693,8 @@ impl<'a> Daemon<'a> {
                 let mut test: Vec<String> = scfg.test_command.split_whitespace().map(String::from).collect();
                 test.push(thought.proof.trim().to_string());
                 let job = crate::fixloop::Job { folder: root.clone(), test, goal: thought.symptom.clone() };
-                let mut counsel = crate::fixloop::ModelCounsel::new(llm.as_ref());
-                if let Ok(o) = crate::fixloop::run(&job, &mut counsel, &crate::roots::tmp_dir().join("fix"), &strategy, &handoff, &consult) {
+                let mut counsel = crate::fixloop::ModelCounsel::new(&bounded_model);
+                if let Ok(o) = crate::fixloop::run_controlled(&job, &mut counsel, &crate::roots::tmp_dir().join("fix"), &strategy, &handoff, &consult, Some(&budget)) {
                     if o.solved && !o.changes.is_empty() {
                         let from_loop: Vec<crate::selfwork::Edit> = o
                             .changes
@@ -693,7 +705,7 @@ impl<'a> Daemon<'a> {
                                 reason: format!("worked out in {} attempts by the fix loop", o.attempts),
                             })
                             .collect();
-                        let again = prove_in_a_copy(&thought, &from_loop, &scfg, &root);
+                        let again = prove_in_a_copy(&thought, &from_loop, &scfg, &root, Some(&budget));
                         if again.is_ok() {
                             candidate = from_loop;
                             proved = again;
@@ -1080,7 +1092,9 @@ fn prove_in_a_copy(
     candidate: &[crate::selfwork::Edit],
     scfg: &crate::selfwork::SelfWorkConfig,
     root: &std::path::Path,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
 ) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String> {
+    if let Some(b) = budget { b.check()?; }
     // Refuse anything the never-list or its own limits protect, before a
     // single byte is written anywhere.
     for e in candidate {
@@ -1101,7 +1115,7 @@ fn prove_in_a_copy(
     let mut sandbox = crate::sandbox::Sandbox::create(&base, "self-fix")
         .map_err(|e| format!("couldn't make a copy to work in: {e}"))?;
     let kept = sandbox.root.clone();
-    let proved = prove_in(thought, candidate, scfg, root, &mut sandbox);
+    let proved = prove_in(thought, candidate, scfg, root, &mut sandbox, budget);
     if proved.is_err() {
         // Nothing to land from a copy that didn't prove anything.
         crate::heard!(std::fs::remove_dir_all(&kept));
@@ -1116,16 +1130,28 @@ fn prove_in(
     scfg: &crate::selfwork::SelfWorkConfig,
     root: &std::path::Path,
     sandbox: &mut crate::sandbox::Sandbox,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
 ) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String> {
 
     // Copy the compile inputs into the sandbox. Not `target/`: cargo builds
     // into the shared cache (`roots::build_cache`), so only the first fix
     // pays for a cold build.
-    copy_compile_inputs(root, &sandbox.root)
+    copy_compile_inputs_controlled(root, &sandbox.root, budget)
         .map_err(|e| format!("couldn't copy the tree: {e}"))?;
 
     // How many tests pass before the change.
-    let before = crate::selfwork::run_tests(sandbox, scfg);
+    let before = crate::selfwork::run_tests_controlled(sandbox, scfg, budget);
+    if let Some(b) = budget { b.check()?; }
+    let red = crate::selfwork::run_the_proof_controlled(&thought.proof, scfg, &sandbox.root, budget);
+    if red != crate::selfwork::ProofToday::Fails {
+        let explanation = match red {
+            crate::selfwork::ProofToday::Fails => "the test failed".into(),
+            crate::selfwork::ProofToday::PassesAlready => "the test already passes".into(),
+            crate::selfwork::ProofToday::NotWrittenYet => "no test matched the named proof".into(),
+            crate::selfwork::ProofToday::CouldNotRun(why) => format!("the proving test could not run: {why}"),
+        };
+        return Err(format!("the named test did not demonstrate the failure before the change: {explanation}"));
+    }
     let tests_before = before.tests_run;
 
     // Apply the candidate in the copy.
@@ -1136,12 +1162,12 @@ fn prove_in(
     }
 
     // The proving test passes now?
-    let proof = crate::selfwork::run_the_proof(&thought.proof, scfg, &sandbox.root);
+    let proof = crate::selfwork::run_the_proof_controlled(&thought.proof, scfg, &sandbox.root, budget);
     let proof_passes = proof == crate::selfwork::ProofToday::PassesAlready;
 
     // And nothing else broke — the whole suite, in the copy.
-    let after = crate::selfwork::run_tests(sandbox, scfg);
-    let nothing_else_broke = after.passed && after.tests_run + 1 >= tests_before;
+    let after = crate::selfwork::run_tests_controlled(sandbox, scfg, budget);
+    let nothing_else_broke = after.passed && after.tests_run >= tests_before;
 
     let build = crate::pipeline::Build {
         touched: candidate.iter().map(|e| e.path.clone()).collect(),
@@ -1168,7 +1194,7 @@ fn prove_in(
             crate::mutation::diff_of(&e.path.replace('\\', "/"), &before, &e.content)
         })
         .collect();
-    let mutation_note = match crate::mutation::check_diff(&sandbox.root, &diff) {
+    let mutation_note = match crate::mutation::check_diff_controlled(&sandbox.root, &diff, budget) {
         crate::mutation::Checked::AllCaught => None,
         crate::mutation::Checked::Survivors(s) => {
             let list: Vec<String> = s.iter().take(3).map(|x| x.said()).collect();
@@ -1180,6 +1206,7 @@ fn prove_in(
         crate::mutation::Checked::NotRun(why) => Some(format!("I couldn't check that the tests would catch this change breaking: {why}.")),
     };
 
+    if let Some(b) = budget { b.check()?; }
     // The preview: which sandbox file maps onto which real file.
     let mapping: Vec<(String, std::path::PathBuf)> =
         candidate.iter().map(|e| (e.path.clone(), root.join(&e.path))).collect();
@@ -1250,21 +1277,19 @@ impl<'a> Daemon<'a> {
         }
         let task = self_repair_task(what, findings.as_deref(), &branch);
         let (root2, branch2) = (root.clone(), branch.clone());
-        let work: crate::crew::Work = Box::new(move |_ctl| {
-            let ran = crate::coding_agent::run(agent, &program, &root2, &task, 60 * 60);
-            let log = crate::tools::command("git")
-                .args(["log", "--oneline", "-5", &branch2, "--not", "main"])
-                .current_dir(&root2)
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
+        let work: crate::crew::Work = Box::new(move |ctl| {
+            let ran = crate::coding_agent::run_controlled(agent, &program, &root2, &task, 60 * 60, &|| ctl.stopping());
+            let mut git = crate::tools::command("git");
+            git.args(["log", "--oneline", "-5", &branch2, "--not", "main"]).current_dir(&root2);
+            let (read, log) = crate::tools::run_scoped(&mut git, std::time::Duration::from_secs(10), 64 * 1024, None, Some(&|| ctl.stopping())).said(4000);
+            let log = if read { log.trim().to_string() } else { format!("Commit history could not be checked: {log}") };
             let lead = if ran.finished {
                 format!("{} finished working on me.", agent.named())
             } else {
                 format!("{} didn't finish: {}", agent.named(), crate::sandbox::trim_output(&ran.said, 300))
             };
             let commits = if log.is_empty() {
-                "Nothing was committed, so nothing changed.".to_string()
+                "No commits were found. Uncommitted edits may still exist; review the working folder before trying again.".to_string()
             } else {
                 format!("On branch {branch2} (not installed, not pushed):\n{log}")
             };

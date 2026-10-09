@@ -684,10 +684,48 @@ impl Default for CalendarConfig {
 }
 
 /// Your calendar.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Default)]
+enum CalendarIdentity { #[default] Missing, Known([u8; 32]), Unusable }
+
+#[derive(Default)]
+struct CalendarBaseline(std::sync::Mutex<CalendarIdentity>);
+impl std::fmt::Debug for CalendarBaseline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("CalendarBaseline(redacted)") }
+}
+impl Clone for CalendarBaseline {
+    fn clone(&self) -> Self {
+        let value = self.0.lock().map(|value| value.clone()).unwrap_or(CalendarIdentity::Unusable);
+        Self(std::sync::Mutex::new(value))
+    }
+}
+
+#[derive(Debug, Default)]
+struct CalendarRefresh(std::sync::atomic::AtomicBool);
+impl Clone for CalendarRefresh {
+    fn clone(&self) -> Self { Self(std::sync::atomic::AtomicBool::new(self.0.load(std::sync::atomic::Ordering::SeqCst))) }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Calendar {
     events: Vec<Event>,
     next_id: u64,
+    #[serde(skip)]
+    baseline: CalendarBaseline,
+    #[serde(skip)]
+    read_error: Option<String>,
+    #[serde(skip)]
+    refresh: CalendarRefresh,
+}
+
+impl<'de> Deserialize<'de> for Calendar {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Wire { events: Vec<Event>, next_id: u64 }
+        let wire = Wire::deserialize(deserializer)?;
+        let calendar = Self { events: wire.events, next_id: wire.next_id, baseline: CalendarBaseline::default(), read_error: None, refresh: CalendarRefresh::default() };
+        let identity = calendar.identity().map_err(serde::de::Error::custom)?;
+        Ok(Self { baseline: CalendarBaseline(std::sync::Mutex::new(CalendarIdentity::Known(identity))), ..calendar })
+    }
 }
 
 const FILE: &str = "calendar";
@@ -696,15 +734,85 @@ impl Calendar {
     /// Is anything here read from Google (`oauthlink::calendar_ics` gives
     /// those events uids starting `google-`)?
     pub fn holds_google_events(&self) -> bool {
-        self.events.iter().any(|e| e.phone_key.as_deref().is_some_and(|k| k.starts_with("ics:google-")))
+        self.events.iter().any(|e| e.phone_key.as_deref().is_some_and(|k| k.starts_with("ics:google-") || (k.starts_with("ics:connection:") && k.contains(":google-"))))
     }
 
     pub fn load(store: &crate::store::Store) -> Calendar {
-        store.load::<Calendar>(FILE)
+        match store.load_checked::<Calendar>(FILE) {
+            Ok(Some(calendar)) => calendar,
+            Ok(None) => Self::default(),
+            Err(error) => Self { baseline: CalendarBaseline(std::sync::Mutex::new(CalendarIdentity::Unusable)), read_error: Some(error.to_string()), refresh: CalendarRefresh(std::sync::atomic::AtomicBool::new(true)), ..Self::default() },
+        }
+    }
+
+    pub(crate) fn mark_unavailable(&mut self, error: String) { self.read_error = Some(error); }
+    pub fn availability_error(&self) -> Option<&str> { self.read_error.as_deref() }
+
+    pub(crate) fn refresh_requested(&self) -> bool { self.refresh.0.load(std::sync::atomic::Ordering::SeqCst) }
+    pub(crate) fn request_refresh(&self) { self.refresh.0.store(true, std::sync::atomic::Ordering::SeqCst); }
+
+    // Validation reads can update Store's shared stamp without adopting a
+    // snapshot. Recover from that independently, without discarding local edits.
+    pub(crate) fn refresh_saved(&mut self, store: &crate::store::Store) -> crate::error::Result<()> {
+        let saved: Option<Self> = store.load_checked(FILE)?;
+        let own = self.identity().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
+        let disk = saved.as_ref().map(Self::identity).transpose().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
+        let expected = self.baseline.0.lock().map_err(|_| crate::error::AtlasError::Platform("The calendar snapshot cannot be verified; its cached view was retained.".into()))?.clone();
+        let clean = match expected {
+            CalendarIdentity::Known(expected) => {
+                if disk == Some(expected) {
+                    self.read_error = None; self.refresh.0.store(false, std::sync::atomic::Ordering::SeqCst); return Ok(());
+                }
+                if disk.is_none() { return Err(crate::error::AtlasError::Platform("The saved calendar is missing; its last known view was retained.".into())); }
+                own == expected
+            }
+            CalendarIdentity::Missing => {
+                if disk.is_none() { self.read_error = None; self.refresh.0.store(false, std::sync::atomic::Ordering::SeqCst); return Ok(()); }
+                self.events.is_empty() && self.next_id == 0
+            }
+            CalendarIdentity::Unusable => {
+                if disk.is_none() { return Err(crate::error::AtlasError::Platform("The previously unavailable calendar is still missing; an empty calendar cannot be confirmed.".into())); }
+                self.events.is_empty() && self.next_id == 0
+            },
+        };
+        if !clean && disk != Some(own) {
+            return Err(crate::error::AtlasError::Platform("The saved calendar changed while this view has unsaved local changes. Both were retained; refresh needs reconciliation before editing.".into()));
+        }
+        *self = saved.unwrap_or_default();
+        Ok(())
+    }
+
+    fn identity(&self) -> std::result::Result<[u8; 32], serde_json::Error> {
+        use sha2::Digest;
+        Ok(sha2::Sha256::digest(serde_json::to_vec(self)?).into())
     }
 
     pub fn save(&self, store: &crate::store::Store) -> crate::error::Result<()> {
-        store.save(FILE, self)
+        self.save_with(store, |store, calendar| store.save(FILE, calendar))
+    }
+
+    fn save_with(&self, store: &crate::store::Store, write: impl FnOnce(&crate::store::Store, &Calendar) -> crate::error::Result<()>) -> crate::error::Result<()> {
+        if self.read_error.is_some() { return Err(crate::error::AtlasError::Platform("The saved calendar is unavailable; refresh it before making changes.".into())); }
+        let _transaction = store.transaction()?;
+        let mut baseline = self.baseline.0.lock().map_err(|_| crate::error::AtlasError::Platform("The calendar snapshot cannot be verified; nothing was overwritten.".into()))?;
+        let saved: Option<Self> = match store.load_checked(FILE) {
+            Ok(saved) => saved,
+            Err(error) => { self.request_refresh(); return Err(error); }
+        };
+        let matches = match (&*baseline, saved.as_ref()) {
+            (CalendarIdentity::Missing, None) => true,
+            (CalendarIdentity::Known(expected), Some(saved)) => saved.identity().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))? == *expected,
+            _ => false,
+        };
+        if !matches {
+            self.request_refresh();
+            return Err(crate::error::AtlasError::Platform("The saved calendar changed after this snapshot. Nothing was overwritten; refresh before trying again.".into()));
+        }
+        let identity = self.identity().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
+        if let Err(error) = write(store, self) { self.request_refresh(); return Err(error); }
+        self.refresh.0.store(false, std::sync::atomic::Ordering::SeqCst);
+        *baseline = CalendarIdentity::Known(identity);
+        Ok(())
     }
 
     /// Put something on the calendar. Returns its id.
@@ -1096,6 +1204,41 @@ impl Calendar {
             }
         }
         Ok((changed, zones.unknown.into_inner()))
+    }
+
+    /// Replace only a connection's complete, successfully read snapshot.
+    /// A private link is hashed before it is used as an event identity.
+    /// Failed reads never call this, and parsing happens before mutation.
+    pub fn reconcile_ics_window(&mut self, source: &str, text: &str, now: u64, home: &crate::tz::Zone, window: Option<(u64, u64)>) -> std::result::Result<(usize, Vec<String>), String> {
+        let mut roots = crate::vformat::parse(text)?;
+        if roots.len() != 1 || roots[0].name != "VCALENDAR" { return Err("not a complete calendar; cached events kept".into()); }
+        roots[0].children.retain(|c| !(c.name == "VEVENT" && c.props.iter().any(|p| p.name == "STATUS" && p.value.eq_ignore_ascii_case("CANCELLED"))));
+        if roots[0].children.iter().filter(|c| c.name == "VEVENT").any(|c| !c.props.iter().any(|p| p.name == "UID" && !p.value.is_empty())) { return Err("calendar event has no identity; cached events kept".into()); }
+        let text = crate::vformat::write(&roots[0]);
+        let prefix = format!("ics:connection:{}:", crate::digest::sha256_hex(source.as_bytes()));
+        let mut incoming = Calendar::default();
+        let (_, zones) = incoming.import_ics(&text, now, home)?;
+        for event in &mut incoming.events {
+            let uid = event.phone_key.as_deref().and_then(|k| k.strip_prefix("ics:")).ok_or("calendar event has no identity")?;
+            event.phone_key = Some(format!("{prefix}{uid}"));
+        }
+        let keys: std::collections::BTreeSet<_> = incoming.events.iter().filter_map(|e| e.phone_key.clone()).collect();
+        let before = self.events.len();
+        self.events.retain(|e| !(window.is_none_or(|(from, to)| e.end > from && e.start < to) && e.phone_key.as_deref().is_some_and(|k| k.starts_with(&prefix) && !keys.contains(k))));
+        let mut changed = before - self.events.len();
+        for mut event in incoming.events {
+            if let Some(existing) = self.events.iter_mut().find(|e| e.phone_key == event.phone_key) {
+                event.id = existing.id;
+                event.created = existing.created;
+                if *existing != event { *existing = event; changed += 1; }
+            } else {
+                self.next_id += 1;
+                event.id = self.next_id;
+                self.events.push(event);
+                changed += 1;
+            }
+        }
+        Ok((changed, zones))
     }
 
     /// The calendar as an `.ics` file any other calendar can open. Repeats go
@@ -1687,4 +1830,98 @@ mod phone_sync_tests {
         bad.start = 10;
         assert!(PhoneBatch { from: 0, to: 100, events: vec![bad] }.events(1).is_empty());
     }
+}
+
+#[cfg(test)]
+mod snapshot_save_tests {
+    use super::*;
+    fn root(tag: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("atlas-calendar-snapshot-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root); std::fs::create_dir_all(&root).unwrap(); root
+    }
+    fn when() -> When { When { start: 100, end: 200, all_day: false } }
+    #[test]
+    fn independent_snapshot_and_clone_cannot_erase_newer_provider_events() {
+        let root = root("independent"); let store = crate::store::Store::new(&root);
+        let mut initial = Calendar::default(); initial.add("original", when(), None, 1); initial.save(&store).unwrap();
+        let old = Calendar::load(&store); let mut cloned = old.clone();
+        let mut provider = Calendar::load(&store);
+        let mut event = provider.event(1).unwrap().clone(); event.id = 0; event.title = "phone appointment".into(); event.phone_key = Some("phone:fixture".into()); event.source = Source::Phone;
+        provider.merge_from_phone(vec![event], 2); provider.save(&store).unwrap();
+        let saved = std::fs::read(root.join("calendar.json")).unwrap();
+        cloned.add("stale local edit", when(), None, 3);
+        assert!(cloned.save(&store).is_err()); assert!(old.save(&store).is_err());
+        assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), saved);
+        assert!(Calendar::load(&store).events.iter().any(|event| event.title == "phone appointment"));
+        // Updating one clone's baseline must never authorize its older sibling.
+        let original = Calendar::load(&store); let mut changed = original.clone(); changed.add("fresh local edit", when(), None, 4); changed.save(&store).unwrap();
+        assert!(original.save(&store).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn missing_corrupt_and_default_snapshots_fail_closed_without_wire_changes() {
+        let root = root("strict"); let store = crate::store::Store::new(&root);
+        let calendar = Calendar::default(); calendar.save(&store).unwrap();
+        assert!(Calendar::default().save(&store).is_err());
+        let wire: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("calendar.json")).unwrap()).unwrap();
+        let data = wire.get("data").unwrap(); assert_eq!(data.as_object().unwrap().len(), 2);
+        assert!(data.get("events").is_some() && data.get("next_id").is_some());
+        std::fs::remove_file(root.join("calendar.json")).unwrap(); assert!(calendar.save(&store).is_err());
+        std::fs::write(root.join("calendar.json"), b"broken saved calendar").unwrap();
+        let unavailable = Calendar::load(&store); assert!(unavailable.availability_error().is_some()); assert!(unavailable.save(&store).is_err());
+        assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), b"broken saved calendar");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn postpublication_error_never_advances_the_snapshot_acknowledgment() {
+        let root = root("postpublish"); let store = crate::store::Store::new(&root);
+        let mut calendar = Calendar::default(); calendar.add("uncertain save", when(), None, 1);
+        let result = calendar.save_with(&store, |store, calendar| {
+            store.save(FILE, calendar)?;
+            Err(std::io::Error::other("injected failure after publication before acknowledgment").into())
+        });
+        assert!(result.is_err()); assert!(calendar.save(&store).is_err(), "an unacknowledged write cannot update the snapshot baseline");
+        let restarted = Calendar::load(&store); assert_eq!(restarted.len(), 1); restarted.save(&store).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn root_contention_refuses_quickly_before_any_calendar_write() {
+        let root = root("busy"); let store = crate::store::Store::new(&root);
+        let calendar = Calendar::default();
+        let (held, got) = std::sync::mpsc::channel(); let (release, wait) = std::sync::mpsc::channel(); let worker_store = store.clone();
+        let worker = std::thread::spawn(move || { let _guard = worker_store.transaction().unwrap(); held.send(()).unwrap(); wait.recv().unwrap(); });
+        got.recv().unwrap(); let started = std::time::Instant::now();
+        assert!(calendar.save(&store).is_err()); assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        assert!(!root.join("calendar.json").exists()); release.send(()).unwrap(); worker.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn validation_read_cannot_consume_the_calendar_refresh_signal() {
+        let root = root("refresh-cue"); let store = crate::store::Store::new(&root);
+        let mut initial = Calendar::default(); initial.add("original", when(), None, 1); initial.save(&store).unwrap();
+        let mut cached = Calendar::load(&store); let mut independent = Calendar::load(&store);
+        independent.add("external appointment", when(), None, 2); independent.save(&store).unwrap();
+        assert!(cached.save(&store).is_err());
+        assert!(!store.changed_elsewhere(FILE), "the CAS validation read consumes the shared Store cue");
+        assert!(cached.refresh_requested(), "the per-snapshot cue must survive that read");
+        cached.refresh_saved(&store).unwrap(); assert!(!cached.refresh_requested());
+        assert_eq!(cached.len(), 2);
+        cached.add("new local appointment", when(), None, 3); cached.save(&store).unwrap();
+        assert_eq!(Calendar::load(&store).len(), 3);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn refresh_retains_unsaved_local_edits_when_external_state_also_changed() {
+        let root = root("refresh-conflict"); let store = crate::store::Store::new(&root);
+        let mut initial = Calendar::default(); initial.add("original", when(), None, 1); initial.save(&store).unwrap();
+        let mut local = Calendar::load(&store); local.add("unsaved local appointment", when(), None, 2);
+        let mut external = Calendar::load(&store); external.add("external appointment", when(), None, 3); external.save(&store).unwrap();
+        let saved = std::fs::read(root.join("calendar.json")).unwrap();
+        assert!(local.save(&store).is_err()); assert!(local.refresh_saved(&store).is_err());
+        assert!(local.events.iter().any(|event| event.title == "unsaved local appointment"));
+        assert!(!local.events.iter().any(|event| event.title == "external appointment"));
+        assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), saved);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
 }

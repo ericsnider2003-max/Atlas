@@ -47,6 +47,10 @@ fn on_purpose(expr: &str) -> bool {
 }
 
 fn test_module_spans(src: &str) -> Vec<(usize, usize)> {
+    if src.lines().take_while(|line| line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!"))
+        .any(|line| line.trim_end() == "#![cfg(test)]") {
+        return vec![(0, src.len())];
+    }
     let mut out = Vec::new();
     let mut from = 0;
     while let Some(i) = src[from..].find("#[cfg(test)]") {
@@ -74,6 +78,14 @@ fn test_module_spans(src: &str) -> Vec<(usize, usize)> {
         from = at + 1;
     }
     out
+}
+
+#[test]
+fn a_private_test_module_is_skipped_but_an_attribute_mention_is_not() {
+    let fixture = "//! Fixtures.\n#![cfg(test)]\nfn proof() { let _ = std::fs::remove_file(path); }";
+    assert_eq!(test_module_spans(fixture), vec![(0, fixture.len())]);
+    let live = "// #![cfg(test)] is a comment\nfn live() { let _ = std::fs::remove_file(path); }";
+    assert!(test_module_spans(live).is_empty());
 }
 
 /// The expression after `let _ = ` up to its `;` at depth 0.

@@ -32,7 +32,7 @@ use crate::health::{assess as assess_machine, summary as health_summary, HealthC
 use crate::lanes::{lane_for, LaneConfig, Queue};
 use crate::modes::Modes;
 use crate::persona::Persona;
-use crate::safety::{back_up, due_for_backup, prune_backups, BackupConfig, Trash};
+use crate::safety::{due_for_backup, prune_backups, BackupConfig, Trash};
 use crate::thread::{Thread, ThreadConfig};
 use crate::watch::Watcher;
 use crate::crew::{self, Crew};
@@ -65,11 +65,19 @@ use hands::PHONE_RETRY_FILE;
 pub use errands::CONNECTED_ACCOUNTS;
 pub use tick::moment_clock;
 mod away;
+mod brief_prep;
+mod file_moves;
+// The workday collector needs this bounded snapshot entry point outside the
+// daemon's child modules; its implementation remains internal.
+pub(crate) fn brief_snapshot_value<T: serde::Serialize>(value: &T) -> std::result::Result<serde_json::Value, String> {
+    brief_prep::snapshot_value(value)
+}
 mod tick;
 pub use tick::AUTO_SYNC_EVERY_SECS;
 mod inbox;
 pub use inbox::{one_message_asked, OneMessage};
 mod making;
+mod calendar_delivery;
 mod reading;
 mod execute;
 mod turn;
@@ -496,6 +504,9 @@ pub struct Daemon<'a> {
     pub rehearsed: Vec<String>,
     /// The last command carried out, by kind: where a sentence actually went.
     last_executed: Option<String>,
+    /// Typed result for the exact intent just executed. Handlers opt in as
+    /// their real completion boundary is established; words are not proof.
+    execution_receipt: Option<(Intent, crate::taskloop::Outcome)>,
     /// A job being worked in an app, step by step (`operate`).
     pub operating: Option<crate::operate::Job>,
     /// The index as it is read from disk at start, off this thread
@@ -701,6 +712,7 @@ pub struct Daemon<'a> {
     /// it looks, which is every 50ms while idle (27 Sep 2026 -- it used to
     /// take one connection per pass of the loop, and a click is several).
     pub hub_server: Option<crate::server::HubDoor>,
+    announcements: std::sync::OnceLock<crate::speakthread::Announcements>,
     /// Everything Atlas can search: research notes, and anything else on the
     /// shelf. Rebuilt from disk at start and after anything writes a note.
     pub library: crate::recall::Library,
@@ -762,6 +774,12 @@ pub struct Daemon<'a> {
     /// applies. Keeping the moment and asking `daily` about it means the
     /// answer follows your hours instead of the calendar's.
     last_brief_at: u64,
+    last_brief_attempt_at: u64,
+    pending_brief_delivery: Option<(String, u64)>,
+    brief_preparation: brief_prep::Live,
+    file_moves: file_moves::Live,
+    brief_requested_explicitly: bool,
+    brief_requested_panel: bool,
     /// When Atlas last said hello of any kind (`returning::hello_now`),
     /// kept across a restart.
     last_greeted_at: u64,
@@ -814,10 +832,14 @@ pub struct Daemon<'a> {
     /// whether it has anything worth saying that you did not ask for.
     pub nudger: crate::nudge::Nudger,
     pub store: Store,
+    // A daemon constructed through the library retains the same restore read
+    // lease as a launched command; snapshots still use the separate short lock.
+    _state_access: crate::store::AccessGuard,
     pub autonomy: Autonomy,
     /// One record of everything Atlas did, across every area, so "what did
     /// you do" and "undo that" have something to answer from.
     pub history: crate::undo::History,
+    approved_undo: Option<late::ApprovedUndo>,
     /// Decisions worth being able to explain afterwards. A `why::Record`
     /// rather than a bare `Vec` so `Intent::Why` has something to read: the
     /// record trims itself and every turn's routing choice is written to it
@@ -842,6 +864,7 @@ pub struct Daemon<'a> {
     pub vault: crate::vault::Vault,
     /// The last reminder said when it came due, and when (`keeping`: "snooze").
     pub last_reminder_fired: Option<(String, u64)>,
+    pending_reminder_edit: Option<helping::PendingReminderEdit>,
     /// Notes a push to your phone failed for, tried again every few minutes
     /// while you're still away (`tick`). 30 Sep 2026: one failed push -- a
     /// phone on a lift, the push server restarting -- meant the note waited
@@ -863,6 +886,7 @@ pub struct Daemon<'a> {
     pub weather_place: Option<crate::weather::Place>,
     /// Whose draft was last read out ("send it").
     pub draft_last_read: Option<String>,
+    pub draft_last_read_identity: Option<crate::outbox::PendingReply>,
     /// Notes routed to speaking (`reach_you`), said on the next tick.
     pub to_say_aloud: Vec<String>,
     /// Where the vault is kept (`vault_home_for`).
@@ -899,6 +923,11 @@ pub struct Daemon<'a> {
     pub carried: Vec<(String, u32)>,
     /// Times other people have asked for, waiting on you.
     pub proposals: Vec<crate::booking::Proposal>,
+    proposals_recovery: Option<Vec<crate::booking::Proposal>>,
+    calendar_cancel_pending: bool,
+    calendar_delivery_bindings: Vec<(String, String, bool)>,
+    calendar_active_delivery_ids: Vec<String>,
+    calendar_booking_problem: Option<String>,
     /// Your own calendar — events, offline, and the bridge to the phone's.
     pub calendar: crate::calendar::Calendar,
     /// Every day closed so far, kept so `daily::still_keep` has something to
@@ -1307,6 +1336,7 @@ pub struct Daemon<'a> {
     /// sections: a recovery key waiting to be shown once, the passphrase
     /// forms' one-time marks, and a survey in hand (`hubvault`).
     pub shown_once: crate::hubvault::ShownOnce,
+    pub(crate) signing_pending: Option<crate::hublive::SigningPending>,
     /// The full walk-through of the last rehearsal, for "show me the detail".
     pub last_rehearsal: Option<String>,
     /// A panel that should be on screen.
@@ -1357,6 +1387,7 @@ pub struct Daemon<'a> {
     /// send isn't started twice, and a retry waits five minutes rather than
     /// going round every tick.
     posting: Vec<(u64, u64)>,
+    publication_jobs: std::collections::HashMap<u64, (u64, u64)>,
     /// The automatic sync's sends to your other devices, made off the loop
     /// (5 Oct 2026, Q5): each waited up to 4 s for a device that was asleep
     /// or away, every quarter hour, with Atlas frozen meanwhile. Set while
@@ -1564,7 +1595,10 @@ pub struct Daemon<'a> {
     /// The `mind` work id narrating the flow in flight. Zero when none —
     /// `Mind` never issues zero.
     flow_mind: u64,
+    scheduled_anchors_pending: std::collections::BTreeMap<String, u64>,
+    scheduled_notices: std::collections::BTreeSet<String>,
     last_backup: u64,
+    last_backup_attempt: u64,
     /// When the backup schedule and the self-repair sweep are next looked
     /// at (2 Oct 2026: both were looked at every tick, from disk).
     next_backup_look: u64,
@@ -1590,6 +1624,20 @@ impl<'a> Daemon<'a> {
         store: Store,
         proactive: Proactive,
     ) -> Self {
+        Self::try_new(cfg, plat, llm, store, proactive).unwrap_or_else(|error| panic!("Atlas could not safely open its configured output roots: {error}"))
+    }
+
+    pub fn try_new(
+        cfg: &'a Config,
+        plat: &'a dyn Platform,
+        llm: Option<std::sync::Arc<dyn Llm>>,
+        store: Store,
+        proactive: Proactive,
+    ) -> crate::error::Result<Self> {
+        let state_access = crate::store::begin_state_command(store.root(), false)?;
+        let notes: std::path::PathBuf = cfg.tools.as_ref().map(|tools| tools.research.clone()).unwrap_or_default().resolved(&store.install_root()).notes_dir.into();
+        let trash = cfg.tools.as_ref().map(|tools| tools.trash.clone()).unwrap_or_default().resolved(&store.install_root());
+        crate::safety::check_configured_scope(&store, &notes, std::path::Path::new(&trash.dir))?;
         let store_for_load = store.clone();
         let store_for_vault = store.clone();
         let store_for_load2 = store.clone();
@@ -1683,6 +1731,7 @@ impl<'a> Daemon<'a> {
             rehearsal: false,
             rehearsed: Vec::new(),
             last_executed: None,
+            execution_receipt: None,
             operating: None,
             index,
             index_load,
@@ -1749,6 +1798,7 @@ impl<'a> Daemon<'a> {
             dashboard: crate::dash::Layout::load(&store),
             arranging: false,
             hub_server: None,
+            announcements: std::sync::OnceLock::new(),
             library: crate::recall::Library::default(),
             // Loaded before `reload_library` runs below, so the rebuilt
             // library rehydrates vectors made in an earlier session rather
@@ -1757,11 +1807,17 @@ impl<'a> Daemon<'a> {
             search_check_due: store_for_load.load::<Vec<crate::recall::SearchCheck>>("search_checks").is_empty(),
             contents: crate::contents::Contents::default(),
             trace: crate::trace::Trace::default(),
-            last_brief: 0,
+            last_brief: brief_prep::restored_receipt(&store_for_load).map(|(source, _)| source).unwrap_or_else(|| store_for_load.load::<Option<u64>>("last_brief_source_at").unwrap_or_else(|| store_for_load.load("last_brief_at"))),
             // Loaded rather than zeroed: a restart would otherwise give you
             // the day's run a second time, and a brief said twice is the
             // failure `morning_brief` already documents.
-            last_brief_at: store_for_load.load::<u64>("last_brief_at"),
+            last_brief_at: brief_prep::restored_receipt(&store_for_load).map(|(_, delivered)| delivered).unwrap_or_else(|| store_for_load.load::<u64>("last_brief_at")),
+            last_brief_attempt_at: brief_prep::restored_attempt(&store_for_load),
+            pending_brief_delivery: brief_prep::restored_pending(&store_for_load),
+            brief_preparation: brief_prep::Live::load(&store_for_load),
+            file_moves: file_moves::Live::default(),
+            brief_requested_explicitly: false,
+            brief_requested_panel: false,
             last_greeted_at: store_for_load.load::<u64>("last_greeted_at"),
             rough_in_a_row: 0,
             work_session: store_for_load.load("work_session"),
@@ -1796,8 +1852,10 @@ impl<'a> Daemon<'a> {
                 n
             },
             store,
+            _state_access: state_access,
             // Kept across a restart: "undo" the morning after is still undo.
-            history: store_for_load.load("undo_history"),
+            history: store_for_load.load_checked("undo_history")?.unwrap_or_default(),
+            approved_undo: None,
             decisions: crate::why::Record::default(),
             offered_handover: false,
             asks_quietly: None,
@@ -1812,6 +1870,7 @@ impl<'a> Daemon<'a> {
                 crate::vault::Vault::load(&store_for_vault)
             },
             last_reminder_fired: None,
+            pending_reminder_edit: None,
             // Kept across a restart (research report, Stage 1 item 10).
             phone_to_retry: store_for_load.load(PHONE_RETRY_FILE),
             said_for_apps: Vec::new(),
@@ -1821,6 +1880,7 @@ impl<'a> Daemon<'a> {
             reminder_waiting_for_a_time: None,
             weather_place: None,
             draft_last_read: None,
+            draft_last_read_identity: None,
             to_say_aloud: Vec::new(),
             vault_home: if keeps_the_install_vault(&store_for_vault) { crate::roots::install_state() } else { store_for_vault.clone() },
             chats: chats_at_start,
@@ -1842,6 +1902,11 @@ impl<'a> Daemon<'a> {
             last_seen: 0,
             carried: Vec::new(),
             proposals,
+            proposals_recovery: None,
+            calendar_cancel_pending: false,
+            calendar_delivery_bindings: Vec::new(),
+            calendar_active_delivery_ids: Vec::new(),
+            calendar_booking_problem: None,
             calendar: crate::calendar::Calendar::load(&store_for_load),
             daily_history: store_for_load.load("daily_history"),
             rhythm: store_for_load2.load("rhythm"),
@@ -1850,7 +1915,7 @@ impl<'a> Daemon<'a> {
             interrupted: Vec::new(),
             signals: Vec::new(),
             run: crate::channel::Run::default(),
-            facts: crate::facts::Book::load(&store_for_load),
+            facts: crate::facts::Book::load_checked(&store_for_load)?,
             arrived_by_sync: Default::default(),
             synclog_unsaved: false,
             reminders_cancelled_elsewhere: Vec::new(),
@@ -2039,6 +2104,7 @@ impl<'a> Daemon<'a> {
             pending_post_approval: None,
             pending_post_when: None,
             posting: Vec::new(),
+            publication_jobs: Default::default(),
             dial_later: false,
             dials: Vec::new(),
             dial_answers: None,
@@ -2121,7 +2187,7 @@ impl<'a> Daemon<'a> {
                     .unwrap_or_default()
                     .resolved(&store_for_load2.install_root()),
             ),
-            queue: Queue::load(&store_for_load2),
+            queue: Queue::load_checked(&store_for_load2)?,
             flows: Library::load(&store_for_load2),
             current_flow: None,
             plugins_dir: crate::plugins::plugins_dir(),
@@ -2141,7 +2207,11 @@ impl<'a> Daemon<'a> {
             phones_heard: std::sync::Arc::default(),
             peer_tries: std::collections::BTreeMap::new(),
             flow_mind: 0,
+            scheduled_anchors_pending: std::collections::BTreeMap::new(),
+            scheduled_notices: std::collections::BTreeSet::new(),
+            signing_pending: None,
             last_backup: 0,
+            last_backup_attempt: 0,
             next_backup_look: 0,
             next_sweep_look: 0,
             working_since: None,
@@ -2164,7 +2234,7 @@ impl<'a> Daemon<'a> {
         // This is the whole reason `Span::Session` and `Span::Once` exist as
         // separate from `Always`, and until now nothing pruned them.
         d.permissions.new_session();
-        d
+        Ok(d)
     }
 
     // ---------- one spoken turn ----------

@@ -435,7 +435,7 @@ pub fn save(c: &Contents, at: &Path) -> crate::error::Result<()> {
             std::fs::create_dir_all(parent)?;
         }
     }
-    std::fs::write(at, format!("{}\n{}", HEADER, c.as_markdown()))?;
+    crate::store::write_owned_file(at, format!("{}\n{}", HEADER, c.as_markdown()).as_bytes())?;
     Ok(())
 }
 

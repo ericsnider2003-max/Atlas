@@ -66,7 +66,7 @@ fn the_model_server_is_posted_to_not_opened_in_a_browser() {
     // And the program builds its connection with it, not with research's fetch.
     // `models::connection`, which the desktop program's doors and the phone
     // core both use (since 27 Sep 2026).
-    let main = std::fs::read_to_string("src/models.rs").unwrap();
+    let main = crate::common::source_of("models");
     let body = &main[main.find("pub fn connection(").unwrap()..];
     let body = &body[..body.find("\n}\n").unwrap()];
     assert!(body.contains("server_post()"), "{body}");
@@ -218,9 +218,10 @@ fn typing_at_atlas_reaches_the_model_and_is_never_blocked_for_not_being_a_comman
     let h = &h[..h.find("\n}\n").unwrap()];
     assert!(h.contains("model_connection"), "the one-shot path uses the same model connection");
     assert!(
-        main.contains("Daemon::new(&cfg, plat.as_ref(), model_connection(tc), store"),
+        main.contains("Daemon::try_new(&cfg, plat.as_ref(), model_connection(tc), store"),
         "the typing prompt's Atlas is built with the model"
     );
+    assert!(main.contains("Atlas could not safely open its configured output folders"), "failed configured-output initialization must remain visible");
 }
 
 #[test]

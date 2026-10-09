@@ -74,16 +74,20 @@ impl To16k {
 pub struct WavOut {
     file: std::fs::File,
     samples: u64,
+    _output_lease: Option<std::fs::File>,
 }
 
 impl WavOut {
     pub fn create(path: &Path) -> std::io::Result<WavOut> {
+        let root = crate::store::state_root_for(path.parent().unwrap_or(Path::new(".")))?;
+        let lease = root.as_ref().map(|_| crate::store::owned_output_lease(path.parent().unwrap_or(Path::new(".")), false)).transpose()?;
+        let _state = root.as_ref().map(|root| crate::store::state_transaction(root)).transpose()?;
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
         let mut file = std::fs::File::create(path)?;
         file.write_all(&wav_header(0))?;
-        Ok(WavOut { file, samples: 0 })
+        Ok(WavOut { file, samples: 0, _output_lease: lease })
     }
 
     /// How many samples are in the file so far.
@@ -104,6 +108,7 @@ impl WavOut {
         self.file.seek(SeekFrom::Start(0))?;
         self.file.write_all(&wav_header(self.samples * 2))?;
         self.file.flush()?;
+        self.file.sync_all()?;
         Ok(self.samples)
     }
 }

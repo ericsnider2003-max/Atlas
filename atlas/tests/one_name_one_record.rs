@@ -48,6 +48,10 @@ use std::path::Path;
 /// different shape to the same file.
 const SHARED_ON_PURPOSE: &[(&str, &str)] = &[
     (
+        "undo_history",
+        "The daemon and its file-move worker use the same safety::History type. Each delta save strictly reloads and merges the current history under the root transaction; the worker records completed moves before reporting completion.",
+    ),
+    (
         "dropped",
         "Same field, the daemon's own `dropped` list: the hub's Outstanding page takes an item off it \
          (Chat A, 2 Oct 2026) and saves it exactly as `daemon/late.rs` does -- one value, two places it changes.",
@@ -126,7 +130,8 @@ fn accesses() -> Vec<(String, String, String)> {
         // like two modules writing it.
         let module = crate::common::split_parent(&p)
             .unwrap_or_else(|| p.file_stem().unwrap().to_string_lossy().to_string());
-        let text = std::fs::read_to_string(&p).unwrap_or_default();
+        let raw = std::fs::read_to_string(&p).unwrap_or_default();
+        let (text, _) = crate::common::split_production_and_tests(&raw);
         for line in text.lines() {
             let t = line.trim_start();
             // Comments quote record names when they explain a collision --
@@ -135,7 +140,7 @@ fn accesses() -> Vec<(String, String, String)> {
             if t.starts_with("//") {
                 continue;
             }
-            for call in [".load(\"", ".save(\""] {
+            for call in [".load(\"", ".load_checked(\"", ".save(\""] {
                 let mut from = 0;
                 while let Some(at) = line[from..].find(call) {
                     let start = from + at + call.len();
@@ -150,7 +155,7 @@ fn accesses() -> Vec<(String, String, String)> {
                         out.push((
                             name.to_string(),
                             module.clone(),
-                            call.trim_start_matches('.').trim_end_matches("(\"").to_string(),
+                            if call.starts_with(".load") { "load".into() } else { "save".into() },
                         ));
                     }
                     from = start + end;

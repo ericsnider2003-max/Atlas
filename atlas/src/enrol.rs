@@ -481,6 +481,49 @@ pub struct Enrolment {
     pub started_at: u64,
 }
 
+pub const SIGNUP_ATTEMPTS: &str = "signup_attempts";
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignupState { Pending, Unconfirmed, Confirmed, OwnerConfirmed, OwnerAbsent, NotSubmitted, Blocked, #[serde(other)] Unknown }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignupAttempt { pub domain: String, pub username: String, pub vault_entry: String, pub started_at: u64, pub state: SignupState, pub detail: String }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SignupAttempts { pub all: Vec<SignupAttempt> }
+impl SignupAttempts {
+    pub fn find(&self, domain: &str, username: &str) -> Option<&SignupAttempt> { self.all.iter().find(|a| a.domain.eq_ignore_ascii_case(domain) && a.username.eq_ignore_ascii_case(username)) }
+    pub fn may_start(&self, domain: &str, username: &str) -> bool { self.find(domain, username).is_none_or(|a| matches!(a.state, SignupState::OwnerAbsent | SignupState::NotSubmitted)) }
+    pub fn begin(&mut self, enrolment: &Enrolment) -> bool {
+        if !self.may_start(&enrolment.domain, &enrolment.username) || self.all.len() >= 1000 { return false; }
+        self.all.retain(|a| !a.domain.eq_ignore_ascii_case(&enrolment.domain) || !a.username.eq_ignore_ascii_case(&enrolment.username));
+        self.all.push(SignupAttempt { domain: enrolment.domain.clone(), username: enrolment.username.clone(), vault_entry: enrolment.vault_entry.clone(), started_at: enrolment.started_at, state: SignupState::Pending, detail: "Signup worker pending; account creation is not confirmed. Do not repeat before checking.".into() });
+        true
+    }
+    pub fn settle(&mut self, enrolment: &Enrolment, state: SignupState, detail: &str) -> bool {
+        let Some(attempt) = self.all.iter_mut().find(|a| a.domain.eq_ignore_ascii_case(&enrolment.domain) && a.username.eq_ignore_ascii_case(&enrolment.username) && a.started_at == enrolment.started_at) else { return false; };
+        attempt.state = state; attempt.detail = detail.into(); true
+    }
+}
+
+#[cfg(test)]
+mod signup_attempt_fences {
+    use super::*;
+    #[test]
+    fn restart_and_unknown_status_never_allow_duplicate_signup() {
+        let e = Enrolment::new("example.test", "owner", 12);
+        let mut attempts = SignupAttempts::default();
+        assert!(attempts.begin(&e));
+        let bytes = serde_json::to_vec(&attempts).unwrap();
+        let mut restored: SignupAttempts = serde_json::from_slice(&bytes).unwrap();
+        assert!(!restored.may_start("EXAMPLE.TEST", "OWNER"));
+        assert!(!restored.settle(&Enrolment::new("example.test", "owner", 13), SignupState::OwnerAbsent, "stale receipt"));
+        assert!(restored.settle(&e, SignupState::OwnerAbsent, "Owner checked the service"));
+        assert!(restored.may_start("example.test", "owner"));
+        let future = String::from_utf8(bytes).unwrap().replace("pending", "future_unknown_state");
+        let unknown: SignupAttempts = serde_json::from_str(&future).unwrap();
+        assert!(!unknown.may_start("example.test", "owner"));
+    }
+}
+
 impl Enrolment {
     pub fn new(domain: &str, username: &str, at: u64) -> Self {
         Enrolment {

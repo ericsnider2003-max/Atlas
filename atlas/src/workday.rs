@@ -300,6 +300,13 @@ const TAUGHT: &str = "waiting_taught";
 const CLIPS_ON: &str = "clipboard_history_on";
 
 impl Kit {
+    /// Immutable copies of already-loaded day records. Unloaded records are
+    /// read by the brief worker; the worker never fills or writes these caches.
+    pub(crate) fn brief_records(&self) -> Result<serde_json::Value, String> {
+        crate::daemon::brief_snapshot_value(&(
+            &self.people, &self.habits, &self.deck, &self.journal, &self.taught,
+        ))
+    }
     pub fn follow(&self, now: u64) -> Option<Follow> {
         self.follow.as_ref().filter(|(_, at)| now.saturating_sub(*at) <= FOLLOW_FOR).map(|(f, _)| f.clone())
     }
@@ -756,6 +763,9 @@ impl Daemon<'_> {
     }
 
     pub(crate) fn wd_meeting_prep(&mut self, _said: &str, t: u64) -> String {
+        if self.calendar.availability_error().is_some() {
+            return "Your calendar is unavailable, so I can't confirm your next meeting. Refresh or recover it first.".into();
+        }
         let next = self.calendar.occurrences_between(t, t + 12 * 3600).into_iter().find(|e| !e.all_day);
         let Some(ev) = next else { return "Nothing on your calendar in the next twelve hours.".into() };
         let (lines, _) = self.prep_for(&ev, t);
@@ -763,6 +773,7 @@ impl Daemon<'_> {
     }
 
     fn prep_tick(&mut self, t: u64) -> Option<String> {
+        if self.calendar.availability_error().is_some() { return None; }
         let mins = self.workday_cfg().meeting_prep_minutes;
         if mins == 0 {
             return None;
@@ -1494,75 +1505,4 @@ impl Daemon<'_> {
 
     // ---------------------------------------------------------------- the brief
 
-    /// Your day, as brief items: what these tools know needs you today.
-    pub(crate) fn day_items(&mut self, t: u64) -> Vec<crate::brief::Item> {
-        use crate::brief::{Item, Outcome, Source, Weight};
-        let item = |id: String, from: &str, subject: String, weight: Weight| Item {
-            id,
-            source: Source::Day,
-            from: from.to_string(),
-            subject,
-            weight,
-            outcome: Outcome::Yours,
-            draft: None,
-            conflicts_with: None,
-        };
-        let mut out = Vec::new();
-        let cfg = self.workday_cfg();
-        let today = self.today(t);
-        // Read once, for the waiting-for list and the people both.
-        let book: crate::mailbook::MailBook = self.store.load(crate::mailbook::MailBook::FILE);
-        // The market's calendar is for someone who trades: said once you've
-        // done a trading check-in, or asked for in settings -- otherwise a
-        // brief on a quiet day would lead with an exchange holiday.
-        let trades = cfg.market_in_brief || !loaded!(self.workday, self.store, journal, JOURNAL).entries.is_empty();
-        if trades {
-            for line in crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone()) {
-                out.push(item(format!("market:{line}"), "Markets", line, Weight::Info));
-            }
-        }
-        if cfg.waiting_for.enabled {
-            let items = self.waiting_in(&book, t);
-            for w in crate::waitingfor::due_now(&items, t).into_iter().take(5) {
-                let (who, what, weight) = match w.side {
-                    crate::waitingfor::Side::Promised => ("You promised", format!("\"{}\" -- {}", w.subject, w.said), Weight::Urgent),
-                    crate::waitingfor::Side::Owed => ("Waiting on", format!("{} -- \"{}\"", w.with, w.subject), Weight::Info),
-                };
-                out.push(item(format!("waiting:{}", w.letter), who, what, weight));
-            }
-        }
-        let local = self.local(t);
-        let day0 = local - local % 86_400;
-        for n in self.notebook.due_between(day0, day0 + 86_400) {
-            out.push(item(format!("note:{}", n.id), "Your note", n.text.chars().take(90).collect(), Weight::Info));
-        }
-        // The files below are read only if they exist -- a missing one loads
-        // as empty, which costs a stat.
-        let p = loaded!(self.workday, self.store, people, PEOPLE);
-        for (name, days, every) in p.due(&book, t).into_iter().take(3) {
-            let s = match days {
-                Some(d) => format!("{name} -- {d} days (every {every})"),
-                None => format!("{name} -- no contact on record"),
-            };
-            out.push(item(format!("person:{name}"), "Catch up with", s, Weight::Info));
-        }
-        for (name, away) in p.birthdays(local, 1) {
-            out.push(item(format!("birthday:{name}"), "Birthday", if away == 0 { format!("{name}, today") } else { format!("{name}, tomorrow") }, Weight::Info));
-        }
-        let h = loaded!(self.workday, self.store, habits, HABITS);
-        let due: Vec<String> = h.due_today(today).iter().map(|x| x.name.clone()).collect();
-        if !due.is_empty() {
-            out.push(item("habits".into(), "Habits", due.join(", "), Weight::Info));
-        }
-        let d = loaded!(self.workday, self.store, deck, DECK);
-        let cards = d.due(today, usize::MAX).len();
-        if cards > 0 {
-            out.push(item("cards".into(), "Cards", format!("{} due", plural(cards, "card")), Weight::Info));
-        }
-        out.extend(self.social_brief_items(t));
-        // The best opportunities found, with why (`hunting`); nothing when
-        // hunting is off.
-        out.extend(crate::hunting::brief_items(self, t));
-        out
-    }
 }

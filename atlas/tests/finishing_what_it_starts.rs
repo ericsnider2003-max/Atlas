@@ -964,7 +964,7 @@ fn background_document(tag: &str, slow: bool) -> (atlas::config::Config, PathBuf
     (c, doc, Store::new(dir.join("state")))
 }
 
-fn background_scan_decision(approve: bool) {
+fn background_scan_decision(approve: bool) -> usize {
     let (mut c, doc, store) = background_document(if approve { "background-ask" } else { "background-decline" }, false);
     c.tools.as_mut().unwrap().files.virus_scan.command.clear();
     let p = plat();
@@ -981,12 +981,13 @@ fn background_scan_decision(approve: bool) {
     assert!(!d.working_through_steps());
     assert_eq!(llm.requests().len(), if approve { 2 } else { 1 });
     if approve { assert!(llm.requests()[1].messages.iter().any(|m| m.content.contains("filing deadline is April 15"))); }
+    llm.requests().len()
 }
 #[test]
-fn background_read_keeps_the_scan_approval_boundary() { background_scan_decision(true); }
+fn background_read_keeps_the_scan_approval_boundary() { assert_eq!(background_scan_decision(true), 2); }
 #[test]
-fn declining_a_scan_exception_blocks_the_remaining_plan() { background_scan_decision(false); }
-fn background_read_control(cancel: bool) {
+fn declining_a_scan_exception_blocks_the_remaining_plan() { assert_eq!(background_scan_decision(false), 1); }
+fn background_read_control(cancel: bool) -> usize {
     let (c, doc, store) = background_document(if cancel { "background-cancel" } else { "background-pause" }, true);
     let p = plat();
     let llm = Scripted::new(vec![], vec![calls("read_document", &doc.display().to_string()), says("The deadline is April 15.")], 0);
@@ -1018,13 +1019,14 @@ fn background_read_control(cancel: bool) {
         assert_eq!(llm.requests().len(), 2, "resume lost the completed result: {rest:?}");
         assert!(!d.working_through_steps());
     }
+    llm.requests().len()
 }
 
 #[test]
-fn background_read_waits_through_pause_and_continues_on_resume() { background_read_control(false); }
+fn background_read_waits_through_pause_and_continues_on_resume() { assert_eq!(background_read_control(false), 2); }
 
 #[test]
-fn background_read_cancellation_releases_the_waiting_worker() { background_read_control(true); }
+fn background_read_cancellation_releases_the_waiting_worker() { assert_eq!(background_read_control(true), 1); }
 
 #[test]
 fn background_read_retains_outside_text_approval_for_the_next_action() {
@@ -1055,6 +1057,12 @@ fn background_read_can_join_an_existing_job_and_continue() {
 }
 struct ResearchScript(Arc<Scripted>);
 impl Llm for ResearchScript {
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, _: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<ChatReply> {
+        let text = "Ventura high tide is just after noon.";
+        if !keep_going() || !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+        Ok(ChatReply { text: text.into(), ..Default::default() })
+    }
     fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
         Ok("Ventura high tide is just after noon.".into())
     }
@@ -1064,7 +1072,7 @@ impl Llm for ResearchScript {
     }
 }
 
-fn background_research(fail: bool) {
+fn background_research(fail: bool) -> usize {
     let (mut c, p) = (cfg(), plat());
     let tools = c.tools.as_mut().unwrap();
     tools.research.enabled = true;
@@ -1086,13 +1094,129 @@ fn background_research(fail: bool) {
         assert_eq!(scripted.requests().len(), 2, "research never resumed the request: {said:?}");
         assert!(scripted.requests()[1].messages.iter().any(|m| m.content.contains("high tide is just after noon")), "the finding was not passed to the next step");
     }
+    scripted.requests().len()
 }
 
 #[test]
-fn background_research_continues_with_the_actual_finding() { background_research(false); }
+fn background_research_continues_with_the_actual_finding() { assert_eq!(background_research(false), 2); }
 
 #[test]
-fn background_research_failure_blocks_the_remaining_request() { background_research(true); }
+fn background_research_failure_blocks_the_remaining_request() { assert_eq!(background_research(true), 1); }
+
+#[test]
+fn a_clarification_keeps_the_original_plan_and_returns_its_answer_to_the_model() {
+    let (c, p) = (cfg(), plat());
+    let scripted = Scripted::new(vec![], vec![calls("ask", "Which year should I use?"), says("Your 2025 plan is ready.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(scripted.clone() as Arc<dyn Llm>), Store::new(tmp("dependent-clarification")), Proactive::new(ProactiveConfig::default()));
+    let t = 1_790_740_000;
+    assert!(d.turn("find the annual budget and then tell me what it says", t).starts_with("Working through"));
+    let mut asked = false;
+    for n in 0..40 {
+        if d.tick(t + n).iter().any(|text| text.contains("Which year")) { asked = true; break; }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(asked, "clarification was not presented");
+    assert!(d.working_through_steps(), "the question discarded the original plan");
+    let reply = d.turn("2025", t + 41);
+    assert!(reply.contains("original request"), "{reply}");
+    let said = tick_until_done(&mut d, t + 42, 40);
+    assert!(said.iter().any(|(text, _)| text.contains("2025 plan")), "{said:?}");
+    assert_eq!(scripted.requests().len(), 2);
+}
+
+#[test]
+fn disabled_research_blocks_dependent_work_without_a_false_completion() {
+    let (mut c, p) = (cfg(), plat());
+    c.tools.as_mut().unwrap().research.enabled = false;
+    let scripted = Scripted::new(vec![], vec![calls("research", "Ventura tide times"), says("All done.")], 0);
+    let mut d = Daemon::new(&c, &p, Some(scripted.clone() as Arc<dyn Llm>), Store::new(tmp("disabled-research-dependent")), Proactive::new(ProactiveConfig::default()));
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    let first = d.turn("research Ventura tide times and then tell me what you found", 1_790_740_000);
+    assert!(first.starts_with("Working through"), "{first}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    assert!(!d.working_through_steps());
+    assert_eq!(scripted.requests().len(), 1, "disabled prerequisite must stop the model's success claim: {said:?}");
+    assert!(said.iter().any(|(s, _)| s.contains("switched off")), "actual blocker missing: {said:?}");
+}
+
+#[test]
+fn queued_research_remains_running_until_the_worker_finishes() {
+    struct HeldResearch(Arc<std::sync::atomic::AtomicBool>);
+    impl Llm for HeldResearch {
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, _: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<ChatReply> {
+            let start = Instant::now();
+            while !self.0.load(std::sync::atomic::Ordering::SeqCst) && start.elapsed().as_secs() < 15 {
+                if !keep_going() { return Err(atlas::error::AtlasError::Platform("held research stopped".into())); }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let text = "Ventura high tide is just after noon.";
+            if !keep_going() || !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("held research stopped".into())); }
+            Ok(ChatReply { text: text.into(), ..Default::default() })
+        }
+        fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
+            let start = Instant::now();
+            while !self.0.load(std::sync::atomic::Ordering::SeqCst) && start.elapsed().as_secs() < 15 {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok("Ventura high tide is just after noon.".into())
+        }
+    }
+    let (mut c, p) = (cfg(), plat());
+    let tools = c.tools.as_mut().unwrap();
+    tools.research.enabled = true;
+    tools.research.pages_on_this_machine = true;
+    tools.research.search = Some(crate::common::printing("http://example.test/tides"));
+    tools.research.fetch = Some(crate::common::printing(&"Ventura high tide is just after noon. ".repeat(20)));
+    let root = tmp("queued-research-owned");
+    tools.research.notes_dir = root.join("notes").display().to_string();
+    let released = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(HeldResearch(released.clone()))), Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    let id = d.queue.push("research Ventura tide times", atlas::lanes::Lane::Background);
+    d.tick(1_790_740_000);
+    let running = d.queue.tasks.iter().find(|task| task.id == id).map(|task| task.state);
+    released.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(running, Some(atlas::lanes::TaskState::Running), "starting a worker is not completion");
+    d.errands_done_for_test();
+    assert_eq!(d.queue.tasks.iter().find(|task| task.id == id).map(|task| task.state), Some(atlas::lanes::TaskState::Done));
+}
+#[test]
+fn queued_research_fails_if_the_full_writeup_cannot_be_saved() {
+    struct ResearchAnswer;
+    impl Llm for ResearchAnswer {
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, _: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<ChatReply> {
+            let text = "Ventura high tide is just after noon.";
+            if !keep_going() || !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+            Ok(ChatReply { text: text.into(), ..Default::default() })
+        }
+        fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
+            Ok("Ventura high tide is just after noon.".into())
+        }
+    }
+    let (mut c, p) = (cfg(), plat());
+    let root = tmp("research-save-blocked");
+    let blocked = root.join("notes");
+    let tools = c.tools.as_mut().unwrap();
+    tools.research.enabled = true;
+    tools.research.pages_on_this_machine = true;
+    tools.research.search = Some(crate::common::printing("http://example.test/tides"));
+    tools.research.fetch = Some(crate::common::printing(&"Ventura high tide is just after noon. ".repeat(20)));
+    tools.research.notes_dir = blocked.display().to_string();
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(ResearchAnswer)), Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
+    // Startup verifies configured roots. Reproduce a write failure that
+    // happens after the verified startup, rather than an invalid installation.
+    std::fs::remove_dir_all(&blocked).unwrap();
+    std::fs::write(&blocked, "existing file must survive").unwrap();
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    let id = d.queue.push("research Ventura tide times", atlas::lanes::Lane::Background);
+    d.tick(1_790_740_000);
+    d.errands_done_for_test();
+    assert_eq!(d.queue.tasks.iter().find(|task| task.id == id).map(|task| task.state), Some(atlas::lanes::TaskState::Failed));
+    assert_eq!(std::fs::read_to_string(blocked).unwrap(), "existing file must survive");
+}
+
 #[test]
 fn a_second_request_cannot_replace_the_active_plan() {
     let (c, p) = (cfg(), plat());
@@ -1119,7 +1243,7 @@ impl Llm for EditScript {
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> { self.0.chat(req, on_text) }
 }
 
-fn background_media(fail: bool, no_output: bool, decision: u8) {
+fn background_media(fail: bool, no_output: bool, decision: u8) -> usize {
     let (mut c, p) = (cfg(), plat());
     let dir = tmp(if fail { "media-failure" } else if no_output { "media-no-output" } else { "media-approval" });
     let clip = dir.join("clip.mp4");
@@ -1170,20 +1294,21 @@ fn background_media(fail: bool, no_output: bool, decision: u8) {
     }
     assert_eq!(std::fs::read_to_string(&clip).unwrap(), "original footage fixture");
     assert!(!d.working_through_steps(), "the media result left a worker waiting");
+    script.requests().len()
 }
 
 #[test]
-fn background_media_failure_blocks_the_remaining_request() { background_media(true, false, 0); }
+fn background_media_failure_blocks_the_remaining_request() { assert_eq!(background_media(true, false, 0), 1); }
 
 #[test]
-fn background_media_result_waits_for_the_keep_decision() { background_media(false, false, 1); }
+fn background_media_result_waits_for_the_keep_decision() { assert_eq!(background_media(false, false, 1), 2); }
 #[test]
-fn background_media_cannot_claim_a_render_without_a_result_file() { background_media(false, true, 0); }
+fn background_media_cannot_claim_a_render_without_a_result_file() { assert_eq!(background_media(false, true, 0), 1); }
 
 #[test]
-fn declining_the_edit_blocks_remaining_work() { background_media(false, false, 2); }
+fn declining_the_edit_blocks_remaining_work() { assert_eq!(background_media(false, false, 2), 1); }
 #[test]
-fn stopping_at_the_keep_question_releases_the_request() { background_media(false, false, 3); }
+fn stopping_at_the_keep_question_releases_the_request() { assert_eq!(background_media(false, false, 3), 1); }
 
 struct AppStepScript(Arc<Scripted>);
 impl Llm for AppStepScript {
@@ -1197,7 +1322,7 @@ impl Llm for AppStepScript {
     }
 }
 
-fn dependent_app_job(decision: u8) {
+fn dependent_app_job(decision: u8) -> usize {
     let succeed = decision == 1;
     let (c, p) = (cfg(), plat());
     *p.front.borrow_mut() = Some(atlas::platform::WindowId(1));
@@ -1215,22 +1340,23 @@ fn dependent_app_job(decision: u8) {
     assert!(d.working_through_steps(), "starting an app job dropped the remaining request");
     assert_eq!(script.requests().len(), 1, "choosing a next app action must not finish the goal");
     assert_eq!(d.operating.as_ref().unwrap().goal, "make a heading");
-    if decision == 3 { d.turn("stop everything", 1_790_751_000); tick_until_done(&mut d, 1_790_751_001, 10); assert!(!d.working_through_steps()); assert_eq!(script.requests().len(), 1); return; }
+    if decision == 3 { d.turn("stop everything", 1_790_751_000); tick_until_done(&mut d, 1_790_751_001, 10); assert!(!d.working_through_steps()); assert_eq!(script.requests().len(), 1); return script.requests().len(); }
     d.turn("Budget", 1_790_751_000);
     d.operating.as_mut().unwrap().next = Some((if succeed { "done" } else { "give_up" }.into(), if succeed { "The heading is ready." } else { "The document is locked." }.into()));
     tick_until_done(&mut d, 1_790_751_001, 10);
     assert!(!d.working_through_steps());
     assert_eq!(script.requests().len(), if succeed { 2 } else { 1 });
     if succeed { assert!(script.requests()[1].messages.iter().any(|m| m.content.contains("The heading is ready."))); }
+    script.requests().len()
 }
 #[test]
-fn an_app_goal_resumes_dependent_work_only_when_finished() { dependent_app_job(1); }
+fn an_app_goal_resumes_dependent_work_only_when_finished() { assert_eq!(dependent_app_job(1), 2); }
 #[test]
-fn an_app_goal_failure_blocks_dependent_work() { dependent_app_job(2); }
+fn an_app_goal_failure_blocks_dependent_work() { assert_eq!(dependent_app_job(2), 1); }
 #[test]
-fn an_app_goal_cancellation_releases_dependent_work() { dependent_app_job(3); }
+fn an_app_goal_cancellation_releases_dependent_work() { assert_eq!(dependent_app_job(3), 1); }
 
-fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replaced: bool) {
+fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replaced: bool) -> usize {
     let (c, p) = (cfg(), plat());
     let app = c.apps.apps.keys().next().unwrap().clone();
     let script = Scripted::new(vec![], vec![calls("close_app", &app), says("All done.")], 0);
@@ -1258,13 +1384,14 @@ fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replace
     assert!(!d.working_through_steps(), "answer={answer}, pending={:?}", d.session.pending);
     assert_eq!(script.requests().len(), if approve && !expired && !replaced { 2 } else { 1 });
     assert_eq!(p.log.borrow().iter().any(|a| matches!(a, atlas::platform::mock::Action::Close(_))), approve && !expired && !replaced);
+    script.requests().len()
 }
 #[test]
-fn approval_keeps_the_plan_and_yes_resumes_it() { dependent_policy_approval(true, false, false, false); }
+fn approval_keeps_the_plan_and_yes_resumes_it() { assert_eq!(dependent_policy_approval(true, false, false, false), 2); }
 #[test]
-fn declining_approval_blocks_the_dependent_plan() { dependent_policy_approval(false, false, false, false); }
+fn declining_approval_blocks_the_dependent_plan() { assert_eq!(dependent_policy_approval(false, false, false, false), 1); }
 #[test]
-fn expired_approval_releases_the_dependent_plan() { dependent_policy_approval(true, true, false, false); }
+fn expired_approval_releases_the_dependent_plan() { assert_eq!(dependent_policy_approval(true, true, false, false), 1); }
 
 #[test]
 fn restart_record_preserves_completed_steps_of_a_waiting_plan() {
@@ -1277,9 +1404,11 @@ fn restart_record_preserves_completed_steps_of_a_waiting_plan() {
     for n in 1..500 { d.tick(atlas::store::now()+n); if matches!(d.session.pending, atlas::session::Pending::Approval(..)) { break; } std::thread::sleep(Duration::from_millis(20)); }
     d.persist();
     let left: Vec<serde_json::Value> = Store::new(root).load("left_waiting");
+    assert!(!left.is_empty(), "a waiting request must have durable restart evidence");
+    assert!(left.iter().all(|v| v["asked"].is_boolean() && v["at"].as_u64().is_some()), "invalid restart records: {left:?}");
     assert!(left.iter().any(|v| v["what"].as_str().is_some_and(|s| s.contains("Step 1"))), "the restart record lost completed work: {left:?}");
 }
 #[test]
-fn an_unrelated_approval_does_not_release_the_waiting_plan() { dependent_policy_approval(true, false, true, false); }
+fn an_unrelated_approval_does_not_release_the_waiting_plan() { assert_eq!(dependent_policy_approval(true, false, true, false), 2); }
 #[test]
-fn replacing_queued_approvals_releases_the_waiting_plan() { dependent_policy_approval(true, false, true, true); }
+fn replacing_queued_approvals_releases_the_waiting_plan() { assert_eq!(dependent_policy_approval(true, false, true, true), 1); }

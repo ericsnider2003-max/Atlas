@@ -247,6 +247,20 @@ pub struct Added {
 }
 
 impl Book {
+    /// Parse a bounded snapshot supplied by a read-only background worker.
+    /// Unlike `load`, a malformed line is an error, not an empty account.
+    pub(crate) fn parse_brief(text: &str) -> Result<Book, String> {
+        let mut b = Book::default();
+        for (i, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+            if i >= MAX_LINES {
+                return Err("The social snapshot is too large for this brief.".into());
+            }
+            let r: Record = serde_json::from_str(line).map_err(|_| "A social snapshot line could not be read; the file was left untouched.")?;
+            b.by_key.insert(r.key(), r);
+        }
+        Ok(b)
+    }
+
     pub fn load(path: &Path) -> Book {
         let mut b = Book::default();
         let Ok(text) = std::fs::read_to_string(path) else { return b };

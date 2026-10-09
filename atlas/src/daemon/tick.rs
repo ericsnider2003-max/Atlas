@@ -108,7 +108,45 @@ impl<'a> Daemon<'a> {
 
     /// Work Atlas does without being asked. Returns anything worth saying.
     pub fn tick(&mut self, t: u64) -> Vec<String> {
+        self.apply_fast_hub_pause();
         let mut out = Vec::new();
+        self.poll_signing_protection();
+        if let Some(line) = self.recover_calendar_booking() { out.push(line); }
+        if let Some(message) = self.poll_pending_reminder_edit() { out.push(message); }
+        self.pause_files(self.attention.is_paused());
+        out.extend(self.poll_file_moves(t));
+        if let Some(said) = self.poll_approved_undo() { out.push(said); }
+        if self.attention.is_paused() { self.cancel_brief_preparation(); }
+        if let Some(result) = self.poll_brief() {
+            let explicit = std::mem::take(&mut self.brief_requested_explicitly);
+            let panel = std::mem::take(&mut self.brief_requested_panel);
+            match result {
+                Ok(brief) => {
+                    if panel {
+                        let mut lines: Vec<String> = brief.yours.iter().chain(brief.drafted.iter())
+                            .map(|i| format!("{} — {}", i.source.plain(), i.headline())).collect();
+                        if lines.is_empty() { lines.push("Nothing needs you right now.".into()); }
+                        self.show_panel(crate::window::Panel::Outstanding, "Outstanding", lines);
+                    }
+                    let announcement = self.take_brief_announcement();
+                    let has_announcement = announcement.is_some();
+                    let line = announcement.unwrap_or_else(|| crate::brief::spoken(&brief));
+                    if explicit { out.push(line); }
+                    else if !panel && (!brief.is_empty() || has_announcement) {
+                        self.morning_brief = Some(match self.morning_brief.take() {
+                            Some(night) => format!("{night} {line}"),
+                            None => line,
+                        });
+                    }
+                }
+                Err(why) => {
+                    // An unaccepted automatic preparation is not today's offer.
+                    // Retry eligibility remains distinct from actual delivery.
+                    if !explicit && !panel { self.automatic_brief_failed(); }
+                    self.log.warn(&why); out.push(why);
+                }
+            }
+        }
         // A command's change first, so nothing below works on (and then
         // saves back) an older copy (Q13).
         self.take_outside_changes();
@@ -443,8 +481,31 @@ impl<'a> Daemon<'a> {
                 }
                 continue;
             }
+            if let Err(e) = self.scheduler.start_durably(id, &self.store) {
+                out.push(format!("Scheduled work did not start because its start couldn't be saved: {e}."));
+                continue;
+            }
+            self.last_crew_handoff = None;
+            let files_before = self.active_file_move_id();
             let result = self.execute(&intent);
-            let ok = !result.starts_with("error");
+            if let Some(files) = self.active_file_move_id().filter(|id| Some(*id) != files_before) {
+                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) { job.file_move_id = Some(files); job.last_result = Some(result.clone()); }
+                if let Err(e) = self.scheduler.save(&self.store) {
+                    self.stop_file_move(files);
+                    out.push(format!("Scheduled file ownership couldn't be saved ({e}); stop was requested. Check its outcome."));
+                }
+                continue;
+            }
+            if let Some(worker) = self.last_crew_handoff.filter(|worker| self.crew_links.get(worker).is_some_and(|link| matches!(link.label, "research" | "read-file" | "edit-media" | "studio" | "creator planning"))) {
+                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) { job.worker_id = Some(worker); job.last_result = Some(result.clone()); }
+                if let Err(e) = self.scheduler.save(&self.store) {
+                    self.crew.ask_to_stop(worker);
+                    out.push(format!("Scheduled worker ownership couldn't be saved ({e}); I asked it to stop. Its outcome is unconfirmed."));
+                }
+                continue;
+            }
+            let receipt = self.execution_receipt.as_ref().filter(|(executed, _)| executed == &intent).map(|(_, outcome)| outcome);
+            let ok = receipt.map_or_else(|| !result.starts_with("error"), |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)));
             if job.command.starts_with("reminder ") {
                 self.last_reminder_fired = Some((job.command.clone(), t));
             }
@@ -472,15 +533,41 @@ impl<'a> Daemon<'a> {
         self.tick_laps.mark("scheduled jobs");
         if self.current_flow.is_none() {
             let reg = crate::plugins::Registry::load_kept(&mut self.plugins_kept, &self.plugins_dir, &self.cfg.commands, &self.store).clone();
-            let mut runs = crate::plugins::ScheduleRuns::load(&self.store);
-            let before = runs.clone();
-            if let Some((id, f, key)) = reg.due(&mut runs, t, local_offset_mins()).into_iter().next() {
-                runs.ran(&key, t);
-                let said = self.start_flow(f, Some(id), None, t);
-                out.push(said);
+            // Retain the actual first sight even when a snapshot holds the
+            // root lock. Fresh saved anchors always win when the lock returns.
+            for plugin in reg.plugins.iter().filter(|plugin| plugin.status == crate::plugins::Status::Active) {
+                for (name, _) in &plugin.schedules { self.scheduled_anchors_pending.entry(format!("{}/{name}", plugin.id)).or_insert(t); }
             }
-            if runs != before {
-                let _ = runs.save(&self.store);
+            let reserved = (|| -> crate::error::Result<Option<(String, crate::flow::Workflow, String)>> {
+                let _guard = self.store.transaction()?;
+                let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
+                let before = runs.clone();
+                for (key, anchor) in &self.scheduled_anchors_pending { runs.last.entry(key.clone()).or_insert(*anchor); }
+                let due = reg.due(&mut runs, t, local_offset_mins());
+                for (key, anchor) in &runs.last { if !before.last.contains_key(key) { self.scheduled_anchors_pending.entry(key.clone()).or_insert(*anchor); } }
+                for (token, claim) in &runs.claims {
+                    if !matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed) && self.scheduled_notices.insert(token.clone()) {
+                        out.push(format!("Your scheduled {} add-on has an interrupted or unresolved occurrence. Its last step may have happened; I won't replay it or claim it finished. Review its saved work before starting it again.", claim.plugin));
+                    }
+                }
+                let selected = due.into_iter().find(|(_, _, key)| !runs.claims.values().any(|claim| claim.schedule_key == *key && !matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed)));
+                let selected = if let Some((id, flow, key)) = selected {
+                    if runs.claims.len() >= 1024 { return Err(crate::error::AtlasError::Platform("scheduled add-on recovery history is full; saved occurrences are retained and no new occurrence started".into())); }
+                    let approved = reg.plugins.iter().find(|plugin| plugin.id == id).ok_or_else(|| crate::error::AtlasError::Platform("scheduled add-on approval disappeared; nothing started".into()))?;
+                    let token = format!("{key}@{t}");
+                    runs.ran(&key, t);
+                    runs.claims.insert(token.clone(), crate::plugins::ScheduleClaim { schedule_key: key, plugin: id.clone(), approved_sha256: approved.sha256.clone(), workflow: flow.clone(), reserved_at: t, phase: crate::plugins::SchedulePhase::Reserved, run: None });
+                    Some((id, flow, token))
+                } else { None };
+                if runs != before { runs.save(&self.store)?; }
+                self.scheduled_anchors_pending.clear();
+                Ok(selected)
+            })();
+            match reserved {
+                Ok(Some((id, flow, token))) => out.push(self.start_scheduled_flow(flow, id, token, t)),
+                Ok(None) => {},
+                Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {},
+                Err(error) => { let message = format!("Scheduled add-on work couldn't save its recovery claim, so no new steps started ({error})."); if self.scheduled_notices.insert(message.clone()) { out.push(message); } },
             }
         }
 
@@ -514,6 +601,7 @@ impl<'a> Daemon<'a> {
             }
         }
         let due = if known { self.publisher.due(t, online) } else { Vec::new() };
+        out.extend(self.check_publication_timeouts(t));
         for id in due {
             match delivery::plan(&self.publisher, &self.browser_cfg(), id, online) {
                 // Sent through Atlas's browser now (G2). The comment that
@@ -532,6 +620,7 @@ impl<'a> Daemon<'a> {
                     out.push(format!("Couldn't send: {why}"));
                 }
                 Err(delivery::Outcome::Sent(m)) => out.push(m),
+                Err(delivery::Outcome::Uncertain(m)) => out.push(m),
             }
         }
         // Problems you would want to know about before the send time arrives.
@@ -551,7 +640,20 @@ impl<'a> Daemon<'a> {
         // waiting".
         self.tick_laps.mark("connectivity");
         let lanes = self.lane_cfg();
-        for id in self.queue.ready_with(&signals, &lanes, t, self.connectivity.cached()) {
+        let ready = match self.queue.ready_durably(&self.store, &signals, &lanes, t, self.connectivity.cached()) {
+            Ok(ids) => ids,
+            Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // A backup owns the snapshot boundary briefly. Readiness
+                // was rolled back; retry next tick without claiming a start
+                // or announcing a disk failure.
+                Vec::new()
+            }
+            Err(e) => {
+                out.push(format!("Queued work did not start because I couldn't save its starting state: {e}."));
+                Vec::new()
+            }
+        };
+        for id in ready {
             let Some(task) = self.queue.tasks.iter().find(|x| x.id == id).cloned() else { continue };
             let intent = self.parser.parse(&task.command);
             let call = crate::policy::classify_with_policy(&intent, &self.memory, &self.cfg.policy);
@@ -562,8 +664,27 @@ impl<'a> Daemon<'a> {
                 self.backlog.record(&task.command, Blocker::NeedsApproval, t);
                 continue;
             }
+            self.last_crew_handoff = None;
+            let files_before = self.active_file_move_id();
             let result = self.execute(&intent);
-            let ok = !result.starts_with("error");
+            if let Some(files) = self.active_file_move_id().filter(|id| Some(*id) != files_before) {
+                if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.file_move_id = Some(files); task.result = Some(result.clone()); }
+                if let Err(e) = self.queue.save(&self.store) {
+                    self.stop_file_move(files);
+                    out.push(format!("Queued file ownership couldn't be saved ({e}); stop was requested. Check its outcome."));
+                }
+                continue;
+            }
+            if let Some(worker) = self.last_crew_handoff.filter(|worker| self.crew_links.get(worker).is_some_and(|link| matches!(link.label, "research" | "read-file" | "edit-media" | "studio" | "creator planning"))) {
+                self.queue.attach_worker(id, worker, &result);
+                if let Err(e) = self.queue.save(&self.store) {
+                    self.crew.ask_to_stop(worker);
+                    out.push(format!("The queued worker's ownership couldn't be saved ({e}); I asked it to stop. Its result is not confirmed."));
+                }
+                continue;
+            }
+            let receipt = self.execution_receipt.as_ref().filter(|(executed, _)| executed == &intent).map(|(_, outcome)| outcome);
+            let ok = receipt.map_or_else(|| !result.starts_with("error"), |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)));
             self.queue.finish(id, &result, ok);
             self.journal.record_at(Act::Scheduled, &task.command, ok, t);
             if !ok || call == Decision::ProceedAndReport {
@@ -909,27 +1030,8 @@ impl<'a> Daemon<'a> {
         // one occurrence from firing twice.
         // Kept until the late window is over too, so a late reminder is
         // said once, not every tick.
-        self.reminded.retain(|(_, start)| *start + crate::calendar::Calendar::REMIND_LATE_SECS > t);
-        for occ in self.calendar.due_reminders(t) {
-            let key = (occ.id, occ.start);
-            if self.reminded.contains(&key) {
-                continue;
-            }
-            let mins_away = occ.start.saturating_sub(t) / 60;
-            let when = if occ.start < t {
-                let ago = (t - occ.start) / 60;
-                if ago <= 1 { "just started".to_string() } else { format!("started {ago} minutes ago") }
-            } else if mins_away >= 60 {
-                format!("in {} hour{}", mins_away / 60, if mins_away / 60 == 1 { "" } else { "s" })
-            } else if mins_away <= 1 {
-                "in a moment".to_string()
-            } else {
-                format!("in {mins_away} minutes")
-            };
-            self.tell_where_you_are(&mut out, "Reminder", format!("Reminder: \"{}\" {when}.", occ.title), t);
-            self.reminded.insert(key);
-            self.journal.record_at(Act::Offered, &format!("reminder: {}", occ.title), true, t);
-        }
+        self.reminded.retain(|(_, start)| start.saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS) > t);
+        out.extend(self.calendar_reminders_tick(t));
         self.tick_laps.mark("calendar reminders");
 
         // Anything hand tracking has said since the last tick. It runs on its
@@ -978,28 +1080,27 @@ impl<'a> Daemon<'a> {
         // tick (2 Oct 2026): `due_for_backup` counts every file in every
         // backup on disk, and on Eric's laptop that ran every 1.3 s.
         let look = t >= self.next_backup_look
-            && t.saturating_sub(self.last_backup) > 3600;
+            && t.saturating_sub(self.last_backup_attempt) > 600;
         let bcfg = if look { self.backup_cfg() } else { BackupConfig::default() };
         if look {
             self.next_backup_look = t + 600;
         }
         if look && due_for_backup(&bcfg, t) {
             let root = self.store.root().to_path_buf();
+            let scope = crate::safety::check_configured_scope(&self.store, &self.notes_dir(), std::path::Path::new(&self.trash.cfg.dir));
+            let notes = self.notes_dir(); let trash = std::path::PathBuf::from(&self.trash.cfg.dir);
             let cfg_for_errand = bcfg.clone();
-            let work: crew::Work = Box::new(move |_stop| match back_up(&root, &cfg_for_errand, crate::store::now()) {
+            let work: crew::Work = Box::new(move |_stop| match scope.and_then(|_| crate::safety::back_up_with_inputs(&root, &cfg_for_errand, crate::store::now(), &notes, &trash)) {
                 Ok(b) => {
                     prune_backups(&cfg_for_errand);
                     Ok(format!("backed up {} files", b.files.unwrap_or(0)))
                 }
                 Err(e) => Err(e.to_string()),
             });
-            // Only mark the schedule satisfied if the crew actually took
-            // it. The bounded waiting list refusing is vanishingly
-            // unlikely for one periodic job, but if it happens, leaving
-            // `last_backup` alone means the next tick simply tries again
-            // rather than the backup silently never running.
+            // Acceptance records an attempt, not a completed backup. Failed
+            // jobs remain due and retry after the short attempt cooldown.
             if self.hand_off("backup", t, work, None, SpeakPolicy::ViaWatcher) {
-                self.last_backup = t;
+                self.last_backup_attempt = t;
             }
         }
 
@@ -1327,7 +1428,7 @@ impl<'a> Daemon<'a> {
             // ignoring the number. `config::PARSED_AND_NEVER_READ` named it;
             // nothing acted on it.
             let retention_cfg = self.tools_cfg().retention.clone();
-            let work: crew::Work = Box::new(move |_stop| {
+            let work: crew::Work = Box::new(move |stop| {
                 let items = crate::retention::survey(&root_for_errand);
                 let plans = crate::retention::plan(&items, &retention_cfg, crate::store::now());
                 let mut lines = Vec::new();
@@ -1336,7 +1437,7 @@ impl<'a> Daemon<'a> {
                 for stray in crate::retention::out_of_bounds(&plans, &root_for_errand) {
                     lines.push(format!("refused to delete outside data/: {}", stray.display()));
                 }
-                let freed = crate::retention::apply(&plans, &root_for_errand);
+                let freed = crate::retention::apply_until(&plans, &root_for_errand, &|| stop.checkpoint()).map_err(|error| format!("Cleanup did not finish ({error}); files that were not deleted remain available for a later attempt."))?;
                 if freed > 0 {
                     lines.push(format!("reclaimed {} MB", freed / (1024 * 1024)));
                 }
@@ -1429,7 +1530,7 @@ impl<'a> Daemon<'a> {
             let rolls_at = self.rhythm.rolls_at(&dcfg);
             let this_hour = crate::localclock::hour_here(t);
             let arrival =
-                crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at, t, rolls_at, &dcfg);
+                crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at.max(self.last_brief_attempt_at), t, rolls_at, &dcfg);
 
             // 30 Sep 2026: and you're actually here. `arriving` compares
             // your last turn with now, so on the tick it read "a gap and a
@@ -1437,44 +1538,20 @@ impl<'a> Daemon<'a> {
             // was said to an empty room -- and marked given.
             let here_now = self.quiet_for(t) < BRIEF_WHEN_HERE_WITHIN_SECS;
             if bcfg.enabled
+                && self.automatic_brief_available(t)
                 && here_now
                 && self.work_session.is_none()
                 && arrival == crate::daily::Arrival::Starting
                 && this_hour >= bcfg.not_before_hour
             {
-                self.last_brief_at = t;
-                let _ = self.store.save("last_brief_at", &self.last_brief_at);
-                let b = self.brief_now(t);
-                // `b.is_empty()` rather than a check on the sentence: an
-                // empty brief still *speaks* -- "Nothing needs you. I'll get
-                // on with the rest." -- which is the right answer to someone
-                // who just asked and the wrong thing to volunteer every
-                // morning for the rest of your life.
-                // One thing noticed (idea 11): once a day, with the brief --
-                // said to someone who's arrived, never to an empty room.
-                let mut b = b;
-                let today = crate::localclock::midnight(t, crate::localclock::offset_secs());
-                let noticed_on: u64 = self.store.load("noticed_on");
-                if noticed_on != today {
-                    if let Some(n) = crate::daily::one_thing_noticed(&self.noticed_days(t)) {
-                        b.noticed = Some(n);
-                        let _ = self.store.save("noticed_on", &today);
-                    }
-                }
-                if !b.is_empty() {
-                    self.last_greeted_at = t;
-                    let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
-                    let line = crate::brief::spoken(&b);
-                    match self.morning_brief.take() {
-                        // The night finished and this is the same morning.
-                        // Both, in the order they happened, rather than one
-                        // silently overwriting the other -- which is what a
-                        // plain assignment here would have done, on exactly
-                        // the mornings there was most to say.
-                        Some(night) => self.morning_brief = Some(format!("{night} {line}")),
-                        None => self.morning_brief = Some(line),
-                    }
-                }
+                // Choose the original greeting eligibility before the attempt
+                // timestamp suppresses that same arrival's later Hello gate.
+                let greeting = if crate::returning::hello_now(self.last_greeted_at.max(self.last_brief_attempt_at), t, self.quiet_for(t)) == crate::returning::Hello::Say {
+                    crate::nudge::Part::from_hour(this_hour)
+                } else { None };
+                self.last_brief_attempt_at = t;
+                let started = match greeting { Some(part) => self.request_daypart_brief(t, part), None => self.request_brief(t) };
+                if let Err(why) = started { self.automatic_brief_failed(); out.push(why); }
             }
         }
 
@@ -1520,9 +1597,7 @@ impl<'a> Daemon<'a> {
         // The morning brief, once, the first time Atlas gets to speak after a
         // night. Taken rather than read: a brief said twice is worse than one
         // said late, and the night it describes is already over.
-        if let Some(brief) = self.morning_brief.take() {
-            out.push(brief);
-        }
+        self.offer_ready_brief(&mut out);
 
         // --- Has the index stopped matching the folder? ---
         //
@@ -1650,7 +1725,7 @@ impl<'a> Daemon<'a> {
         // already greeted you, and an empty hello isn't said at all.
         let nudge = match nudge {
             Some(n) if n.trigger == crate::nudge::Trigger::Daypart => {
-                match crate::returning::hello_now(self.last_greeted_at, t, self.quiet_for(t)) {
+                match crate::returning::hello_now(self.last_greeted_at.max(self.last_brief_attempt_at), t, self.quiet_for(t)) {
                     crate::returning::Hello::Hold => {
                         self.nudger.unsaid(&n);
                         None
@@ -1660,29 +1735,13 @@ impl<'a> Daemon<'a> {
                         None
                     }
                     crate::returning::Hello::Say => {
-                        let b = self.brief_now(t);
-                        let open = self.nudger.goals.iter().filter(|g| !g.muted).count();
-                        match (crate::nudge::Part::from_hour(hour), b.is_empty()) {
-                            (Some(part), false) => Some(crate::nudge::daypart_with_brief(part, &b)),
-                            _ if open > 0 => Some(n),
-                            (part, _) => {
-                                let knows_you = self.facts.get("push them on").is_some()
-                                    || !self.facts.of_kind(crate::facts::Kind::Project).is_empty()
-                                    || !self.person.projects.is_empty();
-                                let offered: bool = self.store.load("offered_get_to_know");
-                                let greeting = part.map(|p| p.greeting()).unwrap_or("Hello");
-                                match crate::returning::empty_hello(greeting, knows_you, offered) {
-                                    Some(message) => {
-                                        let _ = self.store.save("offered_get_to_know", &true);
-                                        Some(crate::nudge::Nudge { message, ..n })
-                                    }
-                                    None => {
-                                        let _ = self.store.save("greeted_part", &self.nudger.last_daypart());
-                                        None
-                                    }
-                                }
-                            }
-                        }
+                        if self.automatic_brief_available(t) {
+                            self.last_brief_attempt_at = t;
+                            if let Err(why) = match crate::nudge::Part::from_hour(hour) { Some(part) => self.request_daypart_brief(t, part), None => self.request_brief(t) } { self.automatic_brief_failed(); out.push(why); }
+                        } else { self.nudger.unsaid(&n); }
+                        // The completed brief comes back through the ordinary
+                        // morning-offer gate. Preparing is not a greeting.
+                        None
                     }
                 }
             }
@@ -1766,7 +1825,7 @@ impl<'a> Daemon<'a> {
             self.index_behind = true;
             self.persist();
             self.index_behind = false;
-            self.last_persist = t.max(1);
+            self.last_persist = if self.persist_failures.iter().any(|(what, _)| *what == "state snapshot busy") { 0 } else { t.max(1) };
         }
     }
 
@@ -1852,7 +1911,7 @@ impl<'a> Daemon<'a> {
     ) -> Option<Vec<u8>> {
         let mut bundle =
             {
-                self.note_addon_changes(now);
+                self.note_addon_changes(now).ok()?;
                 crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
             };
         bundle.belongs_to = cfg.belongs_to.clone();
@@ -1907,7 +1966,11 @@ impl<'a> Daemon<'a> {
             skews.push(skew.plain(&bundle.from_name));
         }
         let sealed = crate::sync::peek(text).is_some();
-        for said in self.take_in_synced(&fresh, sealed, &bundle.from_name) {
+        let applied = match self.take_in_synced(&fresh, sealed, &bundle.from_name) {
+            Ok(applied) => applied,
+            Err(error) => { clashes.push(error); return (0, clashes, skews); }
+        };
+        for said in applied {
             clashes.push(said);
         }
         let taken = fresh.len();
@@ -2092,7 +2155,7 @@ impl<'a> Daemon<'a> {
 
     /// Record what changed about your add-ons since your other devices were
     /// last told, as ordinary sync events (`plugins::changes_to_carry`).
-    fn note_addon_changes(&mut self, now: u64) {
+    fn note_addon_changes(&mut self, now: u64) -> std::result::Result<(), String> {
         // Apple Weather for your other devices (item 24): a week's token,
         // renewed with three days left, from the device with the key.
         let carried: u64 = self.store.load("weatherkit_carried_until");
@@ -2103,15 +2166,14 @@ impl<'a> Daemon<'a> {
             self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
             let _ = self.store.save("weatherkit_carried_until", &until);
         }
-        for (id, field, to) in crate::plugins::changes_to_carry(&self.store, &self.plugins_dir) {
-            self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
-        }
+        crate::plugins::append_changes_checked(&self.store, &self.plugins_dir, &mut self.synclog, now)?;
         // Your groups' lists, and this device's key, for your other devices:
         // what lets your phone manage a group your laptop made.
         let me = self.my_key().unwrap_or_default();
         for (id, field, to) in crate::groups::changes_to_carry(&self.store, &me) {
             self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
         }
+        Ok(())
     }
 
     /// Make what your other device did true here too.
@@ -2122,45 +2184,48 @@ impl<'a> Daemon<'a> {
     /// that travelled. Now a capture lands in the notebook, and an add-on
     /// change lands in the add-ons (`plugins::take_synced`, which only takes
     /// an approval from a sealed bundle). Returns anything worth saying.
-    fn take_in_synced(&mut self, fresh: &[crate::sync::Event], sealed: bool, from: &str) -> Vec<String> {
+    fn take_in_synced(&mut self, fresh: &[crate::sync::Event], sealed: bool, from: &str) -> std::result::Result<Vec<String>, String> {
+        // Do not acknowledge a batch while a backup owns the state lock.
+        // The sender retains those events for a later pass.
+        let _transaction = self.store.transaction().map_err(|error| format!("Changes from {from} are waiting for storage: {error}"))?;
         let mut said = Vec::new();
         let mut notes_changed = false;
         for e in fresh {
             match &e.what {
-                crate::sync::What::Captured { text, .. } => {
+                crate::sync::What::Captured { .. } => {
                     let cfg = self.tools_cfg().capture.clone();
-                    self.notebook.capture(text, None, e.at, &cfg);
+                    self.notebook.capture_synced(e, &cfg);
                     notes_changed = true;
                 }
                 crate::sync::What::Changed { id, to, .. }
                     if id.starts_with(crate::groups::SYNC_GROUP) || id.starts_with(crate::groups::SYNC_DEVICE) =>
                 {
                     let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok();
-                    if let Some(s) = crate::groups::take_synced(&self.store, me.as_ref(), id, to, sealed) {
+                    if let Some(s) = crate::groups::take_synced_checked(&self.store, me.as_ref(), id, to, sealed).map_err(|error| format!("Group changes from {from} were not saved: {error}"))? {
                         said.push(s);
                     }
                 }
                 // One conversation on every device (item 16): the thread, facts,
                 // the later list and reminders -- your own devices only.
-                crate::sync::What::Said { text, .. } => self.take_an_exchange(text, sealed),
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::FACT_PREFIX) => self.take_a_fact(to, sealed),
+                crate::sync::What::Said { text, .. } => self.take_an_exchange(text, sealed).map_err(|error| format!("Conversation from {from} was not saved: {error}"))?,
+                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::FACT_PREFIX) => self.take_a_fact(e, sealed).map_err(|error| format!("Facts from {from} were not saved: {error}"))?,
                 crate::sync::What::Changed { id, .. } if id.starts_with(onethread::LATER_PREFIX) => {
-                    self.take_a_later_item(e, sealed)
+                    self.take_a_later_item(e, sealed).map_err(|error| format!("Later-list changes from {from} were not saved: {error}"))?
                 }
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(onethread::REMIND_PREFIX) => {
-                    self.take_a_reminder(id, to, sealed)
+                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::REMIND_PREFIX) => {
+                    self.take_a_reminder(e, sealed).map_err(|error| format!("Reminders from {from} were not saved: {error}"))?
                 }
                 // Asked of the laptop from your phone, a yes to one held, and
                 // the laptop's answer back (item 24) -- your own devices only.
                 crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::remote::ASK_PREFIX) => {
-                    self.take_a_request_from_the_phone(id, to, sealed);
+                    self.take_a_request_from_the_phone(id, to, sealed).map_err(|error| format!("Phone request from {from} was not saved: {error}"))?;
                 }
                 crate::sync::What::Changed { id, .. } if id.starts_with(crate::remote::YES_PREFIX) => {
                     let now = crate::store::now();
-                    said.extend(self.take_a_yes_from_the_phone(id, sealed, now));
+                    said.extend(self.take_a_yes_from_the_phone(id, sealed, now).map_err(|error| format!("Phone approval from {from} was not saved: {error}"))?);
                 }
                 crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::remote::ANSWER_PREFIX) => {
-                    if let Some(s) = self.take_an_answer_from_the_laptop(id, to, sealed) {
+                    if let Some(s) = self.take_an_answer_from_the_laptop(id, to, sealed).map_err(|error| format!("Laptop answer from {from} was not saved: {error}"))? {
                         said.push(s);
                     }
                 }
@@ -2185,7 +2250,7 @@ impl<'a> Daemon<'a> {
                     }
                 }
                 crate::sync::What::Changed { id, field, to } if id.starts_with(crate::plugins::SYNC_PREFIX) => {
-                    if let Some(s) = crate::plugins::take_synced(
+                    if let Some(s) = crate::plugins::take_synced_versioned(
                         &self.store,
                         &self.plugins_dir,
                         &self.cfg.commands,
@@ -2194,7 +2259,8 @@ impl<'a> Daemon<'a> {
                         to,
                         sealed,
                         from,
-                    ) {
+                        Some(crate::sync::Version::of(e)),
+                    ).map_err(|error| format!("Add-on changes from {from} were not saved: {error}"))? {
                         said.push(s);
                     }
                 }
@@ -2203,10 +2269,10 @@ impl<'a> Daemon<'a> {
         }
         if notes_changed {
             if let Err(e) = self.notebook.save(&self.store) {
-                said.push(format!("Notes came over from {from} and I couldn't save them: {e}"));
+                return Err(format!("Notes came over from {from} and I couldn't save them: {e}"));
             }
         }
-        said
+        Ok(said)
     }
 
     /// The household key for sync, loaded and derived the same way the folder
@@ -2472,7 +2538,11 @@ impl<'a> Daemon<'a> {
                     skews.push(skew.plain(&bundle.from_name));
                 }
                 let sealed = crate::sync::peek(&raw).is_some();
-                for said in self.take_in_synced(&fresh, sealed, &bundle.from_name) {
+                let applied = match self.take_in_synced(&fresh, sealed, &bundle.from_name) {
+                    Ok(applied) => applied,
+                    Err(error) => { taken = taken.saturating_sub(fresh.len()); clashes.push(error); continue; }
+                };
+                for said in applied {
                     clashes.push(said);
                 }
                 for e in fresh {
@@ -2487,7 +2557,7 @@ impl<'a> Daemon<'a> {
 
         let mut bundle =
             {
-                self.note_addon_changes(now);
+                if let Err(error) = self.note_addon_changes(now) { return format!("Add-on changes remain pending; sync was not sent: {error}"); }
                 crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
             };
         // Stamped on the way out, so the other side can tell whose it is
@@ -2980,3 +3050,75 @@ impl Daemon<'_> {
 /// How long after the model server starts its memory is still settling: the
 /// memory finding waits this out rather than reporting Atlas's own load.
 const MODEL_LOAD_SETTLES: std::time::Duration = std::time::Duration::from_secs(180);
+
+#[cfg(test)]
+mod sync_storage_recovery {
+    use super::*;
+    #[test]
+    fn reminder_delete_survives_delayed_add_and_local_cancellation_recovers_after_restart() {
+        let cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let plat = crate::platform::mock::MockPlatform::new(Vec::new());
+        let now = crate::store::now();
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-reminder-sync-{}-{stamp}", std::process::id()));
+        let store = Store::new(root.clone());
+        let proactive = || crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default());
+        let mut daemon = Daemon::new(&cfg, &plat, None, store.clone(), proactive());
+        let mut log = crate::sync::Log::new("phone");
+        let key = "remind:phone:1";
+        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: serde_json::json!({ "command": "reminder check the studio", "due": now + 3600 }).to_string() }, now);
+        let add = log.events[0].clone();
+        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: String::new() }, now + 1);
+        let remove = log.events[1].clone();
+        daemon.take_in_synced(&[remove, add.clone()], true, "phone").unwrap();
+        assert!(daemon.reminders_elsewhere().is_empty());
+        let rows: Vec<onethread::Elsewhere> = store.load_checked(onethread::ELSEWHERE_KEY).unwrap().unwrap();
+        assert_eq!(rows.len(), 1); assert_eq!(rows[0].due, 0);
+        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: serde_json::json!({ "command": "reminder check the studio", "due": now + 7200 }).to_string() }, now + 2);
+        daemon.take_in_synced(&[log.events[2].clone()], true, "phone").unwrap();
+        daemon.cancel_elsewhere(key, now + 3).unwrap();
+        drop(daemon); // No sync-log save: the cancellation intent must survive.
+        let mut restarted = Daemon::new(&cfg, &plat, None, store.clone(), proactive());
+        restarted.save_the_synclog_if_changed();
+        let saved: Option<crate::sync::Log> = store.load_checked("synclog").unwrap().unwrap();
+        assert!(saved.unwrap().events.iter().any(|e| matches!(&e.what, crate::sync::What::Changed { id, to, .. } if id == key && to.is_empty())));
+        let rows: Vec<onethread::Elsewhere> = store.load_checked(onethread::ELSEWHERE_KEY).unwrap().unwrap();
+        assert!(!rows[0].cancel_pending);
+        restarted.take_in_synced(&[add], true, "phone").unwrap();
+        assert!(restarted.reminders_elsewhere().is_empty());
+        drop(restarted); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn occupied_storage_defers_the_batch_and_capture_retry_survives_restart() {
+        let cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let plat = crate::platform::mock::MockPlatform::new(Vec::new());
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-sync-storage-{}-{stamp}", std::process::id()));
+        let store = Store::new(root.clone());
+        let mut daemon = Daemon::new(&cfg, &plat, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let mut log = crate::sync::Log::new("phone");
+        log.append(crate::sync::What::Captured { id: "phone-note-1".into(), text: "Keep the studio setup idea".into() }, 100);
+        let fresh = log.events.clone();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let occupied = store.clone();
+        let worker = std::thread::spawn(move || {
+            let _guard = occupied.transaction().unwrap();
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        ready_rx.recv().unwrap();
+        let deferred = daemon.take_in_synced(&fresh, true, "phone");
+        release_tx.send(()).unwrap(); worker.join().unwrap();
+        assert!(deferred.is_err());
+        assert!(daemon.notebook.notes.is_empty());
+        assert!(daemon.take_in_synced(&fresh, true, "phone").is_ok());
+        assert!(daemon.take_in_synced(&fresh, true, "phone").is_ok());
+        assert_eq!(daemon.notebook.notes.len(), 1);
+        let mut notebook = crate::capture::Notebook::load(&store);
+        assert!(!notebook.capture_synced(&fresh[0], &crate::capture::CaptureConfig::default()));
+        assert_eq!(notebook.notes.len(), 1);
+        drop(daemon);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

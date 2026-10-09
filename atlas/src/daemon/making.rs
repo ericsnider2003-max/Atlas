@@ -56,13 +56,12 @@ impl<'a> Daemon<'a> {
     pub(super) fn test_everything(&mut self) -> String {
         let exe = std::env::current_exe().unwrap_or_else(|_| "atlas".into());
         let reports = crate::selftest::reports_dir(&self.store.install_root());
-        let work: crew::Work = Box::new(move |_c| {
-            let out = std::process::Command::new(&exe)
-                .arg("selftest")
-                .stdin(std::process::Stdio::null())
-                .output()
-                .map_err(|e| format!("the test wouldn't start: {e}"))?;
-            let text = String::from_utf8_lossy(&out.stdout);
+        let work: crew::Work = Box::new(move |ctl| {
+            let mut command = crate::tools::command(&exe);
+            command.arg("selftest");
+            let stop = || ctl.stopping();
+            let (passed, text) = crate::tools::run_scoped(&mut command, std::time::Duration::from_secs(3600), 8 * 1024 * 1024, None, Some(&stop)).said(20_000);
+            if !passed { return Err(format!("The self-test did not finish successfully: {text}")); }
             let summary = text.lines().rev().find(|l| l.starts_with("Tested ")).unwrap_or("The test ended without a summary.").to_string();
             Ok(format!("{summary} The full report is in {}.", reports.join("latest.md").display()))
         });
@@ -342,6 +341,8 @@ impl<'a> Daemon<'a> {
         let then = matches!(first, crate::build_it::Writer::Local | crate::build_it::Writer::Coder).then(|| writers.get(1).map(|(w, _)| w.named())).flatten();
         let store = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
+            let stop = || ctl.stopping();
+            let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(3600), &stop);
             let mut sandbox = match crate::sandbox::Sandbox::create(&base, "build") {
                 Ok(s) => s,
                 Err(e) => return Err(format!("couldn't make a sandbox to build in: {e}")),
@@ -352,10 +353,11 @@ impl<'a> Daemon<'a> {
             let mut check = |code: &str| -> crate::build_it::Check {
                 // Between rounds: a pause holds with the draft so far intact.
                 // unheard-ok: returns `bool`, not a Result
-                let _ = ctl.checkpoint();
-                check_draft_in_sandbox(&mut sandbox, lang, code)
+                if ctl.checkpoint() { return crate::build_it::Check::Failed("stopped before checking the draft".into()); }
+                check_draft_in_sandbox_controlled(&mut sandbox, lang, code, Some(&budget))
             };
-            let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = writers.iter().map(|(w, l)| (*w, l.as_ref())).collect();
+            let bounded: Vec<_> = writers.iter().map(|(w, l)| (*w, crate::selfwork::BoundedModel { model: l.as_ref(), budget: &budget })).collect();
+            let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = bounded.iter().map(|(w, l)| (*w, l as &dyn crate::brain::Llm)).collect();
             let (outcome, by) = crate::build_it::build_with(&desc, lang, &refs, max_rounds, &mut check);
             // The sandbox has done its job; left behind, one piled up per build.
             crate::heard!(sandbox.discard());
@@ -433,8 +435,10 @@ impl<'a> Daemon<'a> {
         let task = crate::coding_agent::task(desc, lang, &folder, fresh);
         let base = crate::roots::tmp_dir().join("builds");
         let store = self.store.clone();
-        let work: crew::Work = Box::new(move |_ctl| {
-            let ran = crate::coding_agent::run(agent, &program, &folder, &task, 30 * 60);
+        let work: crew::Work = Box::new(move |ctl| {
+            let stopped = || ctl.stopping();
+            let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(3600), &stopped);
+            let ran = crate::coding_agent::run_controlled(agent, &program, &folder, &task, 30 * 60, &|| ctl.stopping());
             if !ran.finished {
                 return Ok(format!("{} didn't finish the build: {}", agent.named(), opening_of(&ran.said)));
             }
@@ -451,14 +455,14 @@ impl<'a> Daemon<'a> {
                 let code = std::fs::read_to_string(main).unwrap_or_default();
                 match crate::sandbox::Sandbox::create(&base, "agent-build") {
                     Ok(mut sb) => {
-                        let c = check_draft_in_sandbox(&mut sb, lang, &code);
+                        let c = check_draft_in_sandbox_controlled(&mut sb, lang, &code, Some(&budget));
                         crate::heard!(sb.discard());
                         c
                     }
                     Err(e) => crate::build_it::Check::Failed(format!("couldn't make a sandbox to check it in: {e}")),
                 }
             } else {
-                run_ladder_in(&folder, lang, false)
+                run_ladder_in_controlled(&folder, lang, false, Some(&budget))
             };
             // The agent's file is the one handed over; a rewrite made in the
             // checking copy isn't carried back into it.
@@ -496,13 +500,16 @@ impl<'a> Daemon<'a> {
         let task = crate::coding_agent::task(what, lang, &root, false);
         let project_name = project.to_string();
         let copy_said = copy_to.display().to_string();
-        let work: crew::Work = Box::new(move |_ctl| {
+        let work: crew::Work = Box::new(move |ctl| {
             // 500 MB of source is far past any project this is for.
-            if let Err(why) = crate::coding_agent::keep_a_copy(&root, &copy_to, 500 * 1024 * 1024) {
+            let stopped = || ctl.stopping();
+            let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(3600), &stopped);
+            budget.check()?;
+            if let Err(why) = crate::coding_agent::keep_a_copy_controlled(&root, &copy_to, 500 * 1024 * 1024, Some(&budget)) {
                 return Ok(format!("I didn't let {} touch {project_name}: I couldn't keep a copy of it first ({why}).", agent.named()));
             }
-            let ran = crate::coding_agent::run(agent, &program, &root, &task, 30 * 60);
-            let check = run_ladder_in(&root, lang, false);
+            let ran = crate::coding_agent::run_controlled(agent, &program, &root, &task, 30 * 60, &|| ctl.stopping());
+            let check = run_ladder_in_controlled(&root, lang, false, Some(&budget));
             let verdict = match &check {
                 // A folder of yours is checked, never rewritten.
                 crate::build_it::Check::Rewrote(..) => unreachable!("run_ladder_in(.., false) doesn't rewrite"),
@@ -711,6 +718,8 @@ impl<'a> Daemon<'a> {
         };
 
         let work: crew::Work = Box::new(move |ctl| {
+            let stop = || ctl.stopping();
+            let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(3600), &stop);
             let prompt = if context.is_empty() {
                 desc.clone()
             } else {
@@ -732,9 +741,9 @@ impl<'a> Daemon<'a> {
             let mut check = |code: &str| -> crate::build_it::Check {
                 // Between rounds: a pause holds with the draft so far intact.
                 // unheard-ok: returns `bool`, not a Result
-                let _ = ctl.checkpoint();
+                if ctl.checkpoint() { return crate::build_it::Check::Failed("stopped before checking the draft".into()); }
                 if let Some((rel, cmd)) = in_place.as_ref().filter(|_| !project_says_nothing.get()) {
-                    match check_in_project(root, rel, cmd, code, &base) {
+                    match check_in_project_controlled(root, rel, cmd, code, &base, Some(&budget)) {
                         Some(c) => {
                             proven.set(matches!(c, crate::build_it::Check::Passed(_)));
                             return c;
@@ -743,9 +752,10 @@ impl<'a> Daemon<'a> {
                     }
                 }
                 proven.set(false);
-                check_draft_in_sandbox(&mut sandbox, lang, code)
+                check_draft_in_sandbox_controlled(&mut sandbox, lang, code, Some(&budget))
             };
-            let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = writers.iter().map(|(w, l)| (*w, l.as_ref())).collect();
+            let bounded: Vec<_> = writers.iter().map(|(w, l)| (*w, crate::selfwork::BoundedModel { model: l.as_ref(), budget: &budget })).collect();
+            let refs: Vec<(crate::build_it::Writer, &dyn crate::brain::Llm)> = bounded.iter().map(|(w, l)| (*w, l as &dyn crate::brain::Llm)).collect();
             let mut by = None;
             let outcome = match phases.done::<crate::build_it::Outcome>("1-draft") {
                 Some(o) => o,
@@ -946,6 +956,62 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    // Call only while holding the root writer lease. A mismatched cache is
+    // never saved over newer provider/phone events or unsaved local changes.
+    fn checked_calendar_for_change(&self) -> std::result::Result<crate::calendar::Calendar, String> {
+        let disk = self.store.load_checked_bounded::<crate::calendar::Calendar>("calendar", 2 * 1024 * 1024)
+            .map_err(|error| format!("The saved calendar could not be safely read ({error}); nothing was scheduled."))?.unwrap_or_default();
+        if brief_snapshot_value(&disk)? != brief_snapshot_value(&self.calendar)? {
+            self.calendar.request_refresh();
+            return Err("The calendar changed since this view, or has unsaved changes. Refresh it before scheduling; nothing was overwritten.".into());
+        }
+        Ok(disk)
+    }
+
+    fn check_proposals_current(&mut self) -> std::result::Result<(), String> {
+        let viewed = self.proposals.clone();
+        self.reconcile_proposals()?;
+        if self.proposals != viewed { return Err("The meeting proposals were refreshed after an unconfirmed save. Review the current proposal before deciding.".into()); }
+        let disk = match self.store.load_checked_bounded::<Vec<crate::booking::Proposal>>("proposals", 2 * 1024 * 1024) {
+            Ok(saved) => saved.unwrap_or_default(),
+            Err(error) => {
+                self.proposals_recovery = Some(self.proposals.clone());
+                return Err(format!("The saved meeting proposals could not be safely read ({error}); no decision was recorded."));
+            }
+        };
+        if disk != self.proposals { self.proposals_recovery = Some(self.proposals.clone()); return Err("The meeting proposals changed since this view. Refresh them before deciding; nothing was overwritten.".into()); }
+        Ok(())
+    }
+
+    // A failed save can have published its bytes before acknowledgment failed.
+    // Reconcile the exact rolled-back cache before any subsequent whole-list write.
+    pub(super) fn reconcile_proposals(&mut self) -> std::result::Result<(), String> {
+        let Some(previous) = self.proposals_recovery.as_ref() else { return Ok(()); };
+        if &self.proposals != previous {
+            return Err("Meeting proposals have unsaved changes while an earlier save is unconfirmed; refresh is required.".into());
+        }
+        let saved = self.store.load_checked_bounded::<Vec<crate::booking::Proposal>>("proposals", 2 * 1024 * 1024)
+            .map_err(|error| format!("Meeting proposal recovery is unavailable ({error}); saved proposals were not overwritten."))?;
+        if saved.is_none() && !previous.is_empty() {
+            return Err("The saved meeting proposals are missing; the last known view was retained.".into());
+        }
+        self.proposals = saved.unwrap_or_default();
+        self.proposals_recovery = None;
+        Ok(())
+    }
+
+    fn save_proposals_with(&mut self, previous: Vec<crate::booking::Proposal>,
+        write: impl FnOnce(&crate::store::Store, &[crate::booking::Proposal]) -> crate::error::Result<()>) -> crate::error::Result<()> {
+        match write(&self.store, &self.proposals) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.proposals = previous;
+                self.proposals_recovery = Some(self.proposals.clone());
+                Err(error)
+            }
+        }
+    }
+
     /// Put something on your calendar. Reads the time from your words; if it
     /// can't, it asks rather than guessing. Notes any clash, but still files it
     /// — a clash is yours to sort out, not a reason to refuse.
@@ -981,6 +1047,15 @@ impl<'a> Daemon<'a> {
         // The title is the request with the time words trimmed off the ends,
         // so "schedule lunch tomorrow at 12" files as "lunch".
         let title = crate::calendar::event_title(what);
+        let calendar_store = self.store.clone();
+        let _transaction = match calendar_store.transaction() {
+            Ok(guard) => guard,
+            Err(error) => return format!("The calendar is waiting for local storage ({error}); this event has not been saved."),
+        };
+        let previous = match self.checked_calendar_for_change() {
+            Ok(calendar) => calendar,
+            Err(why) => return why,
+        };
         // Expanded so a booking landing on a recurring slot — next Tuesday's
         // standup — is caught, not just one whose single stored time overlaps.
         let clashes = self.calendar.clashes_expanded(when.start, when.end);
@@ -1008,14 +1083,21 @@ impl<'a> Daemon<'a> {
             crate::calendar::EventKind::TimeBlock => "Blocked off",
             crate::calendar::EventKind::Meeting => "On the calendar",
         };
-        let id = self.calendar.add_full(&title, when, None, space, kind, repeat, now);
-        self.calendar.keep_wall_clock(id, &zone);
+        let mut staged = previous;
+        let id = staged.add_full(&title, when, None, space, kind, repeat, now);
+        staged.keep_wall_clock(id, &zone);
         // A reminder, if you asked for one — "remind me 10 minutes before".
         let remind = crate::calendar::reminder_from(what);
         if remind.is_some() {
-            self.calendar.set_reminder(id, remind);
+            staged.set_reminder(id, remind);
         }
-        let _ = self.calendar.save(&self.store);
+        if let Err(error) = staged.save(&self.store) {
+            self.calendar.request_refresh();
+            // A failed save can follow publication. Keep the previous cache and
+            // its CAS baseline; no success/history receipt is produced.
+            return format!("I couldn't confirm the calendar save ({error}). Check the calendar before trying again; this event's saved status is unconfirmed.");
+        }
+        self.calendar = staged;
         let ev = self.calendar.event(id);
         let whenn = ev.map(|e| e.say_when_in(&zone)).unwrap_or_default();
         self.history.note(
@@ -1031,12 +1113,15 @@ impl<'a> Daemon<'a> {
         let remind_note = match remind {
             Some(m) if m % 60 == 0 && m >= 60 => {
                 let h = m / 60;
-                format!(" I'll remind you {h} hour{} before.", if h == 1 { "" } else { "s" })
+                format!(" Reminder set for {h} hour{} before.", if h == 1 { "" } else { "s" })
             }
-            Some(m) => format!(" I'll remind you {m} minutes before."),
+            Some(m) => format!(" Reminder set for {m} minutes before."),
             None => String::new(),
         };
-        format!("{lead}: \"{title}\"{side}, {whenn}.{clash_note}{remind_note}")
+        let held = if remind.is_some() && !self.tools_cfg().sound.may_pop_up(false) {
+            " Your current interruption setting holds routine reminder alerts in Outstanding until delivery is allowed."
+        } else { "" };
+        format!("{lead}: \"{title}\"{side}, {whenn}.{clash_note}{remind_note}{held}")
     }
 
     /// Read your calendar back — a window of days, soonest first.
@@ -1045,6 +1130,18 @@ impl<'a> Daemon<'a> {
         if !cfg.enabled {
             return "The calendar is switched off in your settings.".into();
         }
+        if let Some(error) = self.calendar.availability_error() {
+            return format!("Your saved calendar is unavailable ({error}). Its last known view was retained; I can't confirm what's scheduled until it is refreshed.");
+        }
+        let calendar = match self.store.load_checked_bounded::<crate::calendar::Calendar>("calendar", 2 * 1024 * 1024) {
+            Err(error) => return format!("Your saved calendar is unavailable ({error}); I can't confirm what's scheduled."),
+            Ok(None) if self.calendar.len() != 0 => return "The saved calendar is missing. Its last known view was retained; I can't confirm what's scheduled.".into(),
+            Ok(saved) => {
+                let calendar = saved.unwrap_or_default();
+                if match (brief_snapshot_value(&calendar), brief_snapshot_value(&self.calendar)) { (Ok(saved), Ok(cached)) => saved != cached, _ => true } { self.calendar.request_refresh(); }
+                calendar
+            }
+        };
         // The turn's time, not the wall clock's (28 Sep 2026): "what's on
         // today" asked at 23:59 and answered at 00:00 read the wrong day.
         let now = self.now_acting();
@@ -1078,7 +1175,7 @@ impl<'a> Daemon<'a> {
         } else {
             (now, now + days as u64 * 86_400)
         };
-        let mut events = self.calendar.occurrences_between(from, to);
+        let mut events = calendar.occurrences_between(from, to);
         // Narrow to one side of the firewall when a business was named.
         if business {
             events.retain(|e| e.space == only);
@@ -1102,7 +1199,7 @@ impl<'a> Daemon<'a> {
         lines.join("\n")
     }
 
-    fn calendar_cfg(&self) -> crate::calendar::CalendarConfig {
+    pub(super) fn calendar_cfg(&self) -> crate::calendar::CalendarConfig {
         self.tools_ref().map(|t| t.calendar.clone()).unwrap_or_default()
     }
 
@@ -1225,8 +1322,17 @@ impl<'a> Daemon<'a> {
             let mins = p.times.first().map(|s| s.mins).unwrap_or(30);
             let alternatives = crate::booking::could_offer(&busy, now, mins, &cfg, 3, &self.home_zone());
             let line = crate::booking::to_decide(&p, &assessed, &alternatives);
+            let proposal_store = self.store.clone();
+            let _transaction = match proposal_store.transaction() {
+                Ok(guard) => guard,
+                Err(error) => return format!("I couldn't save this meeting proposal yet ({error}); no decision has been recorded."),
+            };
+            if let Err(why) = self.check_proposals_current() { return why; }
+            let previous = self.proposals.clone();
             self.proposals.push(p);
-            let _ = self.store.save("proposals", &self.proposals);
+            if let Err(error) = self.save_proposals_with(previous, |store, proposals| store.save("proposals", &proposals)) {
+                return format!("The meeting proposal's saved status is unconfirmed ({error}). Refresh it before deciding; I haven't accepted it.");
+            }
             return line;
         }
 
@@ -1258,6 +1364,12 @@ impl<'a> Daemon<'a> {
         cfg: &crate::booking::BookingConfig,
     ) -> String {
         use crate::booking::{Fit, State};
+        let proposal_store = self.store.clone();
+        let _transaction = match proposal_store.transaction() {
+            Ok(guard) => guard,
+            Err(error) => return format!("The meeting decision is waiting for local storage ({error}); it has not been recorded."),
+        };
+        if let Err(why) = self.check_proposals_current() { return why; }
         let p = self.proposals[i].clone();
         match state {
             State::Accepted => {
@@ -1278,22 +1390,12 @@ impl<'a> Daemon<'a> {
                             end: s.start + s.mins as u64 * 60,
                             all_day: false,
                         };
-                        let id = self.calendar.add_in(
-                            &title,
-                            when,
-                            None,
-                            crate::earned::Space::Personal,
-                            now,
-                        );
-                        let whenn = self.calendar.event(id).map(|e| e.say_when_in(&self.home_zone())).unwrap_or_default();
-                        self.proposals[i].state = State::Accepted;
-                        let _ = self.calendar.save(&self.store);
-                        let _ = self.store.save("proposals", &self.proposals);
-                        format!(
-                            "Done — \"{title}\" is on your calendar for {whenn}. I haven't replied to \
-                             {}; say the word and I'll draft it, but I don't send on your behalf.",
-                            p.from
-                        )
+                        let previous = match self.checked_calendar_for_change() { Ok(c)=>c, Err(e)=>return e };
+                        let before = match brief_snapshot_value(&previous) { Ok(v)=>v, Err(e)=>return e };
+                        let mut staged = previous;
+                        let id = staged.add_in(&title, when, None, crate::earned::Space::Personal, now);
+                        let event = staged.event(id).expect("newly staged event").clone();
+                        self.accept_calendar_booking(p, event, before)
                     }
                     None => "None of their times actually clear against your calendar, so accepting \
                              would book a clash. Better to offer another — say \"offer another time\"."
@@ -1301,8 +1403,11 @@ impl<'a> Daemon<'a> {
                 }
             }
             State::Declined => {
+                let previous = self.proposals.clone();
                 self.proposals[i].state = State::Declined;
-                let _ = self.store.save("proposals", &self.proposals);
+                if let Err(error) = self.save_proposals_with(previous, |store, proposals| store.save("proposals", &proposals)) {
+                    return format!("The meeting decision's saved status is unconfirmed ({error}). Refresh it before trying again; no reply was sent.");
+                }
                 format!(
                     "Marked {}'s proposal declined. Nothing's been sent — that reply is yours to make.",
                     p.from
@@ -1312,8 +1417,11 @@ impl<'a> Daemon<'a> {
                 let busy = self.busy_slots(now, now + 30 * 86_400);
                 let mins = p.times.first().map(|s| s.mins).unwrap_or(30);
                 let alternatives = crate::booking::could_offer(&busy, now, mins, cfg, 3, &self.home_zone());
+                let previous = self.proposals.clone();
                 self.proposals[i].state = State::CounterOffered;
-                let _ = self.store.save("proposals", &self.proposals);
+                if let Err(error) = self.save_proposals_with(previous, |store, proposals| store.save("proposals", &proposals)) {
+                    return format!("The meeting decision's saved status is unconfirmed ({error}). Refresh it before trying again; no reply was sent.");
+                }
                 if alternatives.is_empty() {
                     "I couldn't find a clear slot inside your hours to offer instead — your next two \
                      weeks are full at those times.".into()
@@ -1494,7 +1602,7 @@ impl<'a> Daemon<'a> {
         crate::heard!(std::fs::create_dir_all(&dir));
         let name = from.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "document".into());
         let kept = dir.join(format!("{name}.txt"));
-        if let Err(e) = std::fs::write(&kept, text) {
+        if let Err(e) = crate::store::write_owned_file(&kept, text.as_bytes()) {
             return format!("I read it but couldn't keep it ({e}).");
         }
         self.reload_library();
@@ -1521,7 +1629,7 @@ impl<'a> Daemon<'a> {
             if said.is_empty() {
                 return Err("the summary had nothing in it I could check against the document".into());
             }
-            crate::kept!(std::fs::write(&summary_at, format!("# {title}, summarised\n\n{said}\n")));
+            crate::store::write_owned_file_until(&summary_at, format!("# {title}, summarised\n\n{said}\n").as_bytes(), &|| ctl.checkpoint()).map_err(|e| format!("the summary was written but could not be saved ({e})"))?;
             Ok(format!("{title}, in short: {said}"))
         });
         if self.hand_off("summary", crate::store::now(), work, None, SpeakPolicy::Always) {
@@ -2175,8 +2283,9 @@ impl<'a> Daemon<'a> {
         let mut cmd: Vec<String> = scfg.test_command.split_whitespace().map(String::from).collect();
         cmd.push(test.clone());
         let (root2, test2) = (root.clone(), test.clone());
-        let work: crate::crew::Work = Box::new(move |_c| {
-            let o = crate::bisect::what_broke(&root2, &cmd, 64, crate::selfwork::PROOF_BUDGET_SECS)?;
+        let work: crate::crew::Work = Box::new(move |ctl| {
+            let stop = || ctl.stopping();
+            let o = crate::bisect::what_broke_until(&root2, &cmd, 64, crate::selfwork::PROOF_BUDGET_SECS, std::time::Duration::from_secs(2 * 3600), &stop)?;
             Ok(crate::bisect::told(&root2, &test2, &o))
         });
         Some(if self.hand_off("what-broke", t, work, Some(test.clone()), super::SpeakPolicy::Always) {
@@ -2195,5 +2304,60 @@ mod asking_what_broke {
         assert_eq!(super::what_broke_test("find what broke the test hunting::brief").as_deref(), Some("hunting::brief"));
         assert_eq!(super::what_broke_test("what broke my heart"), None);
         assert_eq!(super::what_broke_test("what broke"), None);
+    }
+}
+
+#[cfg(test)]
+mod proposal_recovery_tests {
+    use super::*;
+
+    #[test]
+    fn published_decision_with_failed_ack_survives_cache_rollback_and_persist() {
+        let root = std::env::temp_dir().join(format!("atlas-proposal-ack-{}", std::process::id()));
+        if root.exists() { std::fs::remove_dir_all(&root).expect("old fixture cleanup"); }
+        let store = crate::store::Store::new(&root);
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let proposal = crate::booking::Proposal { id: 1, from: "Synthetic person".into(), about: None,
+            their_words: "Synthetic proposal".into(), times: vec![], at: 1,
+            state: crate::booking::State::NeedsYou };
+        daemon.proposals = vec![proposal];
+        store.save("proposals", &daemon.proposals).unwrap();
+        let previous = daemon.proposals.clone();
+        daemon.proposals[0].state = crate::booking::State::Declined;
+        let result = daemon.save_proposals_with(previous, |store, proposals| {
+            store.save("proposals", &proposals)?;
+            Err(std::io::Error::other("synthetic acknowledgment failure after publication").into())
+        });
+        assert!(result.is_err());
+        assert_eq!(daemon.proposals[0].state, crate::booking::State::NeedsYou);
+        assert!(daemon.proposals_recovery.is_some());
+        daemon.persist();
+        let restarted: Vec<crate::booking::Proposal> = store.load_checked("proposals").unwrap().unwrap();
+        assert_eq!(restarted[0].state, crate::booking::State::Declined);
+        assert_eq!(daemon.proposals, restarted);
+        assert!(daemon.proposals_recovery.is_none());
+        std::fs::remove_dir_all(root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn unreadable_recovery_blocks_stale_proposal_persistence() {
+        let root = std::env::temp_dir().join(format!("atlas-proposal-corrupt-{}", std::process::id()));
+        if root.exists() { std::fs::remove_dir_all(&root).expect("old fixture cleanup"); }
+        let store = crate::store::Store::new(&root);
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        daemon.proposals_recovery = Some(vec![]);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("proposals.json"), b"broken proposal record").unwrap();
+        daemon.persist();
+        assert_eq!(std::fs::read(root.join("proposals.json")).unwrap(), b"broken proposal record");
+        assert!(daemon.proposals_recovery.is_some());
+        assert!(daemon.persist_failures.iter().any(|(name, _)| *name == "proposals"));
+        std::fs::remove_dir_all(root).expect("fixture cleanup");
     }
 }

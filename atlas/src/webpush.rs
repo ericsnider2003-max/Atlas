@@ -66,6 +66,7 @@ impl Devices {
     }
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
+        let _state = crate::store::state_transaction(state_dir)?;
         crate::store::write_json(&state_dir.join(FILE), self)
     }
 
@@ -190,6 +191,7 @@ fn fresh_secret() -> p256::SecretKey {
 
 /// The laptop's VAPID key, made the first time it's needed and kept.
 pub fn vapid_key(state_dir: &Path) -> Result<p256::SecretKey, String> {
+    let _state = crate::store::state_transaction(state_dir).map_err(|e| e.to_string())?;
     use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey};
     let path = state_dir.join(VAPID_FILE);
     if let Ok(pem) = std::fs::read_to_string(&path) {

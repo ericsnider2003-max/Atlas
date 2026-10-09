@@ -252,6 +252,13 @@ impl Research {
         llm: &dyn Llm,
         should_stop: &dyn Fn() -> bool,
     ) -> Result<Note> {
+        self.run_checked_until(topic, llm, should_stop, std::time::Instant::now() + std::time::Duration::from_secs(120))
+    }
+
+    pub fn run_checked_until(&self, topic: &str, llm: &dyn Llm, cancelled: &dyn Fn() -> bool, deadline: std::time::Instant) -> Result<Note> {
+        let should_stop = &|| cancelled() || std::time::Instant::now() >= deadline;
+        if should_stop() { return Err(AtlasError::Platform("research stopped or exceeded its deadline".into())); }
+        if !llm.supports_bounded_chat() { return Err(AtlasError::Platform("research needs a model with cancellable, bounded chat; no sources were fetched".into())); }
         let fetch = self
             .cfg
             .fetch
@@ -275,7 +282,7 @@ impl Research {
         // there isn't, or it found nothing.
         let mut urls = match self.cfg.searxng_url.trim() {
             "" => Vec::new(),
-            base => searxng(base, topic, self.cfg.max_sources, &self.vars).unwrap_or_default(),
+            base => searxng(base, topic, self.cfg.max_sources, &self.vars, should_stop).unwrap_or_default(),
         };
         let mut tried_browser = false;
         if urls.is_empty() {
@@ -284,14 +291,14 @@ impl Research {
                 .search
                 .as_ref()
                 .ok_or_else(|| AtlasError::Config("no search tool configured".into()))?;
-            let results = search.run(&v, None).unwrap_or_default();
+            let results = bounded_tool(search, &v, should_stop)?;
             urls = extract_urls(&results, self.cfg.max_sources);
             // DuckDuckGo answers a program with a robot check ("anomaly",
             // HTTP 202) and no results -- every research run on Eric's
             // laptop on 30 Sep 2026 ended "no sources found". Bing, asked
             // the same way, answers; its links are decoded above.
             if urls.is_empty() && search.args.iter().any(|a| a.contains("duckduckgo.com")) && results.contains("anomaly") {
-                if let Ok(page) = bing_search().run(&v, None) {
+                if let Ok(page) = bounded_tool(&bing_search(), &v, should_stop) {
                     urls = extract_urls(&page, self.cfg.max_sources);
                 }
             }
@@ -302,7 +309,7 @@ impl Research {
                         // Any failure here -- no Chrome, no launch command, a
                         // page that never rendered -- is the same outcome as
                         // before the fallback existed: no sources.
-                        if let Ok(links) = self.links_via_browser(bcfg, &page) {
+                        if let Ok(links) = self.links_via_browser(bcfg, &page, should_stop) {
                             urls = urls_from_links(&links, self.cfg.max_sources);
                         }
                     }
@@ -310,6 +317,7 @@ impl Research {
             }
         }
         if urls.is_empty() {
+            if should_stop() { return Err(AtlasError::Platform("research stopped or exceeded its deadline".into())); }
             let mut msg = format!("no sources found for '{topic}'");
             if tried_browser {
                 msg.push_str(" (the headless browser found nothing either)");
@@ -329,7 +337,7 @@ impl Research {
             let held = if self.cfg.pages_on_this_machine {
                 None
             } else {
-                match public_address(url) {
+                match public_address_until(url, should_stop) {
                     Some(p) => Some(p),
                     None => continue,
                 }
@@ -341,7 +349,7 @@ impl Research {
             let mut fv = v.clone();
             fv.insert("url".into(), url.clone());
             // One dead link must not sink the whole job.
-            let Ok(html) = fetch_now.run(&fv, None) else { continue };
+            let Ok(html) = bounded_tool(&fetch_now, &fv, should_stop) else { continue };
             // Kept as Markdown: a heading, a list and a code block stay what
             // they are, which a small model reads far better than one run of
             // lines (`readable::Article::markdown`).
@@ -386,7 +394,10 @@ impl Research {
         if should_stop() {
             return Err(AtlasError::Platform("stopped before finishing".into()));
         }
-        let body = llm.complete(SYSTEM, &format!("Topic: {topic}\n{corpus}"))?;
+        let request = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(SYSTEM), crate::brain::Msg::user(&format!("Topic: {topic}\n{corpus}"))], max_tokens: 1600, ..Default::default() };
+        let mut bytes = 0usize;
+        let body = llm.chat_until(&request, &mut |text| { bytes += text.len(); bytes <= 32_000 && !should_stop() }, &|| !should_stop())?.text;
+        if should_stop() || bytes > 32_000 || body.len() > 32_000 || body.trim().is_empty() { return Err(AtlasError::Platform("research write-up stopped, exceeded its limit, or returned no usable answer".into())); }
         let spoken = first_sentences(&body, 2);
         // Numbers the topic itself carries ("the 2026 budget") aren't claims.
         let ungrounded = figures_not_in(&body, &format!("{topic}\n{corpus}"));
@@ -409,14 +420,21 @@ impl Research {
         &self,
         bcfg: &crate::browser::BrowserConfig,
         page: &str,
+        stop: &dyn Fn() -> bool,
     ) -> Result<Vec<String>> {
-        let mut b = crate::browser::Browser::start(bcfg, &self.vars)?;
-        let got = read_links(&mut b, page, bcfg.timeout_ms);
+        if stop() { return Err(AtlasError::Platform("research stopped".into())); }
+        let mut bounded = bcfg.clone(); bounded.timeout_ms = bounded.timeout_ms.min(1000).max(50); bounded.startup_ms = bounded.startup_ms.min(3000);
+        let mut b = crate::browser::Browser::start(&bounded, &self.vars)?;
+        let got = read_links_until(&mut b, page, bcfg.timeout_ms.min(15_000), stop);
         b.close();
         got
     }
 
     pub fn save(&self, note: &Note) -> Result<String> {
+        self.save_until(note, &|| false)
+    }
+
+    pub fn save_until(&self, note: &Note, stop: &dyn Fn() -> bool) -> Result<String> {
         std::fs::create_dir_all(&self.cfg.notes_dir)?;
         let slug: String = note
             .topic
@@ -437,21 +455,33 @@ impl Research {
                 md.push_str(&format!("- {f}\n"));
             }
         }
-        std::fs::write(&path, md)?;
-        mark_last(&self.cfg.notes_dir, LAST_RESEARCH, &path);
+        crate::store::write_owned_file_until(Path::new(&path), md.as_bytes(), stop)?;
+        mark_last_until(&self.cfg.notes_dir, LAST_RESEARCH, &path, stop)?;
         Ok(path)
     }
 }
 
-fn read_links(b: &mut crate::browser::Browser, page: &str, timeout_ms: u64) -> Result<Vec<String>> {
+fn read_links_until(b: &mut crate::browser::Browser, page: &str, timeout_ms: u64, stop: &dyn Fn() -> bool) -> Result<Vec<String>> {
+    if stop() { return Err(AtlasError::Platform("research stopped".into())); }
     b.open(page)?;
     // Polled, not slept: a results page that renders fast is read at once,
     // and one that never shows a link is given up on after the browser's own
     // timeout. Links are read either way -- a page that never matched still
     // gets its chance to yield nothing.
     // unheard-ok: returns `bool`, not a Result
-    let _ = b.cdp.wait_for("a[href]", timeout_ms)?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        if stop() { return Err(AtlasError::Platform("research stopped".into())); }
+        if b.cdp.eval("Boolean(document.querySelector('a[href]'))")?.as_bool() == Some(true) || std::time::Instant::now() >= deadline { break; }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    if stop() { return Err(AtlasError::Platform("research stopped".into())); }
     b.links()
+}
+
+fn bounded_tool(tool: &ExternalTool, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<String> {
+    let mut tool = tool.clone(); tool.timeout_secs = if tool.timeout_secs == 0 { 30 } else { tool.timeout_secs.min(30) };
+    tool.run_stoppable(vars, None, stop)?.ok_or_else(|| AtlasError::Platform("research stopped".into()))
 }
 
 const SYSTEM: &str = "\
@@ -650,13 +680,13 @@ pub fn urls_from_searxng(json: &str, max: usize) -> Option<Vec<String>> {
 
 /// Search with a SearXNG instance. Plain http (a SearXNG on this machine or
 /// your network) is asked in-process; https goes through curl.
-fn searxng(base: &str, topic: &str, max: usize, vars: &Vars) -> Result<Vec<String>> {
+fn searxng(base: &str, topic: &str, max: usize, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<Vec<String>> {
     let tool = ExternalTool {
         command: "curl".into(),
         args: vec!["-s".into(), "-m".into(), "15".into(), searxng_url(base, topic)],
         ..Default::default()
     };
-    let body = tool.run(vars, None)?;
+    let body = bounded_tool(&tool, vars, stop)?;
     urls_from_searxng(&body, max)
         .ok_or_else(|| AtlasError::Platform("the SearXNG address didn't answer with results -- is JSON turned on in its settings?".into()))
 }
@@ -930,6 +960,31 @@ fn figures(text: &str) -> Vec<String> {
 /// The fetch is then held to that one address (`fenced`), so a name that
 /// answers "public" here and "your router" a second later gets nowhere.
 pub fn public_address(url: &str) -> Option<(String, std::net::IpAddr)> {
+    public_address_with(url, &|host| {
+        use std::net::ToSocketAddrs;
+        Some((host, 80).to_socket_addrs().ok()?.map(|a| a.ip()).collect())
+    })
+}
+
+fn public_address_until(url: &str, stop: &dyn Fn() -> bool) -> Option<(String, std::net::IpAddr)> {
+    public_address_with(url, &|host| {
+        if host.len() > 253 || !host.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'-') || stop() { return None; }
+        #[cfg(windows)]
+        let tool = ExternalTool { command: "powershell.exe".into(), args: vec!["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), format!("Resolve-DnsName -Name '{host}' -ErrorAction Stop | Where-Object {{ $_.Type -eq 'A' -or $_.Type -eq 'AAAA' }} | ForEach-Object {{ $_.IPAddress }}")], timeout_secs: 10, ..Default::default() };
+        #[cfg(not(windows))]
+        let tool = ExternalTool { command: "getent".into(), args: vec!["ahosts".into(), host.into()], timeout_secs: 10, ..Default::default() };
+        let text = bounded_tool(&tool, &Vars::new(), stop).ok()?;
+        if stop() { return None; }
+        let mut addrs = Vec::new();
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            let ip = line.split_whitespace().next()?.parse::<std::net::IpAddr>().ok()?;
+            if !addrs.contains(&ip) { addrs.push(ip); }
+        }
+        Some(addrs)
+    })
+}
+
+fn public_address_with(url: &str, resolve: &dyn Fn(&str) -> Option<Vec<std::net::IpAddr>>) -> Option<(String, std::net::IpAddr)> {
     let lower = url.trim().to_lowercase();
     let rest = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"))?;
     let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
@@ -954,8 +1009,7 @@ pub fn public_address(url: &str) -> Option<(String, std::net::IpAddr)> {
         return is_public(ip).then_some((host, ip));
     }
     // A name: every address it resolves to must be public.
-    use std::net::ToSocketAddrs;
-    let addrs: Vec<std::net::IpAddr> = (host.as_str(), 80).to_socket_addrs().ok()?.map(|a| a.ip()).collect();
+    let addrs = resolve(&host)?;
     let first = *addrs.first()?;
     addrs.iter().all(|ip| is_public(*ip)).then_some((host, first))
 }
@@ -1085,7 +1139,12 @@ pub const LAST_RESEARCH: &str = ".last-research";
 pub const LAST_WRITTEN: &str = ".last-written";
 
 pub fn mark_last(dir: &str, which: &str, path: &str) {
-    crate::kept!(std::fs::write(std::path::Path::new(dir).join(which), path));
+    crate::kept!(mark_last_until(dir, which, path, &|| false));
+}
+
+fn mark_last_until(dir: &str, which: &str, path: &str, stop: &dyn Fn() -> bool) -> std::io::Result<()> {
+    if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) { return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "the saved note is missing; its last-note pointer was left intact")); }
+    crate::store::write_owned_file_until(&Path::new(dir).join(which), path.as_bytes(), stop)
 }
 
 /// The note marked as `which`, if it's still there.
@@ -1093,5 +1152,24 @@ pub fn last(dir: &str, which: &str) -> Option<std::path::PathBuf> {
     let p = std::fs::read_to_string(std::path::Path::new(dir).join(which)).ok()?;
     let p = std::path::PathBuf::from(p.trim());
     p.is_file().then_some(p)
+}
+
+#[cfg(test)]
+mod bounded_research {
+    use super::*;
+    struct Unsupported;
+    impl Llm for Unsupported { fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("unsupported inference must not run") } }
+    #[test]
+    fn unsupported_model_or_expired_budget_refuses_before_tool_launch() {
+        let research = Research { cfg: ResearchConfig { fetch: Some(ExternalTool { command: "fixture-must-not-launch".into(), ..Default::default() }), ..Default::default() }, vars: Vars::new(), browser: None };
+        assert!(research.run("topic", &Unsupported).unwrap_err().to_string().contains("no sources were fetched"));
+        assert!(research.run_checked_until("topic", &Unsupported, &|| false, std::time::Instant::now()).unwrap_err().to_string().contains("deadline"));
+    }
+    #[test]
+    fn resolver_checks_all_answers_and_refuses_private_or_unknown_names() {
+        assert!(public_address_with("https://example.test/article", &|_| Some(vec!["8.8.8.8".parse().unwrap(), "127.0.0.1".parse().unwrap()])).is_none());
+        assert!(public_address_with("https://example.test/article", &|_| None).is_none());
+        assert!(public_address_until("https://example.test/article", &|| true).is_none());
+    }
 }
 

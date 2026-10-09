@@ -20,6 +20,7 @@ pub enum Outcome {
     Retry(String),
     /// Will never succeed as-is. Needs you.
     Blocked(String),
+    Uncertain(String),
 }
 
 impl Outcome {
@@ -28,7 +29,7 @@ impl Outcome {
     }
     pub fn message(&self) -> &str {
         match self {
-            Outcome::Sent(m) | Outcome::Retry(m) | Outcome::Blocked(m) => m,
+            Outcome::Sent(m) | Outcome::Retry(m) | Outcome::Blocked(m) | Outcome::Uncertain(m) => m,
         }
     }
 }
@@ -88,13 +89,8 @@ pub fn plan(
 
 /// Carry out a post. Only ever called with an id the publisher already
 /// cleared, and it checks again anyway.
-pub fn send(
-    pub_: &mut Publisher,
-    browser: &mut Browser,
-    cfg: &BrowserConfig,
-    id: u64,
-    online: bool,
-) -> Outcome {
+
+pub fn send_unless(pub_: &mut Publisher, browser: &mut Browser, cfg: &BrowserConfig, id: u64, online: bool, stop: &dyn Fn() -> bool) -> Outcome {
     let steps = match plan(pub_, cfg, id, online) {
         Ok(s) => s,
         Err(o) => return o,
@@ -109,31 +105,36 @@ pub fn send(
     let Some(profile) = profile_for(cfg, &post.channel) else {
         return Outcome::Blocked("no profile".into());
     };
+    let media = match post.verified_media_copies(stop) {
+        Ok(media) => media,
+        Err(why) => return Outcome::Blocked(why),
+    };
+    if stop() { return Outcome::Blocked("publication stopped before submission".into()); }
 
     if let Err(e) = browser.compose(profile, &post.body) {
         return classify(e);
     }
-    if let Err(e) = browser.attach_media(profile, &post.media) {
+    if let Err(e) = browser.attach_media(profile, &media.paths) {
         return classify(e);
     }
 
     // Belt and braces: the text could have changed while the page loaded.
+    if stop() { return Outcome::Blocked("publication stopped before submission".into()); }
     match pub_.check(id, online, None) {
         SendCheck::Go => {}
         SendCheck::Hold(why) => return Outcome::Blocked(format!("stopped before posting: {why}")),
     }
 
-    match browser.publish(profile) {
-        Ok(()) => {
-            pub_.mark_sent(id, "posted", true);
-            Outcome::Sent(format!("posted to {}", post.channel.name()))
+    pub_.mark_submission(id, false, "Submission in progress; don't repeat until checked");
+    match browser.publish_verified(profile) {
+        Ok(Some(receipt)) => {
+            pub_.mark_sent(id, &format!("Program confirmed publication: {receipt}"), true);
+            Outcome::Sent(format!("posted to {}: {receipt}", post.channel.name()))
         }
-        Err(e) => {
-            let o = classify(e);
-            if let Outcome::Blocked(why) = &o {
-                pub_.mark_sent(id, why, false);
-            }
-            o
+        Ok(None) | Err(_) => {
+            let message = format!("Publication on {} isn't confirmed. Check the service; I won't retry automatically.", post.channel.name());
+            pub_.mark_submission(id, true, &message);
+            Outcome::Uncertain(message)
         }
     }
 }
@@ -146,15 +147,8 @@ pub fn is_bluesky(channel: &crate::publish::Channel) -> bool {
 
 /// Carry out a Bluesky post through its API, with the same gate as a
 /// browser post: only an id the publisher cleared, checked again here.
-pub fn send_bluesky(
-    pub_: &mut Publisher,
-    x: &dyn crate::social::posting::Xrpc,
-    handle: &str,
-    app_password: &str,
-    id: u64,
-    online: bool,
-    now: u64,
-) -> Outcome {
+
+pub fn send_bluesky_unless(pub_: &mut Publisher, x: &dyn crate::social::posting::Xrpc, handle: &str, app_password: &str, id: u64, online: bool, now: u64, stop: &dyn Fn() -> bool) -> Outcome {
     let Some(post) = pub_.get(id).cloned() else {
         return Outcome::Blocked("no such post".into());
     };
@@ -169,12 +163,36 @@ pub fn send_bluesky(
     if app_password.is_empty() {
         return Outcome::Blocked("no Bluesky app password kept -- make one in Bluesky's settings and keep it on the Social page".into());
     }
-    match crate::social::post_with_app_password(x, handle, app_password, &post.body, &post.media, now, &|p| std::fs::read(p)) {
-        Ok(_uri) => {
-            pub_.mark_sent(id, "posted", true);
-            Outcome::Sent("posted to Bluesky".into())
+    let media = match post.verified_media_copies(stop) {
+        Ok(media) => media,
+        Err(why) => return Outcome::Blocked(why),
+    };
+    if stop() { return Outcome::Blocked("publication stopped before submission".into()); }
+    pub_.mark_submission(id, false, "Bluesky submission pending");
+    match crate::social::post_with_app_password(x, handle, app_password, &post.body, &media.paths, now, &|p| std::fs::read(p)) {
+        Ok(uri) if uri.starts_with("at://") && uri.contains("/app.bsky.feed.post/") => {
+            pub_.mark_sent(id, &format!("Program confirmed publication: {uri}"), true);
+            Outcome::Sent(format!("posted to Bluesky: {uri}"))
         }
-        Err(e) if e.starts_with("couldn't reach Bluesky") => Outcome::Retry(e),
+        Ok(_) => {
+            let why = "Bluesky returned no valid publication receipt; check the service before another attempt.";
+            pub_.mark_submission(id, true, why);
+            Outcome::Uncertain(why.into())
+        }
+        Err(e) if e.starts_with("couldn't reach Bluesky") && !e.contains("(posting") => {
+            // Authentication and blob upload precede createRecord. Nothing
+            // was submitted, so repeating these phases cannot duplicate a post.
+            if let Some(queued) = pub_.posts.iter_mut().find(|p| p.id == id) { queued.state = post.state; queued.result = Some(e.clone()); }
+            Outcome::Retry(e)
+        },
+        Err(e) if e.starts_with("couldn't reach Bluesky") => {
+            pub_.mark_submission(id, true, &e);
+            Outcome::Uncertain(format!("Bluesky publication isn't confirmed ({e}); check it before another attempt."))
+        },
+        Err(e) if e.contains("(posting") => {
+            pub_.mark_submission(id, true, &e);
+            Outcome::Uncertain(format!("Bluesky publication isn't confirmed ({e}); check it before another attempt."))
+        }
         Err(e) => {
             pub_.mark_sent(id, &e, false);
             Outcome::Blocked(e)
@@ -214,6 +232,7 @@ pub fn spoken(o: &Outcome) -> String {
         Outcome::Sent(m) => format!("{m}."),
         Outcome::Retry(_) => "Couldn't reach the site. I'll try again shortly.".into(),
         Outcome::Blocked(why) => format!("Didn't post: {why}."),
+        Outcome::Uncertain(why) => why.clone(),
     }
 }
 

@@ -731,9 +731,9 @@ commands:
     phrases: ["what did you do overnight", "what did you do last night", "overnight report", "the overnight account", "what happened overnight", "overnight account"]
 
   - intent: creator_advice
-    describe: "Advice for video creators: colour grading, formats, export settings, brand deals. arg: the question."
+    describe: "Video ideas for a named niche, cached video evidence, adjustable script structure and editorial suggestions; also colour grading, formats, export settings, brand deals. 'video research online for' uses live research. arg: the full question."
     # Video and creator advice (Eric, I: kept, he makes video content).
-    phrases: ["how should i grade", "colour grading", "color grading", "grading steps", "grade my footage", "export settings for", "best length for a", "is this deal good", "is this a good deal", "affiliate deal", "brand deal", "sponsorship deal", "my creator profile", "my profile has", "rules for a talking head", "rules for a short", "rules for a tutorial", "rules for a product review", "rules for a screen recording", "rules for long form"]
+    phrases: ["video idea for", "video research for", "video research online for", "video structure for", "editing advice for", "how should i grade", "colour grading", "color grading", "grading steps", "grade my footage", "export settings for", "best length for a", "is this deal good", "is this a good deal", "affiliate deal", "brand deal", "sponsorship deal", "my creator profile", "my profile has", "rules for a talking head", "rules for a short", "rules for a tutorial", "rules for a product review", "rules for a screen recording", "rules for long form"]
     takes_argument: true
     argument_optional: true
     raw_argument: true
@@ -774,7 +774,7 @@ commands:
   - intent: clock
     describe: "Say the time and date from this machine's clock."
     # The time and the date (found on the laptop: "what time is it" got "Which one?").
-    phrases: ["what time is it", "whats the time", "what's the time", "what is the time", "what day is it", "whats the date", "what's the date", "what is the date", "todays date", "what's today's date"]
+    phrases: ["what time is it", "check what time it is", "whats the time", "what's the time", "what is the time", "what day is it", "whats the date", "what's the date", "what is the date", "todays date", "what's today's date"]
 
   - intent: edit_media
     describe: "Edit a video on a copy: cut or trim it. arg: what to do."

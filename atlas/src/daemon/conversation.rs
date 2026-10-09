@@ -455,7 +455,7 @@ impl<'a> Daemon<'a> {
         }
         let persona = self.persona_now();
         let turn = self.conversation_turn("", t, crate::register::Register::Chatting, &persona, None, "");
-        let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false, stronger: false };
+        let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false, stronger: false, output_schema: None };
         let said = self.model_warmed.clone();
         let server = self.tools_ref().filter(|t| self.starts_model_server && t.llm.is_none() && t.models.server.is_some()).map(|t| (t.models.clone(), t.vars.clone()));
         std::thread::Builder::new()
@@ -579,7 +579,7 @@ impl<'a> Daemon<'a> {
              Answer what I asked from this, out loud, in one to three short sentences. Say what matters \
              first. No lists, no markdown. If items are numbered, keep the numbers I'd use to pick one."
         )));
-        let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false };
+        let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
         let llm = p.llm.clone();
         let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {

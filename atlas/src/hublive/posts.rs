@@ -13,6 +13,28 @@ impl Daemon<'_> {
         let now = crate::store::now();
         let what = field_of(f, "what").unwrap_or_default();
         match path {
+            "/hub/calendar/review" => {
+                let valid = f.len() == 3 && f.iter().filter(|(key, _)| key == "id").count() == 1
+                    && f.iter().filter(|(key, _)| key == "what").count() == 1
+                    && f.iter().filter(|(key, _)| key == "token").count() == 1
+                    && matches!(what.as_str(), "retry" | "dismiss");
+                let said = if valid {
+                    self.resolve_calendar_review(&field_of(f, "id").unwrap_or_default(), &what, &field_of(f, "token").unwrap_or_default())
+                } else { "That form didn't identify one calendar outcome and one review decision; nothing changed.".into() };
+                hub::back_with(Page::Outstanding.href(), "", &said)
+            }
+            "/hub/back" => {
+                if what != "return-file" { return hub::back_with(Page::LookingBack.href(), "", "That button didn't identify a recovery action; nothing changed."); }
+                if self.handed_over_now() { return hub::back_with(Page::LookingBack.href(), "", "Return to your own Atlas before returning a saved file."); }
+                let archive = field_of(f, "archive").unwrap_or_default();
+                let kind = field_of(f, "kind").unwrap_or_default();
+                let Some(id) = field_of(f, "id").and_then(|id| id.parse::<u64>().ok()) else { return hub::back_with(Page::LookingBack.href(), "", "That button didn't identify a saved file; nothing changed."); };
+                let said = match crate::safety::return_archived_file(self.store.root(), &archive, &kind, id) {
+                    Ok(said) => said,
+                    Err(error) => format!("Couldn't return that saved file: {error}"),
+                };
+                hub::back_with(Page::LookingBack.href(), "", &said)
+            }
             "/hub/social" => {
                 let said = self.social_post(f, now);
                 hub::back_with(Page::Social.href(), "", &said)
@@ -109,15 +131,15 @@ impl Daemon<'_> {
             "/hub/clients" => {
                 let addr = field_of(f, "address").unwrap_or_default();
                 let name = field_of(f, "name").unwrap_or_default();
-                let mut list = crate::clients::ClientList::load(&self.store);
                 let said = if !addr.contains('@') {
                     "That doesn't look like an email address.".to_string()
-                } else if list.is_client(&addr) {
-                    "Already a client.".to_string()
                 } else {
-                    list.add(addr.trim(), name.trim(), "", now);
-                    match list.save(&self.store) {
-                        Ok(()) => format!("Added {}.", if name.trim().is_empty() { addr.trim() } else { name.trim() }),
+                    match crate::clients::ClientList::change(&self.store, |list| {
+                        if list.is_client(&addr) { return Ok("Already a client.".to_string()); }
+                        list.add(addr.trim(), name.trim(), "", now);
+                        Ok(format!("Added {}.", if name.trim().is_empty() { addr.trim() } else { name.trim() }))
+                    }) {
+                        Ok(said) => said,
                         Err(e) => didnt_stick(&e),
                     }
                 };

@@ -49,6 +49,21 @@ impl ClientList {
         store.load("clients")
     }
 
+    pub fn load_checked(store: &Store) -> Result<ClientList> {
+        Ok(store.load_checked("clients")?.unwrap_or_default())
+    }
+
+    /// Read the current list inside the state cohort and only report a
+    /// change after it is saved. An unreadable list is never an empty list.
+    pub fn change<T>(store: &Store, edit: impl FnOnce(&mut ClientList) -> Result<T>) -> Result<T> {
+        let _guard = store.transaction()?;
+        let mut list = Self::load_checked(store)?;
+        let previous = list.clients.clone();
+        let result = edit(&mut list)?;
+        if list.clients != previous { list.save(store)?; }
+        Ok(result)
+    }
+
     pub fn save(&self, store: &Store) -> Result<()> {
         store.save("clients", self)
     }
@@ -211,6 +226,51 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corrupt_client_state_refuses_edits_without_replacing_the_saved_bytes() {
+        let root = std::env::temp_dir().join(format!("atlas-client-corrupt-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let bytes = b"owner contacts with an interrupted JSON record";
+        std::fs::write(root.join("clients.json"), bytes).unwrap();
+        let called = std::cell::Cell::new(false);
+        let result = ClientList::change(&Store::new(&root), |list| {
+            called.set(true);
+            list.add("new@example.test", "New", "", 1);
+            Ok(())
+        });
+        assert!(result.is_err());
+        assert!(!called.get());
+        assert_eq!(std::fs::read(root.join("clients.json")).unwrap(), bytes);
+    }
+
+    #[test]
+    fn independent_client_updates_merge_current_state_and_preserve_notes() {
+        let root = std::env::temp_dir().join(format!("atlas-client-fresh-{}", std::process::id()));
+        let first = Store::new(&root);
+        let second = Store::new(&root);
+        ClientList::change(&first, |list| { list.add("one@example.test", "One", "owner notes", 1); Ok(()) }).unwrap();
+        ClientList::change(&second, |list| { list.add("two@example.test", "Two", "second notes", 2); Ok(()) }).unwrap();
+        let saved = ClientList::load_checked(&first).unwrap();
+        assert_eq!(saved.len(), 2);
+        assert_eq!(saved.get("one@example.test").unwrap().notes, "owner notes");
+        assert_eq!(saved.get("two@example.test").unwrap().notes, "second notes");
+    }
+
+    #[test]
+    fn a_failed_client_save_never_returns_the_editors_success() {
+        let root = std::env::temp_dir().join(format!("atlas-client-save-fail-{}", std::process::id()));
+        let store = Store::new(&root);
+        ClientList::change(&store, |list| { list.add("owner@example.test", "Owner", "keep", 1); Ok(()) }).unwrap();
+        let original = std::fs::read(root.join("clients.json")).unwrap();
+        let temporary = root.join("clients.json").with_extension(format!("{}.json.tmp", std::process::id()));
+        std::fs::create_dir(&temporary).unwrap();
+        let result = ClientList::change(&store, |list| { list.add("new@example.test", "New", "", 2); Ok("Added") });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(root.join("clients.json")).unwrap(), original);
+        std::fs::remove_dir(temporary).unwrap();
+        assert_eq!(ClientList::load_checked(&store).unwrap().len(), 1);
+    }
 
     #[test]
     fn a_fresh_list_recognises_nobody() {

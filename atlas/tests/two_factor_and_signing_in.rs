@@ -367,7 +367,7 @@ fn signing_in_fills_the_login_then_the_code_in_a_real_browser() {
     let wrong = atlas::webrun::enter_code(&mut b, "111111").unwrap();
     assert!(matches!(wrong, atlas::webrun::SignedIn::Failed(ref w) if w.contains("wrong")), "{wrong:?}");
     let right = atlas::webrun::enter_code(&mut b, "482917").unwrap();
-    assert_eq!(right, atlas::webrun::SignedIn::In);
+    assert!(matches!(right, atlas::webrun::SignedIn::Unconfirmed(_)), "a vanished code prompt is not a verified session receipt: {right:?}");
     assert!(b.cdp.text().unwrap().contains("Welcome back"));
 
     // A changed password is said as that, not as "it worked".
@@ -385,13 +385,13 @@ fn signing_up_fills_the_form_agrees_to_the_terms_and_stops_at_a_card() {
     let Some(mut b) = a_browser("signup") else { return };
     let cfg = atlas::enrol::EnrolConfig::default();
     let mut e = atlas::enrol::Enrolment::new("localhost", "eric", 0);
-    let got = atlas::webrun::sign_up(&mut b, &mut e, "eric@example.com", "Xk7-long-pass", &cfg, Some(&format!("http://localhost:{site}/signup")));
+    let got = atlas::webrun::sign_up_unless(&mut b, &mut e, "eric@example.com", "Xk7-long-pass", &cfg, Some(&format!("http://localhost:{site}/signup")), &|| false);
     assert_eq!(got, atlas::webrun::SignedUp::Made);
     let text = b.cdp.text().unwrap();
     assert!(text.contains("all set"), "terms ticked, marketing left alone, email in: {text}");
 
     let mut e = atlas::enrol::Enrolment::new("localhost", "eric", 0);
-    let got = atlas::webrun::sign_up(&mut b, &mut e, "eric@example.com", "Xk7-long-pass", &cfg, Some(&format!("http://localhost:{site}/signup-paid")));
+    let got = atlas::webrun::sign_up_unless(&mut b, &mut e, "eric@example.com", "Xk7-long-pass", &cfg, Some(&format!("http://localhost:{site}/signup-paid")), &|| false);
     assert!(matches!(got, atlas::webrun::SignedUp::Stopped(atlas::enrol::Stopped::WantsPayment(_))), "{got:?}");
 }
 

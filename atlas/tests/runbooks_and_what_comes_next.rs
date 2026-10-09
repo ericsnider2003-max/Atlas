@@ -75,8 +75,10 @@ fn saying_it_didnt_work_after_a_walk_through_teaches_the_procedure() {
     assert!(said.contains("Why do you think it happened?"), "{said}");
     let k = Knowhow::load(&Store::new(root.join("state")));
     assert!(k.procedures[0].snags.iter().any(|s| s.looks_like.contains("filled right back up")));
-    let notes: Vec<_> = std::fs::read_dir(root.join("notes")).unwrap().flatten().collect();
+    let notes: Vec<_> = std::fs::read_dir(root.join("notes")).unwrap().flatten().filter(|entry| entry.path().extension().is_some_and(|ext| ext == "md") && entry.file_name().to_string_lossy().starts_with("look-back-")).collect();
     assert_eq!(notes.len(), 1);
+    let note = std::fs::read_to_string(notes[0].path()).unwrap();
+    assert!(note.contains("# Look back: make room when memory is tight") && note.contains("**What happened:** that's wrong, the memory filled right back up"), "the filed Markdown must describe the actual failed procedure: {note}");
     let _ = Intent::WalkThrough(String::new());
 }
 

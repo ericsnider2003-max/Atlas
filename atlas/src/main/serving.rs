@@ -95,7 +95,11 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // Somewhere to type a passphrase, so that "I'm back" has a prompt to
     // summon. Without it the phrase is answered honestly and names
     // `atlas handover back` instead -- see `daemon::take_it_back`.
-    let mut d = Daemon::new(cfg, plat, llm, store, Proactive::new(tc.proactive.clone()))
+    let daemon = match Daemon::try_new(cfg, plat, llm, store, Proactive::new(tc.proactive.clone())) {
+        Ok(daemon) => daemon,
+        Err(error) => { eprintln!("Atlas could not safely open its configured output folders: {error}"); return; }
+    };
+    let mut d = daemon
         .starting_the_model_server()
         .with_typed_prompt(Box::new(atlas::typed::Console))
         .watch_settings(atlas::roots::config_dir());
@@ -332,12 +336,20 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
 /// laptop whose microphone is Intel Smart Sound. Every wake-word clip
 /// failed, Atlas dropped to push-to-talk, and the held key recorded nothing
 /// and said nothing.
-pub(super) fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
+pub(super) fn pick_the_microphone_impl(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
+    pick_microphone_with(cfg, plat, tc, || atlas::audio::probe_devices("ffmpeg"))
+}
+
+fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig,
+    probe: impl FnOnce() -> atlas::error::Result<Vec<atlas::audio::Device>>) -> atlas::voice::ToolsConfig {
+    // Disabled tools cannot enumerate or record physical microphones, including
+    // the startup self-test. Keep the owner's settings intact.
+    if !tc.enabled { return tc.clone(); }
     // Pick the mic from what is actually there, rather than trusting the
     // guess sitting in tools.yaml -- that guess is what sent someone chasing
     // a Realtek device name on a laptop with Intel audio and a shut lid.
     let mut tc_owned = tc.clone();
-    match atlas::audio::probe_devices("ffmpeg") {
+    match probe() {
         Ok(devices) => {
             // The laptop's own screen, asked of Windows directly (29 Sep 2026:
             // "is a screen in the laptop role" was true whenever any screen
@@ -524,13 +536,17 @@ pub(super) fn voice_loop(
     // machine with no `config/tools.yaml`. It is unreachable from here,
     // because this function has already exited if `tools` is missing.
     let llm = model_connection(tc_live);
-    let mut d = Daemon::new(
+    let daemon = match Daemon::try_new(
         &cfg_owned,
         plat,
         llm,
         atlas::roots::store(),
         Proactive::new(tc_live.proactive.clone()),
-    )
+    ) {
+        Ok(daemon) => daemon,
+        Err(error) => { eprintln!("Atlas could not safely open its configured output folders: {error}"); return; }
+    };
+    let mut d = daemon
     .starting_the_model_server()
     .with_typed_prompt(Box::new(atlas::typed::Console))
     .watch_settings(atlas::roots::config_dir());
@@ -751,5 +767,31 @@ fn take_the_one_lock() -> atlas::onlyone::OnlyOne {
             }
         }
     }
+    // This native lease proves the prior serving process is gone. Reconcile
+    // interrupted provider workers before any new daemon or worker exists.
+    if let Err(error) = atlas::connection_removal::reconcile_interrupted_provider_removals(&atlas::roots::store()) {
+        eprintln!("Atlas could not safely reconcile interrupted account removal: {error}");
+        only.release();
+        leave(1);
+    }
     only
+}
+
+#[cfg(test)]
+mod microphone_settings_tests {
+    use super::*;
+    #[test]
+    fn disabled_tools_never_invoke_device_probe_or_calibration() {
+        let cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let platform = atlas::platform::mock::MockPlatform::new(Vec::new());
+        let mut tc = atlas::voice::ToolsConfig::default();
+        tc.enabled = false; tc.work_dir = "disposable-disabled-tools".into(); tc.record_seconds = 7;
+        let probed = std::cell::Cell::new(false);
+        let result = pick_microphone_with(&cfg, &platform, &tc, || {
+            probed.set(true); panic!("disabled tools must never reach device probing");
+        });
+        assert!(!probed.get()); assert!(!result.enabled);
+        assert_eq!(result.work_dir, tc.work_dir); assert_eq!(result.record_seconds, 7);
+        assert_eq!(result.vars, tc.vars);
+    }
 }

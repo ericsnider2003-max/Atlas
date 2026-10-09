@@ -155,7 +155,7 @@ pub struct Commitment {
     pub needs_prep: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BriefConfig {
     pub enabled: bool,
@@ -596,6 +596,19 @@ pub fn from_jobs(s: &crate::scheduler::Scheduler, now: u64) -> (Vec<Item>, Vec<C
     let mut items = Vec::new();
     let mut day = Vec::new();
     for j in &s.jobs {
+        if j.in_flight {
+            day.push(Commitment { id: format!("job:{}", j.id),
+                what: format!("{}: {}", if j.state == crate::scheduler::JobState::Cancelled { "Stopping" } else { "Running" }, j.command),
+                at_minute: 0, minutes: 1, needs_prep: None });
+            continue;
+        }
+        if j.interrupted {
+            items.push(Item { id: format!("job:{}", j.id), source: Source::Job,
+                from: "a scheduled job".into(), subject: format!("Check the previous result before retrying: {}", j.command),
+                weight: Weight::Urgent, outcome: Outcome::Yours, draft: None,
+                conflicts_with: Some(j.last_result.clone().unwrap_or_else(|| "Previous outcome is unconfirmed.".into())) });
+            continue;
+        }
         match j.state {
             crate::scheduler::JobState::Failed => items.push(Item {
                 id: format!("job:{}", j.id),

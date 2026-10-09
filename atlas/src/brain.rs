@@ -111,6 +111,8 @@ impl ChatReply {
 #[derive(Debug, Clone, Default)]
 pub struct ChatRequest {
     pub messages: Vec<Msg>,
+    /// Optional structured text output; tools retain their existing format.
+    pub output_schema: Option<Value>,
     /// OpenAI-shaped tool definitions (`{"type":"function","function":{…}}`).
     pub tools: Vec<Value>,
     pub max_tokens: u32,
@@ -226,6 +228,8 @@ pub trait Llm: Send + Sync {
     fn native_chat(&self) -> bool {
         false
     }
+    /// Explicitly promises to poll the caller's stop/deadline during inference.
+    fn supports_bounded_chat(&self) -> bool { false }
 
     /// A conversation as messages, with tools. `on_text` is handed the words
     /// as they arrive and returns `false` to stop generating (a sentence cap
@@ -519,6 +523,11 @@ fn now_ms() -> u64 {
 }
 
 impl Llm for FallbackLlm {
+    fn supports_bounded_chat(&self) -> bool { self.primary.supports_bounded_chat() }
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+        if !self.primary.supports_bounded_chat() { return Err(AtlasError::Platform("the local model has no bounded chat interface".into())); }
+        self.primary.chat_until(req, on_text, keep_going)
+    }
     fn has_stronger(&self) -> bool {
         self.secondary.is_some()
     }
@@ -793,6 +802,7 @@ impl Llm for ShellLlm {
     fn native_chat(&self) -> bool {
         crate::models::chat_url_beside(&self.cfg).is_some_and(|u| crate::models::chat_available(&u))
     }
+    fn supports_bounded_chat(&self) -> bool { crate::models::chat_url_beside(&self.cfg).is_some() }
 
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
         let Some(url) = crate::models::chat_url_beside(&self.cfg) else {
@@ -1495,7 +1505,7 @@ impl<'a> Brain<'a> {
         // call is ~20 tokens; one that doesn't come back as a call falls
         // through to the ordinary reply.
         if turn.wants_a_tool && turn.tools.len() > turn.stable_tools {
-            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: FORCED_TOOL_TOKENS, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
+            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: FORCED_TOOL_TOKENS, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false, output_schema: None };
             if let Ok(mut first) = self.llm.chat(&req, &mut |_| true) {
                 if first.tool_calls.is_empty() {
                     if let Some(call) = crate::models::forced_call(&first.text, &req.tools) {
@@ -1515,7 +1525,7 @@ impl<'a> Brain<'a> {
                 }
             }
         }
-        let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
+        let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false, output_schema: None };
         // What a new reply is checked against: the last replies in full
         // (`Turn::recent_replies`), or, when the caller gave none, what the
         // history holds of them.
@@ -1544,7 +1554,7 @@ impl<'a> Brain<'a> {
         if gate.repeated || looped {
             let mut fresh = Turn { history: Vec::new(), tools: Vec::new(), stable_tools: 0, ..turn.clone() };
             fresh.now = format!("{}\n{}", fresh.now.trim_end(), ANSWER_AFRESH);
-            let req = ChatRequest { messages: fresh.messages(), tools: Vec::new(), max_tokens: fresh.max_tokens, force_tool: false, stable_tools: 0, aside: true, stronger: true };
+            let req = ChatRequest { messages: fresh.messages(), tools: Vec::new(), max_tokens: fresh.max_tokens, force_tool: false, stable_tools: 0, aside: true, stronger: true, output_schema: None };
             // What was already said of the first reply isn't said again.
             let already = gate.sent.trim().to_string();
             let mut against = earlier.clone();
@@ -1581,7 +1591,7 @@ impl<'a> Brain<'a> {
         // without tools, so the person gets an answer rather than "I didn't
         // get a usable answer".
         if spoken_text(&reply.text).is_none() && !reply.tool_calls.is_empty() && matches!(d.intent, Intent::Say(_)) {
-            let req = ChatRequest { messages: turn.messages(), tools: Vec::new(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: 0, aside: true, stronger: false };
+            let req = ChatRequest { messages: turn.messages(), tools: Vec::new(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
             let (again, g2) = self.chat_gated(&req, turn.max_sentences, SpeechGate::asking_again(&earlier), on_text);
             let again = match again {
                 Ok(a) => a,
@@ -1615,7 +1625,7 @@ impl<'a> Brain<'a> {
             // one doesn't write for half a minute instead (30 Sep 2026, a real
             // 0.8B model: 450 tokens, 37 s; at 120 a 2B one still wrote for 20 s on
             // this machine's processor -- a call is 20-40 tokens).
-            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens.min(FORCED_TOOL_TOKENS), force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false };
+            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens.min(FORCED_TOOL_TOKENS), force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false, output_schema: None };
             if let Ok(mut forced) = self.llm.chat(&req, &mut |_| true) {
                 // The call comes back as the schema's JSON (`models::chat_body`).
                 if forced.tool_calls.is_empty() {
@@ -2726,5 +2736,43 @@ mod long_answers {
         assert!(says_cut_off(&v(r#"{"stop_reason":"max_tokens"}"#)));
         assert!(says_cut_off(&v(r#"{"done_reason":"length"}"#)));
         assert!(!says_cut_off(&v(r#"{"content":"x","stopped_eos":true,"stop_type":"eos"}"#)));
+    }
+}
+
+#[cfg(test)]
+mod bounded_chat_capability {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    struct Unbounded(Arc<AtomicUsize>);
+    impl Llm for Unbounded {
+        fn native_chat(&self) -> bool { true }
+        fn complete(&self, _: &str, _: &str) -> Result<String> { self.0.fetch_add(1, Ordering::SeqCst); Ok("unbounded".into()) }
+    }
+    struct Cooperative;
+    impl Llm for Cooperative {
+        fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("bounded work must not call complete") }
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, _: &ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> Result<ChatReply> {
+            while keep() { std::thread::sleep(std::time::Duration::from_millis(1)); }
+            Err(AtlasError::Platform("caller stopped inference".into()))
+        }
+    }
+    #[test]
+    fn native_protocol_alone_does_not_allow_a_synchronous_bounded_job() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let model = FallbackLlm::new(Arc::new(Unbounded(calls.clone())), None);
+        assert!(model.native_chat()); assert!(!model.supports_bounded_chat());
+        assert!(model.chat_until(&ChatRequest::default(), &mut |_| true, &|| true).is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+    #[test]
+    fn bounded_primary_deadline_does_not_start_an_online_or_synchronous_fallback() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let model = FallbackLlm::new(Arc::new(Cooperative), Some(Arc::new(Unbounded(calls.clone()))));
+        assert!(model.supports_bounded_chat());
+        let start = std::time::Instant::now();
+        assert!(model.chat_until(&ChatRequest::default(), &mut |_| true, &|| start.elapsed() < std::time::Duration::from_millis(20)).is_err());
+        assert!(start.elapsed() < std::time::Duration::from_millis(300));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 }

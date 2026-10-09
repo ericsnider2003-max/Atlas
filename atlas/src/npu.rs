@@ -37,6 +37,20 @@
 //! needs an ONNX Runtime built with OpenVINO inside rather than this plugin.
 //! That's the next step, measured first (`atlas npu-check`).
 
+#[path = "npu/worker.rs"]
+mod worker;
+static WORKER_ROOT: OnceLock<PathBuf> = OnceLock::new();
+static IN_WORKER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Private helper entry. No ordinary Atlas state or services are started here.
+pub fn worker_entry() -> i32 {
+    if std::env::args_os().count() != 2 { return 2; }
+    IN_WORKER.store(true, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(windows)]
+    unsafe { windows::Win32::System::Diagnostics::Debug::SetErrorMode(windows::Win32::System::Diagnostics::Debug::SEM_NOGPFAULTERRORBOX | windows::Win32::System::Diagnostics::Debug::SEM_FAILCRITICALERRORS); }
+    worker::serve()
+}
+
 use crate::getpieces::{Lands, Piece};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -52,7 +66,7 @@ pub const PROVIDER: &str = "OpenVINOExecutionProvider";
 
 /// Compiled models, kept between starts.
 fn cache_dir() -> PathBuf {
-    crate::roots::data_dir().join("cache").join("npu")
+    WORKER_ROOT.get().map(|root| root.join("data")).unwrap_or_else(crate::roots::data_dir).join("cache").join("npu")
 }
 
 /// Intel's plugin package, pinned. Windows on x86-64 only: it's the only
@@ -191,11 +205,18 @@ impl NativeAttempt {
             .map_err(|e| format!("won't use the NPU without a recovery marker: {e}"))?;
         if let Err(e) = file.write_all(what.as_bytes()).and_then(|_| file.sync_all()) {
             drop(file);
-            let _ = std::fs::remove_file(&marker);
+            crate::heard!(std::fs::remove_file(&marker));
             return Err(format!("won't use the NPU without a durable recovery marker: {e}"));
         }
         Ok(Self { marker, _serial: serial })
     }
+}
+
+// Owned helpers have a parent-held per-attempt receipt. Legacy in-process
+// markers remain readable for upgrade recovery but are never written by them.
+fn child_attempt(what: &str) -> Result<Option<NativeAttempt>, String> {
+    if IN_WORKER.load(std::sync::atomic::Ordering::Relaxed) { Ok(None) }
+    else { NativeAttempt::begin(cache_dir().join(COMPILING), what).map(Some) }
 }
 
 impl Drop for NativeAttempt {
@@ -219,9 +240,10 @@ fn engine(root: &Path) -> Result<&'static Engine, String> {
             let lib = runtime_path(root).ok_or("ONNX Runtime isn't here yet (it comes with the Kokoro voice)")?;
             ort::init_from(&lib).map_err(|e| format!("ONNX Runtime wouldn't open: {e}"))?.with_name("atlas").commit();
             let env = ort::environment::Environment::current().map_err(|e| format!("ONNX Runtime wouldn't start: {e}"))?;
+            if !IN_WORKER.load(std::sync::atomic::Ordering::Relaxed) { return Ok(Engine { env, npu: false, _plugin: None, blocked: None }); }
             let plugin_path = root.join(PLUGIN);
-            let (plugin, crashed) = guarded_provider(|| crashed_atlas(&verdicts(), &engine_version()), || if plugin_path.is_file() {
-                let _attempt = match NativeAttempt::begin(cache_dir().join(COMPILING), "loading the NPU provider") {
+            let (plugin, crashed) = guarded_provider(|| crashed_atlas(&verdicts(), &engine_version()), || if IN_WORKER.load(std::sync::atomic::Ordering::Relaxed) && plugin_path.is_file() {
+                let _attempt = match child_attempt("loading the NPU provider") {
                     Ok(attempt) => attempt,
                     Err(why) => {
                         crate::outln!("{why}; using the processor");
@@ -263,9 +285,10 @@ fn npu_devices(env: &ort::environment::Environment) -> impl Iterator<Item = ort:
     })
 }
 
-/// Is the NPU usable from here (runtime, plugin, device all present)?
+/// Eligible for a bounded isolated trial; files alone do not prove NPU readiness.
 pub fn npu_ready(root: &Path) -> bool {
-    engine(root).is_ok_and(|e| e.npu)
+    if IN_WORKER.load(std::sync::atomic::Ordering::Relaxed) { engine(root).is_ok_and(|e| e.npu) }
+    else { root.join(PLUGIN).is_file() && runtime_path(root).is_some() && crashed_atlas(&verdicts(), &engine_version()).is_none() && worker::allowed(root) }
 }
 
 /// Is ONNX Runtime itself usable from here, NPU or not? It comes with the
@@ -280,6 +303,11 @@ fn why_not_on_npu(root: &Path) -> Option<String> {
     if !has_intel_npu() && cfg!(windows) {
         return Some("this computer has no Intel NPU".into());
     }
+    if !IN_WORKER.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Some(reason) = crashed_atlas(&verdicts(), &engine_version()) { return Some(reason); }
+        if let Some(reason) = worker::blocked(root) { return Some(reason); }
+        return Some(if npu_ready(root) { "eligible for an isolated helper trial; availability is not yet verified".into() } else { "no eligible isolated NPU engine is available".into() });
+    }
     match engine(root) {
         Err(e) => Some(e.clone()),
         Ok(e) if e.blocked.is_some() => e.blocked.clone(),
@@ -290,6 +318,7 @@ fn why_not_on_npu(root: &Path) -> Option<String> {
 }
 
 /// One input: its name, shape and values.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum In {
     F32(String, Vec<i64>, Vec<f32>),
     I64(String, Vec<i64>, Vec<i64>),
@@ -297,8 +326,11 @@ pub enum In {
 
 /// A model opened in ONNX Runtime, on the NPU when it can be.
 pub struct Session {
-    s: Mutex<ort::session::Session>,
-    pub on: Where,
+    s: Option<Mutex<ort::session::Session>>,
+    remote: Option<Mutex<worker::Client>>,
+    fallback: Option<(PathBuf, PathBuf, Vec<(String, Vec<i64>)>, bool)>,
+    cpu_fallback: Mutex<Option<Box<Session>>>,
+    on: std::sync::atomic::AtomicU8,
 }
 
 /// A copy of `model` with these input sizes written in, kept in the NPU
@@ -345,21 +377,25 @@ fn crash_key(version: &str) -> String {
 /// died), or a crash Windows recorded in the NPU compiler. `None` when
 /// neither. Checked before the engine is used, every start.
 pub fn crashed_atlas(v: &std::collections::BTreeMap<String, String>, version: &str) -> Option<String> {
+    crashed_atlas_in(v, version, &cache_dir(), windows_saw_the_compiler_crash)
+}
+
+fn crashed_atlas_in(v: &std::collections::BTreeMap<String, String>, version: &str, cache: &Path, compiler_crash: impl FnOnce() -> Option<String>) -> Option<String> {
     if let Some(when) = v.get(&crash_key(version)) {
         return Some(format!("its compiler crashed Atlas ({when})"));
     }
-    let marker = cache_dir().join(COMPILING);
+    let marker = cache.join(COMPILING);
     let mut why = None;
     if let Ok(text) = std::fs::read_to_string(&marker) {
         why = Some(format!("Atlas stopped while compiling {} for it", text.trim()));
-    } else if let Some(when) = windows_saw_the_compiler_crash() {
+    } else if let Some(when) = compiler_crash() {
         why = Some(format!("Windows recorded Atlas crashing in its compiler on {when}"));
     }
     let why = why?;
     let mut v = v.clone();
     v.insert(crash_key(version), why.clone());
-    crate::heard!(std::fs::create_dir_all(cache_dir()));
-    match crate::store::write_json(&cache_dir().join("verdicts.json"), &v) {
+    crate::heard!(std::fs::create_dir_all(cache));
+    match crate::store::write_json(&cache.join("verdicts.json"), &v) {
         Ok(()) => { crate::heard!(std::fs::remove_file(&marker)); }
         Err(e) => crate::outln!("couldn't keep the NPU quarantine: {e}; leaving its recovery marker in place"),
     }
@@ -453,6 +489,8 @@ pub fn reshape_value(shapes: &[(String, Vec<i64>)]) -> String {
 }
 
 impl Session {
+    /// Current actual backend, including a switch after isolated failure.
+    pub fn on(&self) -> Where { if self.on.load(std::sync::atomic::Ordering::Acquire) == 1 { Where::Npu } else { Where::Cpu } }
     /// The model's input names, from a quick open on the processor.
     pub fn input_names(root: &Path, model: &Path) -> Result<Vec<String>, String> {
         engine(root)?;
@@ -475,6 +513,14 @@ impl Session {
     /// moved to the NPU to stop.
     #[allow(clippy::result_large_err, reason = "the ONNX runtime's own error type; built once at start-up")]
     pub fn open_with(root: &Path, model: &Path, shapes: &[(String, Vec<i64>)], want: Where, quiet: bool) -> Result<Session, String> {
+        if want == Where::Npu && !IN_WORKER.load(std::sync::atomic::Ordering::Relaxed) && npu_ready(root) {
+            match worker::Client::open(root, model, shapes, quiet) {
+                Ok(remote) => return Ok(Session { s: None, remote: Some(Mutex::new(remote)),
+                    fallback: Some((root.into(), model.into(), shapes.to_vec(), quiet)),
+                    cpu_fallback: Mutex::new(None), on: std::sync::atomic::AtomicU8::new(1) }),
+                Err(why) => crate::outln!("NPU helper unavailable: {why}; using the processor"),
+            }
+        }
         let e = engine(root)?;
         let mut b = ort::session::Session::builder().map_err(|e| e.to_string())?;
         // The sizes fixed in the graph itself, by the names the model gives
@@ -496,7 +542,7 @@ impl Session {
         let mut on = Where::Cpu;
         let mut native_attempt = None;
         if want == Where::Npu && e.npu {
-            native_attempt = Some(NativeAttempt::begin(cache_dir().join(COMPILING), &verdict_key(model, shapes))?);
+            native_attempt = child_attempt(&verdict_key(model, shapes))?;
             let cache = cache_dir();
             crate::heard!(std::fs::create_dir_all(&cache));
             let opts = vec![
@@ -516,7 +562,7 @@ impl Session {
         let s = b.commit_from_file(&file).map_err(|e| format!("couldn't open {} on {}: {e}", model.display(), on.plain()));
         drop(native_attempt);
         let s = s?;
-        Ok(Session { s: Mutex::new(s), on })
+        Ok(Session { s: Some(Mutex::new(s)), remote: None, fallback: None, cpu_fallback: Mutex::new(None), on: std::sync::atomic::AtomicU8::new(if on == Where::Npu { 1 } else { 0 }) })
     }
 
     /// Run, timed: the values and how long the model took.
@@ -528,6 +574,20 @@ impl Session {
 
     /// Run, returning each output's values as f32, in the model's order.
     pub fn run(&self, inputs: Vec<In>) -> Result<Vec<Vec<f32>>, String> {
+        worker::validate_inputs(&inputs)?;
+        if let Some(remote) = &self.remote {
+            let mut remote = remote.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if self.on() == Where::Npu {
+                match remote.run(inputs.clone()) { Ok(output) => return Ok(output), Err(why) => {
+                    self.on.store(0, std::sync::atomic::Ordering::Release); crate::outln!("NPU helper stopped: {why}; using the processor");
+                } }
+            }
+            drop(remote);
+            let (root, model, shapes, quiet) = self.fallback.as_ref().ok_or("processor fallback is missing")?;
+            let mut fallback = self.cpu_fallback.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if fallback.is_none() { *fallback = Some(Box::new(Session::open_with(root, model, shapes, Where::Cpu, *quiet)?)); }
+            return fallback.as_ref().ok_or("processor fallback is unavailable")?.run(inputs);
+        }
         let mut values: Vec<(std::borrow::Cow<'static, str>, ort::session::SessionInputValue<'static>)> = Vec::new();
         for i in inputs {
             match i {
@@ -541,11 +601,12 @@ impl Session {
                 }
             }
         }
-        let mut s = self.s.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let out = s.run(values).map_err(|e| format!("the model failed on {}: {e}", self.on.plain()))?;
+        let mut s = self.s.as_ref().ok_or("model session is unavailable")?.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let out = s.run(values).map_err(|e| format!("the model failed on {}: {e}", self.on().plain()))?;
         let mut all = Vec::new();
         for (_, v) in out.iter() {
             let (_, data) = v.try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
+            if data.len() > worker::ELEMENTS || all.iter().map(Vec::len).sum::<usize>().saturating_add(data.len()) > worker::ELEMENTS || data.iter().any(|value| !value.is_finite()) { return Err("model output exceeds the isolated inference budget or contains nonfinite values".into()); }
             all.push(data.to_vec());
         }
         Ok(all)
@@ -663,6 +724,52 @@ mod a_crash_turns_it_off {
     use super::*;
 
     #[test]
+    #[ignore = "owned child of abrupt_native_exit_is_quarantined_on_the_next_start"]
+    fn native_exit_child() {
+        let marker = PathBuf::from(std::env::var_os("ATLAS_NPU_EXIT_PROOF_MARKER").expect("owned marker"));
+        assert!(marker.starts_with(std::env::temp_dir()));
+        assert_eq!(marker.file_name().unwrap(), COMPILING);
+        let _attempt = NativeAttempt::begin(marker, "owned native stage").unwrap();
+        // A process exit skips Drop, just as a native access violation does.
+        std::process::exit(37);
+    }
+
+    #[test]
+    fn abrupt_native_exit_is_quarantined_on_the_next_start() {
+        let cache = std::env::temp_dir().join(format!("atlas-npu-exit-proof-{}", std::process::id()));
+        std::fs::create_dir_all(&cache).unwrap();
+        let marker = cache.join(COMPILING);
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["npu::a_crash_turns_it_off::native_exit_child", "--exact", "--ignored", "--test-threads=1"])
+            .env("ATLAS_NPU_EXIT_PROOF_MARKER", &marker)
+            .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() { break status; }
+            if std::time::Instant::now() >= deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("owned native exit proof did not finish");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert_eq!(status.code(), Some(37));
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "owned native stage");
+        let touched = std::cell::Cell::new(false);
+        let (plugin, why) = guarded_provider(|| crashed_atlas_in(&Default::default(), "exit-proof", &cache, || None), || {
+            touched.set(true);
+            Some(())
+        });
+        assert!(plugin.is_none() && !touched.get());
+        assert!(why.unwrap().contains("owned native stage"));
+        assert!(!marker.exists());
+        let saved = serde_json::from_slice(&std::fs::read(cache.join("verdicts.json")).unwrap()).unwrap();
+        assert!(crashed_atlas_in(&saved, "exit-proof", &cache, || None).is_some());
+        std::fs::remove_file(cache.join("verdicts.json")).unwrap();
+        std::fs::remove_dir(cache).unwrap();
+    }
+
+    #[test]
     fn a_quarantined_provider_is_never_loaded_into_atlas() {
         let touched = std::cell::Cell::new(false);
         let (plugin, why) = guarded_provider(|| Some("known compiler crash".into()), || {
@@ -712,6 +819,25 @@ mod a_crash_turns_it_off {
         assert!(runtime_ready(&root), "the processor runtime must remain available");
         assert!(!npu_ready(&root));
         assert!(why_not_on_npu(&root).unwrap().contains("quarantined"));
+        let model = root.join(crate::meaningnative::MODEL);
+        let vocabulary = std::fs::read_to_string(root.join(crate::meaningnative::VOCAB)).expect("installed meaning vocabulary");
+        let token = |word: &str| vocabulary.lines().position(|line| line == word).expect("meaning token") as i64;
+        let names = Session::input_names(&root, &model).expect("actual processor model inputs");
+        let shapes = names.iter().map(|name| (name.clone(), vec![1, 16])).collect::<Vec<_>>();
+        let session = Session::open_with(&root, &model, &shapes, Where::Npu, true).expect("quarantined NPU must fall back to the processor");
+        assert_eq!(session.on(), Where::Cpu);
+        let inputs = || names.iter().map(|name| {
+            let mut values = vec![0; 16];
+            if name.contains("input_ids") { values[..3].copy_from_slice(&[token("[CLS]"), token("hello"), token("[SEP]")]); }
+            else if name.contains("attention_mask") { values[..3].fill(1); }
+            else { assert!(name.contains("token_type"), "unexpected installed model input: {name}"); }
+            In::I64(name.clone(), vec![1, 16], values)
+        }).collect();
+        let first = session.run(inputs()).expect("actual fallback inference");
+        let again = session.run(inputs()).expect("repeat actual fallback inference");
+        assert!(!first.is_empty() && first.iter().all(|values| !values.is_empty() && values.iter().all(|value| value.is_finite())));
+        assert!(first.iter().flatten().any(|value| value.abs() > 0.001));
+        assert_eq!(first, again, "fallback inference must remain deterministic on the same input");
         assert!(unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(), "a quarantined DLL must never enter Atlas's process");
         assert!(unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err());
     }

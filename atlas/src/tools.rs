@@ -96,101 +96,322 @@ pub fn poll_gap(polls: u32) -> std::time::Duration {
     std::time::Duration::from_millis(1u64.checked_shl(polls.min(16)).unwrap_or(CEILING_MS).min(CEILING_MS))
 }
 
-fn wait_or_kill(
+#[derive(Debug)]
+pub(crate) enum ProcessEnd { Exited(std::process::ExitStatus), Stopped, TimedOut, Failed(String) }
+/// One budget shared by all subprocess phases of a work item.
+pub(crate) struct WorkBudget<'a> {
+    deadline: std::time::Instant,
+    stop: &'a (dyn Fn() -> bool + Sync),
+}
+impl<'a> WorkBudget<'a> {
+    pub(crate) fn new(limit: std::time::Duration, stop: &'a (dyn Fn() -> bool + Sync)) -> Self {
+        Self { deadline: std::time::Instant::now() + limit, stop }
+    }
+    pub(crate) fn stopping(&self) -> bool { (self.stop)() || crate::goodbye::asked_to_stop() || self.deadline <= std::time::Instant::now() }
+    pub(crate) fn remaining(&self, cap: std::time::Duration) -> std::time::Duration { self.deadline.saturating_duration_since(std::time::Instant::now()).min(cap) }
+    pub(crate) fn check(&self) -> std::result::Result<(), String> {
+        if (self.stop)() || crate::goodbye::asked_to_stop() { Err("stopped because you asked me to stop".into()) }
+        else if self.deadline <= std::time::Instant::now() { Err("the work item's time budget ended; completion is not confirmed".into()) }
+        else { Ok(()) }
+    }
+}
+#[derive(Debug)]
+pub(crate) struct ProcessRun { pub end: ProcessEnd, pub stdout: Vec<u8>, pub stderr: Vec<u8>, pub truncated: bool }
+impl ProcessRun {
+    pub(crate) fn said(self, max: usize) -> (bool, String) {
+        let mut text = String::from_utf8_lossy(&self.stdout).to_string();
+        text.push_str(&String::from_utf8_lossy(&self.stderr));
+        let passed = matches!(self.end, ProcessEnd::Exited(status) if status.success()) && !self.truncated;
+        match self.end {
+            ProcessEnd::Stopped => text.push_str("\nerror: stopped because you asked me to stop"),
+            ProcessEnd::TimedOut => text.push_str("\nerror: stopped after the command's time limit; completion is not confirmed"),
+            ProcessEnd::Failed(why) => text.push_str(&format!("\nerror: {why}")),
+            _ => {}
+        }
+        if self.truncated { text.push_str("\nerror: output exceeded the safe capture budget; verification is incomplete"); }
+        (passed, crate::sandbox::trim_output(&text, max))
+    }
+}
+
+struct Captured {
+    head: Vec<u8>, tail: std::collections::VecDeque<u8>, seen: usize,
+    cap: usize, done: bool, failure: Option<String>,
+}
+impl Captured {
+    fn add(&mut self, chunk: &[u8]) {
+        self.seen = self.seen.saturating_add(chunk.len());
+        let first = (self.cap / 2).saturating_sub(self.head.len()).min(chunk.len());
+        self.head.extend_from_slice(&chunk[..first]);
+        let tail_cap = self.cap - self.cap / 2;
+        for byte in &chunk[first..] {
+            if self.tail.len() == tail_cap { self.tail.pop_front(); }
+            self.tail.push_back(*byte);
+        }
+    }
+    fn bytes(&self) -> Vec<u8> {
+        let mut text = self.head.clone();
+        if self.seen > self.cap { text.extend_from_slice(b"\n[output truncated]\n"); }
+        text.extend(self.tail.iter());
+        text
+    }
+}
+type Capture = std::sync::Arc<std::sync::Mutex<Captured>>;
+fn capture(pipe: Option<Box<dyn std::io::Read + Send>>, cap: usize) -> Capture {
+    use std::io::Read;
+    let held = std::sync::Arc::new(std::sync::Mutex::new(Captured { head: Vec::new(), tail: Default::default(), seen: 0, cap: cap.max(2), done: false, failure: None }));
+    let worker = held.clone();
+    std::thread::spawn(move || {
+        let mut failure = None;
+        if let Some(mut pipe) = pipe {
+            let mut bytes = [0u8; 8192];
+            loop {
+                match pipe.read(&mut bytes) {
+                    Ok(0) => break,
+                    Ok(n) => worker.lock().unwrap_or_else(|e| e.into_inner()).add(&bytes[..n]),
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) => { failure = Some(error.to_string()); break; }
+                }
+            }
+        }
+        let mut held = worker.lock().unwrap_or_else(|e| e.into_inner());
+        held.failure = failure;
+        held.done = true;
+    });
+    held
+}
+
+/// New work is owned before it runs. Cancellation and output collection
+/// share one deadline; descendant-held pipes never cause a reader join.
+pub(crate) fn run_scoped(command: &mut std::process::Command, limit: std::time::Duration,
+    cap: usize, feed: Option<String>, stop: Option<&dyn Fn() -> bool>) -> ProcessRun {
+    let started = std::time::Instant::now();
+    if stop.is_some_and(|stop| stop()) || crate::goodbye::asked_to_stop() {
+        return ProcessRun { end: ProcessEnd::Stopped, stdout: Vec::new(), stderr: Vec::new(), truncated: false };
+    }
+    if feed.as_ref().is_some_and(|text| text.len() > 2 * 1024 * 1024) {
+        return ProcessRun { end: ProcessEnd::Failed("command input exceeds the safe preparation budget".into()), stdout: Vec::new(), stderr: Vec::new(), truncated: false };
+    }
+    command.stdin(if feed.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+    match crate::childjob::Scope::spawn(command) {
+        Ok((child, scope)) => wait_scoped(child, scope, started, limit, cap, feed, stop),
+        Err(error) => ProcessRun { end: ProcessEnd::Failed(format!("the command could not start with owned cancellation: {error}")), stdout: Vec::new(), stderr: Vec::new(), truncated: false },
+    }
+}
+
+#[cfg(test)]
+mod scoped_process_tests {
+    use super::*;
+    const MODE: &str = "ATLAS_SCOPED_RUNNER_FIXTURE_MODE";
+    const PID: &str = "ATLAS_SCOPED_RUNNER_FIXTURE_PID_FILE";
+    fn root(tag: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("atlas-scoped-runner-{tag}-{}-{}", std::process::id(), crate::store::now()));
+        std::fs::create_dir_all(&root).unwrap(); root
+    }
+    fn fixture(mode: &str, pid: &std::path::Path) -> std::process::Command {
+        let mut command = command(std::env::current_exe().unwrap());
+        command.args(["--exact", "tools::scoped_process_tests::process_fixture", "--nocapture"]);
+        command.env(MODE, mode).env(PID, pid);
+        command
+    }
+    fn alive(pid: u32) -> bool {
+        #[cfg(windows)]
+        {
+            use windows::Win32::System::Threading::{OpenProcess, GetExitCodeProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+            unsafe {
+                let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return false; };
+                let mut code = 0;
+                let found = GetExitCodeProcess(process, &mut code).is_ok() && code == 259;
+                let _ = windows::Win32::Foundation::CloseHandle(process);
+                found
+            }
+        }
+        #[cfg(unix)]
+        {
+            #[cfg(target_os = "linux")]
+            if std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().is_some_and(|stat| stat.rsplit_once(") ").is_some_and(|(_, state)| state.starts_with('Z'))) { return false; }
+            unsafe { libc::kill(pid as i32, 0) == 0 }
+        }
+        #[cfg(not(any(windows, unix)))]
+        { let _ = pid; false }
+    }
+    fn wait_gone(path: &std::path::Path) {
+        let pid: u32 = std::fs::read_to_string(path).unwrap().parse().unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while alive(pid) && std::time::Instant::now() < until { std::thread::sleep(std::time::Duration::from_millis(10)); }
+        assert!(!alive(pid), "owned process {pid} remained alive");
+    }
+    #[test]
+    fn process_fixture() {
+        let Ok(mode) = std::env::var(MODE) else { return; };
+        let pid = std::path::PathBuf::from(std::env::var_os(PID).unwrap());
+        if mode == "descendant" {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+            #[cfg(windows)]
+            { use std::os::windows::process::CommandExt; child.creation_flags(0x0800_0000); }
+            child.args(["--exact", "tools::scoped_process_tests::process_fixture", "--nocapture"])
+                .env(MODE, "sleep").env(PID, &pid).stdout(Stdio::inherit()).stderr(Stdio::inherit());
+            let _owned_descendant = child.spawn().unwrap();
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while !pid.exists() && std::time::Instant::now() < until { std::thread::sleep(std::time::Duration::from_millis(5)); }
+            assert!(pid.exists());
+            std::process::exit(0);
+        }
+        std::fs::write(&pid, std::process::id().to_string()).unwrap();
+        if mode == "refuse-input" { std::process::exit(0); }
+        if mode == "consume-input" {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            std::io::stdin().take(2 * 1024 * 1024 + 1).read_to_end(&mut bytes).unwrap();
+            assert_eq!(bytes.len(), 2 * 1024 * 1024);
+            assert!(bytes.iter().all(|byte| *byte == b'x'));
+            std::io::stdout().write_all(b"full input consumed").unwrap();
+            std::process::exit(0);
+        }
+        if mode == "spam" {
+            std::io::stdout().write_all(&vec![b'x'; 512 * 1024]).unwrap();
+            std::process::exit(0);
+        }
+        std::thread::sleep(std::time::Duration::from_secs(20));
+    }
+    #[test]
+    fn parent_exit_with_descendant_pipe_handles_does_not_escape_deadline() {
+        let root = root("pipes"); let pid = root.join("child.pid");
+        let start = std::time::Instant::now();
+        let run = run_scoped(&mut fixture("descendant", &pid), std::time::Duration::from_secs(5), 8192, None, None);
+        assert!(matches!(run.end, ProcessEnd::Exited(status) if status.success()), "{run:?}");
+        assert!(start.elapsed() < std::time::Duration::from_secs(4));
+        wait_gone(&pid);
+    }
+    #[test]
+    fn output_is_bounded_and_truncation_never_verifies_success() {
+        let root = root("cap");
+        let run = run_scoped(&mut fixture("spam", &root.join("pid")), std::time::Duration::from_secs(5), 1024, None, None);
+        assert!(run.truncated);
+        assert!(run.stdout.len() <= 1050, "{} captured bytes", run.stdout.len());
+        let (passed, text) = run.said(4000);
+        assert!(!passed && text.contains("verification is incomplete"), "{text}");
+    }
+    #[test]
+    fn stop_and_timeout_kill_only_the_owned_tree_and_have_distinct_outcomes() {
+        let root = root("cancel");
+        let mut unrelated_command = fixture("sleep", &root.join("unrelated.pid"));
+        unrelated_command.stdout(Stdio::null()).stderr(Stdio::null());
+        let (mut unrelated, mut unrelated_scope) = crate::childjob::Scope::spawn(&mut unrelated_command).unwrap();
+        let timed_pid = root.join("timed.pid");
+        let run = run_scoped(&mut fixture("sleep", &timed_pid), std::time::Duration::from_secs(2), 8192, None, None);
+        assert!(matches!(run.end, ProcessEnd::TimedOut), "{run:?}");
+        wait_gone(&timed_pid);
+        let stopped_pid = root.join("stopped.pid");
+        let stop = || stopped_pid.exists();
+        let run = run_scoped(&mut fixture("sleep", &stopped_pid), std::time::Duration::from_secs(5), 8192, None, Some(&stop));
+        assert!(matches!(run.end, ProcessEnd::Stopped), "{run:?}");
+        wait_gone(&stopped_pid);
+        assert!(unrelated.try_wait().unwrap().is_none(), "stopping one job ended unrelated work");
+        unrelated_scope.stop();
+        let _ = unrelated.wait();
+    }
+    #[test]
+    fn cancellation_before_start_performs_no_command_action() {
+        let root = root("before"); let pid = root.join("never.pid");
+        let run = run_scoped(&mut fixture("sleep", &pid), std::time::Duration::from_secs(5), 8192, None, Some(&|| true));
+        assert!(matches!(run.end, ProcessEnd::Stopped));
+        assert!(!pid.exists());
+    }
+    #[test]
+    fn successful_exit_requires_complete_input_feed() {
+        let root = root("input-ack");
+        let feed = "x".repeat(2 * 1024 * 1024);
+        let refused = run_scoped(&mut fixture("refuse-input", &root.join("refused.pid")), std::time::Duration::from_secs(5), 8192, Some(feed.clone()), None);
+        assert!(matches!(refused.end, ProcessEnd::Failed(_)), "{refused:?}");
+        let (passed, text) = refused.said(8192);
+        assert!(!passed && text.contains("input"), "{text}");
+        let consumed = run_scoped(&mut fixture("consume-input", &root.join("consumed.pid")), std::time::Duration::from_secs(5), 8192, Some(feed), None);
+        let (passed, text) = consumed.said(8192);
+        assert!(passed && text.contains("full input consumed"), "{text}");
+    }
+}
+
+fn wait_scoped(mut child: std::process::Child, mut scope: crate::childjob::Scope,
+    started: std::time::Instant, limit: std::time::Duration, cap: usize,
+    feed: Option<String>, stop: Option<&dyn Fn() -> bool>) -> ProcessRun {
+    let stdout = capture(child.stdout.take().map(|pipe| Box::new(pipe) as _), cap);
+    let stderr = capture(child.stderr.take().map(|pipe| Box::new(pipe) as _), cap);
+    let initial_feed = if child.stdin.is_none() {
+        Some(if feed.is_some() { Err("the command has no input pipe".to_string()) } else { Ok(()) })
+    } else { None };
+    let input_result = std::sync::Arc::new(std::sync::Mutex::new(initial_feed));
+    if let Some(mut input) = child.stdin.take() {
+        let result = input_result.clone();
+        std::thread::spawn(move || {
+            let written = input.write_all(feed.unwrap_or_default().as_bytes()).map_err(|error| error.to_string());
+            drop(input);
+            *result.lock().unwrap_or_else(|poison| poison.into_inner()) = Some(written);
+        });
+    }
+    let mut polls = 0u32;
+    let mut end = loop {
+        if stop.is_some_and(|stop| stop()) || crate::goodbye::asked_to_stop() { break ProcessEnd::Stopped; }
+        if started.elapsed() >= limit { break ProcessEnd::TimedOut; }
+        match child.try_wait() {
+            Ok(Some(status)) => break ProcessEnd::Exited(status),
+            Ok(None) => {}
+            Err(error) => break ProcessEnd::Failed(format!("the command's result could not be read: {error}")),
+        }
+        std::thread::sleep(poll_gap(polls).min(std::time::Duration::from_millis(25)).min(limit.saturating_sub(started.elapsed())));
+        polls = polls.saturating_add(1);
+    };
+    // Closing this owned tree also releases descendant-held pipe handles.
+    scope.stop();
+    if !matches!(end, ProcessEnd::Exited(_)) { let _ = child.kill(); crate::unwaited::dont_wait(child); }
+    let drain_until = std::time::Instant::now() + std::time::Duration::from_millis(250);
+    while started.elapsed() < limit && std::time::Instant::now() < drain_until {
+        if stdout.lock().unwrap_or_else(|e| e.into_inner()).done && stderr.lock().unwrap_or_else(|e| e.into_inner()).done
+            && input_result.lock().unwrap_or_else(|poison| poison.into_inner()).is_some() { break; }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let out = stdout.lock().unwrap_or_else(|e| e.into_inner());
+    let err = stderr.lock().unwrap_or_else(|e| e.into_inner());
+    let input = input_result.lock().unwrap_or_else(|poison| poison.into_inner());
+    if matches!(end, ProcessEnd::Exited(_)) && (!out.done || !err.done || input.is_none()) {
+        end = ProcessEnd::Failed("the command exited but input/output completion was not acknowledged within its deadline".into());
+    }
+    if let Some(Err(why)) = input.as_ref() {
+        if matches!(end, ProcessEnd::Exited(_)) { end = ProcessEnd::Failed(format!("the complete command input was not delivered: {why}")); }
+    }
+    if let Some(why) = out.failure.as_ref().or(err.failure.as_ref()) {
+        if matches!(end, ProcessEnd::Exited(_)) { end = ProcessEnd::Failed(format!("command output could not be read: {why}")); }
+    }
+    ProcessRun { end, stdout: out.bytes(), stderr: err.bytes(), truncated: out.seen > out.cap || err.seen > err.cap }
+}
+
+pub(crate) fn wait_or_kill(
     mut child: std::process::Child,
     cmd: &str,
     limit: std::time::Duration,
     feed: Option<String>,
     stop: Option<&dyn Fn() -> bool>,
 ) -> Result<Option<std::process::Output>> {
-    use std::io::Read;
-
-    let mut si = child.stdin.take();
-    let in_t = std::thread::spawn(move || -> Option<String> {
-        let mut trouble = None;
-        if let Some(pipe) = si.as_mut() {
-            let text = feed.unwrap_or_default();
-            if let Err(e) = pipe.write_all(text.as_bytes()).and_then(|()| pipe.flush()) {
-                trouble = Some(e.to_string());
-            }
-        }
-        // Closes the write end, so the tool sees end-of-input rather than
-        // waiting for more. Explicit because it is the whole reason the
-        // handle was taken out of the child.
-        drop(si);
-        trouble
-    });
-
-    let mut so = child.stdout.take();
-    let mut se = child.stderr.take();
-    let out_t = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(p) = so.as_mut() {
-            crate::heard!(p.read_to_end(&mut buf));
-        }
-        buf
-    });
-    let err_t = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(p) = se.as_mut() {
-            crate::heard!(p.read_to_end(&mut buf));
-        }
-        buf
-    });
-
-    let started = std::time::Instant::now();
-    let mut polls: u32 = 0;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break st,
-            Err(e) => {
-                return Err(AtlasError::Platform(format!("waiting on '{cmd}': {e}")));
-            }
-            Ok(None) => {}
-        }
-        if started.elapsed() >= limit {
+    let scope = match crate::childjob::Scope::attach(&child) {
+        Ok(scope) => scope,
+        Err(error) => {
             let _ = child.kill();
-            let _ = child.wait();
-            return Err(AtlasError::Platform(format!(
-                "'{cmd}' was still running after {}s, so I stopped it. \
-                 If it needs longer, raise timeout_secs for that tool.",
-                limit.as_secs()
-            )));
+            crate::unwaited::dont_wait(child);
+            return Err(AtlasError::Platform(format!("'{cmd}' cancellation ownership could not be established: {error}")));
         }
-        // Asked to stop (Atlas paused, the microphone wanted elsewhere, a
-        // reply cut off): ended now, and not an error.
-        if stop.is_some_and(|f| f()) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Ok(None);
-        }
-        let gap = if stop.is_some() { poll_gap(polls).min(std::time::Duration::from_millis(25)) } else { poll_gap(polls) };
-        std::thread::sleep(gap.min(limit.saturating_sub(started.elapsed())));
-        polls = polls.saturating_add(1);
     };
-
-    // The child has exited, so its end of the stdin pipe is closed and the
-    // writer cannot still be blocked on it.
-    let feeding = in_t.join().unwrap_or(None);
-    let mut stderr = err_t.join().unwrap_or_default();
-    if let Some(why) = feeding {
-        if !status.success() {
-            // Only when the tool actually failed. A tool that ignores the
-            // rest of its input and succeeds anyway -- piper given more text
-            // than it needed -- is not a fault to report.
-            stderr.extend_from_slice(
-                format!("\n(and I couldn't finish handing it the text: {why})").as_bytes(),
-            );
-        }
-    }
-
-    Ok(Some(std::process::Output {
-        status,
-        stdout: out_t.join().unwrap_or_default(),
-        stderr,
-    }))
+    let ran = wait_scoped(child, scope, std::time::Instant::now(), limit, 32 * 1024 * 1024, feed, stop);
+    process_output(ran, cmd, limit)
 }
 
+fn process_output(ran: ProcessRun, cmd: &str, limit: std::time::Duration) -> Result<Option<std::process::Output>> {
+    match ran.end {
+        ProcessEnd::Stopped => Ok(None),
+        ProcessEnd::TimedOut => Err(AtlasError::Platform(format!("'{cmd}' was still running after {}s, so I stopped it. If it needs longer, raise timeout_secs for that tool.", limit.as_secs()))),
+        ProcessEnd::Failed(why) => Err(AtlasError::Platform(format!("'{cmd}': {why}. Check this tool's installation and executable setting on the Connections page."))),
+        ProcessEnd::Exited(_) if ran.truncated => Err(AtlasError::Platform(format!("'{cmd}' exceeded its safe output budget; completion was not verified"))),
+        ProcessEnd::Exited(status) => Ok(Some(std::process::Output { status, stdout: ran.stdout, stderr: ran.stderr })),
+    }
+}
 /// Replace every `{name}` with vars["name"]. Unknown placeholders are left
 /// alone so a typo shows up in the error message instead of silently
 /// becoming an empty string.
@@ -261,23 +482,8 @@ impl ExternalTool {
             }
         }
 
-        let child = crate::tools::command(&cmd)
-            .args(&args)
-            .stdin(if self.stdin_text {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                AtlasError::Platform(format!(
-                    "could not start '{cmd}': {e}. Is it installed and on PATH? \
-                     The Connections page shows what's missing."
-                ))
-            })?;
-        crate::childjob::tie(&child);
+        let mut command = crate::tools::command(&cmd);
+        command.args(&args);
 
         let limit = std::time::Duration::from_secs(if self.timeout_secs == 0 {
             default_timeout()
@@ -289,7 +495,8 @@ impl ExternalTool {
         // below cannot break, because the timeout starts inside the function
         // the write never returns from.
         let feed = self.stdin_text.then(|| stdin.unwrap_or("").to_string());
-        let Some(out) = wait_or_kill(child, &cmd, limit, feed, stop)? else {
+        let ran = run_scoped(&mut command, limit, 32 * 1024 * 1024, feed, stop);
+        let Some(out) = process_output(ran, &cmd, limit)? else {
             return Ok(None);
         };
         if !out.status.success() {
@@ -496,6 +703,11 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
     }
     cmd
 }

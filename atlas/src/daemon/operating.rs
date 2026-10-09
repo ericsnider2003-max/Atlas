@@ -246,6 +246,7 @@ impl<'a> Daemon<'a> {
                 stable_tools: 0,
                 aside: true,
                 stronger: false,
+                output_schema: None,
             };
             let r = llm.chat(&req, &mut |_| true).map_err(|e| e.to_string())?;
             let call = r.tool_calls.into_iter().next().or_else(|| crate::models::forced_call(&r.text, &tools));

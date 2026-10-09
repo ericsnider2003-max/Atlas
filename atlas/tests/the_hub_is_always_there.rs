@@ -299,11 +299,16 @@ fn an_update_restart_takes_the_old_icon_away_before_the_new_one_starts() {
 // ================= 4. saves that fail say so =================
 
 fn daemon_that_cannot_save<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    let base = std::env::temp_dir().join(format!("atlas-hubthere-nosave-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    let _ = std::fs::remove_file(&base);
-    std::fs::write(&base, b"not a directory").unwrap();
-    Daemon::new(c, p, None, Store::new(base.join("state")), Proactive::new(ProactiveConfig::default()))
+    let base = tmp(&format!("nosave-{tag}"));
+    let daemon = Daemon::new(c, p, None, Store::new(&base), Proactive::new(ProactiveConfig::default()));
+    // Startup must refuse invalid roots. These journeys instead exercise a
+    // record becoming unwritable after a valid startup, before an owner edit.
+    for name in [atlas::dash::FILE, atlas::palette::FILE, atlas::handover::FILE, atlas::tray::FILE] {
+        let record = base.join(format!("{name}.json"));
+        if record.is_file() { std::fs::remove_file(&record).unwrap(); }
+        std::fs::create_dir(&record).unwrap();
+    }
+    daemon
 }
 
 #[test]

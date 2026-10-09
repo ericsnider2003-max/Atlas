@@ -495,6 +495,62 @@ explanation.";
 /// (nothing else broke), run against the change in a copy of the tree. This
 /// only produces a candidate to put through them -- the same division of labour
 /// as `build_it::build_loop`, where the model drafts and the compiler decides.
+/// Small local repair recipes. Each structured edit is only a candidate:
+/// the existing, unchanged proving test and full suite decide its meaning.
+pub(crate) fn recipe_candidates(current: &[Edit]) -> Vec<(String, Vec<Edit>)> {
+    let mut candidates = Vec::new();
+    for file in current.iter().take(16) {
+        if file.content.len() > 512 * 1024 { continue; }
+        if file.path.ends_with(".rs") {
+            for (start, _) in file.content.match_indices(".take(").take(8) {
+                let rest = &file.content[start + 6..];
+                let Some(end) = rest.find(".len() - 1)") else { continue };
+                let name = &rest[..end];
+                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { continue; }
+                if let Ok(content) = apply_edit_blocks(&file.content, &[(format!(".take({name}.len() - 1)"), format!(".take({name}.len())"))]) {
+                    candidates.push(("Include the omitted iterator endpoint".into(), vec![Edit { path: file.path.clone(), content, reason: "Local recipe: test whether the omitted iterator endpoint caused the failure.".into() }]));
+                    if candidates.len() >= 8 { return candidates; }
+                }
+            }
+        }
+        if !file.path.ends_with(".py") { continue; }
+        for suffix in ["[:-1]", "[1:]"] {
+            for (start, _) in file.content.match_indices("sum(").take(8) {
+                let rest = &file.content[start + 4..];
+                let Some(end) = rest.find(&format!("{suffix})")) else { continue };
+                let name = &rest[..end];
+                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { continue; }
+                let before = format!("sum({name}{suffix})");
+                let after = format!("sum({name})");
+                let blocks = vec![(before, after)];
+                if let Ok(content) = apply_edit_blocks(&file.content, &blocks) {
+                    let edit = Edit { path: file.path.clone(), content, reason: "Local recipe: check whether the omitted endpoint caused the failing total.".into() };
+                    candidates.push(("Include the omitted endpoint in a sum".into(), vec![edit]));
+                    if candidates.len() >= 8 { return candidates; }
+                }
+            }
+        }
+    }
+    candidates
+}
+
+/// Bounded repair calls never fall back to a synchronous model adapter.
+pub(crate) struct BoundedModel<'a, 'b> { pub model: &'a dyn crate::brain::Llm, pub budget: &'a crate::tools::WorkBudget<'b> }
+impl crate::brain::Llm for BoundedModel<'_, '_> {
+    fn complete(&self, system: &str, user: &str) -> crate::error::Result<String> {
+        self.budget.check().map_err(crate::error::AtlasError::Platform)?;
+        if !self.model.supports_bounded_chat() { return Err(crate::error::AtlasError::Platform("this model connection cannot guarantee bounded cancellation for repair".into())); }
+        let req = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(system), crate::brain::Msg::user(user)], tools: Vec::new(), max_tokens: 4096, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
+        let mut bytes = 0usize;
+        let mut over = false;
+        let mut on_text = |text: &str| { bytes = bytes.saturating_add(text.len()); over |= bytes > 2 * 1024 * 1024; !over && !self.budget.stopping() };
+        let reply = self.model.chat_until(&req, &mut on_text, &|| !self.budget.stopping())?;
+        self.budget.check().map_err(crate::error::AtlasError::Platform)?;
+        if over || reply.text.len() > 2 * 1024 * 1024 { return Err(crate::error::AtlasError::Platform("the repair draft exceeded its safe response budget".into())); }
+        Ok(reply.text)
+    }
+}
+
 pub fn draft_fix(
     thought: &crate::pipeline::Thought,
     instruction: &str,
@@ -729,83 +785,33 @@ pub fn run_the_proof(
     cfg: &SelfWorkConfig,
     root: &std::path::Path,
 ) -> ProofToday {
+    run_the_proof_controlled(test_name, cfg, root, None)
+}
+
+pub(crate) fn run_the_proof_controlled(test_name: &str, cfg: &SelfWorkConfig, root: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> ProofToday {
     let filter = test_name.trim();
-    if filter.is_empty() {
-        return ProofToday::CouldNotRun("no test was named".into());
-    }
-    // The filter is passed as a single argument to the test binary, never
-    // through a shell, so it cannot become a second command.
+    if filter.is_empty() { return ProofToday::CouldNotRun("no test was named".into()); }
+    if let Some(budget) = budget { if let Err(why) = budget.check() { return ProofToday::CouldNotRun(why); } }
     let mut parts = cfg.test_command.split_whitespace();
     let program = parts.next().unwrap_or("cargo");
     let mut cmd = crate::tools::command(program);
     cmd.args(parts).arg(filter).current_dir(root);
     crate::sandbox::warm_cargo(&mut cmd, program, &[]);
-    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return ProofToday::CouldNotRun(format!("could not start {program}: {e}")),
-    };
-    crate::childjob::tie(&child);
-    let output = drain(&mut child);
-
-    let deadline = std::time::Instant::now()
-        + std::time::Duration::from_secs(PROOF_BUDGET_SECS);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Err(e) => return ProofToday::CouldNotRun(format!("lost track of the test run: {e}")),
-            Ok(None) => {}
-        }
-        if crate::goodbye::asked_to_stop() {
-            let _ = child.kill();
-            crate::unwaited::dont_wait(child);
-            return ProofToday::CouldNotRun("you asked me to stop while it was running".into());
-        }
-        if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            // Handed to `unwaited` rather than waited on here: a killed cargo
-            // can take a moment to go, and blocking on it is the thing the
-            // budget exists to avoid.
-            crate::unwaited::dont_wait(child);
-            return ProofToday::CouldNotRun(format!(
-                "it was still running after {PROOF_BUDGET_SECS} seconds, so I stopped it"
-            ));
-        }
-        // unheard-ok: returns `bool`, not a Result
-        let _ = crate::onlyone::OnlyOne::at(&crate::roots::data_dir()).beat(crate::store::now());
-        crate::goodbye::nap(200);
-    }
-
-    if let Err(e) = child.wait() {
-        return ProofToday::CouldNotRun(format!("could not read the test run: {e}"));
-    }
-    read_a_proof_run(&output())
+    let cap = std::time::Duration::from_secs(PROOF_BUDGET_SECS);
+    let limit = budget.map_or(cap, |b| b.remaining(cap));
+    let stopping = || budget.is_some_and(|b| b.stopping());
+    let run = crate::tools::run_scoped(&mut cmd, limit, 8 * 1024 * 1024, None, Some(&stopping));
+    if let Some(b) = budget { if let Err(why) = b.check() { return ProofToday::CouldNotRun(why); } }
+    let succeeded = matches!(run.end, crate::tools::ProcessEnd::Exited(status) if status.success());
+    let exited = matches!(run.end, crate::tools::ProcessEnd::Exited(_));
+    let complete = !run.truncated;
+    let (_, output) = run.said(8 * 1024 * 1024);
+    if !exited || !complete { return ProofToday::CouldNotRun(output); }
+    let proof = read_a_proof_run(&output);
+    if proof == ProofToday::PassesAlready && !succeeded { ProofToday::CouldNotRun("the test text reported success but the process failed".into()) }
+    else { proof }
 }
 
-/// Read a child's output as it comes, on threads of their own (30 Sep 2026:
-/// both runs below waited on the process with its pipes unread, so a build
-/// that printed more than the pipe holds -- any real cargo run -- blocked on
-/// writing and sat there until the budget killed it).
-pub(crate) fn drain(child: &mut std::process::Child) -> impl FnOnce() -> String {
-    use std::io::Read;
-    let take = |r: Option<Box<dyn Read + Send>>| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            if let Some(mut r) = r {
-                crate::heard!(r.read_to_end(&mut buf));
-            }
-            buf
-        })
-    };
-    let out = take(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
-    let err = take(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
-    move || {
-        let mut text = String::from_utf8_lossy(&out.join().unwrap_or_default()).to_string();
-        text.push_str(&String::from_utf8_lossy(&err.join().unwrap_or_default()));
-        text
-    }
-}
 
 /// Read a test run's output. Separated from running it so the reading is
 /// testable without a compiler.
@@ -926,16 +932,19 @@ pub fn read_run(text: &str) -> RunRead {
 }
 
 /// Run the test suite in the sandbox and read the result.
-pub fn run_tests(sandbox: &mut Sandbox, cfg: &SelfWorkConfig) -> Tried {
+
+pub(crate) fn run_tests_controlled(sandbox: &mut Sandbox, cfg: &SelfWorkConfig, budget: Option<&crate::tools::WorkBudget<'_>>) -> Tried {
     let tool = crate::tools::ExternalTool {
         command: cfg.test_command.split_whitespace().next().unwrap_or("cargo").into(),
         args: cfg.test_command.split_whitespace().skip(1).map(String::from).collect(),
         // A cold build of the whole tree plus the suite, on a laptop. Past
         // this it is stuck, and is stopped rather than waited on for ever.
-        timeout_secs: SUITE_LIMIT_SECS,
+        timeout_secs: budget.map_or(SUITE_LIMIT_SECS, |b| b.remaining(std::time::Duration::from_secs(SUITE_LIMIT_SECS)).as_secs().max(1)),
         ..Default::default()
     };
-    let attempt = sandbox.run(&tool, &Default::default(), 20_000);
+    let stop = || budget.is_some_and(|b| b.stopping());
+    let mut attempt = sandbox.run_controlled(&tool, &Default::default(), 20_000, Some(&stop));
+    if let Some(b) = budget { if let Err(why) = b.check() { attempt.passed = false; attempt.output = format!("error: {why}"); } }
     from_attempt(&attempt)
 }
 
@@ -1182,6 +1191,8 @@ fn added_lines(before: &str, after: &str) -> Vec<String> {
 /// each file goes to `keep` first -- a fix Atlas landed on its own has to be
 /// something you can put back without asking it.
 pub fn land(changes: &[crate::sandbox::Change], keep: &std::path::Path) -> crate::error::Result<usize> {
+    let root = crate::store::state_root_for(keep)?.unwrap_or_else(|| keep.to_path_buf());
+    let _state = crate::store::state_transaction(&root)?;
     std::fs::create_dir_all(keep)?;
 
     // Phase 1 — back up every existing file we're about to overwrite, *before*
@@ -1321,6 +1332,11 @@ pub fn prove_in_project(
     edits: &[Edit],
     base: &std::path::Path,
 ) -> Result<ProjectProof, String> {
+    prove_in_project_controlled(root, test_command, edits, base, None)
+}
+
+pub(crate) fn prove_in_project_controlled(root: &std::path::Path, test_command: &str, edits: &[Edit], base: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<ProjectProof, String> {
+    if let Some(b) = budget { b.check()?; }
     if !root.is_dir() {
         return Err(format!("{} isn't a folder I can reach", root.display()));
     }
@@ -1339,7 +1355,7 @@ pub fn prove_in_project(
     // and dependency caches.
     let dst = base.join(format!("projfix-{}", crate::store::now()));
     crate::heard!(std::fs::remove_dir_all(&dst));
-    copy_project(root, &dst).map_err(|e| format!("couldn't copy the project to work in: {e}"))?;
+    copy_project_controlled(root, &dst, budget, &mut (0usize, 0u64)).map_err(|e| format!("couldn't copy the project to work in: {e}"))?;
 
     // Apply the edits in the copy.
     for e in edits {
@@ -1353,23 +1369,24 @@ pub fn prove_in_project(
     }
 
     // Run the project's own suite in the copy, bounded.
-    let output = run_bounded(cmd, &dst, PROJECT_PROOF_BUDGET_SECS)?;
+    let (exited_successfully, output) = run_bounded_controlled(cmd, &dst, PROJECT_PROOF_BUDGET_SECS, budget)?;
     crate::heard!(std::fs::remove_dir_all(&dst));
 
     let read = read_a_proof_run(&output);
-    let built_and_passed = read == ProofToday::PassesAlready;
+    let built_and_passed = exited_successfully && read == ProofToday::PassesAlready;
     let tests_run = count_passing(&output);
     Ok(ProjectProof { built_and_passed, tests_run, output, replaced_existing })
 }
 
-/// Copy a project tree, skipping build output, version control and dependency
-/// caches — the things that are huge, machine-specific, or would poison a fresh
-/// build. A cold build in the copy is the price of not touching the original.
-fn copy_project(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+
+fn copy_project_controlled(from: &std::path::Path, to: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>, copied: &mut (usize, u64)) -> std::io::Result<()> {
+    if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; }
     const SKIP: &[&str] =
         &["target", ".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"];
     std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)?.flatten() {
+    for entry in std::fs::read_dir(from)? {
+        if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; }
+        let entry = entry?;
         let name = entry.file_name();
         if SKIP.iter().any(|s| *s == name) {
             continue;
@@ -1377,52 +1394,34 @@ fn copy_project(from: &std::path::Path, to: &std::path::Path) -> std::io::Result
         let src = entry.path();
         let dst = to.join(&name);
         if src.is_dir() {
-            copy_project(&src, &dst)?;
+            copy_project_controlled(&src, &dst, budget, copied)?;
         } else if src.is_file() {
-            std::fs::copy(&src, &dst)?;
+            use std::io::{Read, Write};
+            copied.0 = copied.0.saturating_add(1); copied.1 = copied.1.saturating_add(entry.metadata()?.len());
+            if copied.0 > 8192 || copied.1 > 128 * 1024 * 1024 { return Err(std::io::Error::other("project repair exceeds the bounded copy budget; no complete copy was made")); }
+            let mut input = std::fs::File::open(&src)?; let mut output = std::fs::File::create(&dst)?; let mut bytes = [0u8; 64 * 1024];
+            loop { if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; } let n = input.read(&mut bytes)?; if n == 0 { break; } output.write_all(&bytes[..n])?; }
         }
     }
     Ok(())
 }
 
-/// Run one command in a directory with a wall-clock budget, returning its
-/// combined output. Killed and reported if it runs long, rather than letting a
-/// stuck build hang the caller.
-fn run_bounded(
-    command: &str,
-    dir: &std::path::Path,
-    budget_secs: u64,
-) -> Result<String, String> {
+
+fn run_bounded_controlled(command: &str, dir: &std::path::Path, budget_secs: u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<(bool, String), String> {
+    if let Some(b) = budget { b.check()?; }
     let mut parts = command.split_whitespace();
     let program = parts.next().unwrap_or("cargo");
     let mut cmd = crate::tools::command(program);
     cmd.args(parts).current_dir(dir);
-    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("could not start {program}: {e}"))?;
-    crate::childjob::tie(&child);
-    let output = drain(&mut child);
-
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(budget_secs);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Err(e) => return Err(format!("lost track of the run: {e}")),
-            Ok(None) => {}
-        }
-        if crate::goodbye::asked_to_stop() {
-            let _ = child.kill();
-            crate::unwaited::dont_wait(child);
-            return Err("you asked me to stop while it was running".into());
-        }
-        if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            crate::unwaited::dont_wait(child);
-            return Err(format!("it was still running after {budget_secs}s, so I stopped it"));
-        }
-        crate::goodbye::nap(200);
-    }
-    child.wait().map_err(|e| format!("could not read the run: {e}"))?;
-    Ok(output())
+    crate::sandbox::warm_cargo(&mut cmd, program, &[]);
+    let cap = std::time::Duration::from_secs(budget_secs);
+    let stop = || budget.is_some_and(|b| b.stopping());
+    let run = crate::tools::run_scoped(&mut cmd, budget.map_or(cap, |b| b.remaining(cap)), 8 * 1024 * 1024, None, Some(&stop));
+    let completed = matches!(run.end, crate::tools::ProcessEnd::Exited(_)) && !run.truncated;
+    let (passed, text) = run.said(8 * 1024 * 1024);
+    if let Some(b) = budget { b.check()?; }
+    if completed { Ok((passed, text)) }
+    else { Err(format!("the verification command did not complete successfully: {text}")) }
 }
 
 /// Is this folder Atlas's own source -- a `Cargo.toml` naming the `atlas`
@@ -1558,5 +1557,49 @@ mod edits_for_a_big_file {
         assert!(from > 900 && text.lines().count() <= EXCERPT_LINES);
         // Nothing named: the start of the file.
         assert_eq!(excerpt_for(&file, "somewhere", "").0, 0);
+    }
+}
+
+#[cfg(test)]
+mod bounded_repair_tests {
+    use super::*;
+    use crate::brain::Llm;
+    struct UnsafeModel;
+    impl Llm for UnsafeModel { fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("an unbounded model must never be called") } }
+    struct WaitingModel;
+    impl Llm for WaitingModel {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("bounded repair must use chat_until") }
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, _: &crate::brain::ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<crate::brain::ChatReply> {
+            while keep() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+            Ok(crate::brain::ChatReply::from_text("unfinished"))
+        }
+    }
+    #[test]
+    fn unbounded_model_is_refused_and_bounded_model_deadline_is_real() {
+        let stop = || false;
+        let budget = crate::tools::WorkBudget::new(std::time::Duration::from_millis(40), &stop);
+        let unsafe_model = BoundedModel { model: &UnsafeModel, budget: &budget };
+        assert!(unsafe_model.complete("repair", "source").unwrap_err().to_string().contains("cannot guarantee"));
+        let model = BoundedModel { model: &WaitingModel, budget: &budget };
+        let start = std::time::Instant::now();
+        assert!(model.complete("repair", "source").unwrap_err().to_string().contains("time budget"));
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+    }
+    #[test]
+    fn exhausted_shared_budget_refuses_a_later_command_before_action() {
+        let stop = || false;
+        let budget = crate::tools::WorkBudget::new(std::time::Duration::ZERO, &stop);
+        let result = run_bounded_controlled("a-program-that-must-never-start", std::path::Path::new("."), 60, Some(&budget));
+        assert!(result.unwrap_err().contains("time budget"));
+    }
+    #[test]
+    fn ambiguous_recipe_is_not_guessed_and_rust_endpoint_candidate_is_structured() {
+        let edit = Edit { path: "pricing.py".into(), content: "sum(prices[:-1]) + sum(prices[:-1])".into(), reason: String::new() };
+        assert!(recipe_candidates(&[edit]).is_empty());
+        let rust = Edit { path: "pricing.rs".into(), content: "values.iter().take(values.len() - 1).sum::<i32>()".into(), reason: String::new() };
+        let candidates = recipe_candidates(&[rust]);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].1[0].content, "values.iter().take(values.len()).sum::<i32>()");
     }
 }

@@ -6,6 +6,24 @@
 
 use super::*;
 
+fn read_search_input(path: &std::path::Path, maximum: usize) -> std::result::Result<Option<Vec<u8>>, String> {
+    use std::io::Read;
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("Search input could not be opened: {e}. Nothing was measured.")),
+    };
+    let before = file.metadata().map_err(|e| e.to_string())?;
+    if !before.is_file() || before.len() > maximum as u64 { return Err("Search input exceeds its safe read budget; nothing was measured.".into()); }
+    let mut bytes = Vec::new();
+    file.take(maximum as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let after = path.metadata().map_err(|e| e.to_string())?;
+    if bytes.len() > maximum || before.len() != after.len() || before.modified().ok() != after.modified().ok() {
+        return Err("Search input changed or exceeded its safe read budget; nothing was measured.".into());
+    }
+    Ok(Some(bytes))
+}
+
 impl<'a> Daemon<'a> {
     /// Which model Atlas would run here, and why.
     ///
@@ -90,6 +108,10 @@ impl<'a> Daemon<'a> {
     pub(crate) fn background_llm(&self) -> Option<std::sync::Arc<dyn Llm>> {
         let talk = self.llm.clone()?;
         Some(self.deep.for_background(talk))
+    }
+
+    pub(super) fn creator_llm(&self) -> Option<std::sync::Arc<dyn Llm>> {
+        Some(self.deep.for_creator(self.llm.clone()?))
     }
 
     /// Give this Atlas a deep model (the tests' scripted one; the running
@@ -1127,35 +1149,65 @@ impl<'a> Daemon<'a> {
         if self.library.is_empty() {
             return "There are no notes to search yet, so there's nothing to measure.".into();
         }
-        let mut questions = crate::recall::questions_written(
-            &std::fs::read_to_string(self.store.root().join("search-questions.txt")).unwrap_or_default(),
-        );
+        let question_path = self.store.root().join("search-questions.txt");
+        let written = match read_search_input(&question_path, 64 * 1024).and_then(|bytes| String::from_utf8(bytes.unwrap_or_default()).map_err(|e| format!("Search questions are not readable text: {e}"))) {
+            Ok(text) => text,
+            Err(why) => return why,
+        };
+        let mut questions = crate::recall::questions_written(&written);
         questions.extend(crate::recall::questions_from(&self.library, 40));
         if questions.is_empty() {
             return "The notes are too short to make questions from.".into();
         }
-        let lib = self.library.clone();
+        if questions.len() > 128 || self.library.len() > 4096 || self.library.pieces.iter().fold(0usize, |n, p| n.saturating_add(p.title.len()).saturating_add(p.text.len()).saturating_add(p.source.len()).saturating_add(p.embedding.as_ref().map_or(0, |v| v.len().saturating_mul(4)))) > 2 * 1024 * 1024 {
+            return "Search measurement exceeds its bounded question or note limit; nothing was measured.".into();
+        }
+        let lib: crate::recall::Library = match super::brief_prep::snapshot_value(&self.library).and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string())) {
+            Ok(lib) => lib,
+            Err(_) => return "Search measurement exceeds its bounded note snapshot budget; nothing was measured.".into(),
+        };
         let rcfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
         let mcfg = self.meaning_cfg();
         let vars = self.tool_vars();
         let semantic = rcfg.semantic && crate::meaning::available(&mcfg, &vars);
         let model = crate::meaning::fingerprint(&mcfg, &vars);
         let t = crate::store::now();
+        let store = self.store.clone();
+        let installed = crate::roots::state_dir();
+        let owner = if store.root().starts_with(&installed) { installed } else { store.root().into() };
+        let ownership = move || -> std::result::Result<Vec<Option<Vec<u8>>>, String> {
+            ["profiles.json", "handover.json"].iter().map(|name| {
+                let path = owner.join(name);
+                read_search_input(&path, 2 * 1024 * 1024)
+            }).collect()
+        };
+        let expected_owner = match ownership() { Ok(owner) => owner, Err(why) => return why };
         let work: crew::Work = Box::new(move |c: &crew::Control| {
-            let words = crate::recall::measure(&lib, &questions, None, &rcfg, t);
-            // Between the two passes: a pause holds here, and a stop ends it
-            // before the slower meaning pass starts.
-            // unheard-ok: returns `bool`, not a Result
-            let _ = c.checkpoint();
-            if c.stopping() {
-                return Err("you asked me to stop".into());
-            }
-            let meaning = semantic.then(|| {
-                let embed = |q: &str| crate::meaning::embed(&mcfg, &vars, q).ok();
-                crate::recall::measure(&lib, &questions, Some(&embed), &rcfg, t)
-            });
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let stop = || c.stopping() || std::time::Instant::now() >= deadline;
+            let checkpoint = || c.checkpoint_until(deadline);
+            let words = crate::recall::measure_until(&lib, &questions, None, &rcfg, t, &checkpoint)?;
+            let meaning = if semantic {
+                let embed = |q: &str| crate::meaning::embed_stoppable(&mcfg, &vars, q, &stop).map_err(|e| format!("Meaning search could not be measured: {e}. No scores were saved."));
+                Some(crate::recall::measure_until(&lib, &questions, Some(&embed), &rcfg, t, &checkpoint)?)
+            } else { None };
             let check = crate::recall::SearchCheck { at: t, model: if semantic { model } else { String::new() }, words, meaning };
-            serde_json::to_string(&check).map_err(|e| e.to_string())
+            loop {
+                if checkpoint() { return Err("Search measurement stopped or reached its deadline before saving; no result was recorded.".into()); }
+                match store.transaction() {
+                    Ok(_guard) => {
+                        if ownership()? != expected_owner { return Err("The active person changed while measuring search; no result was recorded.".into()); }
+                        let mut kept: Vec<crate::recall::SearchCheck> = store.load_checked_bounded("search_checks", 2 * 1024 * 1024).map_err(|e| format!("Search measurement could not read its history: {e}"))?.unwrap_or_default();
+                        let said = check.said(kept.last());
+                        kept.push(check);
+                        let keep_from = kept.len().saturating_sub(50);
+                        store.save("search_checks", &kept[keep_from..].to_vec()).map_err(|e| format!("Search measurement was not recorded: {e}"))?;
+                        return serde_json::to_string(&said).map_err(|e| e.to_string());
+                    }
+                    Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(20)),
+                    Err(e) => return Err(format!("Search measurement was not recorded: {e}")),
+                }
+            }
         });
         if self.hand_off("search-check", t, work, None, SpeakPolicy::Always) {
             "Measuring how well search finds things — I'll say when it's done.".into()

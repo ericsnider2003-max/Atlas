@@ -1047,6 +1047,25 @@ pub fn add_from(source: &Path, dir: &Path, commands: &CommandsConfig) -> Result<
     Ok(said)
 }
 
+#[cfg(test)]
+mod durable_synced_approval {
+    use super::*;
+    #[test]
+    fn unreadable_existing_approval_does_not_become_a_successful_sync_replacement() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-plugin-approval-sync-{}-{stamp}", std::process::id()));
+        let store = Store::new(root.join("state"));
+        store.save(APPROVALS, &Approvals::default()).unwrap();
+        let path = root.join("state").join(format!("{APPROVALS}.json"));
+        std::fs::write(&path, b"{broken saved permissions").unwrap();
+        let value = serde_json::to_string(&Approval { sha256: "saved-review".into(), ..Default::default() }).unwrap();
+        let result = take_synced_versioned(&store, &root.join("addons"), &crate::config::Config::load(Path::new("config")).unwrap().commands, "addon:studio", "approval", &value, true, "phone", None);
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(path).unwrap(), b"{broken saved permissions");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 // ------------------------------------------------------------------ asking less
 
 /// May this step of an add-on's run skip Atlas's usual "go ahead?"
@@ -1314,9 +1333,33 @@ const SCHEDULE_RUNS: &str = "plugin_schedule_runs";
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScheduleRuns {
     pub last: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub claims: BTreeMap<String, ScheduleClaim>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SchedulePhase { Reserved, Ready, InFlight, Done, Failed }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScheduleClaim {
+    pub schedule_key: String,
+    pub plugin: String,
+    pub approved_sha256: String,
+    pub workflow: Workflow,
+    pub reserved_at: u64,
+    pub phase: SchedulePhase,
+    pub run: Option<crate::flow::Run>,
 }
 
 impl ScheduleRuns {
+    pub fn load_checked(store: &Store) -> crate::error::Result<Self> {
+        let value: Self = store.load_checked(SCHEDULE_RUNS)?.unwrap_or_default();
+        if value.claims.iter().any(|(id, claim)| id.is_empty() || claim.schedule_key.is_empty() || claim.plugin.is_empty() || claim.approved_sha256.is_empty() || claim.run.as_ref().is_some_and(|run| run.scheduled_claim.as_deref() != Some(id.as_str()) || run.plugin.as_deref() != Some(claim.plugin.as_str()) || run.workflow != claim.workflow.name || run.steps != claim.workflow.steps)) {
+            return Err(crate::error::AtlasError::Platform("the scheduled add-on recovery record is invalid; no add-on started".into()));
+        }
+        Ok(value)
+    }
     pub fn load(store: &Store) -> ScheduleRuns {
         store.load(SCHEDULE_RUNS)
     }
@@ -1396,32 +1439,45 @@ struct Announced {
     files: BTreeMap<String, String>,
     /// id -> the approval as announced, as JSON.
     approvals: BTreeMap<String, String>,
+    #[serde(default)]
+    versions: BTreeMap<String, crate::sync::Version>,
+    // The retained file is deliberately not re-announced after remote removal.
+    #[serde(default)]
+    removed_files: BTreeMap<String, String>,
 }
 
 /// One change to carry to your other devices: (subject, field, value) for a
 /// `sync::What::Changed`.
 pub type SyncChange = (String, String, String);
 
-/// What changed about add-ons since this device last told your others.
-///
-/// Worked out by comparing, rather than recorded where each change is made:
-/// an add-on changes through the hub, the terminal, or a friend sending one,
-/// some of them in another process -- comparing at sync time catches all of
-/// them and cannot miss the one nobody remembered to record.
-pub fn changes_to_carry(store: &Store, dir: &Path) -> Vec<SyncChange> {
-    let mut told: Announced = store.load(ANNOUNCED);
-    let approvals = Approvals::load(store);
+
+
+
+
+fn prepare_changes(store: &Store, dir: &Path) -> Result<(Vec<SyncChange>, Announced), String> {
+    let mut told: Announced = store.load_checked(ANNOUNCED).map_err(|error| error.to_string())?.unwrap_or_default();
+    let approvals: Approvals = store.load_checked(APPROVALS).map_err(|error| error.to_string())?.unwrap_or_default();
     let mut out = Vec::new();
     let mut here: BTreeMap<String, (String, String)> = BTreeMap::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for e in entries.flatten() {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => Some(entries),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("cannot inspect add-ons: {error}")),
+    };
+    if let Some(entries) = entries {
+        for e in entries {
+            let e = e.map_err(|error| error.to_string())?;
             let id = e.file_name().to_string_lossy().to_string();
             if !id_ok(&id) {
                 continue;
             }
             if let Ok(text) = std::fs::read_to_string(e.path().join(MANIFEST_FILE)) {
                 if text.len() as u64 <= MAX_MANIFEST_BYTES {
-                    here.insert(id, (fingerprint(text.as_bytes()), text));
+                    let sha = fingerprint(text.as_bytes());
+                    if told.removed_files.get(&id) != Some(&sha) {
+                        told.removed_files.remove(&id);
+                        here.insert(id, (sha, text));
+                    }
                 }
             }
         }
@@ -1446,78 +1502,111 @@ pub fn changes_to_carry(store: &Store, dir: &Path) -> Vec<SyncChange> {
             told.approvals.insert(id.clone(), json);
         }
     }
-    if !out.is_empty() {
-        let _ = store.save(ANNOUNCED, &told);
+    for id in told.approvals.keys().cloned().collect::<Vec<_>>() {
+        if !approvals.plugins.contains_key(&id) {
+            out.push((format!("{SYNC_PREFIX}{id}"), "revoked".into(), String::new()));
+            told.approvals.remove(&id);
+        }
     }
-    out
+    Ok((out, told))
 }
 
-/// Take in one add-on change from your other device.
-///
-/// `sealed` says whether it arrived in a bundle sealed with your household
-/// key. A file may arrive either way -- it lands switched off, which is what
-/// any new add-on does. An *approval* is only taken from a sealed bundle:
-/// an unsealed bundle in a shared folder could have been written by anyone
-/// with the folder, and an approval is permission to act.
-pub fn take_synced(
-    store: &Store,
-    dir: &Path,
-    commands: &CommandsConfig,
-    subject: &str,
-    field: &str,
-    value: &str,
-    sealed: bool,
-    from_device: &str,
-) -> Option<String> {
-    let id = subject.strip_prefix(SYNC_PREFIX)?;
-    if !id_ok(id) {
-        return None;
+/// Persist outgoing events before marking their observations announced.
+/// A failure leaves them eligible for retry rather than silently losing permission changes.
+pub fn append_changes_checked(store: &Store, dir: &Path, log: &mut crate::sync::Log, now: u64) -> Result<(), String> {
+    let _guard = store.transaction().map_err(|error| error.to_string())?;
+    let (changes, mut told) = prepare_changes(store, dir)?;
+    if changes.is_empty() { return Ok(()); }
+    let previous = log.clone();
+    for (id, field, to) in changes {
+        log.append(crate::sync::What::Changed { id: id.clone(), field: field.clone(), to }, now);
+        let event = log.events.last().expect("append records an event");
+        told.versions.insert(format!("{id}:{field}"), crate::sync::Version::of(event));
     }
-    let mut told: Announced = store.load(ANNOUNCED);
+    if let Err(error) = store.save("synclog", &Some(log.clone())) { *log = previous; return Err(error.to_string()); }
+    store.save(ANNOUNCED, &told).map_err(|error| error.to_string())
+}
+
+
+
+#[allow(clippy::too_many_arguments)]
+pub fn take_synced_versioned(
+    store: &Store, dir: &Path, commands: &CommandsConfig,
+    subject: &str, field: &str, value: &str, sealed: bool, from_device: &str,
+    version: Option<crate::sync::Version>,
+) -> Result<Option<String>, String> {
+    let _transaction = store.transaction().map_err(|error| error.to_string())?;
+    let Some(id) = subject.strip_prefix(SYNC_PREFIX) else { return Ok(None) };
+    if !id_ok(id) {
+        return Ok(None);
+    }
+    let mut told: Announced = store.load_checked(ANNOUNCED).map_err(|error| error.to_string())?.unwrap_or_default();
+    if matches!(field, "approval" | "revoked" | "removed") && !sealed { return Ok(None); }
+    if field == "file" { parse_and_check(value, Some(id), commands).map_err(|status| format!("Add-on change refused: {}", status.plain()))?; }
+    if field == "approval" { let _: Approval = serde_json::from_str(value).map_err(|error| error.to_string())?; }
+    let key = format!("{subject}:{field}");
+    let conflicts: &[&str] = match field {
+        "approval" | "revoked" => &["approval", "revoked", "removed"],
+        "file" => &["file", "removed"],
+        "removed" => &["file", "approval", "revoked", "removed"],
+        _ => return Ok(None),
+    };
+    for other in conflicts {
+        if let Some(kept) = told.versions.get(&format!("{subject}:{other}")) {
+            if version.as_ref().is_none_or(|incoming| incoming < kept) { return Ok(None); }
+        }
+    }
+    if let Some(version) = version {
+        told.versions.insert(key, version);
+        // Fence older arrivals before applying permission or file changes.
+        // Equal-version retry remains allowed if a later write fails.
+        store.save(ANNOUNCED, &told).map_err(|error| error.to_string())?;
+    }
     let said = match field {
         "file" => {
-            let c = parse_and_check(value, Some(id), commands).ok()?;
+            let c = parse_and_check(value, Some(id), commands).map_err(|status| format!("Add-on change refused: {}", status.plain()))?;
             let path = dir.join(id).join(MANIFEST_FILE);
             if std::fs::read_to_string(&path).ok().as_deref() == Some(value) {
+                told.files.insert(id.to_string(), fingerprint(value.as_bytes()));
+                told.removed_files.remove(id);
                 None
             } else {
-                std::fs::create_dir_all(dir.join(id)).ok()?;
-                std::fs::write(&path, value).ok()?;
+                std::fs::create_dir_all(dir.join(id)).map_err(|error| error.to_string())?;
+                crate::store::write_owned_file(&path, value.as_bytes()).map_err(|error| error.to_string())?;
                 told.files.insert(id.to_string(), fingerprint(value.as_bytes()));
+                told.removed_files.remove(id);
                 Some(format!("The add-on \"{}\" came over from {from_device}.", c.manifest.name))
             }
         }
         "approval" if sealed => {
-            let a: Approval = serde_json::from_str(value).ok()?;
-            let mut approvals = Approvals::load(store);
-            if approvals.plugins.get(id) == Some(&a) {
-                return None;
-            }
+            let a: Approval = serde_json::from_str(value).map_err(|error| error.to_string())?;
+            let mut approvals: Approvals = store.load_checked(APPROVALS).map_err(|error| error.to_string())?.unwrap_or_default();
             approvals.plugins.insert(id.to_string(), a);
-            approvals.save(store).ok()?;
+            approvals.save(store)?;
             told.approvals.insert(id.to_string(), value.to_string());
             None
         }
-        "removed" => {
-            let folder = dir.join(id);
-            if !folder.exists() {
-                return None;
+        "revoked" | "removed" => {
+            if field == "removed" {
+                if let Ok(bytes) = std::fs::read(dir.join(id).join(MANIFEST_FILE)) {
+                    told.removed_files.insert(id.to_string(), fingerprint(&bytes));
+                }
             }
             // Your other device removed it; this one switches it off and
             // forgets the approval, and leaves the file for you to delete --
             // a sync that deletes files is one bad bundle away from deleting
             // the wrong ones.
-            let mut approvals = Approvals::load(store);
+            let mut approvals: Approvals = store.load_checked(APPROVALS).map_err(|error| error.to_string())?.unwrap_or_default();
             approvals.plugins.remove(id);
-            let _ = approvals.save(store);
-            told.files.remove(id);
+            approvals.save(store)?;
+            if field == "removed" { told.files.remove(id); }
             told.approvals.remove(id);
-            Some(format!("You removed the add-on {id} on {from_device}, so it's off here too."))
+            Some(format!("The add-on {id} was {} on {from_device}, so it's off here too.", if field == "removed" { "removed" } else { "no longer approved" }))
         }
         _ => None,
     };
-    let _ = store.save(ANNOUNCED, &told);
-    said
+    store.save(ANNOUNCED, &told).map_err(|error| error.to_string())?;
+    Ok(said)
 }
 
 /// One press of a button on the hub's Add-ons page.
@@ -1553,6 +1642,14 @@ pub fn hub_action(
 
 #[cfg(test)]
 mod tests {
+    fn fixture_changes(store: &crate::store::Store, dir: &std::path::Path) -> Result<Vec<super::SyncChange>, String> {
+        let mut log: crate::sync::Log = store.load_checked::<Option<crate::sync::Log>>("synclog").map_err(|error| error.to_string())?.flatten().unwrap_or_else(|| crate::sync::Log::new("fixture-device"));
+        let first = log.events.len();
+        // Deterministic logical time keeps later synthetic remote versions newer.
+        crate::plugins::append_changes_checked(store, dir, &mut log, 1)?;
+        Ok(log.events[first..].iter().filter_map(|event| match &event.what { crate::sync::What::Changed { id, field, to } => Some((id.clone(), field.clone(), to.clone())), _ => None }).collect())
+    }
+
     use super::*;
 
     fn commands() -> CommandsConfig {
@@ -1991,23 +2088,23 @@ flows:
     fn add_ons_follow_you_but_an_approval_only_from_a_sealed_bundle() {
         let (laptop, laptop_store, _) = approved("sync-laptop", GOOD, "morning-markets");
         let (phone, phone_store) = scratch("sync-phone");
-        let changes = changes_to_carry(&laptop_store, &laptop);
+        let changes = fixture_changes(&laptop_store, &laptop).unwrap();
         assert!(changes.iter().any(|(_, f, _)| f == "file"));
         assert!(changes.iter().any(|(_, f, _)| f == "approval"));
-        assert!(changes_to_carry(&laptop_store, &laptop).is_empty(), "only changes travel");
+        assert!(fixture_changes(&laptop_store, &laptop).unwrap().is_empty(), "only changes travel");
 
         // Unsealed: the file arrives, switched off; the approval does not.
         for (sub, field, val) in &changes {
-            take_synced(&phone_store, &phone, &commands(), sub, field, val, false, "laptop");
+            take_synced_versioned(&phone_store, &phone, &commands(), sub, field, val, false, "laptop", None).unwrap();
         }
         assert_eq!(only(&phone, &phone_store).status, Status::Waiting);
         // Sealed: the approval comes too.
         for (sub, field, val) in &changes {
-            take_synced(&phone_store, &phone, &commands(), sub, field, val, true, "laptop");
+            take_synced_versioned(&phone_store, &phone, &commands(), sub, field, val, true, "laptop", None).unwrap();
         }
         assert_eq!(only(&phone, &phone_store).status, Status::Active);
         // And what arrived is not sent straight back.
-        assert!(changes_to_carry(&phone_store, &phone).is_empty(), "echoed back what it was just told");
+        assert!(fixture_changes(&phone_store, &phone).unwrap().is_empty(), "echoed back what it was just told");
 
         // Removed on the laptop: off on the phone, file left for you.
         let trash = crate::safety::Trash::new(crate::safety::TrashConfig {
@@ -2015,19 +2112,65 @@ flows:
             keep_days: 30,
         });
         remove(&laptop_store, &laptop, "morning-markets", &trash).unwrap();
-        for (sub, field, val) in changes_to_carry(&laptop_store, &laptop) {
-            take_synced(&phone_store, &phone, &commands(), &sub, &field, &val, true, "laptop");
+        for (sub, field, val) in fixture_changes(&laptop_store, &laptop).unwrap() {
+            take_synced_versioned(&phone_store, &phone, &commands(), &sub, &field, &val, true, "laptop", None).unwrap();
         }
         assert_eq!(only(&phone, &phone_store).status, Status::Waiting);
+    }
+
+    fn sync_version(at: u64, field: &str) -> crate::sync::Version {
+        let mut log = crate::sync::Log::new("phone");
+        log.append(crate::sync::What::Changed { id: "addon:morning-markets".into(), field: field.into(), to: String::new() }, at);
+        crate::sync::Version::of(log.events.last().unwrap())
+    }
+
+    #[test]
+    fn removed_retained_file_cannot_echo_or_receive_an_older_approval() {
+        let (dir, store, _) = approved("sync-causal-remove", GOOD, "morning-markets");
+        fixture_changes(&store, &dir).unwrap();
+        let approval = serde_json::to_string(&Approvals::load(&store).plugins["morning-markets"]).unwrap();
+        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "removed", "", true, "phone", Some(sync_version(20, "removed"))).unwrap();
+        assert!(dir.join("morning-markets").join(MANIFEST_FILE).exists());
+        assert!(fixture_changes(&store, &dir).unwrap().is_empty(), "retained file must not resurrect itself");
+        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "approval", &approval, true, "phone", Some(sync_version(10, "approval"))).unwrap();
+        assert!(!Approvals::load(&store).plugins.contains_key("morning-markets"));
+        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "approval", &approval, true, "older-phone", None).unwrap();
+        assert!(!Approvals::load(&store).plugins.contains_key("morning-markets"), "unversioned permission cannot override tombstone");
+    }
+
+    #[test]
+    fn revocation_travels_without_deleting_the_file_and_rejects_stale_grants() {
+        let (dir, store, _) = approved("sync-causal-revoke", GOOD, "morning-markets");
+        fixture_changes(&store, &dir).unwrap();
+        let approval = serde_json::to_string(&Approvals::load(&store).plugins["morning-markets"]).unwrap();
+        let mut approvals = Approvals::load(&store); approvals.plugins.clear(); approvals.save(&store).unwrap();
+        let changes = fixture_changes(&store, &dir).unwrap();
+        assert!(changes.iter().any(|(_, field, _)| field == "revoked"));
+        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "revoked", "", true, "phone", Some(sync_version(20, "revoked"))).unwrap();
+        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "approval", &approval, true, "phone", Some(sync_version(10, "approval"))).unwrap();
+        assert!(!Approvals::load(&store).plugins.contains_key("morning-markets"));
+        assert!(dir.join("morning-markets").join(MANIFEST_FILE).exists());
+    }
+
+    #[test]
+    fn failed_outgoing_log_save_does_not_consume_permission_changes() {
+        let (dir, store, _) = approved("sync-outgoing-failure", GOOD, "morning-markets");
+        std::fs::create_dir_all(dir.parent().unwrap().join("state/synclog.json")).unwrap();
+        let mut log = crate::sync::Log::new("laptop");
+        assert!(append_changes_checked(&store, &dir, &mut log, 10).is_err());
+        assert!(log.events.is_empty());
+        std::fs::remove_dir(dir.parent().unwrap().join("state/synclog.json")).unwrap();
+        let changes = fixture_changes(&store, &dir).unwrap();
+        assert!(changes.iter().any(|(_, field, _)| field == "approval"));
     }
 
     #[test]
     fn a_synced_file_is_checked_like_any_other() {
         let (phone, phone_store) = scratch("sync-bad");
         let bad = GOOD.replace("research eurusd news", "unlock hunter2");
-        assert!(take_synced(&phone_store, &phone, &commands(), "addon:morning-markets", "file", &bad, true, "laptop").is_none());
+        assert!(take_synced_versioned(&phone_store, &phone, &commands(), "addon:morning-markets", "file", &bad, true, "laptop", None).is_err());
         assert!(!phone.join("morning-markets").exists());
-        assert!(take_synced(&phone_store, &phone, &commands(), "addon:../x", "file", GOOD, true, "laptop").is_none());
+        assert!(take_synced_versioned(&phone_store, &phone, &commands(), "addon:../x", "file", GOOD, true, "laptop", None).unwrap().is_none());
     }
 
 }

@@ -450,7 +450,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
             std::thread::spawn(move || {
                 let got = token
                     .map_err(|e| format!("its sign-in couldn't be read from the vault ({e})"))
-                    .and_then(|t| oauthlink::calendar_ics(&crate::social::apis::Https, p, &t, now));
+                    .and_then(|t| oauthlink::calendar_ics_selected(&crate::social::apis::Https, p, &t, now, &[]));
                 if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                     q.push((url, got));
                 }

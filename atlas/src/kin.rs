@@ -906,6 +906,7 @@ pub fn as_waiting(
     inbox: &mut crate::household::Inbox,
     root: &std::path::Path,
 ) -> Result<u64, String> {
+    let _state = crate::store::state_transaction(root).map_err(|e| format!("couldn't keep that file: {e}"))?;
     let Some(f) = &d.file else {
         return Ok(inbox.add(&d.what, &d.from, d.at));
     };

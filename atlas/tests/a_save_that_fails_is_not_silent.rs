@@ -16,9 +16,9 @@
 //!
 //! ## How the failure is produced here
 //!
-//! By pointing the store at a path that cannot be written: a **file** where
-//! the state directory should be. `create_dir_all` fails on it, so every
-//! `save` fails, on every platform, with no permissions tricks and no root.
+//! An invalid state root must refuse startup before reading or changing it.
+//! Separately, a directory replacing a record after successful startup
+//! exercises once-only reporting and recovery without permission tricks.
 
 use atlas::config::Config;
 use atlas::daemon::Daemon;
@@ -49,48 +49,60 @@ fn writable_root(tag: &str) -> PathBuf {
     d
 }
 
+fn block_record(root: &Path, name: &str) {
+    let path = root.join(format!("{name}.json"));
+    if path.is_file() { std::fs::remove_file(&path).unwrap(); }
+    std::fs::create_dir(&path).unwrap();
+}
+
+fn persist_after_transient_contention(d: &mut Daemon) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        d.persist();
+        if !d.persist_failures.iter().any(|(name, _)| *name == "state snapshot busy") { return; }
+        assert!(std::time::Instant::now() < deadline, "state never became writable: {:?}", d.persist_failures);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 #[test]
 fn a_store_that_cannot_be_written_is_recorded_rather_than_ignored() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = plat();
     let root = unwritable_root("recorded");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
-
-    d.persist();
-
-    assert!(
-        !d.persist_failures.is_empty(),
-        "every save failed and persist recorded none of them"
-    );
-    // And it names what could not be saved, so the report can be specific.
-    let names: Vec<&str> = d.persist_failures.iter().map(|(w, _)| *w).collect();
-    assert!(names.contains(&"thread"), "the thread is not among them: {names:?}");
-    assert!(names.len() >= 10, "only {} of sixteen were checked: {names:?}", names.len());
+    let before = std::fs::read(root.parent().unwrap()).unwrap();
+    let error = match Daemon::try_new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default())) {
+        Ok(_) => panic!("startup accepted a state root that cannot be written"),
+        Err(error) => error,
+    };
+    assert!(!error.to_string().is_empty(), "startup refusal did not explain the failure");
+    assert_eq!(std::fs::read(root.parent().unwrap()).unwrap(), before, "startup changed the blocking owner file");
 }
 
 #[test]
 fn the_person_is_told_once_and_not_every_tick() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = plat();
-    let root = unwritable_root("told");
+    let root = writable_root("told");
     let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    block_record(&root, "thread");
 
     // ONE TICK OF LAG, by design and worth stating. The check sits at the
     // very top of `tick`, above the two early returns, so that a paused or
     // focused Atlas still reports it -- which means it reads the state left
     // by the previous `persist` rather than one that has not run yet. The
     // lag is bounded by the tick interval, i.e. seconds.
-    // `my own state folder`, not the bare word "write". An unwritable root also
-    // stops the instance lock being refreshed, and `tick` reports THAT after
-    // three missed beats in a sentence containing "write over each other's
-    // memory". Matching on "write" made this test pass or fail on which of
-    // two different true statements happened to land on which tick.
-    // `the_lock_it_cannot_refresh_is_also_said_once` below is that other
-    // message, tested on its own terms.
+    // The blocked thread record is introduced after successful startup;
+    // startup refusal must not replace the runtime storage-failure proof.
     let told_about_saving = |said: &[String]| said.iter().any(|s| s.contains("my own state folder"));
 
     let first: Vec<String> = d.tick(1000);
     assert!(!told_about_saving(&first), "reported before any save had been attempted: {first:?}");
+    // A real snapshot worker may briefly hold the barrier. Allow that worker
+    // to finish, then require the actual blocked record failure before the
+    // next tick's warning; synthetic timestamps do not advance worker time.
+    persist_after_transient_contention(&mut d);
+    assert!(d.persist_failures.iter().any(|(name, _)| *name == "thread"));
 
     let second: Vec<String> = d.tick(2000);
     assert!(
@@ -105,16 +117,17 @@ fn the_person_is_told_once_and_not_every_tick() {
         !told_about_saving(&third),
         "it complained again on the very next tick: {third:?}"
     );
+    std::fs::remove_dir(root.join("thread.json")).unwrap();
+    persist_after_transient_contention(&mut d);
+    assert!(d.persist_failures.is_empty(), "repair did not allow the retained state to save: {:?}", d.persist_failures);
+    assert!(root.join("thread.json").is_file());
 }
 
 #[test]
 fn the_lock_it_cannot_refresh_is_also_said_once() {
-    // The same root cause with a different consequence, and the one that
-    // loses memory rather than just failing to add to it: a store that cannot
-    // be written cannot refresh `running.lock` either, so the lock ages past
-    // `GONE_AFTER_SECS` while Atlas is running perfectly well. The next start
-    // reads `Abandoned`, takes the lock, and two instances write the same
-    // state folder from their own memory.
+    // Block only the legacy heartbeat after startup. The native singleton
+    // now prevents a second live instance even if this heartbeat cannot save,
+    // while the failed heartbeat still needs a once-only truthful report.
     //
     // Counted rather than reported on the first failure: one missed write is
     // a blip and the staleness window is five beats wide. Three in a row is a
@@ -122,9 +135,12 @@ fn the_lock_it_cannot_refresh_is_also_said_once() {
     // the same reason the save message is.
     let c = Config::load(Path::new("config")).unwrap();
     let p = plat();
-    let root = unwritable_root("lock-once");
+    let root = writable_root("lock-once");
     let mut d =
         Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    let heartbeat = atlas::onlyone::OnlyOne::at(&Store::new(&root).data_dir()).path().to_path_buf();
+    if heartbeat.is_file() { std::fs::remove_file(&heartbeat).unwrap(); }
+    std::fs::create_dir(&heartbeat).unwrap();
 
     let about_the_lock =
         |said: &[String]| said.iter().any(|s| s.contains("instance lock"));
@@ -153,10 +169,13 @@ fn the_lock_it_cannot_refresh_is_also_said_once() {
 fn what_it_says_is_useful_enough_to_act_on() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = plat();
-    let root = unwritable_root("useful");
+    let root = writable_root("useful");
     let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    block_record(&root, "thread");
 
     d.tick(1000); // the persist that fails
+    persist_after_transient_contention(&mut d);
+    assert!(d.persist_failures.iter().any(|(name, _)| *name == "thread"));
     let said = d.tick(2000).join(" "); // the tick that reports it
     // The consequence, stated plainly -- this is the part that matters.
     assert!(
@@ -179,7 +198,7 @@ fn a_healthy_store_says_nothing_at_all() {
     let root = writable_root("healthy");
     let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
 
-    d.persist();
+    persist_after_transient_contention(&mut d);
     assert!(
         d.persist_failures.is_empty(),
         "a writable store reported failures: {:?}",
@@ -204,22 +223,46 @@ fn a_save_nobody_checked_is_still_reported() {
     let p = plat();
     let root = writable_root("unchecked");
     let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
-    d.persist();
+    persist_after_transient_contention(&mut d);
     assert!(d.persist_failures.is_empty(), "{:?}", d.persist_failures);
 
     // A directory sitting where one record's file goes: that record, and only
     // that one, cannot be written.
     std::fs::create_dir_all(root.join("calendar_links_for_test.json")).unwrap();
-    let _ = d.store.save("calendar_links_for_test", &vec!["https://example.com/cal.ics".to_string()]);
+    let guard = atlas::store::wait_for_state_transaction(&root).unwrap();
+    let error = d.store.save("calendar_links_for_test", &vec!["https://example.com/cal.ics".to_string()]).unwrap_err();
+    assert!(!matches!(error, atlas::error::AtlasError::Io(ref error) if error.kind() == std::io::ErrorKind::WouldBlock), "the fixture did not reach the real failed record");
+    drop(guard);
 
     d.persist();
-    let names: Vec<&str> = d.persist_failures.iter().map(|(w, _)| *w).collect();
+    let names: Vec<&str> = d.persist_failures.iter().filter(|(name, _)| *name != "state snapshot busy").map(|(w, _)| *w).collect();
     assert_eq!(names, vec!["calendar_links_for_test"], "an unchecked failed save went unreported: {names:?}");
     let out = d.tick(1000);
     assert!(out.iter().any(|s| s.contains("calendar_links_for_test")), "nobody was told: {out:?}");
 
     // Reported once: the next persist, with nothing new failing, clears it.
-    d.persist();
+    persist_after_transient_contention(&mut d);
     assert!(d.persist_failures.is_empty(), "{:?}", d.persist_failures);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn snapshot_contention_does_not_hide_an_already_failed_record() {
+    let c = Config::load(Path::new("config")).unwrap(); let p = plat();
+    let root = writable_root("failed-record-plus-busy");
+    let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    persist_after_transient_contention(&mut d);
+    let guard = atlas::store::wait_for_state_transaction(&root).unwrap();
+    block_record(&root, "blocked_owner_record");
+    assert!(d.store.save("blocked_owner_record", &"owner update").is_err());
+    drop(guard);
+    let worker_root = root.clone();
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || { let _guard = atlas::store::wait_for_state_transaction(&worker_root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); });
+    ready_rx.recv().unwrap();
+    d.persist();
+    let names: Vec<_> = d.persist_failures.iter().map(|(name, _)| *name).collect();
+    assert!(names.contains(&"blocked_owner_record") && names.contains(&"state snapshot busy"), "snapshot masked the real failed record: {names:?}");
+    release_tx.send(()).unwrap(); worker.join().unwrap();
+    drop(d); let _ = std::fs::remove_dir_all(root);
 }

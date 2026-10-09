@@ -236,7 +236,7 @@ impl Action {
     /// line (`private_line`)? The one list the connection handler asks.
     pub fn carries_a_secret(&self) -> bool {
         match self {
-            Action::Vault { .. } | Action::TakeBack { .. } | Action::SyncKeySet { .. } => true,
+            Action::Vault { .. } | Action::Signing { .. } | Action::TakeBack { .. } | Action::SyncKeySet { .. } => true,
             // The Updates page's release-key forms take the vault passphrase
             // as an ordinary field.
             // The Social page's key and sign-in forms carry a `secret`.
@@ -247,6 +247,30 @@ impl Action {
             }
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod signing_post_tests {
+    use super::*;
+    fn request(body: &str) -> Request { Request { method: "POST".into(), path: "/hub/signing".into(), query: String::new(), token: None, token_from_url: false, body: body.into() } }
+    #[test]
+    fn signing_posts_keep_fresh_unlock_private_and_refuse_ambiguous_selections() {
+        let path = if cfg!(windows) { "C%3A%5Csynthetic%5Cowner.key" } else { "%2Fsynthetic%2Fowner.key" };
+        let body = format!("what=protect&name=Owner&source={path}&unlock=SyntheticOnly%21&nonce=one");
+        let action = route(&request(&body)).unwrap();
+        assert!(action.carries_a_secret());
+        let diagnostic = format!("{action:?}");
+        assert!(!diagnostic.contains("SyntheticOnly"));
+        assert!(!format!("{:?}", request(&body)).contains("SyntheticOnly"));
+        match action { Action::Signing { unlock, name, source, .. } => { assert_eq!(unlock.reveal(), "SyntheticOnly!"); assert_eq!(name, "Owner"); assert!(std::path::Path::new(&source).is_absolute()); }, _ => panic!("wrong typed action") }
+        for invalid in [format!("{body}&source={path}"), body.replace("&nonce=one", ""), body.replace(&format!("source={path}"), "source=relative.key"), format!("{body}&destination={path}"), body.replace("what=protect", "what=sign")] { assert!(route(&request(&invalid)).is_none()); }
+        let mut query = request(&body); query.query = "unlock=SyntheticOnly".into();
+        assert!(route(&query).is_none());
+        assert!(!super::signing_local_path("\\\\server\\share\\owner.key"));
+        assert!(!super::signing_local_path("\\\\?\\C:\\owner.key"));
+        assert!(!super::signing_local_path("//server/share/owner.key"));
+        assert!(route(&request(&body.replace("name=Owner", "name=Owner+Name"))).is_none());
     }
 }
 
@@ -304,6 +328,19 @@ pub fn route(r: &Request) -> Option<Action> {
                 _ => Some(back(Sync, "That button isn't wired to anything, so nothing changed.")),
             }
         }
+        ("POST", "/hub/signing") => {
+            let fields = crate::hub::form_fields(&r.body);
+            if !r.query.is_empty() || fields.iter().any(|(key, _)| !["what", "name", "source", "destination", "unlock", "recovery", "nonce"].contains(&key.as_str()))
+                || fields.iter().enumerate().any(|(i, (key, _))| fields[..i].iter().any(|(earlier, _)| earlier == key)) { return None; }
+            let get = |key: &str| fields.iter().find(|(k, _)| k == key).map(|(_, value)| value.clone()).unwrap_or_default();
+            let what = get("what"); let name = get("name"); let source = get("source"); let destination = get("destination"); let nonce = get("nonce");
+            let unlock = get("unlock"); let recovery = get("recovery");
+            let selected = match what.as_str() { "protect" if destination.is_empty() => &source, "export" if source.is_empty() => &destination, _ => return None };
+            if (what == "protect" && name.is_empty()) || (what == "export" && !name.is_empty()) || name.len() > 80 || name.chars().any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '.' | '_' | '-'))
+                || !super::signing_local_path(selected)
+                || nonce.is_empty() || nonce.len() > 256 || unlock.is_empty() || !["", "true"].contains(&recovery.as_str()) { return None; }
+            Some(Action::Signing { what, name, source, destination, unlock: Secret::new(unlock), recovery: recovery == "true", nonce })
+        }
         ("POST", "/hub/vault") => {
             let get = |k: &str| crate::hub::form_field(&r.body, k).unwrap_or_default();
             let what = get("what");
@@ -334,6 +371,8 @@ pub fn route(r: &Request) -> Option<Action> {
             | "/hub/recommendations/go" | "/hub/reclaim" | "/hub/sync-setup" | "/hub/social" | "/hub/opportunities"
             // Outstanding's Drop it / Stop it buttons (2 Oct 2026).
             | "/hub/outstanding"
+            | "/hub/calendar/review"
+            | "/hub/back"
             // Connect an account (2 Oct 2026, `connecting`).
             | "/hub/connect",
         ) => Some(Action::HubPost { path: r.path.clone(), fields: crate::hub::form_fields(&r.body) }),

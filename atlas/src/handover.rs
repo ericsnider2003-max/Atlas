@@ -336,12 +336,12 @@ pub fn refusal(action: &str) -> String {
     )
 }
 
-/// A sentence, with a failure to write the handover down said after it
-/// rather than swallowed.
-fn with_save(said: String, saved: crate::error::Result<()>) -> String {
+/// Ownership is announced only after its write succeeds; a failed write
+/// may have an uncertain outcome and must never append to "Yours again".
+fn with_save(said: String, saved: crate::error::Result<()>) -> Result<String, String> {
     match saved {
-        Ok(()) => said,
-        Err(e) => format!("{said} (I couldn't write the handover down: {e})"),
+        Ok(()) => Ok(said),
+        Err(_) => Err("Ownership was not confirmed because the handover could not be saved. Check its current status before trying again.".into()),
     }
 }
 
@@ -374,30 +374,59 @@ pub fn take_back_with(
     cfg: &crate::vault::VaultConfig,
     now: u64,
 ) -> String {
-    let mut h = Handover::load(state);
+    // An earlier unlocked cache is never proof against today's owner record.
+    vault.lock();
+    let h: Handover = match state.load_checked(FILE) {
+        Ok(Some(h)) => h,
+        Ok(None) => return "No saved handover could be verified. Ownership was not changed.".into(),
+        Err(_) => return "The saved handover cannot be verified. Ownership was not changed.".into(),
+    };
     if !h.stance.handed_over() {
         return h.spoken(now);
     }
-    if !vault.has_a_passphrase() {
+    let mut fresh: crate::vault::Vault = match state.load_checked(crate::vault::Vault::FILE) {
+        Ok(Some(vault)) => vault,
+        Ok(None) => return "The owner's saved vault is missing. It is still handed over; no passphrase was accepted.".into(),
+        Err(_) => return "The owner's saved vault cannot be verified. It is still handed over; no passphrase was accepted.".into(),
+    };
+    if !fresh.has_a_passphrase() {
         return format!("{NO_PASSPHRASE_YET} Set one while this is yours, and then a handover can be taken back.");
     }
     if phrase.is_empty() {
         return "Nothing typed — it's still handed over.".into();
     }
-    vault.lock();
-    if let Err(why) = vault.open(phrase, now, cfg) {
-        vault.lock();
-        crate::heard!(h.take_back(vault, now));
-        return with_save(why, h.save(state));
-    }
-    let said = match h.take_back(vault, now) {
-        Ok(said) => said,
+    // Password derivation holds neither the writer lease nor a shared cache lock.
+    let proof = fresh.open(phrase, now, cfg);
+    finish_take_back(state, vault, fresh, h, proof, now)
+}
+
+fn finish_take_back(
+    state: &crate::store::Store, cache: &mut crate::vault::Vault,
+    mut fresh: crate::vault::Vault, mut original: Handover,
+    proof: Result<(), String>, now: u64,
+) -> String {
+    let result = (|| -> Result<String, String> {
+        let _guard = state.transaction().map_err(|_| "Local storage is busy. Ownership was not changed; try taking it back again shortly.".to_string())?;
+        fresh.verify_saved(state).map_err(|_| "The owner's vault changed during verification. Ownership was not changed; enter the current passphrase again.".to_string())?;
+        let current: Handover = state.load_checked(FILE).map_err(|_| "The saved handover cannot be rechecked. Ownership was not changed.".to_string())?.ok_or_else(|| "The saved handover disappeared during verification. Ownership was not changed.".to_string())?;
+        if current != original { return Err("The handover changed during verification. Nothing was overwritten; check its current status.".into()); }
+        let said = match proof {
+            Ok(()) => original.take_back(&fresh, now).unwrap_or_else(|why| why),
+            Err(why) => {
+                fresh.lock();
+                // This exact current attempt is counted only with both records checked.
+                let refusal = original.take_back(&fresh, now);
+                if refusal.is_ok() { return Err("Ownership could not be verified; it is still handed over.".into()); }
+                why
+            }
+        };
+        with_save(said, original.save(state))
+    })();
+    fresh.lock();
+    match result {
+        Ok(said) => { *cache = fresh; said }
         Err(why) => why,
-    };
-    let said = with_save(said, h.save(state));
-    // Open only for as long as it took to prove who was typing.
-    vault.lock();
-    said
+    }
 }
 
 #[cfg(test)]
@@ -579,5 +608,90 @@ mod tests {
         assert!(said.contains("3 hours"), "{said}");
         assert!(said.contains("Sam is borrowing it"), "the reason was dropped: {said}");
         assert!(Handover::default().spoken(100).contains("yours"));
+    }
+}
+
+#[cfg(test)]
+mod fresh_owner_verification_tests {
+    use super::*;
+    use crate::vault::{Kind, State, Vault, VaultConfig};
+    const OLD: &str = "disposable handover owner original phrase";
+    const NEW: &str = "disposable handover owner replacement phrase";
+    fn fixture(tag: &str) -> (std::path::PathBuf, crate::store::Store, Vault) {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("atlas-fresh-handover-{tag}-{}-{unique}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap(); let state = crate::store::Store::new(root.clone());
+        let mut vault = Vault::default(); vault.open(OLD, 100, &VaultConfig::default()).unwrap(); vault.save(&state).unwrap();
+        let mut h = Handover::default(); h.hand_over("Disposable guest", 100); h.save(&state).unwrap();
+        (root, state, vault)
+    }
+    #[test]
+    fn independent_passphrase_change_refuses_cached_old_phrase_and_accepts_current_one() {
+        let (root, state, mut cache) = fixture("rotated");
+        let mut cli: Vault = state.load_checked(Vault::FILE).unwrap().unwrap();
+        cli.change_passphrase(OLD, NEW, 101, &VaultConfig::default()).unwrap(); cli.save(&state).unwrap();
+        let before_vault = std::fs::read(root.join("vault.json")).unwrap();
+        let old = take_back_with(&state, &mut cache, OLD, &VaultConfig::default(), 102);
+        assert!(!old.contains("Yours again"), "cached proof reclaimed ownership: {old}");
+        let refused: Handover = state.load_checked(FILE).unwrap().unwrap();
+        assert!(refused.stance.handed_over()); assert_eq!(refused.refused, 1);
+        assert_eq!(cache.state(), State::Sealed);
+        assert_eq!(std::fs::read(root.join("vault.json")).unwrap(), before_vault);
+        let current = take_back_with(&state, &mut cache, NEW, &VaultConfig::default(), 103);
+        assert!(current.contains("Yours again"), "current saved proof was refused: {current}");
+        assert!(!state.load_checked::<Handover>(FILE).unwrap().unwrap().stance.handed_over());
+        assert_eq!(cache.state(), State::Sealed); cache.verify_saved(&state).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn missing_corrupt_and_busy_records_never_change_ownership_or_publish_proof() {
+        for case in ["missing-vault", "corrupt-vault", "missing-handover", "corrupt-handover", "busy"] {
+            let (root, state, mut cache) = fixture(case);
+            match case {
+                "missing-vault" => std::fs::remove_file(root.join("vault.json")).unwrap(),
+                "corrupt-vault" => std::fs::write(root.join("vault.json"), b"malformed disposable vault").unwrap(),
+                "missing-handover" => std::fs::remove_file(root.join("handover.json")).unwrap(),
+                "corrupt-handover" => std::fs::write(root.join("handover.json"), b"malformed disposable handover").unwrap(),
+                _ => {}
+            }
+            let before_vault = std::fs::read(root.join("vault.json")).ok();
+            let before_handover = std::fs::read(root.join("handover.json")).ok();
+            let (held, ready) = std::sync::mpsc::sync_channel(0);
+            let (release, waiting) = std::sync::mpsc::sync_channel(0);
+            let holder = if case == "busy" {
+                let owned = state.clone(); Some(std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); held.send(()).unwrap(); waiting.recv().unwrap(); }))
+            } else { None };
+            if holder.is_some() { ready.recv().unwrap(); }
+            let said = take_back_with(&state, &mut cache, OLD, &VaultConfig::default(), 102);
+            assert!(!said.contains("Yours again"), "{case} published ownership: {said}");
+            assert_eq!(cache.state(), State::Sealed);
+            assert_eq!(std::fs::read(root.join("vault.json")).ok(), before_vault);
+            assert_eq!(std::fs::read(root.join("handover.json")).ok(), before_handover);
+            if let Some(holder) = holder { release.send(()).unwrap(); holder.join().unwrap(); }
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+    #[test]
+    fn records_changed_after_password_proof_are_not_overwritten_or_counted() {
+        for case in ["vault", "handover"] {
+            let (root, state, mut cache) = fixture(case); cache.lock();
+            let mut fresh: Vault = state.load_checked(Vault::FILE).unwrap().unwrap();
+            let original: Handover = state.load_checked(FILE).unwrap().unwrap();
+            let proof = fresh.open(OLD, 101, &VaultConfig::default()); assert!(proof.is_ok());
+            if case == "vault" {
+                let mut changed: Vault = state.load_checked(Vault::FILE).unwrap().unwrap(); changed.open(OLD, 102, &VaultConfig::default()).unwrap();
+                changed.put("Disposable independently added credential", Kind::Login, "synthetic value only", 102).unwrap(); changed.save(&state).unwrap();
+            } else {
+                let mut changed = original.clone(); changed.note = "Changed guest assignment".into(); changed.refused = 7; changed.save(&state).unwrap();
+            }
+            let before_vault = std::fs::read(root.join("vault.json")).unwrap();
+            let before_handover = std::fs::read(root.join("handover.json")).unwrap();
+            let said = finish_take_back(&state, &mut cache, fresh, original, proof, 103);
+            assert!(!said.contains("Yours again"), "{case} stale proof published ownership: {said}");
+            assert_eq!(std::fs::read(root.join("vault.json")).unwrap(), before_vault);
+            assert_eq!(std::fs::read(root.join("handover.json")).unwrap(), before_handover);
+            assert_eq!(cache.state(), State::Sealed);
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 }

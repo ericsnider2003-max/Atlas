@@ -5,6 +5,16 @@
 
 use super::*;
 
+pub fn recovery_archive_section(records: &[crate::safety::ArchivedRecovery]) -> String {
+    if records.is_empty() { return String::new(); }
+    let mut body = String::from("<section><h2>Saved recovery files</h2><p>These files came from a restored backup. Return a file to its original folder only when you choose. An existing file is never replaced.</p><ul class=rows>");
+    for item in records {
+        body.push_str(&format!("<li class=row><p>{}</p><form method=post action='/hub/back'><input type=hidden name=what value=return-file><input type=hidden name=archive value='{}'><input type=hidden name=kind value='{}'><input type=hidden name=id value='{}'><button type=submit>Return file</button></form></li>", esc(&item.record.original), esc(&item.archive), esc(&item.kind), item.record.id));
+    }
+    body.push_str("</ul></section>");
+    body
+}
+
 /// The workspace page.
 ///
 /// A board rather than a list. The columns are statuses, so what's stuck is
@@ -439,8 +449,8 @@ pub fn workshop_page(w: &crate::workshop::Workshop) -> String {
 /// (`atlas calendar import`, `atlas clients export`) until 23 Sep.
 pub(super) fn files_in_and_out() -> String {
     "<div class=files-io>\
-     <label class=btn for=bring-in-file>Bring in an invite or contacts file (.ics, .vcf)</label>\
-     <input id=bring-in-file type=file accept=\".ics,.vcf,text/calendar,text/vcard\" hidden>\
+     <label class=btn for=bring-in-file>Bring in an invite or contacts file (.ics, .vcf)\
+     <input id=bring-in-file type=file class=sr accept=\".ics,.vcf,text/calendar,text/vcard\"></label>\
      <a class=btn href=\"/hub/calendar.ics\">Download your calendar (.ics)</a>\
      <a class=btn href=\"/hub/clients.vcf\">Download your clients (.vcf)</a>\
      <p id=bring-in-said class=note aria-live=polite></p></div>\
@@ -453,10 +463,10 @@ pub(super) fn files_in_and_out() -> String {
      r.readAsDataURL(file)})})();</script>\
      <div class=files-io><h2>Teach Atlas to hear you</h2>\
      <p class=note>Recordings made on this computer's microphone (.wav). Nothing leaves the machine.</p>\
-     <label class=btn data-prefix=wake->Your wake phrase — one take (do this three times)<input type=file accept=\".wav,audio/wav\" hidden></label>\
-     <label class=btn data-prefix=room->The room, with nobody talking<input type=file accept=\".wav,audio/wav\" hidden></label>\
-     <label class=btn data-prefix=you->You, talking somewhere quiet<input type=file accept=\".wav,audio/wav\" hidden></label>\
-     <label class=btn data-prefix=voices->Other voices — a podcast or a call<input type=file accept=\".wav,audio/wav\" hidden></label>\
+     <label class=btn data-prefix=wake->Your wake phrase — one take (do this three times)<input type=file class=sr accept=\".wav,audio/wav\"></label>\
+     <label class=btn data-prefix=room->The room, with nobody talking<input type=file class=sr accept=\".wav,audio/wav\"></label>\
+     <label class=btn data-prefix=you->You, talking somewhere quiet<input type=file class=sr accept=\".wav,audio/wav\"></label>\
+     <label class=btn data-prefix=voices->Other voices — a podcast or a call<input type=file class=sr accept=\".wav,audio/wav\"></label>\
      <p id=hearing-said class=note aria-live=polite></p></div>\
      <script>(function(){var o=document.getElementById('hearing-said');\
      document.querySelectorAll('label[data-prefix]').forEach(function(l){var f=l.querySelector('input');\

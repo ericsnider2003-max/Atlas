@@ -57,6 +57,7 @@ impl Identity {
     /// paired device is concerned, and silently becoming one would lock you
     /// out of every group you own.
     pub fn load_or_create(dir: &Path) -> Result<Identity, String> {
+        let _state = crate::store::state_transaction(dir).map_err(|e| e.to_string())?;
         let path = dir.join(FILE);
         match std::fs::read_to_string(&path) {
             Ok(text) => {

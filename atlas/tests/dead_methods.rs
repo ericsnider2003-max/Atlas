@@ -496,33 +496,18 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
 /// whole guard reports nothing. The four-way classification only means
 /// anything if "called" means called by code that ships.
 fn without_test_blocks(body: &str) -> String {
-    let mut out = Vec::new();
-    let mut in_test = false;
-    let mut opened = false;
-    let mut depth: i32 = 0;
-    for line in body.lines() {
-        if line.trim_start().starts_with("#[cfg(test)]") {
-            in_test = true;
-            opened = false;
-            depth = 0;
-            continue;
-        }
-        if in_test {
-            depth += line.matches('{').count() as i32;
-            depth -= line.matches('}').count() as i32;
-            opened |= line.contains('{');
-            // The block ends where its braces close -- on a line of its own
-            // ("}") too: 2 Oct 2026, a `mod naming_a_project` in making.rs
-            // hid every daemon file after it, and live methods read as dead.
-            // `#[cfg(test)] use x;` -- one item with no braces.
-            if (opened && depth <= 0) || (!opened && line.trim_end().ends_with(';')) {
-                in_test = false;
-            }
-            continue;
-        }
-        out.push(line);
-    }
-    out.join("\n")
+    // Use the same exhaustively checked boundary as the other guards.
+    // Braces in fixture strings are not Rust block delimiters.
+    crate::common::split_production_and_tests(body).0
+}
+
+#[test]
+fn fixture_string_braces_cannot_hide_a_real_production_caller() {
+    let body = concat!("#[cfg(", "test)]\nmod fixture {\n    let text = \"{{{{\";\n    test_only();\n}\nfn live() {\n    production_call();\n}\n");
+    let production = without_test_blocks(body);
+    assert!(production.contains("production_call()"));
+    assert!(!production.contains("test_only()"));
+    assert!(!production.contains("let text"));
 }
 
 /// Bare names called anywhere in `text`, skipping comments.

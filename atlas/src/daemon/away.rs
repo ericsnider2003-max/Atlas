@@ -376,13 +376,16 @@ impl<'a> Daemon<'a> {
             format!("{}:{:02}", l / 3600, (l % 3600) / 60)
         };
         let dir = self.notes_dir();
-        if std::fs::create_dir_all(&dir).is_ok() {
+        let filed = (|| -> crate::error::Result<()> {
+            let _guard = self.store.transaction()?;
+            std::fs::create_dir_all(&dir)?;
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("work-sessions.md")) {
-                crate::kept!(writeln!(f, "{}", crate::worksession::note_line(&s, ended, &said, &clock)));
-            }
-        }
-        said
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("work-sessions.md"))?;
+            writeln!(f, "{}", crate::worksession::note_line(&s, ended, &said, &clock))?;
+            f.sync_all()?;
+            Ok(())
+        })();
+        match filed { Ok(()) => said, Err(error) => format!("{said} I couldn't save the work-session note ({error}).") }
     }
 
     /// On the phone app, your answer to the free online models: "use online
@@ -603,7 +606,7 @@ impl<'a> Daemon<'a> {
     /// hourly sweep and never in a brief; what belongs here is what it has
     /// stopped and left for you. `guesses_worth_checking` in particular had
     /// nowhere to go but the log, where nothing reads it.
-    fn upkeep_questions(&self, now: u64) -> Vec<String> {
+    pub(super) fn upkeep_questions(&self, now: u64) -> Vec<String> {
         let mut out = Vec::new();
         if let Some(d) = &self.index_drifted {
             out.push(format!("the notes index has drifted — {}", d.plain()));
@@ -620,72 +623,30 @@ impl<'a> Daemon<'a> {
     /// the only call this module ever got, so the brief was a function that
     /// always returned the same empty answer. Everything handed over here is
     /// something Atlas already holds with nothing plugged in.
+    /// Synchronous compatibility entry for callers outside the running loop.
+    /// The live loop uses request_brief/poll_brief and never waits for reads.
     pub fn brief_now(&mut self, now: u64) -> crate::brief::Brief {
-        // Loaded rather than held: the doorstep is written by the server
-        // thread when a friend sends something, so a copy kept on the daemon
-        // would be the stale one.
-        let inbox = crate::household::Inbox::load(&self.store);
-        let mut upkeep = self.upkeep_questions(now);
-        // The list for later, once a week (F8).
-        let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
-        if let Some(line) = later.weekly_line(now) {
-            upkeep.push(line);
-            let _ = self.store.save(crate::later::RECORD, &later);
-        }
-        // Ideas saved and never come back to, each named once (F1).
-        let mut named: Vec<u64> = self.store.load("ideas_named");
-        let ideas = crate::capture::ideas_to_name(&self.notebook, now, &named);
-        if let Some(line) = crate::capture::ideas_line(&ideas, now) {
-            named.extend(ideas.iter().map(|n| n.id));
-            upkeep.push(line);
-            let _ = self.store.save("ideas_named", &named);
-        }
-        // Logins you haven't used: once a month at most, in the brief only.
-        let last_said: u64 = self.store.load("quiet_logins_said");
-        if now.saturating_sub(last_said) >= crate::signin::QUIET_EVERY_DAYS * 86_400 {
-            if let Some(line) = self.access.quiet_line(now) {
-                upkeep.push(line);
-                let _ = self.store.save("quiet_logins_said", &now);
+        match self.prepare_brief_inline(now) {
+            Ok(brief) => brief,
+            Err(why) => {
+                self.log.warn(&why);
+                crate::brief::run(&[], &[], &crate::brief::BriefConfig::default())
             }
         }
-        // `Unknown` counts as offline here. Listing an email you cannot open
-        // costs more than leaving it out for one brief, and it comes back the
-        // moment the check succeeds — the same caution `Reach` documents for
-        // requirement decisions.
-        let online = self.connectivity.cached() == crate::connectivity::Reach::Online;
-        let cfg = self.tools_cfg().brief.clone();
-        let since = self.last_brief;
-        let sources = crate::brief::Sources {
-            inbox: &inbox,
-            backlog: &self.backlog,
-            scheduler: &self.scheduler,
-            proposals: &self.proposals,
-            publisher: &self.publisher,
-            upkeep: &upkeep,
-            // No reader in this build. Named rather than omitted so that
-            // adding one is a change at exactly this line.
-            mail: &[],
-            online,
-        };
-        let mut b = crate::brief::from_here(&sources, &cfg, now, since);
-        // Your own day, from what's kept on this machine (round 11): promises
-        // due, replies owed, people, habits, notes dated today, the market's
-        // calendar. Appended after what the brief already ranked, so none of
-        // it pushes a failed job or a friend's note down the list.
-        let day = self.day_items(now);
-        if b.start_with.is_none() {
-            b.start_with = day.iter().find(|i| i.weight == crate::brief::Weight::Urgent).map(|i| i.subject.clone());
-        }
-        b.yours.extend(day);
-        // The one push you asked for, from "get to know me" -- only when the
-        // brief is on at all, and one piece a day.
-        if cfg.enabled {
-            b.push = self
-                .facts
-                .get("push them on")
-                .and_then(|f| crate::brief::push_for_day(&f.summary, crate::localclock::day_here(now) as u64));
-        }
-        self.last_brief = now;
-        b
+    }
+    /// Prepared text is not proof that speech finished. A canceled attempt
+    /// keeps its scheduling cooldown while the receipt remains unchanged.
+    pub(crate) fn acknowledge_brief_delivery(&mut self, delivered: &str, now: u64) {
+        let Some((line, _)) = self.pending_brief_delivery.as_ref() else { return };
+        let compact = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !compact(delivered).contains(&compact(line)) { return; }
+        if !self.commit_brief_receipt(now) { return; }
+        let Some((_, prepared_at)) = self.pending_brief_delivery.as_ref() else { return };
+        self.last_brief = *prepared_at;
+        self.last_brief_at = now;
+        self.pending_brief_delivery = None;
+        let _ = self.store.save("last_brief_at", &self.last_brief_at);
+        crate::heard!(self.store.save("last_brief_source_at", &self.last_brief));
+        let _ = self.store.save("brief_prepared", &self.pending_brief_delivery);
     }
 }

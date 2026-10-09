@@ -756,6 +756,8 @@ pub enum Step {
     Delegated,
     Rerouted,
     Checked,
+    Checking,
+    Finished,
     Waiting,
     Stuck,
     Now,
@@ -791,6 +793,18 @@ pub struct NowView {
     /// they were only said when you came back, and nothing on the hub showed
     /// they were waiting.
     pub held: Vec<String>,
+    /// A receipt for the focused task, or the latest retained finished task.
+    pub receipt: Option<TaskReceipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct TaskReceipt {
+    pub task: String,
+    pub status: String,
+    pub current: String,
+    pub dependency: String,
+    /// Step name and the exact action-reported output.
+    pub results: Vec<(String, String)>,
 }
 
 

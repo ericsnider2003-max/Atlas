@@ -1,93 +1,35 @@
-//! Hearing with Parakeet: NVIDIA's Parakeet TDT 0.6B v2 speech model, run on
-//! this machine by sherpa-onnx's own server and kept loaded.
-//!
-//! 30 Sep 2026, measured on LibriSpeech speech (20 clips, 188 s) through the
-//! pinned files below, two processor cores:
-//!
-//! | | clean | far, quiet microphone |
-//! |---|---|---|
-//! | whisper base.en (what Atlas used) | 10.5% words wrong | 58.9% |
-//! | Parakeet TDT 0.6B v2, int8 | 2.7% | 17.6% |
-//!
-//! Same speed (about 3x real time on two cores), a quarter of the mistakes up
-//! close and a third of them across the room -- the case Eric kept hitting.
-//! Loading the model takes ~3 s, so it isn't run per sentence: sherpa-onnx's
-//! offline WebSocket server loads it once and answers each recording in about
-//! a tenth of its length (1.2 s for 9.9 s of speech, two cores).
-//!
-//! Its protocol (sherpa-onnx `offline-websocket-server`): one binary message
-//! holding the sample rate (i32, little-endian), the byte count of what
-//! follows (i32), then the samples as f32 -- sent in pieces of up to 10,240
-//! bytes -- answered with one text message of JSON whose `text` is the words;
-//! then "Done" ends the connection.
-//!
-//! Whisper stays: nothing here is required, and any failure falls back to it
-//! for that sentence (`voice::transcribe_heard`).
+//! Parakeet recognition through an owned, bounded socket-free sherpa process.
+//! CPU-only requests load the local model independently. Atlas neither starts
+//! nor adopts the historical fixed-port server.
+//! Cancellation is distinct from provider failure and never asks Whisper to
+//! transcribe the canceled request.
 
 use crate::error::{AtlasError, Result};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Where it listens, on this machine only.
-pub const PORT: u16 = 8094;
-
-/// How long a freshly started server is waited for.
-pub const START_WAIT_SECS: u64 = 25;
-
 /// The files it needs, under the install.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Files {
-    pub server: PathBuf,
+    pub program: PathBuf,
     pub model: PathBuf,
 }
 
-/// The server program's name in the sherpa-onnx build.
-pub fn server_name() -> &'static str {
+/// The socket-free recognizer program's name in the sherpa-onnx build.
+pub fn recognizer_name() -> &'static str {
     if cfg!(windows) {
-        "sherpa-onnx-offline-websocket-server.exe"
+        "sherpa-onnx-offline.exe"
     } else {
-        "sherpa-onnx-offline-websocket-server"
+        "sherpa-onnx-offline"
     }
 }
 
-/// Are the server and the model here (`atlas get hearing`)?
+/// Are the socket-free recognizer and the model here (`atlas get hearing`)?
 pub fn installed(root: &Path) -> Option<Files> {
-    let server = root.join("tools").join("sherpa").join("bin").join(server_name());
+    let program = root.join("tools").join("sherpa").join("bin").join(recognizer_name());
     let model = root.join("models").join("parakeet");
     let needed = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
-    (server.is_file() && needed.iter().all(|f| model.join(f).is_file())).then_some(Files { server, model })
-}
-
-/// The server's command line.
-pub fn launch_args(files: &Files, port: u16, threads: usize) -> Vec<String> {
-    let m = |f: &str| files.model.join(f).display().to_string();
-    vec![
-        format!("--port={port}"),
-        format!("--encoder={}", m("encoder.int8.onnx")),
-        format!("--decoder={}", m("decoder.int8.onnx")),
-        format!("--joiner={}", m("joiner.int8.onnx")),
-        format!("--tokens={}", m("tokens.txt")),
-        "--model-type=nemo_transducer".into(),
-        format!("--num-threads={}", threads.max(1)),
-        "--max-batch-size=1".into(),
-    ]
-}
-
-/// Threads for it: half the processor, at least two, at most four -- the
-/// model server and the rest of the machine need the rest.
-pub fn threads_for(cores: usize) -> usize {
-    (cores / 2).clamp(2, 4)
-}
-
-/// One recording as the server wants it.
-pub fn request_bytes(samples: &[f32], rate: u32) -> Vec<u8> {
-    let mut out = Vec::with_capacity(8 + samples.len() * 4);
-    out.extend_from_slice(&(rate as i32).to_le_bytes());
-    out.extend_from_slice(&((samples.len() * 4) as i32).to_le_bytes());
-    for s in samples {
-        out.extend_from_slice(&s.to_le_bytes());
-    }
-    out
+    (program.is_file() && needed.iter().all(|f| model.join(f).is_file())).then_some(Files { program, model })
 }
 
 /// The words in the server's answer.
@@ -96,88 +38,80 @@ pub fn text_from(answer: &str) -> Option<String> {
     v.get("text").and_then(|t| t.as_str()).map(|t| t.trim().to_string())
 }
 
-static SERVER: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
+static GENERATION: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-fn answering(port: u16) -> bool {
-    std::net::TcpStream::connect_timeout(&std::net::SocketAddr::from(([127, 0, 0, 1], port)), Duration::from_millis(300)).is_ok()
-}
+pub(crate) fn cancellation_epoch() -> usize { GENERATION.load(std::sync::atomic::Ordering::SeqCst) }
 
-/// Start the server if it isn't running (once per call at most), and wait
-/// for it. `Err` says why it isn't there.
-fn ensure_running(files: &Files, port: u16) -> Result<()> {
-    if answering(port) {
-        return Ok(());
-    }
-    let mut g = SERVER.lock().map_err(|_| AtlasError::Platform("the hearing server's lock broke".into()))?;
-    let alive = g.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)));
-    if !alive {
-        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-        let mut cmd = crate::tools::command(&files.server);
-        cmd.args(launch_args(files, port, threads_for(cores)))
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        // The DLLs sit beside the program; run from there.
-        if let Some(dir) = files.server.parent() {
-            cmd.current_dir(dir);
-        }
-        let child = cmd.spawn().map_err(|e| AtlasError::Platform(format!("couldn't start the hearing server: {e}")))?;
-        crate::childjob::tie(&child);
-        *g = Some(child);
-    }
-    drop(g);
-    let until = std::time::Instant::now() + Duration::from_secs(START_WAIT_SECS);
-    while std::time::Instant::now() < until {
-        if answering(port) {
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-    Err(AtlasError::Platform(format!("the hearing server didn't answer within {START_WAIT_SECS} s")))
-}
+/// Compatibility hook: production hearing uses an owned socket-free process.
+/// No installed listener is started or adopted here.
+pub fn warm(_root: &Path) {}
 
-/// Start it without waiting, so the first thing you say isn't the one that
-/// waits for the model to load.
-pub fn warm(root: &Path) {
-    if let Some(files) = installed(root) {
-        crate::heard!(std::thread::Builder::new().name("atlas-hearing-warm".into()).spawn(move || {
-            crate::heard!(ensure_running(&files, PORT));
-        }));
-    }
-}
+/// Cancel only Atlas-owned recognition requests; the next request is independent.
+pub fn stop() { GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst); }
 
-/// Stop the server Atlas started (Atlas closing).
-pub fn stop() {
-    if let Ok(mut g) = SERVER.lock().or_else(crate::crash::unpoison) {
-        if let Some(mut c) = g.take() {
-            let _ = c.kill();
-            let _ = c.wait();
-        }
-    }
-}
-
-/// Words for a recording, from the running server.
-fn words_from(samples: &[f32], rate: u32, port: u16) -> Result<String> {
-    let mut ws = crate::ws::WebSocket::connect(&format!("ws://127.0.0.1:{port}/"), Duration::from_secs(20))?;
-    let bytes = request_bytes(samples, rate);
-    for piece in bytes.chunks(10_240) {
-        ws.send_binary(piece)?;
-    }
-    let answer = ws.recv_text()?;
-    let _ = ws.send_text("Done");
-    ws.close();
-    text_from(&answer).ok_or_else(|| AtlasError::Platform(format!("the hearing server's answer had no words: {answer}")))
-}
-
-/// Words for a WAV file through Parakeet, starting the server if needed.
-/// `None` when Parakeet isn't installed; `Some(Err)` when it is and failed.
-pub fn transcribe_file(root: &Path, wav: &Path) -> Option<Result<String>> {
-    let files = installed(root)?;
+/// None means unavailable; Ok(None) means canceled and must not invoke another engine.
+pub fn transcribe_file_until(root: &Path, wav: &Path, stop: &dyn Fn() -> bool) -> Option<Result<Option<String>>> {
+    let Files { program: cli, model } = installed(root)?;
+    let generation = GENERATION.load(std::sync::atomic::Ordering::SeqCst);
+    let stopped = || stop() || GENERATION.load(std::sync::atomic::Ordering::SeqCst) != generation;
     Some((|| {
-        ensure_running(&files, PORT)?;
+        if stopped() { return Ok(None); }
+        if std::fs::metadata(wav)?.len() > 8 * 1024 * 1024 { return Err(AtlasError::Platform("hearing recording exceeds 8 MiB".into())); }
         let bytes = std::fs::read(wav)?;
         let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
-        let f: Vec<f32> = samples.iter().map(|s| *s as f32 / 32768.0).collect();
-        words_from(&f, rate, PORT)
+        if rate == 0 || samples.is_empty() || samples.len() > rate as usize * 60 { return Err(AtlasError::Platform("hearing needs a nonempty recording of at most 60 seconds".into())); }
+        let mut command = crate::tools::command(&cli);
+        for (argument, name) in [("--encoder=", "encoder.int8.onnx"), ("--decoder=", "decoder.int8.onnx"), ("--joiner=", "joiner.int8.onnx"), ("--tokens=", "tokens.txt")] {
+            let mut arg = std::ffi::OsString::from(argument); arg.push(model.join(name)); command.arg(arg);
+        }
+        command.args(["--model-type=nemo_transducer", "--num-threads=2", "--provider=cpu", "--lm-provider=cpu"]).arg(wav);
+        let run = crate::tools::run_scoped(&mut command, Duration::from_secs(30), 64 * 1024, None, Some(&stopped));
+        if stopped() || matches!(run.end, crate::tools::ProcessEnd::Stopped) { return Ok(None); }
+        if !matches!(run.end, crate::tools::ProcessEnd::Exited(status) if status.success()) || run.truncated {
+            let why = match &run.end {
+                crate::tools::ProcessEnd::Exited(status) => format!("recognizer exited with {status}"),
+                crate::tools::ProcessEnd::TimedOut => "recognizer exceeded 30 seconds".into(),
+                crate::tools::ProcessEnd::Stopped => "recognizer stopped".into(),
+                crate::tools::ProcessEnd::Failed(message) => message.clone(),
+            };
+            return Err(AtlasError::Platform(format!("hearing did not complete: {why}; {}", String::from_utf8_lossy(&run.stderr))));
+        }
+        let stdout = String::from_utf8_lossy(&run.stdout);
+        let text = text_from(&stdout).or_else(|| stdout.lines().find_map(text_from)).or_else(|| {
+            let first = stdout.find('{')?; let last = stdout.rfind('}')?; text_from(&stdout[first..=last])
+        }).ok_or_else(|| AtlasError::Platform("hearing returned no recognizer text JSON".into()))?;
+        Ok(Some(text))
     })())
+}
+
+#[cfg(test)]
+mod native_roundtrip_proof {
+    use super::*;
+    #[test]
+    #[ignore = "installed socket-free Parakeet CLI and owned synthetic Kokoro WAVs"]
+    fn socket_free_synthetic_voice_understands_pause_and_stops_owned_asr() {
+        let root = PathBuf::from(std::env::var("ATLAS_ASR_INSTALL").expect("explicit read-only install path required"));
+        let narration = PathBuf::from(std::env::var("KOKORO_OUT").expect("owned synthetic preview required"));
+        let pause = PathBuf::from(std::env::var("KOKORO_COMMAND_OUT").expect("owned synthetic Pause WAV required"));
+        assert!(narration.starts_with(std::env::temp_dir()) && pause.starts_with(std::env::temp_dir()));
+        let started = std::time::Instant::now();
+        let transcribe = |wave: &Path| {
+            let began = std::time::Instant::now();
+            let words = transcribe_file_until(&root, wave, &|| started.elapsed() >= Duration::from_secs(90)).expect("installed socket-free adapter").expect("recognition completed").expect("recognition not canceled");
+            (words, began.elapsed())
+        };
+        let (heard, cold) = transcribe(&narration);
+        let heard = heard.to_lowercase();
+        assert!(heard.contains("atlas") && heard.contains("reply") && heard.contains("sentence"), "synthetic narration: {heard}");
+        let (repeat_words, repeat) = transcribe(&narration);
+        assert_eq!(repeat_words.to_lowercase(), heard, "repeat recognition remains stable");
+        let (command, command_time) = transcribe(&pause);
+        let cfg = crate::config::Config::load(Path::new("config")).unwrap();
+        assert_eq!(crate::intent::Parser::new(&cfg.commands).parse(&command), crate::intent::Intent::Pause, "synthetic command: {command}");
+        let cancel_started = std::time::Instant::now();
+        let stopped = transcribe_file_until(&root, &narration, &|| cancel_started.elapsed() >= Duration::from_millis(100)).expect("installed adapter").expect("cancellation is a result");
+        assert!(stopped.is_none(), "native ASR must acknowledge interruption");
+        assert!(cancel_started.elapsed() < Duration::from_secs(2));
+        eprintln!("socket-free native ASR cold={cold:?} repeat={repeat:?} command={command_time:?}; narration={heard}; command={command}; cancel={:?}", cancel_started.elapsed());
+    }
 }

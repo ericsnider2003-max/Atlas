@@ -83,12 +83,14 @@ fn a_reading_runs_on_the_laptop_and_the_answer_comes_back_to_the_phone() {
     assert!(said.starts_with("Sent \"check what time it is\" to your laptop"), "{said}");
 
     let mut laptop = daemon(&lc, &lp, &ls);
+    assert_eq!(laptop.parser.parse("check what time it is"), laptop.parser.parse("what time is it"), "the directed phone phrase must reach the actual time command");
     laptop.turn("sync", T + 10);
     let waiting: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
     assert_eq!(waiting.len(), 1, "the laptop never took the phone's request");
     laptop.tick(T + 20);
     let waiting: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
-    assert!(waiting.is_empty(), "a reading was held: {waiting:?}");
+    assert_eq!(waiting[0]["phase"], "finished", "a reading was held: {waiting:?}");
+    assert_eq!(waiting.len(), 1, "the terminal receipt must survive duplicate delivery");
     laptop.turn("sync", T + 30);
 
     let back = phone.turn("sync", T + 40);
@@ -119,7 +121,10 @@ fn something_that_might_change_things_waits_for_your_yes_from_the_phone() {
     assert!(ok.contains("Told the laptop to go ahead"), "{ok}");
     laptop.turn("sync", T + 60);
     let after: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
-    assert!(after.is_empty(), "the yes never reached the held request");
+    assert_eq!(after[0]["phase"], "authorized", "the yes never reached the held request");
+    laptop.tick(T + 61);
+    let after: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
+    assert_ne!(after[0]["phase"], "authorized", "authorized work was never considered");
 }
 
 #[test]
@@ -265,8 +270,12 @@ fn a_reminder_rings_on_one_device_only() {
     assert!(listed.contains("stretch") && listed.contains("on your laptop"), "{listed}");
 
     // Cancelled on the phone: cancelled on the laptop, where it lives.
+    let stretch_key = phone.reminders_elsewhere().into_iter().find(|reminder| reminder.words().contains("stretch")).unwrap().key;
     let said = phone.turn("cancel the reminder about stretch", now + 80);
-    assert!(said.contains("Cancelled"), "{said}");
+    assert!(said.contains("Cancellation saved") && said.contains("next sync"), "{said}");
+    assert_eq!(rings(&laptop, "stretch"), 1, "the owner has not received the cancellation yet");
+    let saved: Vec<serde_json::Value> = ps.load("reminders_on_your_other_devices");
+    assert!(saved.iter().any(|reminder| reminder["key"] == stretch_key && reminder["due"] == 0 && reminder["text"] == ""), "the cancellation must be durable while awaiting the owning device: {saved:?}");
     phone.turn("sync", now + 90);
     laptop.turn("sync", now + 100);
     assert_eq!(rings(&laptop, "stretch"), 0, "cancelled on the phone, it still rings on the laptop");

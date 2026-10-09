@@ -4,7 +4,7 @@
 //! record -- and only for a post the publisher cleared, checked again at the
 //! last moment, the same gate as a post typed into a site.
 
-use atlas::delivery::{is_bluesky, send_bluesky, Outcome};
+use atlas::delivery::{is_bluesky, send_bluesky_unless, Outcome};
 use atlas::publish::{Channel, Publisher};
 use atlas::social::posting::{link_facets, post_with_app_password as post, Xrpc};
 use serde_json::{json, Value};
@@ -125,12 +125,12 @@ fn only_an_approved_post_goes_and_it_is_marked_sent() {
     let x = StandIn::new();
     let mut p = Publisher::default();
     let draft = p.draft(Channel::Other("bluesky".into()), "not approved");
-    assert!(matches!(send_bluesky(&mut p, &x, "eric.bsky.social", "pw", draft, true, 0), Outcome::Blocked(_)));
+    assert!(matches!(send_bluesky_unless(&mut p, &x, "eric.bsky.social", "pw", draft, true, 0, &|| false), Outcome::Blocked(_)));
     assert!(x.calls.borrow().is_empty());
 
     let id = approved(&mut p, "approved words");
-    assert!(matches!(send_bluesky(&mut p, &x, "eric.bsky.social", "pw", id, true, 0), Outcome::Sent(_)));
-    let again = send_bluesky(&mut p, &x, "eric.bsky.social", "pw", id, true, 0);
+    assert!(matches!(send_bluesky_unless(&mut p, &x, "eric.bsky.social", "pw", id, true, 0, &|| false), Outcome::Sent(_)));
+    let again = send_bluesky_unless(&mut p, &x, "eric.bsky.social", "pw", id, true, 0, &|| false);
     assert!(matches!(again, Outcome::Blocked(ref why) if why.contains("already sent")), "{again:?}");
 }
 
@@ -139,8 +139,8 @@ fn no_handle_or_no_app_password_is_said_not_attempted() {
     let x = StandIn::new();
     let mut p = Publisher::default();
     let id = approved(&mut p, "hello");
-    assert!(matches!(send_bluesky(&mut p, &x, "", "pw", id, true, 0), Outcome::Blocked(ref w) if w.contains("handle")));
-    assert!(matches!(send_bluesky(&mut p, &x, "eric.bsky.social", "", id, true, 0), Outcome::Blocked(ref w) if w.contains("app password")));
+    assert!(matches!(send_bluesky_unless(&mut p, &x, "", "pw", id, true, 0, &|| false), Outcome::Blocked(ref w) if w.contains("handle")));
+    assert!(matches!(send_bluesky_unless(&mut p, &x, "eric.bsky.social", "", id, true, 0, &|| false), Outcome::Blocked(ref w) if w.contains("app password")));
     assert!(x.calls.borrow().is_empty());
 }
 
@@ -150,8 +150,8 @@ fn bluesky_out_of_reach_is_tried_again_not_given_up() {
     x.reachable = false;
     let mut p = Publisher::default();
     let id = approved(&mut p, "hello");
-    assert!(matches!(send_bluesky(&mut p, &x, "eric.bsky.social", "pw", id, true, 0), Outcome::Retry(_)));
-    assert!(matches!(send_bluesky(&mut p, &x, "eric.bsky.social", "pw", id, false, 0), Outcome::Retry(_)), "offline is a retry");
+    assert!(matches!(send_bluesky_unless(&mut p, &x, "eric.bsky.social", "pw", id, true, 0, &|| false), Outcome::Retry(_)));
+    assert!(matches!(send_bluesky_unless(&mut p, &x, "eric.bsky.social", "pw", id, false, 0, &|| false), Outcome::Retry(_)), "offline is a retry");
 }
 
 #[test]

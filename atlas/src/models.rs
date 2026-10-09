@@ -1736,6 +1736,11 @@ pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     // measurement that answered in 1-3 s sent exactly this. A template that
     // doesn't read it ignores it.
     body["chat_template_kwargs"] = json!({ "enable_thinking": false });
+    if req.tools.is_empty() {
+        if let Some(schema) = &req.output_schema {
+            body["response_format"] = json!({"type":"json_schema", "json_schema":{"name":"structured_reply", "schema":schema}});
+        }
+    }
     if !req.tools.is_empty() {
         body["tools"] = Value::Array(req.tools.clone());
         body["tool_choice"] = json!("auto");
@@ -1989,7 +1994,7 @@ impl ChatStream {
                 }
             }
         }
-        if choice.get("finish_reason").and_then(|f| f.as_str()).is_some() && choice.get("delta").is_none() {
+        if choice.get("finish_reason").and_then(|f| f.as_str()).is_some() {
             self.done = true;
         }
         let piece = delta.get("content").and_then(|c| c.as_str()).unwrap_or("");
@@ -2030,12 +2035,14 @@ pub enum ChatFail {
     TooLong(String),
     /// Anything else: this turn falls back, and the next turn tries again.
     Other(String),
+    Stopped,
 }
 
 impl ChatFail {
     fn into_error(self) -> AtlasError {
         match self {
             ChatFail::NoChat(m) | ChatFail::Loading(m) | ChatFail::TooLong(m) | ChatFail::Other(m) => AtlasError::Platform(m),
+            ChatFail::Stopped => stopped_chat(),
         }
     }
 }
@@ -2114,11 +2121,104 @@ pub fn chat_call(
     chat_call_until(url, req, on_text, &|| true)
 }
 
+#[derive(Debug)]
+struct ChatStopped;
+impl std::fmt::Display for ChatStopped { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("model request stopped before completion") } }
+impl std::error::Error for ChatStopped {}
+fn stopped_chat() -> AtlasError { std::io::Error::new(std::io::ErrorKind::Interrupted, ChatStopped).into() }
+pub(crate) fn chat_was_stopped(error: &AtlasError) -> bool {
+    matches!(error, AtlasError::Io(error) if error.get_ref().is_some_and(|cause| cause.is::<ChatStopped>()))
+}
+struct ResolveChat { host: String, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>, reply: std::sync::mpsc::SyncSender<std::result::Result<Vec<std::net::SocketAddr>, String>> }
+struct CancelResolution(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl Drop for CancelResolution { fn drop(&mut self) { self.0.store(true, std::sync::atomic::Ordering::Release); } }
+fn wait_chat_resolution(reply: &std::sync::mpsc::Receiver<std::result::Result<Vec<std::net::SocketAddr>, String>>, keep: &dyn Fn() -> bool) -> Result<Vec<std::net::SocketAddr>> {
+    let began = std::time::Instant::now();
+    loop {
+        if !keep() { return Err(stopped_chat()); }
+        if began.elapsed() >= std::time::Duration::from_secs(5) { return Err(AtlasError::Platform("model endpoint name lookup timed out".into())); }
+        match reply.recv_timeout(std::time::Duration::from_millis(25)) {
+            Ok(addresses) => { if !keep() { return Err(stopped_chat()); } return addresses.map_err(AtlasError::Platform); }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {},
+            Err(_) => return Err(AtlasError::Platform("model endpoint resolver stopped".into())),
+        }
+    }
+}
+fn resolve_chat_until(host: &str, keep: &dyn Fn() -> bool) -> Result<Vec<std::net::SocketAddr>> {
+    if !keep() { return Err(stopped_chat()); }
+    if let Ok(address) = host.parse() { return Ok(vec![address]); }
+    if let Some((name, port)) = host.rsplit_once(':') {
+        if name.eq_ignore_ascii_case("localhost") { return Ok(vec![std::net::SocketAddr::from(([127,0,0,1], port.parse::<u16>().map_err(|_| AtlasError::Platform("invalid model port".into()))?))]); }
+    }
+    // At most one native DNS call runs, with at most two pending requests.
+    // A slow OS resolver cannot create an unbounded set of abandoned threads.
+    static RESOLVER: std::sync::OnceLock<std::result::Result<std::sync::mpsc::SyncSender<ResolveChat>, String>> = std::sync::OnceLock::new();
+    let resolver = RESOLVER.get_or_init(|| {
+        let (send, receive) = std::sync::mpsc::sync_channel::<ResolveChat>(2);
+        std::thread::Builder::new().name("atlas-model-dns".into()).spawn(move || {
+            use std::net::ToSocketAddrs;
+            while let Ok(job) = receive.recv() {
+                if job.cancelled.load(std::sync::atomic::Ordering::Acquire) { continue; }
+                let answer = job.host.to_socket_addrs().map(|addresses| addresses.take(8).collect()).map_err(|error| error.to_string());
+                if !job.cancelled.load(std::sync::atomic::Ordering::Acquire) { crate::heard!(job.reply.try_send(answer)); }
+            }
+        }).map(|_| send).map_err(|error| error.to_string())
+    }).as_ref().map_err(|error| AtlasError::Platform(format!("model endpoint resolver unavailable: {error}")))?;
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _cancel = CancelResolution(cancelled.clone());
+    let (send, reply) = std::sync::mpsc::sync_channel(1);
+    resolver.try_send(ResolveChat { host: host.into(), cancelled, reply: send }).map_err(|_| AtlasError::Platform("model endpoint resolver is busy; request was not sent".into()))?;
+    wait_chat_resolution(&reply, keep)
+}
+fn pause_chat_until(duration: std::time::Duration, keep: &dyn Fn() -> bool) -> Result<()> {
+    let began = std::time::Instant::now();
+    while began.elapsed() < duration {
+        if !keep() { return Err(stopped_chat()); }
+        std::thread::sleep(std::time::Duration::from_millis(25).min(duration.saturating_sub(began.elapsed())));
+    }
+    if !keep() { return Err(stopped_chat()); }
+    Ok(())
+}
+fn connect_chat_until(addresses: &[std::net::SocketAddr], keep: &dyn Fn() -> bool) -> Result<std::net::TcpStream> {
+    let began = std::time::Instant::now(); let mut last = "no addresses were found".to_string();
+    for address in addresses {
+        loop {
+            if !keep() { return Err(stopped_chat()); }
+            let left = std::time::Duration::from_secs(5).saturating_sub(began.elapsed());
+            if left.is_zero() { return Err(AtlasError::Platform("model connection timed out".into())); }
+            match std::net::TcpStream::connect_timeout(address, std::time::Duration::from_millis(200).min(left)) {
+                Ok(stream) => { if !keep() { return Err(stopped_chat()); } return Ok(stream); }
+                Err(error) => { last = error.to_string(); if matches!(error.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock) { continue; } break; }
+            }
+        }
+    }
+    Err(AtlasError::Platform(last))
+}
+fn write_chat_until(stream: &mut std::net::TcpStream, request: &[u8], keep: &dyn Fn() -> bool) -> Result<()> {
+    use std::io::Write;
+    if request.len() > 2 * 1024 * 1024 { return Err(AtlasError::Platform("model request exceeds the bounded transport limit".into())); }
+    stream.set_write_timeout(Some(std::time::Duration::from_millis(200)))?;
+    let began = std::time::Instant::now(); let mut written = 0;
+    while written < request.len() {
+        if !keep() { return Err(stopped_chat()); }
+        if began.elapsed() >= std::time::Duration::from_secs(CHAT_READ_SECS) { return Err(AtlasError::Platform("model request write timed out".into())); }
+        match stream.write(&request[written..(written + 16 * 1024).min(request.len())]) {
+            Ok(0) => return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "model socket stopped accepting the request").into()),
+            Ok(n) => written += n,
+            Err(error) if matches!(error.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {},
+            Err(error) => return Err(error.into()),
+        }
+    }
+    if !keep() { return Err(stopped_chat()); }
+    Ok(())
+}
+
 /// `chat_call`, stopped as soon as `keep_going` says so (30 Sep 2026): asked
 /// a few times a second while nothing arrives -- the server still reading the
 /// prompt -- as well as between words. The deep model gives way to a turn
 /// this way even while it reads a long prompt, when no word comes for
-/// `on_text` to stop at (`deepbrain`). What came before the stop is the reply.
+/// `on_text` to stop at (`deepbrain`). Explicit callback truncation keeps its
+/// partial reply; a cancelled keep_going request returns an error, never empty success.
 pub fn chat_call_until(
     url: &str,
     req: &crate::brain::ChatRequest,
@@ -2129,6 +2229,7 @@ pub fn chat_call_until(
     let mut req = req.clone();
     let mut shortened = false;
     loop {
+        if !keep_going() { return Err(stopped_chat()); }
         match chat_call_once(url, &req, on_text, keep_going) {
             Ok(r) => return Ok(r),
             Err(ChatFail::NoChat(m)) => {
@@ -2136,7 +2237,10 @@ pub fn chat_call_until(
                 return Err(AtlasError::Platform(m));
             }
             Err(ChatFail::Loading(_)) if started.elapsed().as_secs() < LOADING_WAIT_SECS => {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                for _ in 0..40 {
+                    if !keep_going() { return Err(stopped_chat()); }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
             }
             Err(ChatFail::TooLong(m)) if !shortened => match shortened_request(&req) {
                 Some(r) => {
@@ -2160,6 +2264,7 @@ fn chat_call_once(
 ) -> std::result::Result<crate::brain::ChatReply, ChatFail> {
     match chat_call_io(url, req, on_text, keep_going) {
         Ok(r) => r,
+        Err(e) if chat_was_stopped(&e) => Err(ChatFail::Stopped),
         Err(e) => Err(ChatFail::Other(e.to_string())),
     }
 }
@@ -2179,6 +2284,7 @@ fn read_or_stop(
     use std::io::Read;
     let began = std::time::Instant::now();
     loop {
+        if !keep_going() { return Ok(None); }
         match s.read(buf) {
             Ok(n) => return Ok(Some(n)),
             Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
@@ -2200,7 +2306,6 @@ fn chat_call_io(
     on_text: &mut dyn FnMut(&str) -> bool,
     keep_going: &dyn Fn() -> bool,
 ) -> Result<std::result::Result<crate::brain::ChatReply, ChatFail>> {
-    use std::io::Write;
     let rest = url
         .strip_prefix("http://")
         .ok_or_else(|| AtlasError::Platform(format!("not a plain http address: {url}")))?;
@@ -2209,30 +2314,19 @@ fn chat_call_io(
         None => (rest, "/"),
     };
     let host = if host.contains(':') { host.to_string() } else { format!("{host}:80") };
-    // One more try after a moment: a phone that has just woken, or whose
-    // Tailscale is reconnecting, often can't reach the laptop on the first
-    // attempt and can on the second.
-    let reach = || -> std::result::Result<std::net::TcpStream, String> {
-        use std::net::ToSocketAddrs;
-        let addr = host
-            .to_socket_addrs()
-            .ok()
-            .and_then(|mut a| a.next())
-            .ok_or_else(|| "its name couldn't be looked up".to_string())?;
-        std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(5)).map_err(|e| e.to_string())
-    };
+    let addresses = resolve_chat_until(&host, keep_going)?;
     let timeout = std::time::Duration::from_secs(CHAT_READ_SECS);
-    let mut s = match reach() {
-        Ok(s) => s,
+    let mut s = match connect_chat_until(&addresses, keep_going) {
+        Ok(stream) => stream,
+        Err(error) if chat_was_stopped(&error) => return Err(error),
         Err(_) => {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            reach().map_err(|why| AtlasError::Platform(unreachable_words(&host, &why)))?
+            pause_chat_until(std::time::Duration::from_secs(1), keep_going)?;
+            connect_chat_until(&addresses, keep_going).map_err(|error| if chat_was_stopped(&error) { error } else { AtlasError::Platform(unreachable_words(&host, &error.to_string())) })?
         }
     };
     s.set_read_timeout(Some(std::time::Duration::from_millis(READ_SLICE_MS)))?;
-    s.set_write_timeout(Some(timeout))?;
     let body = chat_body(req, true);
-    s.write_all(crate::http::build_request("POST", &host, path, Some(&body)).as_bytes())?;
+    write_chat_until(&mut s, crate::http::build_request("POST", &host, path, Some(&body)).as_bytes(), keep_going)?;
 
     let mut raw: Vec<u8> = Vec::new();
     let mut buf = [0u8; 4096];
@@ -2244,7 +2338,7 @@ fn chat_call_io(
         // Told to stop before the server has answered at all (still reading
         // the prompt): nothing was said, and the connection is closed.
         let Some(n) = read_or_stop(&mut s, &mut buf, keep_going, timeout)? else {
-            return Ok(Ok(crate::brain::ChatReply::default()));
+            return Err(stopped_chat());
         };
         if n == 0 {
             return Err(AtlasError::Platform("the model server closed the connection".into()));
@@ -2316,8 +2410,7 @@ fn chat_call_io(
             break;
         }
         let Some(n) = read_or_stop(&mut s, &mut buf, keep_going, timeout)? else {
-            stopped = true;
-            break;
+            return Err(stopped_chat());
         };
         if n == 0 {
             break;
@@ -2403,5 +2496,95 @@ mod eyes_tests {
         // The encoder's memory is counted in what the server needs.
         assert!(footprint_mb(&m, &cfg) > footprint_mb(&m, &off));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod bounded_chat_cancellation {
+    use super::*;
+    use std::io::Read;
+    #[test]
+    fn cancellation_before_headers_is_an_error_and_closes_the_connection() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (accepted, waiting) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let mut buffer = [0; 4096];
+            let n = peer.read(&mut buffer).unwrap();
+            assert!(n > 0); accepted.send(()).unwrap();
+            loop { match peer.read(&mut buffer) { Ok(0) => break, Ok(_) => {}, Err(error) => panic!("cancelled request remained open: {error}"), } }
+        });
+        let began = std::time::Instant::now();
+        let output = chat_call_until(&format!("http://{address}/v1/chat/completions"), &crate::brain::ChatRequest::default(), &mut |_| panic!("no generation should arrive"), &|| began.elapsed() < std::time::Duration::from_millis(50));
+        waiting.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+        worker.join().unwrap();
+        assert!(output.is_err(), "a pre-header deadline is not a completed empty generation");
+        assert!(began.elapsed() < std::time::Duration::from_secs(1), "one read slice plus connection cleanup must stay bounded");
+    }
+    fn reply_server(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/v1/chat/completions", listener.local_addr().unwrap());
+        let thread = std::thread::spawn(move || {
+            use std::io::Write;
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let mut bytes = [0; 4096]; assert!(peer.read(&mut bytes).unwrap() > 0);
+            peer.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+        });
+        (url, thread)
+    }
+    #[test]
+    fn partial_generation_disconnect_is_not_a_completed_reply() {
+        let (url, worker) = reply_server("data: {\"choices\":[{\"delta\":{\"content\":\"partial draft\"}}]}\n\n");
+        let mut received = String::new();
+        let result = chat_call_until(&url, &crate::brain::ChatRequest::default(), &mut |text| { received.push_str(text); true }, &|| true);
+        worker.join().unwrap();
+        assert_eq!(received, "partial draft");
+        assert!(result.is_err(), "connection close is not a provider completion marker");
+    }
+    #[test]
+    fn provider_finish_reason_completes_a_stream_without_done_line() {
+        let (url, worker) = reply_server("data: {\"choices\":[{\"delta\":{\"content\":\"complete draft\"},\"finish_reason\":\"stop\"}]}\n\n");
+        let result = chat_call_until(&url, &crate::brain::ChatRequest::default(), &mut |_| true, &|| true);
+        worker.join().unwrap();
+        assert_eq!(result.unwrap().text, "complete draft");
+    }
+    #[test]
+    fn stopped_resolver_mailbox_drops_late_result_without_transport() {
+        let (send, reply) = std::sync::mpsc::sync_channel(1);
+        let began = std::time::Instant::now();
+        assert!(chat_was_stopped(&wait_chat_resolution(&reply, &|| began.elapsed() < std::time::Duration::from_millis(50)).unwrap_err()));
+        drop(reply);
+        assert!(matches!(send.try_send(Ok(vec!["127.0.0.1:1".parse().unwrap()])), Err(std::sync::mpsc::TrySendError::Disconnected(_))));
+        assert!(began.elapsed() < std::time::Duration::from_millis(250));
+    }
+    #[test]
+    fn refused_connection_retry_polls_stop_instead_of_sleeping_a_second() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap(); drop(listener);
+        let began = std::time::Instant::now();
+        let result = chat_call_until(&format!("http://{address}/v1/chat/completions"), &crate::brain::ChatRequest::default(), &mut |_| true, &|| began.elapsed() < std::time::Duration::from_millis(50));
+        assert!(chat_was_stopped(&result.unwrap_err()));
+        assert!(began.elapsed() < std::time::Duration::from_millis(300));
+    }
+    #[test]
+    fn writing_large_request_stops_between_chunks_and_closes_socket() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || { let (mut peer, _) = listener.accept().unwrap(); peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap(); let mut bytes = Vec::new(); peer.read_to_end(&mut bytes).unwrap(); bytes.len() });
+        let mut stream = std::net::TcpStream::connect(address).unwrap();
+        let checkpoints = std::cell::Cell::new(0);
+        let result = write_chat_until(&mut stream, &vec![b'x'; 2 * 1024 * 1024], &|| { checkpoints.set(checkpoints.get() + 1); checkpoints.get() < 3 });
+        drop(stream); let received = worker.join().unwrap();
+        assert!(chat_was_stopped(&result.unwrap_err()));
+        assert!(received > 0 && received < 2 * 1024 * 1024, "only the initial bounded chunks may be sent");
+    }
+    #[test]
+    fn already_cancelled_request_never_connects() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        assert!(chat_call_until(&format!("http://{}/v1/chat/completions", listener.local_addr().unwrap()), &crate::brain::ChatRequest::default(), &mut |_| true, &|| false).is_err());
+        assert!(matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock));
     }
 }

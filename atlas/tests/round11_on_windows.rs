@@ -3,7 +3,7 @@
 //! recognizer, a registered key chord, and the Start menu walk.
 //!
 //! Nothing here types, opens a window or shows anything: the clipboard is
-//! put back as it was, and the chord is registered and let go.
+//! never written; its native sequence diagnostic is opt-in. The chord is registered and let go.
 
 #[cfg(windows)]
 mod on_windows {
@@ -11,21 +11,32 @@ mod on_windows {
     use atlas::platform::{ClipCopy, Grab, Platform};
 
     #[test]
-    fn windows_the_clipboard_is_read_only_when_it_moves_and_put_back() {
-        let p = WindowsPlatform;
-        let before = p.read_clipboard().unwrap();
-        let seq0 = p.clipboard_change();
-        println!("LIVE [clipboard] sequence number: {seq0:?}");
-        assert!(seq0.is_some(), "Windows always has a sequence number");
-        p.write_clipboard("round 11 clipboard check").unwrap();
-        let seq1 = p.clipboard_change();
-        assert_ne!(seq0, seq1, "a write moves the sequence");
-        let copy = p.clipboard_copy();
-        println!("LIVE [clipboard] read back: {copy:?}");
-        assert_eq!(copy, Some(ClipCopy::Text("round 11 clipboard check".into())));
-        // Put back what was there.
-        p.write_clipboard(before.as_deref().unwrap_or("")).unwrap();
-        assert_eq!(p.read_clipboard().unwrap().unwrap_or_default(), before.unwrap_or_default());
+    #[ignore = "explicit opt-in read-only native clipboard sequence check"]
+    fn windows_clipboard_sequence_is_available_without_reading_or_writing_content() {
+        assert_eq!(std::env::var("ATLAS_NATIVE_CLIPBOARD_READONLY").as_deref(), Ok("1"), "explicit native diagnostic opt-in required");
+        assert!(WindowsPlatform.clipboard_change().is_some(), "Windows sequence API unavailable");
+    }
+
+    #[test]
+    fn clipboard_sequence_and_classification_are_tested_with_disposable_mock_data() {
+        use atlas::platform::mock::MockPlatform;
+        use atlas::cliphist::{History, HistoryConfig, Skipped};
+        let p = MockPlatform::new(vec![]);
+        let mut history = History::default();
+        let cfg = HistoryConfig { enabled: true, ..Default::default() };
+        *p.clip_seq.borrow_mut() = Some(7);
+        assert!(history.changed(p.clipboard_change()));
+        assert!(!history.changed(p.clipboard_change()), "unchanged sequence must not trigger another read");
+        *p.clip_seq.borrow_mut() = Some(8);
+        *p.clip_copy.borrow_mut() = Some(ClipCopy::Text("Disposable round11 text".into()));
+        assert!(history.changed(p.clipboard_change()));
+        history.keep(&cfg, &p.clipboard_copy().unwrap(), "fixture", 100).unwrap();
+        assert_eq!(history.clips.len(), 1);
+        for (copy, expected) in [(ClipCopy::Private, Skipped::Private), (ClipCopy::NotText, Skipped::NotText)] {
+            *p.clip_copy.borrow_mut() = Some(copy);
+            assert_eq!(history.keep(&cfg, &p.clipboard_copy().unwrap(), "fixture", 101), Err(expected));
+        }
+        assert_eq!(history.clips.len(), 1, "private/nontext data must not enter history");
     }
 
     #[test]

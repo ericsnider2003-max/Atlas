@@ -265,6 +265,7 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
             stable_tools: if may_call { turn.stable_tools } else { 0 },
             aside: turn.aside,
             stronger: false,
+            output_schema: None,
         };
         let reply = match llm.chat(&req, &mut |_| true) {
             Ok(r) => r,

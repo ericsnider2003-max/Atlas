@@ -128,6 +128,7 @@ fn is_fingerprint(s: &str) -> bool {
 
 /// Put a signed release's file aside to hand out, under its fingerprint.
 pub fn keep_for_friends(state_root: &std::path::Path, bytes: &[u8]) -> Result<String, String> {
+    let _state = crate::store::state_transaction(state_root).map_err(|e| e.to_string())?;
     let sha = crate::digest::sha256_hex(bytes);
     let dir = state_root.join(FILES);
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
@@ -145,6 +146,7 @@ pub const KEEP_OWN_FILES: usize = 3;
 /// including `just_kept`); files passed on for another releaser are pruned
 /// by their own rule (`prune_passed_on`) and left alone here.
 fn prune_own_files(state_root: &std::path::Path, just_kept: &str) {
+    let Ok(_state) = crate::store::state_transaction(state_root) else { return };
     let store = Store::new(state_root);
     let passed: Vec<PassedOn> = store.load(PASSING_ON);
     let Ok(entries) = std::fs::read_dir(state_root.join(FILES)) else { return };
@@ -313,6 +315,7 @@ fn pass_on(store: &Store, a: &Available, bytes: &[u8]) {
 /// Stop passing on anything older than the newest release heard of: a newer
 /// one is out (often the fix for it), and friends should get that instead.
 fn prune_passed_on(store: &Store) {
+    let Ok(_state) = store.transaction() else { return };
     let list: Vec<PassedOn> = store.load(PASSING_ON);
     if list.is_empty() {
         return;

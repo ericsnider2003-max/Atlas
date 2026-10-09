@@ -45,6 +45,7 @@ pub const HARD_CEILING: u32 = 300;
 pub const KEEP_SEEN: usize = 5000;
 pub const KEEP_SHORTLIST: usize = 200;
 pub const KEEP_REJECTED: usize = 2000;
+pub const KEEP_SAVED_RECENT: usize = 100;
 /// Near-duplicate: normalised-title trigram overlap at or above this.
 pub const NEAR_DUPLICATE: f32 = 0.8;
 /// Who is asking, sent with every request. Reddit refuses a bare request.
@@ -1072,6 +1073,9 @@ pub struct HuntState {
     pub shortlist: Vec<Ranked>,
     #[serde(default)]
     pub saved: Vec<Found>,
+    /// Older deliberate saves remain in the runtime archive, never deleted.
+    #[serde(default)]
+    pub saved_archived: u64,
     /// Id -> why it's out, so it never comes back.
     #[serde(default)]
     pub rejected: BTreeMap<String, String>,
@@ -1097,6 +1101,10 @@ pub struct HuntState {
     /// for them ("any opportunities?") still lists every one.
     #[serde(default)]
     pub briefed: BTreeMap<String, u64>,
+    /// Prepared offers are not delivery receipts. A day of quiet after an
+    /// interrupted offer prevents repeated nagging without claiming it was heard.
+    #[serde(default)]
+    pub offered: BTreeMap<String, (u64, String)>,
 }
 
 pub const FILE: &str = "opportunities";
@@ -1189,6 +1197,18 @@ impl HuntState {
                 None => break,
             }
         }
+        self.bound_rejection_words();
+        self.briefed.retain(|_, at| now.saturating_sub(*at) < 30 * 86_400);
+        self.offered.retain(|id, (at, _)| now.saturating_sub(*at) < 86_400 && self.shortlist.iter().any(|r| &r.found.id == id));
+    }
+
+    pub fn bound_rejection_words(&mut self) {
+        if self.nope.len() > KEEP_REJECTED {
+            let mut strongest: Vec<_> = self.nope.iter().map(|(word, count)| (word.clone(), *count)).collect();
+            strongest.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            strongest.truncate(KEEP_REJECTED);
+            self.nope = strongest.into_iter().collect();
+        }
     }
 
     /// The best `n` now, freshness counted.
@@ -1202,24 +1222,54 @@ impl HuntState {
         v.into_iter().take(n).map(|(r, _)| r).collect()
     }
 
-    /// The best `n` not yet volunteered in a brief, marked as volunteered.
-    /// Marks older than a month are let go with the finds they were for.
+    /// Prepare the best `n` unseen finds. Delivery is acknowledged separately;
+    /// an attempted offer still has a cooldown so canceled speech cannot nag.
     pub fn take_unbriefed(&mut self, n: usize, now: u64) -> Vec<Ranked> {
-        let month = 30 * 86_400;
-        self.briefed.retain(|_, at| now.saturating_sub(*at) < month);
+        self.prune(now);
         let briefed = &self.briefed;
         let mut v: Vec<(&Ranked, f32)> = self
             .shortlist
             .iter()
             .filter(|r| !briefed.contains_key(&r.found.id))
+            .filter(|r| !self.offered.contains_key(&r.found.id))
             .filter_map(|r| freshness_of(&r.found, now).map(|f| (r, r.rank * (0.5 + 0.5 * f))))
             .collect();
         v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.found.at.cmp(&a.0.found.at)));
         let out: Vec<Ranked> = v.into_iter().take(n).map(|(r, _)| r.clone()).collect();
-        for r in &out {
-            self.briefed.insert(r.found.id.clone(), now);
+        for (i, r) in out.iter().enumerate() {
+            self.offered.insert(r.found.id.clone(), (now, line(i + 1, r)));
         }
         out
+    }
+
+    /// Offers prepared by an earlier brief remain visible during their
+    /// cooldown until delivery is acknowledged. Preparation is not delivery.
+    pub fn pending_offers(&self, now: u64) -> Vec<Ranked> {
+        self.shortlist.iter()
+            .filter(|r| self.offered.get(&r.found.id).is_some_and(|(at, _)| now.saturating_sub(*at) < 86_400))
+            .filter(|r| !self.briefed.contains_key(&r.found.id))
+            .cloned()
+            .collect()
+    }
+
+    pub fn acknowledge_text(&mut self, delivered: &str, now: u64) -> bool {
+        let compact = |s: &str| s.chars().map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { ' ' }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+        let delivered = compact(delivered);
+        let ids: Vec<_> = self.offered.iter().filter(|(_, (_, text))| {
+            delivered.contains(&compact(text))
+        }).map(|(id, _)| id.clone()).collect();
+        self.acknowledge_seen(&ids, now)
+    }
+
+    pub fn acknowledge_seen(&mut self, ids: &[String], now: u64) -> bool {
+        let mut changed = false;
+        for id in ids {
+            if self.shortlist.iter().any(|r| &r.found.id == id) {
+                changed |= self.briefed.insert(id.clone(), now).is_none();
+                self.offered.remove(id);
+            }
+        }
+        changed
     }
 
     pub fn find(&self, id: &str) -> Option<&Ranked> {
@@ -1233,7 +1283,8 @@ impl HuntState {
         let i = self.shortlist.iter().position(|r| r.found.id == id)?;
         let r = self.shortlist.remove(i);
         for w in title_content_words(&r.found.title) {
-            *self.nope.entry(w).or_insert(0) += 1;
+            let count = self.nope.entry(w).or_insert(0);
+            *count = count.saturating_add(1);
         }
         self.rejected.insert(r.found.id.clone(), "you said not interested".into());
         Some(r.found.title)
@@ -1247,7 +1298,8 @@ impl HuntState {
         let words = title_content_words(&self.find(id)?.found.title);
         let title = self.not_interested(id)?;
         for w in words {
-            *self.nope.entry(w).or_insert(0) += 1;
+            let count = self.nope.entry(w).or_insert(0);
+            *count = count.saturating_add(1);
         }
         Some(title)
     }
@@ -1262,6 +1314,49 @@ impl HuntState {
         Some(r.found)
     }
 
+    /// Move older deliberate saves to individually retrievable runtime
+    /// records before removing them from the frequently rewritten hot state.
+    /// Stable IDs and immutable slots make interrupted migration retryable.
+    pub fn archive_saved(&mut self, store: &crate::store::Store) -> Result<(), String> {
+        let overflow = self.saved.len().saturating_sub(KEEP_SAVED_RECENT);
+        if overflow == 0 { return Ok(()); }
+        let archive = crate::store::Store::new(store.root().join("opportunities_saved"));
+        for (offset, found) in self.saved.iter().take(overflow).enumerate() {
+            let key = crate::digest::sha256_hex(found.id.as_bytes());
+            let slot = self.saved_archived.checked_add(offset as u64).ok_or("The saved opportunity archive is full.")?;
+            immutable_saved(&archive, &key, found)?;
+            immutable_saved(&archive, &format!("index-{slot:020}"), &key)?;
+        }
+        self.saved_archived = self.saved_archived.checked_add(overflow as u64).ok_or("The saved opportunity archive is full.")?;
+        self.saved.drain(..overflow);
+        Ok(())
+    }
+
+    pub fn saved_count(&self) -> u64 {
+        self.saved_archived.saturating_add(self.saved.len() as u64)
+    }
+
+    /// Recent and archived saves form one newest-first, bounded page.
+    pub fn saved_page(&self, store: &crate::store::Store, page: u64, limit: usize) -> Result<Vec<Found>, String> {
+        let limit = limit.clamp(1, 20);
+        let start = page.saturating_mul(limit as u64);
+        let archive = crate::store::Store::new(store.root().join("opportunities_saved"));
+        let mut found = Vec::new();
+        for position in start..start.saturating_add(limit as u64).min(self.saved_count()) {
+            if position < self.saved.len() as u64 {
+                found.push(self.saved[self.saved.len() - 1 - position as usize].clone());
+            } else {
+                let slot = self.saved_archived - 1 - (position - self.saved.len() as u64);
+                let key: String = strict_saved(&archive, &format!("index-{slot:020}"))?;
+                if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err("A saved opportunity's archive reference could not be read; its files were left in place.".into());
+                }
+                found.push(strict_saved(&archive, &key)?);
+            }
+        }
+        Ok(found)
+    }
+
     pub fn note_source(&mut self, s: Source, took: &Took, now: u64) {
         let st = self.sources.entry(s.key().to_string()).or_default();
         st.last_read = now;
@@ -1274,6 +1369,117 @@ impl HuntState {
             }
         }
         self.requests_today += took.requests;
+    }
+}
+
+fn strict_saved<T: serde::de::DeserializeOwned>(store: &crate::store::Store, key: &str) -> Result<T, String> {
+    let fail = || "A saved opportunity could not be read; its archive was left in place.".to_string();
+    let bytes = std::fs::read(store.root().join(format!("{key}.json"))).map_err(|_| fail())?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| fail())?;
+    if value.get("schema").and_then(|v| v.as_u64()) != Some(u64::from(crate::store::SCHEMA)) { return Err(fail()); }
+    serde_json::from_value(value.get("data").cloned().ok_or_else(fail)?).map_err(|_| fail())
+}
+
+fn immutable_saved<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq>(store: &crate::store::Store, key: &str, value: &T) -> Result<(), String> {
+    let path = store.root().join(format!("{key}.json"));
+    match std::fs::metadata(path) {
+        Ok(_) if strict_saved::<T>(store, key)? == *value => Ok(()),
+        Ok(_) => Err("A saved opportunity archive slot already holds different content; nothing was replaced.".into()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => store.save(key, value).map_err(|e| e.to_string()),
+        Err(_) => Err("I couldn't check the saved opportunity archive; nothing was removed.".into()),
+    }
+}
+
+#[cfg(test)]
+mod retention_and_delivery_tests {
+    use super::*;
+    const NOW: u64 = 1_900_000_000;
+    fn found(id: usize) -> Found {
+        Found { id: format!("saved-{id}"), source: Source::Hn, kind: Kind::Job, title: format!("Opportunity {id}"), link: format!("https://example.org/{id}"), summary: "Public listing".into(), at: NOW, closes: None, pay: None, remote: true }
+    }
+    fn store(tag: &str) -> crate::store::Store {
+        let root = std::env::temp_dir().join(format!("atlas-hunt-lifecycle-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        crate::store::Store::new(root)
+    }
+
+    #[test]
+    fn preparation_has_cooldown_but_only_complete_delivery_is_a_receipt() {
+        let mut state = HuntState::default();
+        state.merge(vec![found(1)], &Interests::default(), NOW);
+        let prepared = state.take_unbriefed(1, NOW);
+        assert_eq!(prepared.len(), 1);
+        assert!(state.briefed.is_empty());
+        assert!(!state.acknowledge_text(&prepared[0].found.title, NOW));
+        assert!(state.take_unbriefed(1, NOW + 60).is_empty(), "interrupted speech must not nag on each tick");
+        let disk = store("delivery");
+        disk.save(FILE, &state).unwrap();
+        let mut reopened: HuntState = disk.load(FILE);
+        assert!(reopened.take_unbriefed(1, NOW + 3600).is_empty());
+        assert_eq!(reopened.take_unbriefed(1, NOW + 86_401).len(), 1, "unheard offers become eligible again");
+        assert!(reopened.acknowledge_text(&line(1, &prepared[0]), NOW + 86_402));
+        assert!(reopened.briefed.contains_key(&prepared[0].found.id));
+        assert!(reopened.take_unbriefed(1, NOW + 2 * 86_400).is_empty());
+        std::fs::remove_dir_all(disk.root()).unwrap();
+    }
+
+    #[test]
+    fn displayed_panel_lines_acknowledge_only_the_complete_visible_opportunity() {
+        let mut state = HuntState::default();
+        let mut second = found(2);
+        second.title = "Remote illustration contract".into();
+        state.merge(vec![found(1), second], &Interests::default(), NOW);
+        let prepared = state.take_unbriefed(2, NOW);
+        assert_eq!(prepared.len(), 2);
+        let visible = format!("Today — {}", line(1, &prepared[0]));
+        assert!(state.acknowledge_text(&visible, NOW + 1));
+        assert!(state.briefed.contains_key(&prepared[0].found.id));
+        assert!(!state.briefed.contains_key(&prepared[1].found.id));
+    }
+
+    #[test]
+    fn older_deliberate_saves_remain_retrievable_after_archive_and_restart() {
+        let disk = store("archive");
+        let mut state = HuntState { saved: (0..105).map(found).collect(), ..Default::default() };
+        state.archive_saved(&disk).unwrap();
+        assert_eq!(state.saved.len(), KEEP_SAVED_RECENT);
+        assert_eq!(state.saved_count(), 105);
+        disk.save(FILE, &state).unwrap();
+        let reopened: HuntState = disk.load(FILE);
+        let recent = reopened.saved_page(&disk, 0, 20).unwrap();
+        assert_eq!(recent[0].id, "saved-104");
+        let oldest = reopened.saved_page(&disk, 5, 20).unwrap();
+        assert_eq!(oldest.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), vec!["saved-4", "saved-3", "saved-2", "saved-1", "saved-0"]);
+        std::fs::remove_dir_all(disk.root()).unwrap();
+    }
+
+    #[test]
+    fn interrupted_archive_does_not_remove_saves_or_overwrite_a_conflict() {
+        let disk = store("archive-conflict");
+        let archive = crate::store::Store::new(disk.root().join("opportunities_saved"));
+        archive.save("index-00000000000000000001", &"another-item").unwrap();
+        let mut state = HuntState { saved: (0..105).map(found).collect(), ..Default::default() };
+        assert!(state.archive_saved(&disk).is_err());
+        assert_eq!(state.saved.len(), 105);
+        assert_eq!(state.saved_archived, 0);
+        assert_eq!(strict_saved::<String>(&archive, "index-00000000000000000001").unwrap(), "another-item");
+        std::fs::remove_file(archive.root().join("index-00000000000000000001.json")).unwrap();
+        state.archive_saved(&disk).unwrap();
+        assert_eq!(state.saved_count(), 105);
+        assert_eq!(state.saved_page(&disk, 5, 20).unwrap().last().unwrap().id, "saved-0");
+        std::fs::remove_dir_all(disk.root()).unwrap();
+    }
+
+    #[test]
+    fn learned_rejection_words_are_bounded_without_changing_saved_items() {
+        let mut state = HuntState { saved: vec![found(1)], ..Default::default() };
+        for id in 0..2500 { state.nope.insert(format!("word-{id}"), 1); }
+        state.nope.insert("frequent-rejection".into(), 10);
+        state.prune(NOW);
+        assert_eq!(state.nope.len(), KEEP_REJECTED);
+        assert_eq!(state.nope.get("frequent-rejection"), Some(&10));
+        assert_eq!(state.saved.len(), 1);
     }
 }
 

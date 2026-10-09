@@ -6,8 +6,101 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+use super::running::{LeftWaiting, LEFT_WAITING};
+
+#[cfg(test)]
+mod approved_undo_retry_tests {
+    use super::*;
+    fn exercise(cancel: bool, change_source: bool) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!("atlas-approved-undo-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let store = crate::store::Store::new(&path);
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let original = path.join("original.txt"); let moved = path.join("sorted.txt");
+        std::fs::write(&original, b"owner bytes").unwrap();
+        let evidence = crate::tune::RecordedMove::new(&original, &moved).unwrap();
+        std::fs::rename(&original, &moved).unwrap();
+        let id = daemon.history.note("moved one file", "files", crate::undo::Undo::Atlas("put it back".into()), true, 10);
+        daemon.history.save_merged(&store).unwrap();
+        store.save(crate::tune::TUNE_UNDO_RECORD, &vec![(id, crate::tune::TuneUndo::RecordedMoves { moves: vec![evidence], made: vec![] })]).unwrap();
+        let root = store.root().to_path_buf();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || { let _guard = crate::store::state_transaction(&root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); });
+        ready_rx.recv().unwrap();
+        assert!(daemon.carry_out_undo(id).contains("waiting for recovery storage"));
+        assert!(!original.exists()); assert_eq!(std::fs::read(&moved).unwrap(), b"owner bytes");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !daemon.undo_waiting_for_ack() {
+            assert!(daemon.poll_file_moves(20).is_empty());
+            assert!(std::time::Instant::now() < deadline, "undo worker never reached its durable ACK");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!original.exists());
+        if cancel { assert!(daemon.cancel_approved_undo()); }
+        if change_source { std::fs::write(&moved, b"new owner bytes").unwrap(); }
+        release_tx.send(()).unwrap(); worker.join().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let result = loop {
+            let news = daemon.poll_file_moves(30);
+            if let Some(said) = news.into_iter().next() { break Some(said); }
+            assert!(std::time::Instant::now() < deadline, "undo worker never reached a terminal result");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        if cancel { assert!(!result.unwrap().starts_with("Undone")); assert!(!original.exists()); }
+        else if change_source { assert!(!result.unwrap().starts_with("Undone")); assert!(!original.exists()); assert_eq!(std::fs::read(&moved).unwrap(), b"new owner bytes"); }
+        else { assert!(result.unwrap().starts_with("Undone")); assert_eq!(std::fs::read(&original).unwrap(), b"owner bytes"); assert!(!moved.exists()); }
+        drop(daemon); let _ = std::fs::remove_dir_all(path);
+    }
+    #[test] fn approval_waits_without_moving_then_retries_after_backup_release() { exercise(false, false); }
+    #[test] fn stopping_a_waiting_undo_prevents_later_movement() { exercise(true, false); }
+    #[test] fn changed_owner_bytes_are_not_moved_by_a_waiting_undo() { exercise(false, true); }
+}
+
+#[cfg(test)]
+mod routine_durable_origin_tests {
+    #![cfg(windows)]
+    use super::*;
+    use crate::proactive::{Proactive, ProactiveConfig};
+    use std::os::windows::fs::OpenOptionsExt;
+
+    #[test]
+    fn a_failed_routine_reservation_does_not_duplicate_its_saved_queue_after_restart() {
+        let path = std::env::temp_dir().join(format!("atlas-routine-origin-{}-{}", std::process::id(), crate::store::now()));
+        std::fs::create_dir(&path).unwrap(); let store = crate::store::Store::new(&path);
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap(); cfg.tools.as_mut().unwrap().routine.enabled = true;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let t = 1_790_740_000;
+        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        let hour = crate::localclock::hour(t, crate::localclock::offset_secs()) as u32;
+        daemon.routines.routines.push(crate::routine::Routine { name: "fixture".into(), steps: vec!["show my later list".into()], seen: 3, usual_hour: hour, usual_weekday: None, confirmed: true, automatic: true, asked: true, last_day: 0 });
+        store.save("routines", &daemon.routines).unwrap();
+        let blocker = std::fs::OpenOptions::new().read(true).share_mode(0).open(store.root().join("routines.json")).unwrap();
+        let said = daemon.routines_on_the_hour(t);
+        assert!(said.iter().any(|line| line.starts_with("Queued your usual fixture")));
+        let ids: Vec<_> = daemon.queue.tasks.iter().map(|task| task.id).collect(); assert_eq!(ids.len(), 1);
+        drop(daemon); drop(blocker);
+        let mut restarted = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        assert_eq!(restarted.routines.routines[0].last_day, 0);
+        restarted.routines_on_the_hour(t);
+        assert_eq!(restarted.queue.tasks.iter().map(|task| task.id).collect::<Vec<_>>(), ids);
+        assert!(restarted.routines.routines[0].last_day > 0);
+        drop(restarted); let _ = std::fs::remove_dir_all(path);
+    }
+}
 
 impl<'a> Daemon<'a> {
+    fn queue_routine_once(&mut self, key: &str, steps: &[String], t: u64) -> crate::error::Result<bool> {
+        let _guard = self.store.transaction()?;
+        let before = self.queue.clone();
+        let (_, added) = self.queue.enqueue_origin_once(key, steps, crate::lanes::Lane::Foreground, t);
+        if added {
+            if let Err(error) = self.queue.save(&self.store) { self.queue = before; return Err(error); }
+        }
+        Ok(added)
+    }
+
     /// You at the machine: your own keyboard or mouse in the last five
     /// minutes (Atlas's own typing isn't counted, see `platform::idle`), or
     /// a voice Atlas knows is yours. A turn from the phone is neither.
@@ -254,6 +347,7 @@ impl<'a> Daemon<'a> {
                         e.finish();
                         e.spoken_result(&cfg)
                     }
+                    crate::webrun::SignedUp::Unconfirmed(why) => format!("The signup attempt on {} is unconfirmed ({why}). Check that service before repeating; Atlas has not verified that the account exists.", e.domain),
                     crate::webrun::SignedUp::Stopped(s) => {
                         let mut said = s.spoken();
                         if let crate::enrol::Stopped::NeedsACodeFromElsewhere(_) = s {
@@ -261,7 +355,7 @@ impl<'a> Daemon<'a> {
                             // and B1's code route applies.
                             self.signing_in_waiting = Some(e.domain.clone());
                             said = format!(
-                                "The form's in on {}, and it wants a code to confirm. {}",
+                                "{} is asking for a code. Account creation remains unconfirmed. {}",
                                 e.domain,
                                 crate::twofactor::ask_for_it(Some(&e.domain))
                             );
@@ -274,7 +368,15 @@ impl<'a> Daemon<'a> {
                     ),
                     crate::webrun::SignedUp::Failed(why) => format!("I couldn't make the account on {}: {why}.", e.domain),
                 };
-                self.journal.record_at(Act::Upkeep, &format!("sign-up on {}: {}", e.domain, said), true, t);
+                let state = match &o.outcome { crate::webrun::SignedUp::Made => crate::enrol::SignupState::Confirmed, crate::webrun::SignedUp::NoForm | crate::webrun::SignedUp::Failed(_) => crate::enrol::SignupState::NotSubmitted, crate::webrun::SignedUp::Stopped(_) => crate::enrol::SignupState::Blocked, crate::webrun::SignedUp::Unconfirmed(_) => crate::enrol::SignupState::Unconfirmed };
+                let persisted = (|| -> crate::error::Result<()> {
+                    let _guard = self.store.transaction()?;
+                    let mut attempts: crate::enrol::SignupAttempts = self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS)?.unwrap_or_default();
+                    if !attempts.settle(&e, state, &said) { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "signup attempt identity changed; result wasn't applied").into()); }
+                    self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &attempts)
+                })();
+                if let Err(err) = persisted { return Some(format!("{said} Its result couldn't be saved ({err}); the pending attempt remains fenced. Don't repeat it before checking.")); }
+                self.journal.record_at(Act::Upkeep, &format!("sign-up on {}: {}", e.domain, said), matches!(o.outcome, crate::webrun::SignedUp::Made), t);
                 self.enrolling = if e.is_waiting() { Some(e) } else { None };
                 Some(said)
             }
@@ -432,6 +534,9 @@ impl<'a> Daemon<'a> {
             return "I need an email address to sign you up with, and I don't have one — set up your mail first.".into();
         }
         let username = email.split('@').next().unwrap_or("").to_string();
+        let guard = match self.store.transaction() { Ok(guard) => guard, Err(e) => return format!("Signup didn't start: state is busy ({e}); no external form opened.") };
+        let mut attempts: crate::enrol::SignupAttempts = match self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS) { Ok(attempts) => attempts.unwrap_or_default(), Err(e) => return format!("Signup didn't start: earlier attempt coverage is unavailable ({e}); check the service before repeating.") };
+        if !attempts.may_start(domain, &username) { return format!("An earlier signup for {username} on {domain} is still recorded. Check that service before another attempt; no new form opened."); }
         let entropy = crate::vault::random_bytes(64);
         let password = match cfg.password.make(&entropy) {
             Ok(p) => p,
@@ -439,19 +544,25 @@ impl<'a> Daemon<'a> {
         };
         let mut e = crate::enrol::Enrolment::new(domain, &username, t);
         let (name, kind, value) = e.vault_write(&password);
+        let previous_vault = self.vault.clone();
         if let Err(err) = self.vault.put(&name, kind, &value, t) {
             return format!("I couldn't keep the new password in the vault ({err}), so I didn't start.");
         }
-        let _ = self.vault.save(&self.store);
+        if let Err(err) = self.vault.save(&self.vault_home) { self.vault = previous_vault; return format!("Signup didn't start: its generated password couldn't be saved ({err}); no external form opened."); }
         // Grant sign-in on the new account, so the next "sign me in" works.
+        let previous_access = self.access.clone();
         self.access.grant(domain, &username, domain, crate::signin::Allowed::SignIn, &name, t);
-        let _ = self.access.save(&self.store);
+        if let Err(err) = self.access.save(&self.store) { self.access = previous_access; return format!("The password is kept, but signup didn't start because its access permission couldn't be saved ({err}). No external form opened."); }
+        if !attempts.begin(&e) { return "Signup didn't start: its attempt record could not be reserved. No external form opened.".into(); }
+        if let Err(err) = self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &attempts) { return format!("Signup didn't start: its attempt fence couldn't be saved ({err}); no external form opened."); }
+        drop(guard);
+        let queued_enrolment = e.clone();
         let bcfg = self.tools_cfg().browser.clone();
         let vars = self.tools_cfg().vars.clone();
-        let work: crew::Work = Box::new(move |_ctl| {
+        let work: crew::Work = Box::new(move |ctl| {
             let outcome = match crate::browser::Browser::start(&bcfg, &vars) {
                 Ok(mut b) => {
-                    let o = crate::webrun::sign_up(&mut b, &mut e, &email, &password, &cfg, None);
+                    let o = crate::webrun::sign_up_unless(&mut b, &mut e, &email, &password, &cfg, None, &|| ctl.stopping());
                     b.close();
                     o
                 }
@@ -462,9 +573,20 @@ impl<'a> Daemon<'a> {
         if self.hand_off("sign-up", t, work, Some(domain.to_string()), SpeakPolicy::Always) {
             format!("Making you an account on {domain}. I'll stop at anything that wants payment, ID or a robot check.")
         } else {
-            "I'm too busy to start that right now — ask me again in a moment.".into()
+            let saved = (|| -> crate::error::Result<()> {
+                let _guard = self.store.transaction()?;
+                let mut current: crate::enrol::SignupAttempts = self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS)?.unwrap_or_default();
+                if !current.settle(&queued_enrolment, crate::enrol::SignupState::NotSubmitted, "The worker queue was full; no browser or signup form started.") { return Err(crate::error::AtlasError::Platform("signup reservation changed".into())); }
+                self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &current)
+            })();
+            match saved {
+                Ok(()) => "I'm too busy to start that right now. No signup form opened; ask me again in a moment.".into(),
+                Err(err) => format!("No signup form opened, but I couldn't save that stopped attempt ({err}). The attempt remains held until you check it; I won't repeat it automatically."),
+            }
         }
     }
+
+    pub(crate) fn signup_inflight(&self, domain: &str) -> bool { self.crew_links.values().any(|link| link.label == "sign-up" && link.topic.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(domain))) }
 }
 
 impl<'a> Daemon<'a> {
@@ -607,18 +729,25 @@ impl<'a> Daemon<'a> {
         let off = crate::localclock::offset_secs();
         let (hour, weekday) = (crate::localclock::hour(t, off) as u32, crate::localclock::weekday(t, off));
         let day = crate::localclock::day(t, off).max(0) as u64;
-        for r in self.routines.due_today(hour, weekday, day) {
-            out.push(crate::routine::starting(&r));
+        let due: Vec<_> = self.routines.routines.iter().filter(|routine| routine.due(hour, weekday) && routine.last_day != day).cloned().collect();
+        for r in due {
             if r.automatic {
-                for step in &r.steps {
-                    let said = self.run_command(step, t);
-                    if !said.trim().is_empty() {
-                        out.push(said);
+                let key = format!("routine:{}:{day}", r.name);
+                match self.queue_routine_once(&key, &r.steps, t) {
+                    Ok(added) => {
+                        if let Some(routine) = self.routines.routines.iter_mut().find(|routine| routine.name == r.name) { routine.last_day = day; }
+                        if let Err(error) = self.store.save("routines", &self.routines) { self.log.warn(&format!("routine reservation remains pending ({error}); its saved queue origin prevents duplicate work")); }
+                        if added { out.push(format!("Queued your usual {} ({} steps).", r.name, r.steps.len())); }
                     }
+                    Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {},
+                    Err(error) => out.push(format!("I couldn't save your {} routine, so no steps started ({error}).", r.name)),
                 }
-            } else if self.pending_routine_run.is_none() {
-                self.session.ask(&crate::routine::starting(&r));
-                self.pending_routine_run = Some(r.steps.clone());
+            } else if self.pending_routine_run.is_none() && matches!(self.session.pending, Pending::Nothing) {
+                let question = crate::routine::starting(&r);
+                let mut pending: Vec<LeftWaiting> = match self.store.load_checked(LEFT_WAITING) { Ok(value) => value.unwrap_or_default(), Err(error) => { self.log.warn(&format!("couldn't preserve routine question ({error})")); continue; } };
+                if !pending.iter().any(|entry| entry.what == question) { pending.push(LeftWaiting { what: question.clone(), asked: true, at: t }); }
+                if self.store.save(LEFT_WAITING, &pending).is_err() { continue; }
+                self.session.ask(&question); self.pending_routine_run = Some(r.steps.clone()); out.push(question);
             }
         }
         let _ = self.store.save("routines", &self.routines);
@@ -628,6 +757,8 @@ impl<'a> Daemon<'a> {
     /// Your answer about a routine, if one was asked.
     pub(super) fn answer_about_routine(&mut self, said: &str, t: u64) -> Option<String> {
         if let Some(name) = self.pending_routine.take() {
+            let before = self.routines.clone();
+            let pending = self.session.pending.clone();
             self.session.pending = Pending::Nothing;
             let reply = if is_yes(said) {
                 let steps = self.routines.routines.iter().find(|r| r.name == name).map(|r| r.steps.clone()).unwrap_or_default();
@@ -644,22 +775,35 @@ impl<'a> Daemon<'a> {
                 self.routines.declined(&name);
                 "Alright, I won't.".into()
             };
-            let _ = self.store.save("routines", &self.routines);
+            if let Err(error) = self.store.save("routines", &self.routines) {
+                self.routines = before; self.pending_routine = Some(name); self.session.pending = pending;
+                return Some(format!("I couldn't save that routine decision ({error}); it is still waiting on you."));
+            }
             return Some(reply);
         }
         if let Some(steps) = self.pending_routine_run.take() {
             self.session.pending = Pending::Nothing;
             if !is_yes(said) {
+                let before = self.routines.clone();
+                let day = crate::localclock::day(t, crate::localclock::offset_secs()).max(0) as u64;
+                if let Some(routine) = self.routines.routines.iter_mut().find(|routine| routine.steps == steps) { routine.last_day = day; }
+                if let Err(error) = self.store.save("routines", &self.routines) {
+                    self.routines = before; self.pending_routine_run = Some(steps); self.session.ask("Your routine decision is still waiting to be saved.");
+                    return Some(format!("I couldn't save ‘not today’ ({error}); no routine steps started."));
+                }
                 return Some("Alright, not today.".into());
             }
-            let mut out = Vec::new();
-            for step in &steps {
-                let s = self.run_command(step, t);
-                if !s.trim().is_empty() {
-                    out.push(s);
+            let day = crate::localclock::day(t, crate::localclock::offset_secs()).max(0) as u64;
+            let name = self.routines.routines.iter().find(|routine| routine.steps == steps).map(|routine| routine.name.clone()).unwrap_or_else(|| steps.join(" | "));
+            let key = format!("routine:{name}:{day}");
+            return Some(match self.queue_routine_once(&key, &steps, t) {
+                Ok(added) => {
+                    if let Some(routine) = self.routines.routines.iter_mut().find(|routine| routine.name == name) { routine.last_day = day; }
+                    let _ = self.store.save("routines", &self.routines);
+                    if added { format!("Queued your usual {name} ({} steps).", steps.len()) } else { "That routine is already queued or has an outcome recorded for today.".into() }
                 }
-            }
-            return Some(if out.is_empty() { "Done.".into() } else { out.join("\n") });
+                Err(error) => { self.pending_routine_run = Some(steps); self.session.ask("Your routine is still waiting. Shall I try to save its queue again?"); format!("No routine steps started: its queue couldn't be saved ({error}).") }
+            });
         }
         None
     }
@@ -714,8 +858,10 @@ impl<'a> Daemon<'a> {
                  nudges don't help, and never about anything medical."
             )
         };
-        let _ = self.store.save(crate::nudge::GOALS, &self.nudger.goals);
-        reply
+        match self.store.save(crate::nudge::GOALS, &self.nudger.goals) {
+            Ok(()) => reply,
+            Err(error) => format!("{reply} That goal change is still waiting to be saved ({error}); I'll retry while Atlas stays open."),
+        }
     }
 }
 
@@ -1037,6 +1183,46 @@ impl<'a> Daemon<'a> {
 
 impl<'a> Daemon<'a> {
     /// Schedule a post for a time you said, and approve it. "now" is now.
+    pub(crate) fn approve_post_in_background(&mut self, id: u64, at: Option<u64>, review: Option<&str>, t: u64) -> String {
+        let Some(expected) = self.publisher.get(id).cloned() else { return "That post no longer exists.".into(); };
+        if let Some(review) = review {
+            if expected.state != crate::publish::PostState::Draft || expected.result.as_deref() != Some(crate::publish::CHECKED_ABSENT) || crate::publish::review_fingerprint(&expected) != review {
+                return "That reviewed draft changed, or its publication remains unconfirmed. Reload and review again.".into();
+            }
+        }
+        if matches!(expected.state, crate::publish::PostState::Sent | crate::publish::PostState::Cancelled | crate::publish::PostState::PendingSubmission | crate::publish::PostState::Uncertain) { return "That post cannot be approved now.".into(); }
+        let mut candidate = self.publisher.clone();
+        let fingerprint = crate::publish::review_fingerprint(&expected);
+        let topic = format!("{id}:{}:{fingerprint}", at.map(|v| v.to_string()).unwrap_or_else(|| "now".into()));
+        let work: crew::Work = Box::new(move |ctl| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+            if let Some(at) = at { if !candidate.schedule(id, at) { return Err("That post cannot be scheduled.".into()); } }
+            if crate::publish::review_fingerprint(&expected) != fingerprint { return Err("An attachment changed after review.".into()); }
+            candidate.approve_unless(id, &|| ctl.stopping() || std::time::Instant::now() >= deadline)?;
+            if crate::publish::review_fingerprint(&expected) != fingerprint { return Err("An attachment changed during approval.".into()); }
+            let approved = candidate.get(id).cloned().ok_or("post vanished")?;
+            serde_json::to_string(&crate::publish::PostApprovalReceipt { tag: "atlas.post_approval".into(), version: 1, expected, approved, requested_at: t, requested_send_at: at }).map_err(|e| e.to_string())
+        });
+        if self.hand_off_as("post approval", t, work, Some(topic), SpeakPolicy::Always).is_some() {
+            "Checking the exact approved attachments in the background. Publication is not confirmed; the result will say whether approval was saved.".into()
+        } else { "Approval work could not start; the post remains unchanged.".into() }
+    }
+
+    pub(super) fn post_approval_news(&mut self, ending: &crew::Ending, t: u64) -> crate::taskloop::Outcome {
+        use crate::taskloop::Outcome;
+        let receipt = match ending {
+            crew::Ending::Done(Ok(text)) if text.len() <= 131072 => serde_json::from_str::<crate::publish::PostApprovalReceipt>(text),
+            _ => return Outcome::Failed("Approval did not finish; nothing was approved by this worker.".into()),
+        };
+        let Ok(receipt) = receipt else { return Outcome::Failed("Approval returned an invalid receipt; nothing changed.".into()); };
+        let before = self.publisher.clone();
+        if !self.publisher.apply_approval_receipt(&receipt) { return Outcome::Failed("The post changed during approval; review it again.".into()); }
+        if let Err(e) = self.publisher.save(&self.store) { self.publisher = before; return Outcome::Failed(format!("Approval could not be saved: {e}")); }
+        if receipt.approved.send_at.is_some_and(|at| at > t) {
+            Outcome::Done(format!("Approved and queued for {}. Publication will be checked separately.", crate::localclock::hhmm_here(receipt.approved.send_at.unwrap())))
+        } else { Outcome::NeedsYou("Approval saved for the exact post and attachments. Submission is queued; publication is not confirmed.".into()) }
+    }
+
     pub(super) fn schedule_post_at(&mut self, id: u64, said: &str, t: u64) -> String {
         // Read on your clock, kept in UTC (28 Sep 2026): "tomorrow at 9" was
         // read as 9 in UTC, hours out, the way offered meeting times once
@@ -1055,10 +1241,12 @@ impl<'a> Daemon<'a> {
             self.session.ask(&q);
             return q;
         };
+        if self.publisher.get(id).is_some_and(|p| !p.media.is_empty()) { return self.approve_post_in_background(id, Some(at), None, t); }
+        let before = self.publisher.clone();
         if !self.publisher.schedule(id, at) || !self.publisher.approve(id) {
             return "That post can't be scheduled any more.".into();
         }
-        let _ = self.publisher.save(&self.store);
+        if let Err(e) = self.publisher.save(&self.store) { self.publisher = before; return format!("The approval and time couldn't be saved ({e}); the previous draft or schedule is unchanged. Nothing submitted by this request."); }
         let what = self.publisher.get(id).map(|p| p.describe()).unwrap_or_default();
         if at <= t {
             format!("Posting {what} now.")
@@ -1077,7 +1265,7 @@ impl<'a> Daemon<'a> {
             let id = self.publisher.pending().iter().rev().map(|p| p.id).next();
             return match id {
                 Some(id) if self.publisher.cancel(id) => {
-                    let _ = self.publisher.save(&self.store);
+                    if let Err(e) = self.publisher.save(&self.store) { return format!("The post is paused here, but cancellation couldn't be saved ({e}). Check it before restarting Atlas; the earlier saved schedule may remain."); }
                     "Cancelled — it won't go.".into()
                 }
                 _ => "There's no post waiting to cancel.".into(),
@@ -1105,6 +1293,48 @@ impl<'a> Daemon<'a> {
     }
 
     /// A due post, sent through Atlas's browser on a crew errand.
+    pub(crate) fn publication_inflight(&self, id: u64) -> bool {
+        self.publication_jobs
+            .iter()
+            .any(|(job, (post, _))| *post == id && self.crew.in_hand(*job))
+    }
+
+    pub(crate) fn check_publication_timeouts(&mut self, now: u64) -> Vec<String> {
+        let mut out = Vec::new();
+        let jobs: Vec<_> = self
+            .publication_jobs
+            .iter()
+            .map(|(job, info)| (*job, *info))
+            .collect();
+        for (job, (post, started)) in jobs {
+            if now.saturating_sub(started) < 120 {
+                continue;
+            }
+            let first = self
+                .publisher
+                .get(post)
+                .is_some_and(|p| p.state == crate::publish::PostState::PendingSubmission);
+            if first {
+                self.crew.ask_to_stop(job);
+                let why = "Publication took too long to confirm. Check the service; I won't repeat it automatically.";
+                self.publisher.mark_submission(post, true, why);
+                out.push(why.into());
+            }
+            if !self.crew.in_hand(job) {
+                self.publication_jobs.remove(&job);
+                self.posting.retain(|(id, _)| *id != post);
+            }
+        }
+        if !out.is_empty() {
+            if let Err(e) = self.publisher.save(&self.store) {
+                out.push(format!(
+                    "The uncertain publication record couldn't be saved: {e}"
+                ));
+            }
+        }
+        out
+    }
+
     pub(super) fn send_post(&mut self, id: u64, t: u64, online: bool) -> Option<String> {
         if self.posting.iter().any(|(p, not_before)| *p == id && t < *not_before) {
             return None;
@@ -1113,6 +1343,23 @@ impl<'a> Daemon<'a> {
         let bcfg = self.browser_cfg();
         let vars = self.tools_cfg().vars.clone();
         let mut publisher = self.publisher.clone();
+        let prior_state = self.publisher.get(id)?.state;
+        if self.publisher.check(id, online, None) != crate::publish::SendCheck::Go {
+            return None;
+        }
+        self.publisher.mark_submission(
+            id,
+            false,
+            "Submission pending; check the provider before repeating",
+        );
+        if let Err(e) = self.publisher.save(&self.store) {
+            if let Some(post) = self.publisher.posts.iter_mut().find(|p| p.id == id) {
+                post.state = prior_state;
+            }
+            return Some(format!(
+                "Didn't submit: I couldn't save its submission record ({e})."
+            ));
+        }
         // Bluesky goes through its own API with the app password from the
         // vault (social step 4); everything else through Atlas's browser.
         let bluesky = self.publisher.get(id).is_some_and(|p| crate::delivery::is_bluesky(&p.channel)).then(|| {
@@ -1122,14 +1369,12 @@ impl<'a> Daemon<'a> {
             let password = self.vault.get(crate::social::VAULT_BLUESKY, t).unwrap_or_default();
             (self.social_cfg().bluesky_handle, password)
         });
-        let work: crew::Work = Box::new(move |_ctl| {
+        let work: crew::Work = Box::new(move |ctl| {
             let outcome = match &bluesky {
-                Some((handle, password)) => {
-                    crate::delivery::send_bluesky(&mut publisher, &crate::social::posting::Live, handle, password, id, online, crate::store::now())
-                }
+                Some((handle, password)) => crate::delivery::send_bluesky_unless(&mut publisher, &crate::social::posting::Live, handle, password, id, online, crate::store::now(), &|| ctl.stopping()),
                 None => match crate::browser::Browser::start(&bcfg, &vars) {
                     Ok(mut b) => {
-                        let o = crate::delivery::send(&mut publisher, &mut b, &bcfg, id, online);
+                        let o = crate::delivery::send_unless(&mut publisher, &mut b, &bcfg, id, online, &|| ctl.stopping());
                         b.close();
                         o
                     }
@@ -1140,21 +1385,54 @@ impl<'a> Daemon<'a> {
                 crate::delivery::Outcome::Sent(m) => ("sent", m.clone()),
                 crate::delivery::Outcome::Retry(m) => ("retry", m.clone()),
                 crate::delivery::Outcome::Blocked(m) => ("blocked", m.clone()),
+                crate::delivery::Outcome::Uncertain(m) => ("uncertain", m.clone()),
             };
             Ok(format!("{id}\t{kind}\t{msg}"))
         });
-        if self.hand_off("post", t, work, None, SpeakPolicy::Always) {
+        if let Some(job) =
+            self.hand_off_as("post", t, work, Some(id.to_string()), SpeakPolicy::Always) {
             self.posting.push((id, u64::MAX));
+            self.publication_jobs.insert(job, (id, t));
+        } else {
+            if let Some(post) = self.publisher.posts.iter_mut().find(|p| p.id == id) {
+                post.state = prior_state;
+            }
+            if let Err(e) = self.publisher.save(&self.store) {
+                return Some(format!("Didn't start submission, but its pending record couldn't be cleared ({e}). Check before retrying."));
+            }
         }
         None
     }
 
-    pub(super) fn post_news(&mut self, ending: &crew::Ending, t: u64) -> Option<String> {
-        let crew::Ending::Done(Ok(line)) = ending else { return None };
+    pub(super) fn post_news(&mut self, job: u64, ending: &crew::Ending, t: u64) -> Option<String> {
+        let expected = self.publication_jobs.remove(&job).map(|(post, _)| post);
+        let crew::Ending::Done(Ok(line)) = ending else {
+            let id = expected?;
+            let why = match ending {
+                crew::Ending::Done(Err(e)) => {
+                    format!("Publication worker failed ({e}); the service outcome is unconfirmed.")
+                }
+                crew::Ending::Stopped => {
+                    "Publication stopped; the service outcome is unconfirmed.".into()
+                }
+                _ => "Publication worker disappeared; the service outcome is unconfirmed.".into(),
+            };
+            return Some(self.publication_lost(id, &why));
+        };
+        let expected = expected?;
         let mut parts = line.splitn(3, '\t');
-        let id: u64 = parts.next()?.parse().ok()?;
-        let kind = parts.next()?.to_string();
-        let msg = parts.next().unwrap_or("").to_string();
+        let id = parts.next().and_then(|id| id.parse::<u64>().ok());
+        let kind = parts.next().unwrap_or("");
+        let msg = parts.next().unwrap_or("");
+        if id != Some(expected)
+            || !matches!(kind, "sent" | "retry" | "blocked" | "uncertain")
+            || msg.trim().is_empty()
+        {
+            return Some(self.publication_lost(expected, "Publication returned an incomplete or mismatched result; its service outcome is unconfirmed."));
+        }
+        let id = expected;
+        let kind = kind.to_string();
+        let msg = msg.to_string();
         self.posting.retain(|(p, _)| *p != id);
         if kind == "retry" {
             self.posting.push((id, t + 300));
@@ -1162,12 +1440,23 @@ impl<'a> Daemon<'a> {
         let what = self.publisher.get(id).map(|p| p.describe()).unwrap_or_default();
         let said = match kind.as_str() {
             "sent" => {
-                self.publisher.mark_sent(id, "posted", true);
+                self.publisher.mark_sent(id, &format!("Program confirmed publication: {msg}"), true);
                 self.journal.record_at(Act::Published, &format!("{what}: {msg}"), true, t);
                 Some(format!("Posted: {what}."))
             }
             // Tried again on a later tick.
-            "retry" => None,
+            "retry" => {
+                if let Some(post) = self.publisher.posts.iter_mut().find(|p| p.id == id) {
+                    post.state = crate::publish::PostState::ReadyToSend;
+                }
+                None
+            }
+            "uncertain" => {
+                self.publisher.mark_submission(id, true, &msg);
+                self.journal
+                    .record_at(Act::Blocked, &format!("{what}: {msg}"), false, t);
+                Some(msg.clone())
+            }
             _ => {
                 self.publisher.mark_sent(id, &msg, false);
                 self.journal.record_at(Act::Blocked, &format!("{what}: {msg}"), false, t);
@@ -1179,8 +1468,21 @@ impl<'a> Daemon<'a> {
                 Some(format!("Didn't post {what}: {msg}.{hint}"))
             }
         };
-        let _ = self.publisher.save(&self.store);
+        if let Err(e) = self.publisher.save(&self.store) {
+            let why = format!("Its publication result couldn't be saved ({e}). {} Check the service before another attempt.", said.unwrap_or_else(|| "No durable terminal receipt is available.".into()));
+            self.publisher.mark_submission(id, true, &why);
+            return Some(why);
+        }
         said
+    }
+
+    fn publication_lost(&mut self, id: u64, why: &str) -> String {
+        self.posting.retain(|(post, _)| *post != id);
+        self.publisher.mark_submission(id, true, why);
+        if let Err(e) = self.publisher.save(&self.store) {
+            return format!("{why} Its record couldn't be saved ({e}); don't repeat it.");
+        }
+        format!("{why} Check the service before another attempt.")
     }
 }
 
@@ -1271,6 +1573,8 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn carry_out_storage_plan(&mut self, plan: crate::tune::StoragePlan, t: u64) -> String {
+        if let Err(error) = self.history.save_merged(&self.store) { return format!("No folder move started: pending recovery history could not be saved ({error})."); }
+        let store = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let mut done = Vec::new();
             let mut failed = Vec::new();
@@ -1278,7 +1582,7 @@ impl<'a> Daemon<'a> {
                 if ctl.checkpoint() {
                     break;
                 }
-                match crate::tune::move_folder(std::path::Path::new(from), std::path::Path::new(to), t) {
+                match crate::tune::move_folder_durably(&store, std::path::Path::new(from), std::path::Path::new(to), t, &|| ctl.checkpoint()) {
                     Ok(m) => done.push(m),
                     Err(e) => failed.push(e),
                 }
@@ -1566,61 +1870,20 @@ impl<'a> Daemon<'a> {
                 t,
             );
         }
-        if let Some((files, to)) = &plan.moves {
-            let what = format!("moving files from Downloads into {}", to.display());
-            let id = self.history.note(
-                &what,
-                "files",
-                Undo::Atlas("move them back".into()),
-                true,
-                t,
-            );
-            undo_record.push((
-                id,
-                crate::tune::TuneUndo::RecordedMoves {
-                    moves: Vec::new(),
-                    made: Vec::new(),
-                },
-            ));
-            let ready = self
-                .store
-                .save("undo_history", &self.history)
-                .and_then(|_| self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record));
-            let (moved, failed) = if let Err(e) = ready {
-                (Vec::new(), vec![format!("files were left in place because their recovery record couldn't be saved ({e})")])
-            } else {
-                crate::tune::move_files_into_recorded(files, to, &mut |from, into| {
-                    let intent = crate::tune::RecordedMove::new(from, into)?;
-                    let Some((_, crate::tune::TuneUndo::RecordedMoves { moves, .. })) =
-                        undo_record.iter_mut().find(|(rid, _)| *rid == id)
-                    else {
-                        return Err(
-                            "the recovery record is missing; the file was left in place".into()
-                        );
-                    };
-                    moves.push(intent);
-                    self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record)
-                        .map_err(|e| format!("{} was left in place because its recovery record couldn't be saved ({e})", from.display()))
-                })
-            };
-            if !moved.is_empty() {
-                let what = format!("moved {} file{} from Downloads into {}", moved.len(), if moved.len() == 1 { "" } else { "s" }, to.display());
-                done.push(what.clone());
-                self.journal.record_at(Act::Upkeep, &what, true, t);
-                if let Some(entry) = self.history.done.iter_mut().find(|d| d.id == id) {
-                    entry.what = what;
-                }
-            }
-            not.extend(failed);
-        }
         // Never evict an outstanding file recovery record to meet a quota.
+        let mut recovery_ready = true;
         if let Err(e) = self.store.save(crate::tune::TUNE_UNDO_RECORD, &undo_record) {
+            recovery_ready = false;
             not.push(format!("the latest recovery status couldn't be saved ({e}); the saved move intents remain available"));
         }
-        if let Err(e) = self.store.save("undo_history", &self.history) {
+        if let Err(e) = self.history.save_merged(&self.store) {
+            recovery_ready = false;
             not.push(format!("the latest history couldn't be saved ({e})"));
         }
-        let mut said = if done.is_empty() { "Nothing changed.".to_string() } else { format!("Done: {}.", done.join("; ")) };
+        let moving = plan.moves.as_ref().map(|(files, to)| if recovery_ready {
+            self.start_download_worker(files.clone(), to.clone(), t)
+        } else { "No Downloads file moved: the preceding recovery changes could not be saved.".into() });
+        let mut said = if done.is_empty() { moving.clone().unwrap_or_else(|| "Nothing changed.".to_string()) } else { format!("Done: {}. {}", done.join("; "), moving.unwrap_or_default()) };
         if !not.is_empty() {
             said.push_str(&format!(" Not done: {}.", not.join("; ")));
         }
@@ -1637,76 +1900,7 @@ impl<'a> Daemon<'a> {
     /// "what did you do" reads and kept beside it, so "undo that" puts each
     /// file back where it was (`tune::TuneUndo::Organized`).
     pub(super) fn carry_out_sorting(&mut self, plan: crate::organize::SortPlan, t: u64) -> String {
-        let sys = self.tools_cfg().system.clone();
-        let names: Vec<String> =
-                plan.folders.iter().map(|f| {
-                f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.display().to_string())
-            }).collect();
-        let what = format!("sorting files in {}", names.join(", "));
-        let id = self.history.note(
-            &what,
-            "files",
-            crate::undo::Undo::Atlas("move them back".into()),
-            true,
-            t,
-        );
-        let mut record: Vec<(u64, crate::tune::TuneUndo)> =
-            self.store.load(crate::tune::TUNE_UNDO_RECORD);
-        record.push((
-            id,
-            crate::tune::TuneUndo::RecordedMoves {
-                moves: Vec::new(),
-                made: Vec::new(),
-            },
-        ));
-        if let Err(e) = self
-            .store
-            .save("undo_history", &self.history)
-            .and_then(|_| self.store.save(crate::tune::TUNE_UNDO_RECORD, &record))
-        {
-            return format!("Nothing moved: I couldn't save the recovery record ({e}).");
-        }
-        let done = crate::organize::carry_out_moves_recorded(
-            &plan,
-            &sys,
-            crate::store::now(),
-            &mut |from, into| {
-                let intent = crate::tune::RecordedMove::new(from, into)?;
-                let Some((_, crate::tune::TuneUndo::RecordedMoves { moves, .. })) =
-                    record.iter_mut().find(|(rid, _)| *rid == id)
-                else {
-                    return Err("the recovery record is missing; the file was left in place".into());
-                };
-                moves.push(intent);
-                self.store.save(crate::tune::TUNE_UNDO_RECORD, &record)
-                .map_err(|e| format!("{} was left in place because its recovery record couldn't be saved ({e})", from.display()))
-            },
-        );
-        if !done.moved.is_empty() {
-            let what = format!(
-                "sorted {} file{} in {} into folders",
-                done.moved.len(),
-                if done.moved.len() == 1 { "" } else { "s" },
-                names.join(", ")
-            );
-            self.journal.record_at(Act::Upkeep, &what, true, t);
-            if let Some(entry) = self.history.done.iter_mut().find(|d| d.id == id) {
-                entry.what = what;
-            }
-        }
-        if let Some((_, crate::tune::TuneUndo::RecordedMoves { made, .. })) =
-            record.iter_mut().find(|(rid, _)| *rid == id)
-        {
-            *made = done.made.clone();
-            }
-            let mut said = crate::organize::done_said(&plan, &done);
-        if let Err(e) = self.store.save(crate::tune::TUNE_UNDO_RECORD, &record) {
-            said.push_str(&format!(" The latest folder-cleanup record couldn't be saved ({e}); the saved file moves can still be undone."));
-        }
-        if let Err(e) = self.store.save("undo_history", &self.history) {
-            said.push_str(&format!(" The latest history couldn't be saved ({e})."));
-        }
-        said
+        self.start_sort_worker(plan, t)
     }
 
     /// "Use my webcam mic" (Eric, 29 Sep 2026): the microphones this machine
@@ -1762,7 +1956,6 @@ impl<'a> Daemon<'a> {
             return Some("Moving the files didn't finish; nothing was removed that hadn't been copied.".into());
         };
         let (done, failed): (Vec<crate::tune::Moved>, Vec<String>) = serde_json::from_str(json).ok()?;
-        let mut record: Vec<crate::tune::Moved> = self.store.load(crate::tune::MOVED_RECORD);
         // Settings follow the folders, so Atlas still finds its models.
         let dir = crate::roots::config_dir();
         let prefs_read = crate::preferences::Preferences::load_checked(&dir);
@@ -1775,7 +1968,6 @@ impl<'a> Daemon<'a> {
                 prefs.set("video.work_dir", &m.to);
             }
             self.journal.record_at(Act::Upkeep, &format!("moved {} to {}", m.from, m.to), true, crate::store::now());
-            record.push(m.clone());
         }
         // Checked (30 Sep 2026): "Moved" was said when the new place wasn't
         // saved, and after a restart Atlas couldn't find its models.
@@ -1783,9 +1975,8 @@ impl<'a> Daemon<'a> {
             Some(e) => Err(e.clone()),
             None => prefs.save(&dir).map_err(|e| e.to_string()),
         };
-        let _ = self.store.save(crate::tune::MOVED_RECORD, &record);
         let mut said = if done.is_empty() {
-            "Nothing moved.".to_string()
+            if failed.is_empty() { "Nothing moved.".to_string() } else { "No folder move has a fully saved completion receipt; inspect the recovery history before trying again.".to_string() }
         } else {
             let mb: u64 = done.iter().map(|m| m.mb).sum();
             format!(
@@ -1804,8 +1995,63 @@ impl<'a> Daemon<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct ApprovedUndo { pub id: u64, row: crate::undo::Did, identity: Option<String>, recovery: crate::tune::TuneUndo }
+
 impl<'a> Daemon<'a> {
+    pub(super) fn poll_approved_undo(&mut self) -> Option<String> {
+        if self.attention.is_paused() || self.active_file_move_id().is_some() { return None; }
+        let pending = self.approved_undo.clone()?;
+        let store = self.store.clone();
+        let _guard = match store.transaction() {
+            Ok(guard) => guard,
+            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => return None,
+            Err(error) => { self.approved_undo = None; return Some(format!("The approved undo stopped before moving files: {error}. Its recovery record remains available.")); },
+        };
+        let checked = (|| -> crate::error::Result<bool> {
+            let history: crate::undo::History = store.load_checked("undo_history")?.unwrap_or_default();
+            let records: Vec<(u64, crate::tune::TuneUndo)> = store.load_checked(crate::tune::TUNE_UNDO_RECORD)?.unwrap_or_default();
+            Ok(history.identity(pending.id) == pending.identity.as_deref() && history.done.iter().any(|row| row == &pending.row) && records.iter().any(|(id, recovery)| *id == pending.id && recovery == &pending.recovery))
+        })();
+        self.approved_undo = None;
+        match checked {
+            Ok(true) => Some(self.carry_out_undo(pending.id)),
+            Ok(false) => Some("The approved undo stopped because its recovery record changed; no file moved.".into()),
+            Err(error) => Some(format!("The approved undo stopped because recovery storage could not be read ({error}); no file moved.")),
+        }
+    }
+
+    pub(super) fn cancel_approved_undo(&mut self) -> bool { let waiting = self.approved_undo.take().is_some(); self.cancel_undo_worker() || waiting }
+
     pub(super) fn carry_out_undo(&mut self, id: u64) -> String {
+        let store = self.store.clone();
+        let current: Vec<(u64, crate::tune::TuneUndo)> = match store.load_checked(crate::tune::TUNE_UNDO_RECORD) {
+            Ok(records) => records.unwrap_or_default(), Err(error) => return format!("No undo started: file recovery could not be read ({error})."),
+        };
+        if let Some((_, recovery)) = current.into_iter().find(|(row_id, recovery)| *row_id == id && !matches!(recovery, crate::tune::TuneUndo::Startup(_))) {
+            let Some(row) = self.history.done.iter().find(|row| row.id == id && !row.undone).cloned() else { return "That recovery row is no longer available for undo.".into(); };
+            return self.start_undo_worker(row, self.history.identity(id).map(str::to_owned), recovery);
+        }
+        let _guard = match store.transaction() {
+            Ok(guard) => guard,
+            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                let row = self.history.done.iter().find(|row| row.id == id && !row.undone).cloned();
+                let records = store.load_checked::<Vec<(u64, crate::tune::TuneUndo)>>(crate::tune::TUNE_UNDO_RECORD);
+                if let (Some(row), Ok(Some(records))) = (row, records) {
+                    if let Some((_, recovery)) = records.into_iter().find(|(key, _)| *key == id) {
+                        self.approved_undo = Some(ApprovedUndo { id, row, identity: self.history.identity(id).map(str::to_owned), recovery });
+                        return "The approved undo is waiting for recovery storage. No file moved yet; I'll retry when it is available. Stop cancels this waiting undo.".into();
+                    }
+                }
+                return "No undo started: recovery storage is busy. The saved recovery record remains available.".into();
+            }
+            Err(error) => return format!("No undo started: recovery storage is unavailable ({error}). The saved recovery record remains available."),
+        };
+        if let Err(error) = self.history.save_merged(&store) { return format!("No undo started: pending history could not be saved ({error})."); }
+        self.history = match store.load_checked::<crate::undo::History>("undo_history") {
+            Ok(history) => history.unwrap_or_default(),
+            Err(error) => return format!("No undo started: recovery history could not be read ({error})."),
+        };
         let Some(d) = self.history.done.iter().find(|d| d.id == id).cloned() else {
             return "That one isn't in my history any more.".into();
         };
@@ -1814,7 +2060,10 @@ impl<'a> Daemon<'a> {
         }
         // A startup entry switched off, or files moved, by an optimization
         // run (2 Oct 2026): taken back from what was kept beside it.
-        let mut record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
+        let mut record: Vec<(u64, crate::tune::TuneUndo)> = match store.load_checked(crate::tune::TUNE_UNDO_RECORD) {
+            Ok(records) => records.unwrap_or_default(),
+            Err(error) => return format!("No undo started: file recovery records could not be read ({error})."),
+        };
         if let Some(pos) = record.iter().position(|(rid, _)| *rid == id) {
             let undo = record[pos].1.clone();
             return match crate::tune::undo_tune_change_with_checkpoint(&undo, &mut |next| {
@@ -1827,7 +2076,7 @@ impl<'a> Daemon<'a> {
                     // Save completion before dropping the recovery intent. If
                     // either save fails, repeating the file undo is harmless.
                     self.history.mark_undone(id);
-                    if let Err(e) = self.store.save("undo_history", &self.history) {
+                    if let Err(e) = self.history.save_merged(&self.store) {
                         if let Some(entry) = self.history.done.iter_mut().find(|d| d.id == id) {
                             entry.undone = false;
                         }
@@ -1853,7 +2102,7 @@ impl<'a> Daemon<'a> {
                 .map(|p| p.id);
             match draft {
                 Some(pid) if self.publisher.cancel(pid) => {
-                    let _ = self.publisher.save(&self.store);
+                    if let Err(e) = self.publisher.save(&self.store) { return format!("The draft is paused here, but discarding it couldn't be saved ({e}); its earlier saved state may remain after restart."); }
                     "Threw the draft away.".to_string()
                 }
                 _ => return "There's no draft left to throw away.".into(),
@@ -1865,7 +2114,7 @@ impl<'a> Daemon<'a> {
             }
         };
         self.history.mark_undone(id);
-        let _ = self.store.save("undo_history", &self.history);
+        if let Err(error) = self.history.save_merged(&self.store) { return format!("{said} The undo acknowledgment is pending a durable save ({error}); I retained it for retry."); }
         format!("Undone: {}. {said}", d.what)
     }
 }
@@ -1918,10 +2167,11 @@ impl<'a> Daemon<'a> {
         {
             return None;
         }
-        let Some((path, _)) = crate::edit::path_and_wish(said) else {
+        let Some((path, wish)) = crate::edit::path_and_wish(said) else {
             return Some("Which video? Give me its path -- get this video ready: \"C:\\clips\\bakery.mp4\".".into());
         };
         let original = std::path::PathBuf::from(&path);
+        let aspect = crate::studio::requested_aspect(&wish);
         if !original.is_file() {
             return Some(format!("I can't find {path}."));
         }
@@ -1932,42 +2182,91 @@ impl<'a> Daemon<'a> {
         self.add_language_vars(&mut vars);
         let llm = self.background_llm();
         let stem = original.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
-        let folder = original.with_file_name(format!("{stem} - ready"));
         let work: crew::Work = Box::new(move |ctl| {
             let run = |tool: &crate::tools::ExternalTool, args: Vec<String>| -> std::result::Result<std::process::Output, String> {
-                crate::tools::command(&tool.command).args(args).output().map_err(|e| format!("couldn't run {}: {e}", tool.command))
+                if ctl.checkpoint() { return Err("stopped".into()); }
+                crate::studio::run_tool(tool, args, &|| ctl.stopping())
             };
-            std::fs::create_dir_all(&folder).map_err(|e| format!("couldn't make {}: {e}", folder.display()))?;
+            let folder = crate::studio::reserve_folder(&original).map_err(|e| format!("couldn't reserve a result folder: {e}"))?;
             let s = |p: &std::path::Path| p.display().to_string();
             let src = s(&original);
             let probed = run(&video.ffprobe, crate::edit::probe_args(&src))?;
-            let before = crate::edit::duration_from_probe(&String::from_utf8_lossy(&probed.stdout)).ok_or("I couldn't read how long the video is")?;
+            let (before, audio) = crate::studio::probe(&String::from_utf8_lossy(&probed.stdout))?;
             if ctl.checkpoint() {
                 return Err("stopped".into());
             }
-            let found = run(&video.ffmpeg, crate::studio::silence_args(&src))?;
-            let spans = crate::studio::keep_spans(&crate::studio::silences(&String::from_utf8_lossy(&found.stderr), before), before);
+            let mut notes = Vec::new();
+            let mut remaining = Vec::new();
+            let spans = if audio {
+                let found = run(&video.ffmpeg, crate::studio::silence_args(&src))?;
+                let keep = crate::studio::keep_spans(&crate::studio::silences(&String::from_utf8_lossy(&found.stderr), before), before);
+                if keep.is_empty() { notes.push("The audio is entirely silent; the full picture was preserved for your review.".to_string()); vec![(0.0, before)] } else { keep }
+            } else {
+                notes.push("No audio stream: the full picture was preserved; captions and audio editing were skipped.".to_string());
+                vec![(0.0, before)]
+            };
             let cut = folder.join(format!("{stem} - cut.mp4"));
-            let made = run(&video.ffmpeg, crate::studio::cut_args(&src, &spans, &s(&cut)))?;
+            let made = run(&video.ffmpeg, crate::studio::cut_args_with_audio(&src, &spans, &s(&cut), audio))?;
             if !made.status.success() || !cut.is_file() {
                 return Err("ffmpeg couldn't make the cut".into());
             }
-            let after: f64 = spans.iter().map(|(a, b)| b - a).sum();
-            crate::heard!(run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")))));
-            let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-")).count()).unwrap_or(0);
-            let transcript = transcript_of(&video, timed.as_ref(), &vars, &s(&cut), &folder, Some(&folder.join(format!("{stem} - cut.srt"))));
+            let output_probe = run(&video.ffprobe, crate::edit::probe_args(&s(&cut)))?;
+            let (after, output_audio) = crate::studio::probe(&String::from_utf8_lossy(&output_probe.stdout))?;
+            if audio != output_audio { return Err(format!("Rendered audio does not match the source; review {}", folder.display())); }
+            if let Some((width, height)) = aspect {
+                let framed = folder.join(format!("{stem} - {width}x{height}.mp4"));
+                run(&video.ffmpeg, crate::studio::aspect_args(&s(&cut), &s(&framed), width, height))?;
+                let checked = run(&video.ffprobe, crate::edit::probe_args(&s(&framed)))?;
+                let json = String::from_utf8_lossy(&checked.stdout);
+                let (length, has_audio) = crate::studio::probe(&json)?;
+                if crate::studio::dimensions(&json) != Some((width, height)) || has_audio != audio || (length-after).abs() > 0.5 {
+                    return Err(format!("Aspect copy failed output checks; review {}", folder.display()));
+                }
+                notes.push(format!("Requested aspect copy: {width}x{height}, with padding to keep the whole image. Preview it in the destination app: captions, controls and account overlays vary; no fixed safe-area claim has been verified."));
+            }
+            if let Err(error) = run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")))) {
+                if ctl.stopping() { return Err("stopped".into()); }
+                notes.push(format!("Scene thumbnails failed: {error}"));
+            }
+            if !folder.join("thumbnail-01.jpg").is_file() {
+                if let Err(error) = run(&video.ffmpeg, crate::studio::thumbnail_fallback_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")), after)) {
+                    if ctl.stopping() { return Err("stopped".into()); }
+                    notes.push(format!("Sample thumbnails failed: {error}"));
+                }
+            }
+            let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-") && e.path().extension().is_some_and(|s| s == "jpg") && e.metadata().is_ok_and(|m| m.len() > 0)).count()).unwrap_or(0);
+            if thumbs == 0 { remaining.push("Choose or make a thumbnail; no usable frame was saved.".into()); }
+            let caption_file = folder.join(format!("{stem} - cut.srt"));
+            let transcript = if audio {
+                match transcript_checked(&video, timed.as_ref(), &vars, &s(&cut), &folder, Some(&caption_file), &|| ctl.stopping()) {
+                    Ok(text) => text,
+                    Err(error) => { if ctl.stopping() { return Err("stopped".into()); } remaining.push("Captions still need to be prepared or explicitly skipped.".into()); notes.push(format!("Captions unavailable: {error}")); String::new() }
+                }
+            } else { String::new() };
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
-                let quoted = crate::untrusted::Read::new("the video", &transcript, crate::store::now()).quoted();
-                if let Some((t, d)) = m.complete(crate::studio::TITLE_PROMPT, &quoted).ok().and_then(|r| crate::studio::title_and_description(&r, &transcript)) {
-                    crate::kept!(std::fs::write(folder.join("title and description.txt"), format!("{t}\n\n{d}\n")));
+                let excerpt: String = transcript.chars().take(8000).collect();
+                let quoted = crate::untrusted::Read::new("a video transcript excerpt", &excerpt, crate::store::now()).quoted();
+                let request = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(crate::studio::TITLE_PROMPT), crate::brain::Msg::user(quoted)], max_tokens: 384, aside: true, ..Default::default() };
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+                let mut bytes = 0usize;
+                let result = if m.supports_bounded_chat() { m.chat_until(&request, &mut |text| { bytes += text.len(); bytes <= 4096 && !ctl.stopping() && std::time::Instant::now() < deadline }, &|| !ctl.stopping() && std::time::Instant::now() < deadline).ok().filter(|r| r.text.len() <= 4096 && !ctl.stopping() && std::time::Instant::now() < deadline) } else { None };
+                if let Some((t, d)) = result.and_then(|r| crate::studio::title_and_description(&r.text, &excerpt)) {
+                    std::fs::write(folder.join("title and description.txt"), format!("Suggested wording; review against the transcript before approval.\n\n{t}\n\n{d}\n")).map_err(|e| format!("couldn't save suggested wording: {e}"))?;
                     title = Some(t);
                 }
             }
-            Ok(crate::studio::ready_said(&s(&folder), before, after, !transcript.is_empty(), thumbs, title.as_deref()))
+            if title.is_none() { remaining.push("Title and description need your wording or a valid model suggestion.".into()); }
+            if ctl.checkpoint() { return Err("stopped".into()); }
+            notes.push(if aspect.is_none() { "Platform/aspect not chosen: original framing preserved. Audio correction, colour and platform safe areas still need review. Nothing has been published.".into() } else { "The native cut is also preserved. Audio correction, colour and platform safe areas still need review. Nothing has been published.".into() });
+            std::fs::write(folder.join("review.txt"), format!("Source: {src}\nOutput: {}\nMeasured duration: {after:.3}s\nCaptions saved: {}\nThumbnail files: {thumbs}\n{}\n", s(&cut), caption_file.is_file(), notes.join("\n")))
+                .map_err(|e| format!("couldn't save the review: {e}"))?;
+            let text = format!("A review copy is in {}: measured {} seconds, from {} seconds. Captions saved: {}. Thumbnail choices: {thumbs}. {} {} Original untouched.", s(&folder), after.round(), before.round(), caption_file.is_file(), title.map(|t| format!("Suggested title: {t}. Wording needs your review.")).unwrap_or_else(|| "No title suggestion was saved.".into()), notes.join(" "));
+            let files = std::fs::read_dir(&folder).map_err(|e| format!("couldn't verify review files: {e}"))?.filter_map(|e| e.ok()).filter(|e| e.path().is_file()).map(|e| s(&e.path())).collect();
+            crate::content::review_worker_result("studio_review", if remaining.is_empty() { "review_ready" } else { "partial" }, text, Some(s(&folder)), files, remaining)
         });
         Some(if self.hand_off("studio", t, work, Some(path.clone()), SpeakPolicy::Always) {
-            format!("Getting {path} ready on a copy -- dead air, captions, thumbnails and a title. I'll tell you when it's done.")
+            format!("Preparing a review copy of {path}. I'll report which editing steps and files actually succeeded; nothing will be posted.")
         } else {
             "I'm swamped with background work right now -- ask me again in a moment.".into()
         })
@@ -2077,19 +2376,31 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn read_document_asked(&mut self, said: &str) -> String {
         let Some(path) = self.file_meant(said, &["pdf", "docx", "txt", "md", "zip"]) else {
-            return "Which file? Give me its path, or hand it to me first.".into();
+            let question = "Which file? Give me its path, or hand it to me first.".to_string();
+            self.session.ask(&question);
+            self.execution_receipt = Some((Intent::ReadDocument(said.into()), crate::taskloop::Outcome::NeedsYou(question.clone())));
+            return question;
         };
-        if path.to_lowercase().ends_with(".zip") {
-            return self.file_work_off_the_loop(FileJob::Unzip, &path, false);
-        }
-        self.file_work_off_the_loop(FileJob::Read, &path, false)
+        let job = if path.to_lowercase().ends_with(".zip") { FileJob::Unzip } else { FileJob::Read };
+        self.last_crew_handoff = None;
+        let text = self.file_work_off_the_loop(job, &path, false);
+        let outcome = if self.last_crew_handoff.is_some() { crate::taskloop::Outcome::Started(text.clone()) } else { crate::taskloop::Outcome::Failed(text.clone()) };
+        self.execution_receipt = Some((Intent::ReadDocument(said.into()), outcome));
+        text
     }
 
     pub(super) fn unzip_asked(&mut self, said: &str) -> String {
         let Some(path) = self.file_meant(said, &["zip"]) else {
-            return "Which zip? Give me its path, or hand it to me first.".into();
+            let question = "Which zip? Give me its path, or hand it to me first.".to_string();
+            self.session.ask(&question);
+            self.execution_receipt = Some((Intent::Unzip(said.into()), crate::taskloop::Outcome::NeedsYou(question.clone())));
+            return question;
         };
-        self.file_work_off_the_loop(FileJob::Unzip, &path, false)
+        self.last_crew_handoff = None;
+        let text = self.file_work_off_the_loop(FileJob::Unzip, &path, false);
+        let outcome = if self.last_crew_handoff.is_some() { crate::taskloop::Outcome::Started(text.clone()) } else { crate::taskloop::Outcome::Failed(text.clone()) };
+        self.execution_receipt = Some((Intent::Unzip(said.into()), outcome));
+        text
     }
 
     /// Reading or unpacking a file, on the crew (28 Sep 2026).
@@ -2104,15 +2415,18 @@ impl<'a> Daemon<'a> {
     /// `execute` before this is reached, and a file the scan couldn't check
     /// is still opened only on your yes -- the question is asked when the
     /// errand comes back), and the answer is said when it's ready. With the
-    /// crew full it is done here, as before, rather than not at all.
+    /// crew full it fails visibly; it never scans on the control loop.
     pub(super) fn file_work_off_the_loop(&mut self, job: FileJob, path: &str, anyway: bool) -> String {
         let tools = self.tools_cfg();
         let (p, what) = (path.to_string(), job);
-        let work: crew::Work = Box::new(move |_c: &crew::Control| {
+        let work: crew::Work = Box::new(move |ctl: &crew::Control| {
+            if ctl.checkpoint() { return Err("Stopped before opening the file.".into()); }
             let done = match what {
-                FileJob::Read => read_document_off(&p, anyway, &tools),
-                FileJob::Unzip => unzip_off(&p, anyway, &tools),
+                FileJob::Read => read_document_until(&p, anyway, &tools, &|| ctl.stopping()),
+                FileJob::Unzip => unzip_until(&p, anyway, &tools, &|| ctl.stopping()),
             };
+            // Once unpacking has happened, retain its actual result rather
+            // than claim the file was untouched by a late cancellation.
             serde_json::to_string(&done).map_err(|e| e.to_string())
         });
         let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string());
@@ -2122,12 +2436,7 @@ impl<'a> Daemon<'a> {
                 FileJob::Unzip => format!("Unpacking {name} -- I'll tell you when it's done."),
             }
         } else {
-            let tools = self.tools_cfg();
-            let done = match job {
-                FileJob::Read => read_document_off(path, anyway, &tools),
-                FileJob::Unzip => unzip_off(path, anyway, &tools),
-            };
-            self.file_done(done)
+            "The background work queue is full, so that file was left unopened. Ask me again when a worker is free.".into()
         }
     }
 
@@ -2461,9 +2770,49 @@ impl<'a> Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
-    pub(super) fn creator_advice(&self, said: &str) -> String {
+    pub(super) fn creator_advice(&mut self, said: &str) -> String {
         if !self.tools_cfg().editcraft.enabled {
             return "Video and creator advice is switched off in your settings.".into();
+        }
+        if let Some((kind, topic)) = crate::content::creator_request(said) {
+            if kind == crate::content::CreatorAsk::Research && said.to_ascii_lowercase().contains("video research online for") {
+                return self.research(&format!("Videos about {topic}: cite real sources and observation dates; distinguish observed views/retention from unknowns and predictions."));
+            }
+            let source = self.store.root().join(crate::social::snapshots::FILE);
+            let t = crate::store::now();
+            let model = self.creator_llm();
+            let work: crew::Work = Box::new(move |ctl| {
+                if ctl.checkpoint() { return Err("stopped".into()); }
+                let (book, cache_note) = match crate::content::creator_evidence(&source) {
+                    Ok(book) => (book, "Saved evidence read within the planning limit.".to_string()),
+                    Err(error) => (crate::social::snapshots::Book::default(), format!("Cached evidence not used: {error}. Observations remain unknown.")),
+                };
+                if ctl.checkpoint() { return Err("stopped".into()); }
+                let mut model_note = "No structured background model is available; these are limited offline planning prompts.".to_string();
+                let mut proposed = None;
+                if kind != crate::content::CreatorAsk::Research {
+                    if let Some(model) = model.as_deref().filter(|m| m.supports_bounded_chat()) {
+                        let request = crate::content::creator_model_request(kind, &topic, &book, t);
+                        let began = std::time::Instant::now();
+                        let count = std::cell::Cell::new(0usize);
+                        let keep = || !ctl.stopping() && began.elapsed().as_secs() < 45 && count.get() <= 16_000;
+                        let reply = model.chat_until(&request, &mut |piece| { count.set(count.get().saturating_add(piece.len())); keep() }, &keep);
+                        if ctl.stopping() { return Err("stopped".into()); }
+                        proposed = reply.ok().filter(|r| r.tool_calls.is_empty() && keep()).and_then(|r| crate::content::creator_model_output(kind, &topic, &book, &r.text).ok());
+                        model_note = if proposed.is_some() { "Structured model suggestions; supplied source IDs checked, factual wording still needs review.".into() }
+                            else { "The model did not return a valid proposal within this request's limits; these are limited offline planning prompts.".into() };
+                    }
+                }
+                let ready = proposed.is_some() || (kind == crate::content::CreatorAsk::Research && crate::content::creator_has_evidence(&topic, &book));
+                let answer = if let Some(proposed) = proposed {
+                    format!("{proposed}\nObserved evidence, separate from suggestions:\n{}", crate::content::creator_plan(crate::content::CreatorAsk::Research, &topic, &book, t))
+                } else { crate::content::creator_plan(kind, &topic, &book, t) };
+                if ctl.checkpoint() { return Err("stopped".into()); }
+                crate::content::review_worker_result("creator_review", if ready { "review_ready" } else { "limited" }, format!("{answer}\n{model_note}\n{cache_note}"), None, vec![], if ready { vec![] } else { vec!["More evidence or a valid model proposal is needed to fulfill this request.".into()] })
+            });
+            return if self.hand_off("creator planning", t, work, Some(said.into()), SpeakPolicy::Always) {
+                "Preparing suggestions from the saved video evidence. Nothing will be posted.".into()
+            } else { "Background work is full; the planning request has not started.".into() };
         }
         let l = said.to_lowercase();
         // A brand deal: what it actually asks of you.
@@ -2537,6 +2886,364 @@ impl<'a> Daemon<'a> {
         }
         let what = words_after(&l, &["how long should i keep", "how long do i keep", "how long to keep", "keep my", "keep"]);
         format!("{} That's the general rule, not advice for your situation.", crate::ledger::keep_for(&what))
+    }
+}
+
+#[cfg(test)]
+mod creator_daemon_journey_tests {
+    use super::*;
+    use crate::brain::{ChatReply, ChatRequest, Llm};
+    use crate::platform::mock::MockPlatform;
+    use crate::proactive::ProactiveConfig;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+    struct BoundedProposal(Arc<AtomicUsize>);
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires coordinated owned synthetic speech WAV, localhost model and installed video/Whisper tools"]
+    fn installed_video_speech_and_configured_model_prepare_actual_daemon_captions_and_title_for_review() {
+        let speech = std::path::PathBuf::from(std::env::var("ATLAS_SYNTHETIC_VIDEO_WAV").expect("owned synthetic speech WAV"));
+        assert!(speech.canonicalize().unwrap().starts_with(std::env::temp_dir().canonicalize().unwrap()), "refuse non-disposable speech input");
+        let url = std::env::var("ATLAS_REAL_MODEL_URL").expect("coordinated local model");
+        let authority = url.strip_prefix("http://").expect("localhost HTTP only").split('/').next().unwrap();
+        let (host, port) = authority.rsplit_once(':').unwrap();
+        assert!(matches!(host, "127.0.0.1" | "localhost") && port.parse::<u16>().is_ok_and(|p| p != 0));
+        assert!(url.ends_with("/v1/chat/completions"));
+        let install = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("Atlas");
+        let ffmpeg = crate::tools::ExternalTool { command: install.join("tools/ffmpeg/ffmpeg.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
+        let ffprobe = crate::tools::ExternalTool { command: install.join("tools/ffmpeg/ffprobe.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
+        let whisper = install.join("tools/whisper/whisper-cli.exe");
+        let asr_model = install.join("models/ggml-base.en.bin");
+        assert!(whisper.is_file() && asr_model.is_file());
+        let root = std::env::current_dir().unwrap().join("scratch").join(format!("atlas-daemon-spoken-video-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&root).unwrap();
+        let input = root.join("synthetic-spoken.mp4");
+        let args = vec!["-hide_banner".into(), "-n".into(), "-f".into(), "lavfi".into(), "-i".into(), "color=c=blue:s=320x240:d=60:r=25".into(), "-i".into(), speech.display().to_string(), "-shortest".into(), "-c:v".into(), "libx264".into(), "-pix_fmt".into(), "yuv420p".into(), "-c:a".into(), "aac".into(), input.display().to_string()];
+        crate::studio::run_tool(&ffmpeg, args, &|| false).unwrap();
+        let original = std::fs::read(&input).unwrap();
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let tools = cfg.tools.as_mut().unwrap();
+        tools.video.ffmpeg = ffmpeg.clone(); tools.video.ffprobe = ffprobe.clone();
+        tools.browser.launch = None; tools.models.online_second = false; tools.llm_secondary = None;
+        tools.vars.insert("stt_model".into(), asr_model.display().to_string());
+        tools.stt_timed = Some(crate::tools::ExternalTool { command: whisper.display().to_string(), args: ["-m", "{stt_model}", "-f", "{in_wav}", "-osrt", "-of", "{stem}", "-t", "4", "-l", "en"].iter().map(|s| s.to_string()).collect(), result_file: Some("{srt}".into()), timeout_secs: 30, ..Default::default() });
+        let mut http = crate::models::server_post();
+        http.args = http.args.iter().map(|arg| arg.replace("{url}", &url)).collect();
+        tools.llm = Some(crate::brain::LlmConfig { tool: http, request: "{}".into(), response_path: "content".into(), vision_request: None });
+        let factory = crate::models::connection(tools).unwrap();
+        assert!(factory.supports_bounded_chat());
+        let captured = Arc::new(std::sync::Mutex::new(String::new()));
+        let model = Arc::new(CaptureConfiguredCreator { inner: factory, last: captured.clone() });
+        let platform = MockPlatform::new(vec![]);
+        let mut d = Daemon::new(&cfg, &platform, Some(model), Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
+        d.use_deep_brain_for_test(crate::deepbrain::DeepBrain::none());
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        let command = format!("get this video ready: \"{}\"", input.display());
+        let t = crate::store::now(); let id = d.queue.push_at(&command, crate::lanes::Lane::Background, t);
+        assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+        let reply = d.turn(&command, t); let worker = d.last_crew_handoff.expect("actual studio worker");
+        d.queue.attach_worker(id, worker, &reply); d.queue.save(&d.store).unwrap();
+        let began = std::time::Instant::now(); let mut output = Vec::new();
+        while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && began.elapsed() < std::time::Duration::from_secs(60) {
+            output.extend(d.take_crew_news(t + 1)); std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running {
+            d.stop_linked_worker(worker, t + 2);
+            let drain = std::time::Instant::now();
+            while d.crew.in_hand(worker) && drain.elapsed() < std::time::Duration::from_secs(5) { output.extend(d.take_crew_news(t + 2)); std::thread::sleep(std::time::Duration::from_millis(10)); }
+        }
+        let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
+        assert_eq!(task.state, crate::lanes::TaskState::Failed, "review-ready preparation is not publication Done");
+        assert!(task.interrupted, "real captions/title must reach NeedsYou: {}; {}", output.join("; "), captured.lock().unwrap());
+        let review = root.join("synthetic-spoken - ready");
+        let captions = std::fs::read_to_string(review.join("synthetic-spoken - cut.srt")).unwrap();
+        let timed = crate::viewing::read_timed(&captions);
+        assert!(!timed.is_empty() && timed.iter().map(|s| s.words.split_whitespace().count()).sum::<usize>() >= 5);
+        let transcript = timed.iter().map(|s| s.words.clone()).collect::<Vec<_>>().join(" ");
+        let title = std::fs::read_to_string(review.join("title and description.txt")).unwrap();
+        assert!(title.contains("Suggested wording; review against the transcript"));
+        assert!(crate::studio::title_and_description(&captured.lock().unwrap().split("synthetic reply: ").last().unwrap_or(""), &transcript).is_some(), "actual model title must pass the unchanged grounding check");
+        let rendered = review.join("synthetic-spoken - cut.mp4");
+        let probed = crate::studio::run_tool(&ffprobe, crate::edit::probe_args(&rendered.display().to_string()), &|| false).unwrap();
+        let json = String::from_utf8_lossy(&probed.stdout); let (duration, audio) = crate::studio::probe(&json).unwrap();
+        assert!(duration > 1.0 && duration < 60.0 && audio);
+        assert_eq!(crate::studio::dimensions(&json), Some((320, 240)));
+        assert!(review.join("thumbnail-01.jpg").metadata().unwrap().len() > 0);
+        assert!(std::fs::read_to_string(review.join("review.txt")).unwrap().contains("Captions saved: true"));
+        assert!(d.long_work.jobs.iter().any(|job| job.outcome == crate::watching::Outcome::Finished));
+        assert!(d.publisher.posts.is_empty()); assert_eq!(std::fs::read(&input).unwrap(), original);
+        let restarted = crate::lanes::Queue::load_checked(&d.store).unwrap();
+        assert!(restarted.tasks.iter().find(|task| task.id == id).unwrap().interrupted && restarted.pending() == 0);
+        drop(d);
+        println!("SYNTHETIC VIDEO REVIEW PROOF: {}", review.display());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires coordinated installed ffmpeg/ffprobe CPU lane; creates only disposable silent footage"]
+    fn installed_video_tools_run_the_actual_daemon_studio_route_and_report_partial_work() {
+        let proof_started = std::time::Instant::now();
+        let tools = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("Atlas/tools/ffmpeg");
+        let ffmpeg = crate::tools::ExternalTool { command: tools.join("ffmpeg.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
+        let ffprobe = crate::tools::ExternalTool { command: tools.join("ffprobe.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
+        assert!(std::path::Path::new(&ffmpeg.command).is_file() && std::path::Path::new(&ffprobe.command).is_file());
+        let root = std::env::temp_dir().join(format!("atlas-daemon-video-proof-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&root).unwrap();
+        let input = root.join("synthetic-camera.mp4");
+        let args = ["-hide_banner", "-n", "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=2:r=25", "-c:v", "libx264", "-pix_fmt", "yuv420p"].iter().map(|s| s.to_string()).chain([input.display().to_string()]).collect();
+        crate::studio::run_tool(&ffmpeg, args, &|| false).unwrap();
+        let original = std::fs::read(&input).unwrap();
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let configured = cfg.tools.as_mut().unwrap();
+        configured.video.ffmpeg = ffmpeg.clone(); configured.video.ffprobe = ffprobe.clone();
+        configured.browser.launch = None; configured.models.online_second = false;
+        configured.stt_timed = None;
+        let platform = MockPlatform::new(vec![]);
+        let mut d = Daemon::new(&cfg, &platform, None, Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        let command = format!("get this video ready: \"{}\"", input.display());
+        let t = crate::store::now();
+        let id = d.queue.push_at(&command, crate::lanes::Lane::Background, t);
+        assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+        let began = std::time::Instant::now();
+        let reply = d.turn(&command, t);
+        assert!(reply.contains("Preparing a review copy") && reply.contains("nothing will be posted"), "{reply}");
+        let worker = d.last_crew_handoff.expect("actual studio worker");
+        d.queue.attach_worker(id, worker, &reply); d.queue.save(&d.store).unwrap();
+        let mut output = Vec::new();
+        while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && began.elapsed() < std::time::Duration::from_secs(55) {
+            output.extend(d.take_crew_news(t + 1));
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running { d.stop_linked_worker(worker, t + 2); }
+        let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
+        assert_eq!(task.state, crate::lanes::TaskState::Failed, "silent footage without a title cannot finish the full preparation: {}", output.join("; "));
+        assert!(!task.interrupted, "partial work must not be labelled review-ready");
+        let review = root.join("synthetic-camera - ready");
+        let rendered = review.join("synthetic-camera - cut.mp4");
+        let probed = crate::studio::run_tool(&ffprobe, crate::edit::probe_args(&rendered.display().to_string()), &|| false).unwrap();
+        let json = String::from_utf8_lossy(&probed.stdout);
+        let (duration, audio) = crate::studio::probe(&json).unwrap();
+        assert!((duration - 2.0).abs() < 0.2 && !audio);
+        assert_eq!(crate::studio::dimensions(&json), Some((320, 240)));
+        assert!(review.join("thumbnail-01.jpg").metadata().unwrap().len() > 0);
+        let manifest = std::fs::read_to_string(review.join("review.txt")).unwrap();
+        assert!(manifest.contains("captions and audio editing were skipped") && manifest.contains("Captions saved: false"));
+        assert!(output.iter().any(|text| text.contains("No title suggestion was saved")));
+        assert!(d.long_work.jobs.iter().any(|job| job.outcome == crate::watching::Outcome::Failed));
+        assert!(d.publisher.posts.is_empty());
+        assert_eq!(std::fs::read(&input).unwrap(), original);
+        drop(d); std::fs::remove_dir_all(root).unwrap();
+        assert!(proof_started.elapsed() < std::time::Duration::from_secs(90));
+    }
+    struct HeldCreator {
+        entered: std::sync::mpsc::Sender<()>,
+        released: Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl Llm for HeldCreator {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("creator must remain cancellable") }
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, req: &ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<ChatReply> {
+            assert!(req.aside && req.output_schema.is_some());
+            self.entered.send(()).unwrap();
+            while keep() && !self.released.load(Ordering::SeqCst) { std::thread::sleep(std::time::Duration::from_millis(5)); }
+            while !self.released.load(Ordering::SeqCst) { std::thread::sleep(std::time::Duration::from_millis(5)); }
+            Err(crate::error::AtlasError::Platform("creator fixture stopped".into()))
+        }
+    }
+    struct ReleaseOnDrop(Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for ReleaseOnDrop { fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); } }
+    struct CaptureConfiguredCreator {
+        inner: Arc<dyn Llm>,
+        last: Arc<std::sync::Mutex<String>>,
+    }
+    impl Llm for CaptureConfiguredCreator {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("native creator proof must use bounded chat") }
+        fn supports_bounded_chat(&self) -> bool { self.inner.supports_bounded_chat() }
+        fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<ChatReply> {
+            let result = self.inner.chat_until(req, on_text, keep);
+            *self.last.lock().unwrap() = match &result {
+                Ok(reply) => format!("schema supplied: {}; synthetic reply: {}", req.output_schema.is_some(), reply.text.chars().take(2000).collect::<String>()),
+                Err(error) => format!("bounded configured adapter error: {error}"),
+            };
+            result
+        }
+    }
+
+    #[test]
+    fn actual_configured_model_factory_preserves_bounded_cancellation_without_transport() {
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let tools = cfg.tools.as_mut().unwrap();
+        tools.models.online_second = false;
+        tools.llm_secondary = None;
+        let mut http = crate::models::server_post();
+        http.args = http.args.iter().map(|arg| arg.replace("{url}", "http://127.0.0.1:1/v1/chat/completions")).collect();
+        tools.llm = Some(crate::brain::LlmConfig { tool: http, request: "{}".into(), response_path: "content".into(), vision_request: None });
+        let model = crate::models::connection(tools).unwrap();
+        assert!(model.supports_bounded_chat());
+        let request = crate::content::creator_model_request(crate::content::CreatorAsk::Idea, "sourdough starter", &crate::social::snapshots::Book::default(), 0);
+        let began = std::time::Instant::now();
+        let mut callback_called = false;
+        let result = model.chat_until(&request, &mut |_| { callback_called = true; true }, &|| false);
+        assert!(result.is_err());
+        assert!(crate::models::chat_was_stopped(result.as_ref().unwrap_err()));
+        assert!(!callback_called);
+        assert!(began.elapsed() < std::time::Duration::from_secs(1));
+    }
+    impl Llm for BoundedProposal {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("creator must use the bounded production request") }
+        fn supports_bounded_chat(&self) -> bool { true }
+        fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<ChatReply> {
+            assert!(keep());
+            assert!(req.aside && req.tools.is_empty());
+            assert!(req.messages.iter().any(|m| m.content.contains("sourdough starter")));
+            assert_eq!(req.output_schema.as_ref().unwrap()["properties"]["suggestions"]["items"]["properties"]["reference_ids"]["maxItems"], 0);
+            self.0.fetch_add(1, Ordering::SeqCst);
+            let text = r#"{"suggestions":[{"title":"Compare two starter jars","action":"Film the sourdough starter before feeding and again after rising, keeping the camera position fixed.","reason":"Visible changes give the viewer a concrete comparison.","reference_ids":[]}],"duration_seconds":null}"#;
+            assert!(on_text(text) && keep());
+            Ok(ChatReply::from_text(text))
+        }
+    }
+
+    #[test]
+    fn actual_creator_worker_requires_review_and_missing_model_never_completes_the_request() {
+        for available in [true, false] {
+            let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+            cfg.tools.as_mut().unwrap().editcraft.enabled = true;
+            cfg.tools.as_mut().unwrap().browser.launch = None;
+            let platform = MockPlatform::new(vec![]);
+            let root = std::env::temp_dir().join(format!("atlas-creator-daemon-{}-{}-{available}", std::process::id(), crate::store::now()));
+            let calls = Arc::new(AtomicUsize::new(0));
+            let model = available.then(|| Arc::new(BoundedProposal(calls.clone())) as Arc<dyn Llm>);
+            let mut d = Daemon::new(&cfg, &platform, model, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+            d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+            let command = "video idea for sourdough starter";
+            let t = crate::store::now();
+            let id = d.queue.push_at(command, crate::lanes::Lane::Background, t);
+            assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+            let reply = d.turn(command, t);
+            assert!(reply.contains("Nothing will be posted"), "{reply}");
+            let worker = d.last_crew_handoff.expect("actual creator handoff");
+            d.queue.attach_worker(id, worker, &reply);
+            assert_eq!(d.queue.tasks.iter().find(|task| task.id == id).unwrap().worker_id, Some(worker));
+            d.queue.save(&d.store).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let mut output = Vec::new();
+            while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && std::time::Instant::now() < deadline {
+                output.extend(d.take_crew_news(t + 1));
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
+            assert_eq!(task.state, crate::lanes::TaskState::Failed, "review or limited capability must not mark the whole requested journey Done: {}", output.join("; "));
+            assert_eq!(task.interrupted, available, "only a valid prepared proposal is waiting for owner review");
+            assert_eq!(calls.load(Ordering::SeqCst), usize::from(available));
+            assert!(d.long_work.jobs.iter().any(|job| job.outcome == if available { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed }));
+            drop(d);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn outstanding_cancels_the_exact_creator_worker_and_restart_does_not_replay_it() {
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().editcraft.enabled = true;
+        cfg.tools.as_mut().unwrap().browser.launch = None;
+        let platform = MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!("atlas-creator-cancel-{}-{}", std::process::id(), crate::store::now()));
+        let released = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (entered, receiver) = std::sync::mpsc::channel();
+        let model = Arc::new(HeldCreator { entered, released: released.clone() });
+        let mut d = Daemon::new(&cfg, &platform, Some(model), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        // Drop before Daemon on every assertion failure so its worker can wind down.
+        let release_guard = ReleaseOnDrop(released.clone());
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        let command = "video idea for sourdough starter";
+        let t = crate::store::now();
+        let id = d.queue.push_at(command, crate::lanes::Lane::Background, t);
+        assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+        let reply = d.turn(command, t);
+        let worker = d.last_crew_handoff.expect("actual creator worker");
+        d.queue.attach_worker(id, worker, &reply);
+        d.queue.save(&d.store).unwrap();
+        receiver.recv_timeout(std::time::Duration::from_secs(2)).expect("bounded creator model entered");
+        let cancelled = d.drop_outstanding(&format!("t:{id}"), t + 1).unwrap();
+        assert!(cancelled.stopping && cancelled.unsaved.is_none());
+        let pending: crate::lanes::Queue = d.store.load_checked("queue").unwrap().unwrap();
+        let task = pending.tasks.iter().find(|task| task.id == id).unwrap();
+        assert_eq!(task.state, crate::lanes::TaskState::Running);
+        assert!(task.stop_requested);
+        assert_eq!(task.worker_id, Some(worker));
+        released.store(true, Ordering::SeqCst);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && std::time::Instant::now() < deadline {
+            d.take_crew_news(t + 2);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let restarted = crate::lanes::Queue::load_checked(&d.store).unwrap();
+        let task = restarted.tasks.iter().find(|task| task.id == id).unwrap();
+        assert_eq!(task.state, crate::lanes::TaskState::Failed);
+        assert!(task.result.as_ref().is_some_and(|text| text.contains("stopped")));
+        assert!(d.long_work.jobs.iter().any(|job| job.outcome == crate::watching::Outcome::Failed));
+        assert_eq!(restarted.pending(), 0);
+        drop(release_guard);
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the parent's coordinated owned localhost model server"]
+    fn configured_local_model_runs_the_actual_daemon_creator_route_without_publication() {
+        let url = std::env::var("ATLAS_REAL_MODEL_URL").expect("coordinated local chat endpoint");
+        let authority = url.strip_prefix("http://").expect("local HTTP only").split('/').next().unwrap();
+        let (host, port) = authority.rsplit_once(':').expect("explicit localhost port");
+        assert!(matches!(host, "127.0.0.1" | "localhost"));
+        assert!(port.parse::<u16>().is_ok_and(|port| port != 0));
+        assert!(url.ends_with("/v1/chat/completions"));
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let tools = cfg.tools.as_mut().unwrap();
+        tools.editcraft.enabled = true;
+        tools.browser.launch = None;
+        tools.models.online_second = false;
+        tools.llm_secondary = None;
+        let mut http = crate::models::server_post();
+        http.args = http.args.iter().map(|arg| arg.replace("{url}", &url)).collect();
+        tools.llm = Some(crate::brain::LlmConfig { tool: http, request: "{}".into(), response_path: "content".into(), vision_request: None });
+        let model = crate::models::connection(tools).expect("production configured-primary factory");
+        assert!(model.supports_bounded_chat(), "production wrappers must preserve the bounded local interface");
+        let captured = Arc::new(std::sync::Mutex::new(String::new()));
+        let model = Arc::new(CaptureConfiguredCreator { inner: model, last: captured.clone() });
+        let platform = MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!("atlas-native-creator-daemon-{}-{}", std::process::id(), crate::store::now()));
+        let mut d = Daemon::new(&cfg, &platform, Some(model), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        for command in ["video idea for sourdough starter troubleshooting for beginners", "video structure for sourdough starter troubleshooting for beginners 60 seconds", "editing advice for sourdough starter troubleshooting for beginners"] {
+            let t = crate::store::now();
+            let id = d.queue.push_at(command, crate::lanes::Lane::Background, t);
+            assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+            let began = std::time::Instant::now();
+            let reply = d.turn(command, t);
+            assert!(reply.contains("Nothing will be posted"), "{reply}");
+            let worker = d.last_crew_handoff.expect("actual creator worker");
+            d.queue.attach_worker(id, worker, &reply);
+            d.queue.save(&d.store).unwrap();
+            let mut output = Vec::new();
+            while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && began.elapsed() < std::time::Duration::from_secs(45) {
+                output.extend(d.take_crew_news(t + 1));
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
+            assert!(began.elapsed() < std::time::Duration::from_secs(45), "actual configured creator route exceeded its unchanged budget");
+            assert_eq!(task.state, crate::lanes::TaskState::Failed, "preparation alone cannot complete publication");
+            assert!(task.interrupted, "a real valid proposal must reach NeedsYou, not limited-model failure: {}; {}", output.join("; "), captured.lock().unwrap());
+            assert!(output.iter().any(|line| line.contains("originality unverified")));
+            assert!(d.publisher.posts.is_empty());
+            let restarted = crate::lanes::Queue::load_checked(&d.store).unwrap();
+            assert!(restarted.tasks.iter().find(|task| task.id == id).unwrap().interrupted);
+            assert_eq!(restarted.pending(), 0);
+        }
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -2706,16 +3413,25 @@ pub(super) fn transcript_of(
     folder: &std::path::Path,
     keep_srt: Option<&std::path::Path>,
 ) -> String {
-    let Some(timed) = timed else { return String::new() };
+    transcript_checked(video, timed, vars, src, folder, keep_srt, &|| false).unwrap_or_default()
+}
+
+fn transcript_checked(
+    video: &crate::voice::VideoConfig,
+    timed: Option<&crate::tools::ExternalTool>,
+    vars: &crate::tools::Vars,
+    src: &str,
+    folder: &std::path::Path,
+    keep_srt: Option<&std::path::Path>,
+    stop: &dyn Fn() -> bool,
+) -> std::result::Result<String, String> {
+    let timed = timed.ok_or("no local transcriber is configured")?;
     let s = |p: &std::path::Path| p.display().to_string();
     let wav = folder.join("sound.wav");
     let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
     let mut sound = crate::retention::Recording::new(&wav, &scratch);
     sound.and_also(&wav.with_extension("srt"));
-    let made = crate::tools::command(&video.ffmpeg.command).args(crate::studio::audio_args(src, &s(&wav))).output();
-    if !made.is_ok_and(|o| o.status.success()) {
-        return String::new();
-    }
+    crate::studio::run_tool(&video.ffmpeg, crate::studio::audio_args(src, &s(&wav)), stop)?;
     let mut v = vars.clone();
     let stem_path = wav.with_extension("");
     v.insert("in_wav".into(), s(&wav));
@@ -2726,9 +3442,127 @@ pub(super) fn transcript_of(
     v.entry("lang_val".into()).or_default();
     let mut tool = timed.clone();
     tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
-    let Ok(srt) = tool.run(&v, None) else { return String::new() };
+    let srt = tool.run_stoppable(&v, None, stop).map_err(|e| e.to_string())?.ok_or("stopped")?;
+    let words = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
+    if words.trim().is_empty() { return Err("the transcriber returned no usable timed words".into()); }
     if let Some(keep) = keep_srt {
-        crate::kept!(std::fs::write(keep, &srt));
+        std::fs::write(keep, &srt).map_err(|e| format!("couldn't save captions: {e}"))?;
     }
-    crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ")
+    Ok(words)
+}
+
+#[cfg(test)]
+mod publication_and_signup_durability {
+    use super::*;
+    use crate::{config::Config, platform::mock::MockPlatform, proactive::{Proactive, ProactiveConfig}, store::Store};
+    #[test]
+    fn backup_contention_never_claims_a_post_was_scheduled_or_cancelled_durably() {
+        let root = std::env::temp_dir().join(format!("atlas-post-busy-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let store = Store::new(root.clone());
+        let cfg = Config::load(std::path::Path::new("config")).unwrap(); let platform = MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        let id = daemon.publisher.draft(crate::publish::Channel::X, "reviewed words"); daemon.publisher.save(&store).unwrap();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let held = std::thread::spawn(move || { let _guard = crate::store::state_transaction(&root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); }); ready_rx.recv().unwrap();
+        let schedule = daemon.schedule_post_at(id, "now", 1000);
+        let scheduled_state = daemon.publisher.get(id).unwrap().state;
+        let cancelled = daemon.schedule_post("cancel the post", 1001);
+        let cancelled_state = daemon.publisher.get(id).unwrap().state;
+        release_tx.send(()).unwrap(); held.join().unwrap();
+        assert!(schedule.contains("couldn't be saved"), "{schedule}"); assert_eq!(scheduled_state, crate::publish::PostState::Draft);
+        assert!(cancelled.contains("cancellation couldn't be saved"), "{cancelled}"); assert_eq!(cancelled_state, crate::publish::PostState::Cancelled);
+        assert_eq!(crate::publish::Publisher::load(&store).get(id).unwrap().state, crate::publish::PostState::Draft);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn unsaved_signup_password_or_access_never_starts_a_browser_worker() {
+        for blocked in ["vault", crate::signin::Access::RECORD] {
+            let root = std::env::temp_dir().join(format!("atlas-signup-save-{blocked}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+            let store = Store::new(root.clone()); let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+            cfg.tools.as_mut().unwrap().mail.accounts = vec![crate::mail::Account { name: "fixture".into(), address: "fixture@example.test".into(), ..Default::default() }];
+            cfg.tools.as_mut().unwrap().browser.launch = None;
+            let platform = MockPlatform::new(vec![]); let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+            assert_eq!(daemon.vault_home.root(), store.root());
+            daemon.vault = crate::vault::Vault::default(); daemon.vault.start_on_this_login(1000).unwrap();
+            std::fs::create_dir_all(&root).unwrap(); let path = root.join(format!("{blocked}.json")); if path.is_file() { std::fs::remove_file(&path).unwrap(); } std::fs::create_dir(&path).unwrap();
+            let result = daemon.start_sign_up("fixture.test", 1001);
+            assert!(result.contains("couldn't be saved") && result.contains("No external form opened") || result.contains("couldn't be saved") && result.contains("no external form opened"), "{result}");
+            assert_eq!(daemon.crew.active(), 0); assert!(store.load_checked::<crate::enrol::SignupAttempts>(crate::enrol::SIGNUP_ATTEMPTS).unwrap().is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod publication_terminal_results {
+    use super::*;
+    use crate::{
+        config::Config,
+        platform::mock::MockPlatform,
+        proactive::{Proactive, ProactiveConfig},
+        publish::{Channel, PostState},
+        store::Store,
+    };
+
+    #[test]
+    fn malformed_stopped_and_missing_results_clear_busy_and_keep_duplicate_fence() {
+        let cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let platform = MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!(
+            "atlas-post-terminal-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        let endings = [
+            crew::Ending::Stopped,
+            crew::Ending::Vanished,
+            crew::Ending::Done(Err("worker failed".into())),
+            crew::Ending::Done(Ok("broken".into())),
+            crew::Ending::Done(Ok("999999\tsent\twrong identity".into())),
+            crew::Ending::Done(Ok("1\tsent".into())),
+        ];
+        for ending in endings {
+            let id = daemon.publisher.draft(Channel::X, "hello");
+            daemon.publisher.mark_submission(id, false, "pending");
+            daemon.publication_jobs.insert(42, (id, 0));
+            daemon.posting.push((id, u64::MAX));
+            assert!(daemon
+                .post_news(42, &ending, 10)
+                .unwrap()
+                .contains("unconfirmed"));
+            assert_eq!(
+                daemon.publisher.get(id).unwrap().state,
+                PostState::Uncertain
+            );
+            assert!(!daemon.posting.iter().any(|(post, _)| *post == id));
+            assert!(daemon.publication_jobs.is_empty());
+            assert!(!daemon.publisher.approve(id));
+        }
+        drop(daemon);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_worker_after_deadline_becomes_uncertain_without_automatic_retry() {
+        let cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let platform = MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!("atlas-post-timeout-{}-{}", std::process::id(), crate::store::now()));
+        let mut daemon = Daemon::new(&cfg, &platform, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let id = daemon.publisher.draft(Channel::X, "hello"); daemon.publisher.approve(id);
+        daemon.publisher.mark_submission(id, false, "pending");
+        daemon.publication_jobs.insert(999999, (id, 0)); daemon.posting.push((id, u64::MAX));
+        assert!(daemon.check_publication_timeouts(119).is_empty());
+        assert_eq!(daemon.check_publication_timeouts(120).len(), 1);
+        assert_eq!(daemon.publisher.get(id).unwrap().state, PostState::Uncertain);
+        assert!(daemon.publisher.due(120, true).is_empty());
+        assert!(!daemon.publication_inflight(id));
+        assert!(daemon.posting.is_empty());
+        drop(daemon); let _ = std::fs::remove_dir_all(root);
+    }
 }

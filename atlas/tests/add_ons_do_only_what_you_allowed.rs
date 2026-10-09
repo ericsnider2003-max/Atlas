@@ -267,18 +267,205 @@ fn a_scheduled_add_on_runs_itself_through_the_same_checks() {
     let mut d = rig.daemon(&c, &p);
     let first = d.tick(100_000).join(" ");
     assert!(!first.contains("add-on"), "fired on first sight: {first}");
+    assert_eq!(scheduled_actions(&d), 0, "first sight records an anchor, not an action");
     let later = d.tick(100_000 + 15 * 60).join(" ");
     assert!(later.contains("Running wind down (the wind-down add-on)"), "{later}");
+    let completed_actions = scheduled_actions(&d);
+    assert_eq!(completed_actions, 2, "one occurrence must execute its two approved steps once");
+    let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+    assert_eq!(saved.claims.len(), 1);
+    assert!(saved.claims.values().all(|claim| claim.phase == plugins::SchedulePhase::Done));
+    assert!(saved.claims.values().all(|claim| claim.run.as_ref().is_some_and(|run| run.position == 2)));
     let soon = d.tick(100_000 + 16 * 60).join(" ");
     assert!(!soon.contains("Running wind down"), "ran twice in one period: {soon}");
+    assert_eq!(scheduled_actions(&d), completed_actions, "same period must not repeat effects");
 
     // Switched off: it doesn't run itself either.
-    plugins::set_off(&rig.store(), "wind-down", true).unwrap();
+    // A tick may have launched a real backup. Await root ownership, then
+    // acknowledge the decision under that same guard, rather than guessing
+    // that the next instruction runs after the snapshot worker finished.
+    let store = rig.store();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let guard = loop {
+        match store.transaction() {
+            Ok(guard) => break guard,
+            Err(atlas::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(error) => panic!("could not durably switch the add-on off: {error}"),
+        }
+    };
+    plugins::set_off(&store, "wind-down", true).unwrap();
+    drop(guard);
     let off = d.tick(100_000 + 60 * 60).join(" ");
     assert!(!off.contains("Running wind down"), "{off}");
+    assert_eq!(scheduled_actions(&d), completed_actions, "disabled add-ons must not act");
 }
 
 // ---------------------------------------------------------------- from a friend
+
+fn scheduled_text() -> String {
+    ADDON.replace("    triggers: [\"wind things down\"]\n", "    schedule: every 15 minutes\n")
+        .replace("close chrome", "what can you do").replace("[basics, desktop]", "[basics]")
+}
+
+fn scheduled_actions(d: &Daemon) -> usize {
+    d.journal.events.iter().filter(|event| event.kind == atlas::activity::Kind::Scheduled).count()
+}
+
+#[test]
+fn a_failed_schedule_claim_starts_no_step_and_retries_without_duplicates() {
+    let (c, p) = (cfg(), plat());
+    let rig = Rig::new("schedule-save-failure", &scheduled_text());
+    rig.approve(&c);
+    let mut d = rig.daemon(&c, &p);
+    d.tick(100_000);
+    let blocker = rig.store().root().join(format!("plugin_schedule_runs.{}.json.tmp", std::process::id()));
+    std::fs::create_dir(&blocker).unwrap();
+    let before = scheduled_actions(&d);
+    let failed = d.tick(100_900).join(" ");
+    assert!(!failed.contains("Running wind down"), "{failed}");
+    assert_eq!(scheduled_actions(&d), before, "no effect precedes its durable claim");
+    assert!(plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims.is_empty());
+    std::fs::remove_dir(&blocker).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut replies = Vec::new();
+    loop {
+        replies.extend(d.tick(100_901));
+        let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+        if saved.claims.values().any(|claim| claim.phase == plugins::SchedulePhase::Done) { break; }
+        assert!(std::time::Instant::now() < deadline, "no durable completion after lock release: {}", replies.join(" "));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(replies.join(" ").contains("Running wind down"), "{}", replies.join(" "));
+    assert!(scheduled_actions(&d) > before);
+    let completed = scheduled_actions(&d);
+    d.tick(100_960);
+    assert_eq!(scheduled_actions(&d), completed);
+    let runs = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+    assert_eq!(runs.claims.len(), 1);
+    assert!(runs.claims.values().all(|claim| claim.phase == plugins::SchedulePhase::Done));
+}
+
+#[test]
+fn an_interrupted_schedule_claim_is_visible_after_restart_and_never_replayed() {
+    let (c, p) = (cfg(), plat());
+    let rig = Rig::new("schedule-interruption", &scheduled_text());
+    rig.approve(&c);
+    let mut d = rig.daemon(&c, &p);
+    d.tick(100_000);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        d.tick(100_900);
+        if plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims.values().any(|claim| claim.phase == plugins::SchedulePhase::Done) { break; }
+        assert!(std::time::Instant::now() < deadline, "the occurrence never reached its durable terminal receipt");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let mut runs = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+    assert_eq!(runs.claims.len(), 1);
+    let claim = runs.claims.values_mut().next().unwrap();
+    // Reproduce a crash after the durable pre-effect claim, before a receipt.
+    claim.phase = plugins::SchedulePhase::InFlight;
+    claim.run = None;
+    runs.save(&rig.store()).unwrap();
+    drop(d);
+    let mut restarted = rig.daemon(&c, &p);
+    let before = scheduled_actions(&restarted);
+    let reply = restarted.tick(102_000).join(" ");
+    assert!(reply.contains("interrupted or unresolved"), "{reply}");
+    assert!(!reply.contains("Running wind down"), "{reply}");
+    restarted.tick(103_000);
+    assert_eq!(scheduled_actions(&restarted), before);
+    assert_eq!(plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims, runs.claims);
+}
+
+#[test]
+fn corrupt_schedule_history_is_preserved_and_blocks_automatic_actions() {
+    let (c, p) = (cfg(), plat());
+    let rig = Rig::new("schedule-corrupt", &scheduled_text());
+    rig.approve(&c);
+    let path = rig.store().root().join("plugin_schedule_runs.json");
+    let evidence = b"{ interrupted recovery record";
+    std::fs::write(&path, evidence).unwrap();
+    let mut d = rig.daemon(&c, &p);
+    let before = scheduled_actions(&d);
+    d.tick(100_000);
+    let reply = d.tick(100_900).join(" ");
+    assert!(!reply.contains("Running wind down"), "{reply}");
+    assert_eq!(scheduled_actions(&d), before);
+    assert_eq!(std::fs::read(path).unwrap(), evidence);
+}
+
+#[test]
+fn a_busy_schedule_keeps_its_first_sight_and_retries_after_the_lock_releases() {
+    let (c, p) = (cfg(), plat());
+    let rig = Rig::new("schedule-root-busy", &scheduled_text());
+    rig.approve(&c);
+    let mut d = rig.daemon(&c, &p);
+    let store = rig.store();
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _guard = store.transaction().unwrap();
+        ready_tx.send(()).unwrap();
+        release_rx.recv().unwrap();
+    });
+    ready_rx.recv().unwrap();
+    let before = scheduled_actions(&d);
+    let blocked = d.tick(100_000).join(" ");
+    assert!(!blocked.contains("Running wind down"), "{blocked}");
+    assert_eq!(scheduled_actions(&d), before);
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    let due = d.tick(100_900).join(" ");
+    assert!(due.contains("Running wind down"), "original first sight was lost: {due}");
+    assert!(scheduled_actions(&d) > before);
+    let done = scheduled_actions(&d);
+    d.tick(100_960);
+    assert_eq!(scheduled_actions(&d), done);
+}
+
+#[test]
+fn a_step_receipt_failure_holds_the_next_effect_and_restart_never_replays() {
+    let (c, p) = (cfg(), plat());
+    let text = scheduled_text().replace("permissions: [basics]", "permissions: [basics, desktop]")
+        .replace("command: resume", "command: close chrome");
+    let rig = Rig::new("schedule-progress-failure", &text);
+    rig.approve(&c);
+    plugins::trust_step(&rig.store(), &rig.dir(), &c.commands, "wind-down", "close chrome").unwrap();
+    let blocker = rig.store().root().join(format!("plugin_schedule_runs.{}.json.tmp", std::process::id()));
+    let injected = blocker.clone();
+    *p.after_close.borrow_mut() = Some(Box::new(move || { std::fs::create_dir(&injected).unwrap(); }));
+    let mut d = rig.daemon(&c, &p);
+    d.tick(100_000);
+    let closes = || p.actions().iter().filter(|action| matches!(action, atlas::platform::mock::Action::Close(_))).count();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        d.tick(100_900);
+        let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+        if closes() == 1 && saved.claims.values().any(|claim| claim.phase == plugins::SchedulePhase::InFlight) { break; }
+        assert!(std::time::Instant::now() < deadline, "the first effect and its durable pre-effect fence never arrived");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(closes(), 1, "the first effect really happened");
+    assert_eq!(scheduled_actions(&d), 1, "second step must wait for the first receipt");
+    let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+    let claim = saved.claims.values().next().unwrap();
+    assert_eq!(claim.phase, plugins::SchedulePhase::InFlight);
+    assert_eq!(claim.run.as_ref().unwrap().position, 0, "disk retains the unknown first outcome");
+    d.tick(100_960);
+    assert_eq!(closes(), 1);
+    assert_eq!(scheduled_actions(&d), 1);
+    drop(d);
+    std::fs::remove_dir(&blocker).unwrap();
+    *p.after_close.borrow_mut() = None;
+    let mut restarted = rig.daemon(&c, &p);
+    let before = scheduled_actions(&restarted);
+    let reply = restarted.tick(102_000).join(" ");
+    assert!(reply.contains("interrupted or unresolved"), "{reply}");
+    assert!(!reply.contains("Running wind down"), "{reply}");
+    assert_eq!(closes(), 1);
+    assert_eq!(scheduled_actions(&restarted), before);
+    assert_eq!(plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims, saved.claims);
+}
 
 #[test]
 fn an_add_on_a_friend_shares_waits_for_your_choice_then_runs_as_theirs() {

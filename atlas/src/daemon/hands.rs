@@ -1933,6 +1933,16 @@ impl<'a> Daemon<'a> {
     /// Returns what actually happened rather than a bool, so a caller cannot
     /// read "we tried" as "you were told".
     pub fn reach_you(&mut self, note: crate::notify::Note, t: u64) -> crate::notify::Sent {
+        self.reach_you_retained(note, t, true).0
+    }
+
+    pub(super) fn reach_you_retained(&mut self, note: crate::notify::Note, t: u64, retain: bool) -> (crate::notify::Sent, bool) {
+        let mut render_only=false;
+        let sent=self.reach_you_routed(note,t,retain,&mut render_only);
+        (sent,render_only)
+    }
+
+    fn reach_you_routed(&mut self, note: crate::notify::Note,t:u64,retain:bool,render_only:&mut bool)->crate::notify::Sent {
         use crate::notify::{route, Route, Sent};
         let cfg = self.notify_cfg();
         // Presence is not sensed on most machines, so `Unknown` is the honest
@@ -1986,7 +1996,7 @@ impl<'a> Daemon<'a> {
         // The interrupt rule locked with Eric (Sound & voice → When Atlas may
         // pop up): what may not pop up now waits, held, in the hub and the brief.
         if !self.tools_cfg().sound.may_pop_up(note.urgency == crate::notify::Urgency::Urgent) {
-            self.outbox.hold(note, &cfg);
+            if retain { self.outbox.hold(note, &cfg); }
             return Sent::Held;
         }
 
@@ -1998,24 +2008,28 @@ impl<'a> Daemon<'a> {
         let long_gone = self.quiet_for(t) > self.away_after * 4;
         let can_phone = crate::phone::configured(&phone_cfg).is_ok();
 
-        match route(here, can_speak, crate::notify::can_notify(&cfg), can_phone, long_gone) {
+        // Calendar's canonical queue can use the normal typed frontdoor at the desk.
+        // Pop-up permission and note discretion above apply to this display too.
+        let can_render=!retain && self.tiers.tier==Tier::Typed && here.worth_speaking();
+        match route(here, can_speak || can_render, crate::notify::can_notify(&cfg), can_phone, long_gone) {
             Route::Phone => match crate::phone::send(&note, &phone_cfg) {
                 Ok(()) => Sent::Notified,
                 // A push that did not land must not vanish. Held, so it still
                 // reaches you at the machine.
                 Err(e) => {
-                    if self.phone_to_retry.len() < PHONE_RETRY_MOST {
+                    if retain && self.phone_to_retry.len() < PHONE_RETRY_MOST {
                         self.phone_to_retry.push(note.clone());
                         if self.phone_retry_at <= t {
                             self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
                         }
                         let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
                     }
-                    self.outbox.hold(note, &cfg);
+                    if retain { self.outbox.hold(note, &cfg); }
                     Sent::Failed(e.to_string())
                 }
             },
             Route::Speak => {
+                *render_only=can_render;
                 let through = match &say {
                     crate::notify::Say::Aloud(d) => format!(" (aloud, {d})"),
                     crate::notify::Say::InYourEar(d) => format!(" (privately, {d})"),
@@ -2036,12 +2050,12 @@ impl<'a> Daemon<'a> {
                 // A failed notification must not vanish. It is held instead,
                 // so it still reaches you when you sit down.
                 Err(e) => {
-                    self.outbox.hold(note, &cfg);
+                    if retain { self.outbox.hold(note, &cfg); }
                     Sent::Failed(e)
                 }
             },
             Route::Hold => {
-                self.outbox.hold(note, &cfg);
+                if retain { self.outbox.hold(note, &cfg); }
                 Sent::Held
             }
         }
@@ -2189,6 +2203,15 @@ impl<'a> Daemon<'a> {
 
     /// Draw a panel Atlas decided on (`panel_contents`).
     pub(super) fn draw_panel(&mut self, panel: crate::panel::Panel) {
+        if panel == crate::panel::Panel::Tasks {
+            self.brief_requested_panel = true;
+            if let Err(why) = self.request_brief(crate::store::now()) {
+                self.brief_requested_panel = false;
+                self.log.warn(&why);
+                self.keep_said_for_apps(vec![why]);
+            }
+            return;
+        }
         if let Some((p, title, lines)) = self.panel_contents(panel) {
             self.show_panel(p, &title, lines);
         }
@@ -2210,11 +2233,25 @@ impl<'a> Daemon<'a> {
         // reaped from them; it is not killed.
         let t = crate::store::now();
         let name = "hidden_desktop";
+        // `want` can reuse its reservation without calling `start`. That
+        // result is not evidence that these new lines reached a window.
+        let mut launched = false;
         let opened = self.helpers.want(name, crate::lifecycle::typical_mb(name), t, || {
-            crate::window::open(&c).map(|()| None)
+            crate::window::open(&c).map(|()| {
+                launched = true;
+                None
+            })
         });
         match opened {
-            Ok(_) => self.helpers.done(name, t),
+            Ok(_) => {
+                self.helpers.done(name, t);
+                if launched && panel == crate::window::Panel::Outstanding {
+                    // Only complete opportunity subjects present in this
+                    // submitted panel count. This is not a full brief receipt.
+                    crate::hunting::acknowledge_delivered(self, &c.lines.join("\n"), t);
+                    self.acknowledge_prepared_effects(&c.lines.join("\n"), t);
+                }
+            }
             Err(e) => {
                 // Logged, never spoken. A failure to draw a window is Atlas's
                 // problem, not a thing to interrupt you with.

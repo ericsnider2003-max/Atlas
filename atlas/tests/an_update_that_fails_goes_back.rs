@@ -8,10 +8,15 @@
 //! get through and the previous one returns).
 
 use atlas::upgrade::{
-    begin_trial, check_new_build, current_trial, failed_at, health_check, is_known_bad, keep_old_at, roll_back,
-    swap_checked, tag_of, trial_on_start, trial_passed_by, update_history, version, Swapped, TrialStep, TRIAL_STARTS,
+    begin_trial, current_trial, failed_at, health_check, is_known_bad, keep_old_at, roll_back,
+    tag_of, trial_on_start, trial_passed_by, update_history, version, TrialStep, TRIAL_STARTS,
 };
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use atlas::upgrade::{check_new_build, swap_checked, Swapped};
+use std::path::PathBuf;
+#[cfg(unix)]
+use std::path::Path;
+#[cfg(unix)]
 use std::time::Duration;
 
 fn fresh(tag: &str) -> PathBuf {

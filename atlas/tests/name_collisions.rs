@@ -117,7 +117,6 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "brief::budget",
     "brief::due",
     "brief::gather",
-    "brief::run",
     // 26 Sep merge: the call write-up's own step (callnotes.rs), called only there;
     // collides with friends::free_name (ours).
     "callnotes::free_name",
@@ -303,7 +302,6 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // (`$crate::unheard::hear(..)`, which calls `record`); a name scan
     // doesn't expand macros.
     "unheard::hear",
-    "unheard::record",
     "unsub::judge",
     // 28 Sep 2026: its caller is `update_apply::update_tick` in the same
     // module, bare; `server::HubDoor::take_news` shares the name.
@@ -404,6 +402,19 @@ fn index(text: &str) -> Reach {
                     line[lhs_start..lhs_end].to_string(),
                     line[rhs_start..rhs_end].to_string(),
                 ));
+                // Split modules are indexed under their parent. Keep that
+                // parent when a real caller names a nested implementation.
+                let mut start = lhs_start;
+                while start > 0 && (bytes[start - 1].is_ascii_alphanumeric()
+                    || matches!(bytes[start - 1], b'_' | b':')) { start -= 1; }
+                let mut end = rhs_end;
+                while end < bytes.len() && (bytes[end].is_ascii_alphanumeric()
+                    || matches!(bytes[end], b'_' | b':')) { end += 1; }
+                let parts: Vec<_> = line[start..end].split("::").collect();
+                let root = usize::from(parts.first() == Some(&"crate"));
+                if parts.len() > root + 2 && !matches!(parts[root], "self" | "super" | "Self") {
+                    paths.insert((parts[root].to_string(), parts.last().unwrap().to_string()));
+                }
             }
             i = at + 2;
         }
@@ -560,6 +571,15 @@ fn current() -> BTreeSet<String> {
         }
     }
     out
+}
+
+#[test]
+fn nested_qualified_paths_keep_their_real_owner() {
+    let nested = index("crate::social::analysis::own_brief_line(snapshot); social::analysis::brief_digest(snapshot);");
+    assert!(nested.reaches("social", "own_brief_line"));
+    assert!(nested.reaches("social", "brief_digest"));
+    assert!(!nested.reaches("another", "own_brief_line"));
+    assert!(!index("own_brief_line(snapshot);").reaches("social", "own_brief_line"));
 }
 
 #[test]

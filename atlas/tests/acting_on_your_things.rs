@@ -195,13 +195,22 @@ fn a_moved_folder_arrives_whole_and_leaves_a_note_where_it_was() {
     std::fs::write(from.join("a.gguf"), vec![1u8; 2_000_000]).unwrap();
     std::fs::write(from.join("sub").join("b.onnx"), vec![2u8; 1_000_000]).unwrap();
     let to = root.join("D").join("atlas").join("models");
-    let m = atlas::tune::move_folder(&from, &to, 5).unwrap();
+    let store = atlas::store::Store::new(root.join("state"));
+    #[cfg(not(windows))] {
+        assert!(atlas::tune::move_folder_durably(&store, &from, &to, 5, &|| false).is_err());
+        assert_eq!(std::fs::read(from.join("a.gguf")).unwrap(), vec![1u8; 2_000_000]);
+        assert_eq!(std::fs::read(from.join("sub/b.onnx")).unwrap(), vec![2u8; 1_000_000]);
+        assert!(!to.exists()); return;
+    }
+    #[cfg(windows)] {
+    let m = atlas::tune::move_folder_durably(&store, &from, &to, 5, &|| false).unwrap();
     assert_eq!(m.mb, 3);
     assert!(to.join("sub").join("b.onnx").is_file(), "everything arrived");
     assert!(!from.exists(), "and the old one is cleared");
     let note = std::fs::read_to_string(from.with_extension("MOVED.txt")).unwrap();
     assert!(note.contains(&to.display().to_string()), "findable: {note}");
-    assert!(atlas::tune::move_folder(&from, &to, 6).is_err(), "nothing left to move");
+    assert!(atlas::tune::move_folder_durably(&store, &from, &to, 6, &|| false).is_err(), "nothing left to move");
+    }
 }
 
 // ------------------------------------------------------------------ G6

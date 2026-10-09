@@ -37,6 +37,15 @@ impl Llm for Real {
     fn native_chat(&self) -> bool {
         true
     }
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<ChatReply> {
+        let started = Instant::now();
+        let reply = atlas::models::chat_call_until(&self.url, req, on_text, keep_going);
+        let tools = reply.as_ref().map(|r| r.tool_calls.iter().map(|c| format!("{}({})", c.name, c.arguments)).collect()).unwrap_or_default();
+        let chars = req.messages.iter().map(|m| m.content.chars().count()).sum::<usize>() + req.tools.iter().map(|t| t.to_string().len()).sum::<usize>();
+        self.seen.lock().unwrap().push((chars, started.elapsed().as_millis() as u64, tools, atlas::models::take_last_timings()));
+        reply
+    }
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
         let started = Instant::now();
         let r = atlas::models::chat_call(&self.url, req, on_text);

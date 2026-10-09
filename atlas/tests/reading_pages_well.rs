@@ -160,6 +160,14 @@ fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
 
 struct Writer(Mutex<Vec<String>>);
 impl Llm for Writer {
+    fn supports_bounded_chat(&self) -> bool { true }
+    fn chat_until(&self, req: &atlas::brain::ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
+        if !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+        self.0.lock().unwrap().push(req.messages.iter().map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n"));
+        let text = "Ferns want bright, indirect light and damp soil. Both sources agree.";
+        if !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+        Ok(atlas::brain::ChatReply { text: text.into(), ..Default::default() })
+    }
     fn complete(&self, _system: &str, user: &str) -> atlas::error::Result<String> {
         self.0.lock().unwrap().push(user.to_string());
         Ok("Ferns want bright, indirect light and damp soil. Both sources agree.".into())

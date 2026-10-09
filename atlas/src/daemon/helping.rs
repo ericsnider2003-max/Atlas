@@ -5,7 +5,84 @@
 
 use super::*;
 
+pub(super) struct PendingReminderEdit {
+    request: String,
+    logical_time: u64,
+    deadline: std::time::Instant,
+    root: std::path::PathBuf,
+    owner: Vec<Option<Vec<u8>>>,
+    reminders: serde_json::Value,
+    fired: Option<(String, u64)>,
+}
+
+fn reminder_record(path: &std::path::Path) -> crate::error::Result<Option<Vec<u8>>> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.len() <= 2 * 1024 * 1024 => Ok(Some(std::fs::read(path)?)),
+        Ok(_) => Err(crate::error::AtlasError::Platform("reminder state exceeds its read budget".into())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 impl<'a> Daemon<'a> {
+    fn reminder_owner_records(&self) -> crate::error::Result<Vec<Option<Vec<u8>>>> {
+        let installed = crate::roots::state_dir();
+        let owner = if self.store.root().starts_with(&installed) { installed } else { self.store.root().to_path_buf() };
+        ["profiles.json", "handover.json"].iter().map(|name| reminder_record(&owner.join(name))).collect()
+    }
+    fn reminder_targets(&self) -> std::result::Result<serde_json::Value, String> {
+        super::brief_prep::snapshot_value(&self.scheduler.jobs.iter().filter(|job| job.command.starts_with("reminder ")).collect::<Vec<_>>())
+    }
+    fn saved_schedule_matches_memory(&self) -> crate::error::Result<bool> {
+        let bytes = reminder_record(&self.store.root().join("schedule.json"))?;
+        let saved = match bytes {
+            Some(bytes) => {
+                let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| crate::error::AtlasError::Platform(format!("saved reminders could not be read: {error}")))?;
+                value.get("data").cloned().unwrap_or(value)
+            }
+            None => serde_json::to_value(crate::scheduler::Scheduler::default()).map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?,
+        };
+        Ok(saved == serde_json::to_value(&self.scheduler).map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?)
+    }
+    fn defer_reminder_edit(&mut self, request: &str, logical_time: u64) -> String {
+        if let Some(pending) = &self.pending_reminder_edit {
+            return format!("Still waiting to save '{}'. That change is not saved yet; I haven't replaced it with another request.", pending.request);
+        }
+        let captured = (|| -> crate::error::Result<PendingReminderEdit> {
+            Ok(PendingReminderEdit { request: request.into(), logical_time, deadline: std::time::Instant::now() + std::time::Duration::from_secs(30), root: self.store.root().into(), owner: self.reminder_owner_records()?, reminders: self.reminder_targets().map_err(crate::error::AtlasError::Platform)?, fired: self.last_reminder_fired.clone() })
+        })();
+        match captured {
+            Ok(pending) => { self.pending_reminder_edit = Some(pending); "Waiting for local storage to save that reminder change. It is not saved yet; closing Atlas would cancel this waiting request.".into() }
+            Err(error) => format!("That reminder change was not saved or queued: {error}"),
+        }
+    }
+    pub(super) fn cancel_pending_reminder_edit(&mut self) -> bool { self.pending_reminder_edit.take().is_some() }
+    pub(super) fn poll_pending_reminder_edit(&mut self) -> Option<String> {
+        let pending = self.pending_reminder_edit.as_ref()?;
+        if std::time::Instant::now() >= pending.deadline {
+            self.pending_reminder_edit = None;
+            return Some("The waiting reminder change expired before storage became available. It was not saved.".into());
+        }
+        if self.attention.is_paused() { return None; }
+        let store = self.store.clone();
+        let _guard = match store.transaction() {
+            Ok(guard) => guard,
+            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => return None,
+            Err(error) => { self.pending_reminder_edit = None; return Some(format!("The waiting reminder change could not be saved: {error}")); }
+        };
+        let pending = self.pending_reminder_edit.take()?;
+        let saved_matches = match self.saved_schedule_matches_memory() {
+            Ok(matches) => matches,
+            Err(error) => return Some(format!("The waiting reminder change was canceled because its saved state could not be checked: {error}. It was not saved.")),
+        };
+        if self.store.root() != pending.root || self.reminder_owner_records().ok().as_ref() != Some(&pending.owner)
+            || !saved_matches
+            || self.reminder_targets().as_ref().ok() != Some(&pending.reminders) || self.last_reminder_fired != pending.fired {
+            return Some("The person or saved reminders changed while this request waited. The waiting reminder change was canceled without saving it.".into());
+        }
+        self.remind_help(&pending.request, pending.logical_time).or_else(|| self.keeping_track(&pending.request, pending.logical_time))
+    }
+
     pub(super) fn health_cfg(&self) -> HealthConfig {
         self.tools_ref().map(|t| t.health.clone()).unwrap_or_default()
     }
@@ -120,6 +197,28 @@ impl<'a> Daemon<'a> {
             }
         }
         let ask = crate::keeping::read(said)?;
+        let reminder_edit = matches!(&ask, Ask::CancelReminder(_) | Ask::Timer(_) | Ask::Snooze(_));
+        if reminder_edit && self.pending_reminder_edit.is_some() { return Some(self.defer_reminder_edit(said, t)); }
+        let _transaction = if matches!(&ask, Ask::ListReminders) {
+            None
+        } else {
+            match self.store.transaction() {
+                Ok(guard) => Some(guard),
+                Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock && reminder_edit => return Some(self.defer_reminder_edit(said, t)),
+                Err(error) => return Some(format!("I couldn't save that change: storage is unavailable ({error}). Please try again.")),
+            }
+        };
+        let previous_scheduler = self.scheduler.clone();
+        let previous_last = self.last_reminder_set;
+        macro_rules! keep_schedule_change {
+            () => {
+                if let Err(error) = self.scheduler.save(&self.store) {
+                    self.scheduler = previous_scheduler.clone();
+                    self.last_reminder_set = previous_last;
+                    return Some(format!("I couldn't save that reminder change ({error}); the saved reminders are unchanged."));
+                }
+            };
+        }
         let reminders = |s: &Self| -> Vec<crate::scheduler::Job> {
             let mut v: Vec<crate::scheduler::Job> =
                 s.scheduler.active().into_iter().filter(|j| j.command.starts_with("reminder ")).cloned().collect();
@@ -185,17 +284,17 @@ impl<'a> Daemon<'a> {
                 if !theirs.is_empty() && (all.is_empty() || matches!(which, Which::About(_)) && !ours_match) {
                     let there = self.where_it_rings();
                     for e in &theirs {
-                        self.cancel_elsewhere(&e.key);
+                        if let Err(error) = self.cancel_elsewhere(&e.key, t) { return Some(format!("I couldn't save that cancellation: {error}. The other device's reminder is unchanged.")); }
                     }
                     return Some(if theirs.len() == 1 {
-                        format!("Cancelled: {} (it was set {there}; it won't ring there).", theirs[0].words())
+                        format!("Cancellation saved for {} (set {there}); it will reach that device on the next sync.", theirs[0].words())
                     } else {
-                        format!("Cancelled all {} (set {there}; they won't ring there).", theirs.len())
+                        format!("Saved {} cancellations (set {there}); they will reach that device on the next sync.", theirs.len())
                     });
                 }
                 if matches!(which, Which::All) {
                     for e in &theirs {
-                        self.cancel_elsewhere(&e.key);
+                        if let Err(error) = self.cancel_elsewhere(&e.key, t) { return Some(format!("I couldn't save that cancellation: {error}. Check the reminders before trying again.")); }
                     }
                 }
                 if all.is_empty() {
@@ -230,10 +329,9 @@ impl<'a> Daemon<'a> {
                         chosen.iter().map(|j| format!("{} (#{})", words_of(j), j.id)).collect::<Vec<_>>().join("; ")
                     )),
                     _ => {
-                        for j in &chosen {
-                            self.scheduler.cancel(j.id);
-                        }
-                        let _ = self.scheduler.save(&self.store);
+                        for j in &chosen { self.scheduler.cancel(j.id); }
+                        keep_schedule_change!();
+                        for j in &chosen { self.cancel_scheduled_job(j.id); }
                         Some(if chosen.len() == 1 {
                             format!("Cancelled: {}.", words_of(&chosen[0]))
                         } else {
@@ -245,7 +343,7 @@ impl<'a> Daemon<'a> {
             Ask::Timer(secs) => {
                 let id = self.scheduler.at(&format!("reminder Your {} timer is done.", say_duration(secs).replace(' ', "-").trim_end_matches('s')), t + secs);
                 self.last_reminder_set = Some(id);
-                let _ = self.scheduler.save(&self.store);
+                keep_schedule_change!();
                 Some(format!("Timer set for {}. (#{id})", say_duration(secs)))
             }
             Ask::Snooze(secs) => {
@@ -253,15 +351,20 @@ impl<'a> Daemon<'a> {
                 let secs = secs.unwrap_or(crate::keeping::SNOOZE_SECS);
                 let id = self.scheduler.at(&command, t + secs);
                 self.last_reminder_set = Some(id);
-                let _ = self.scheduler.save(&self.store);
+                keep_schedule_change!();
                 Some(format!("I'll say it again in {}.", say_duration(secs)))
             }
             Ask::CancelEvent(what) => {
                 let found = self.event_meant(&what, t)?;
                 let title = found.title.clone();
                 let when = found.say_when();
+                let previous = self.calendar.clone();
                 self.calendar.remove(found.id);
-                let _ = self.calendar.save(&self.store);
+                if let Err(error) = self.calendar.save(&self.store) {
+                    self.calendar = previous;
+                    self.calendar.request_refresh();
+                    return Some(format!("I couldn't confirm the calendar cancellation ({error}). Refresh the calendar before trying again; its saved status is unconfirmed."));
+                }
                 Some(format!("Taken off your calendar: {title}, {when}."))
             }
             Ask::MoveEvent { what, to } => {
@@ -277,8 +380,13 @@ impl<'a> Daemon<'a> {
                     Some(crate::calendar::When { start, end: start + len, all_day: false })
                 })?;
                 let new_when = if new_when.all_day { new_when } else { crate::calendar::When { end: new_when.start + len, ..new_when } };
+                let previous = self.calendar.clone();
                 self.calendar.move_to(found.id, new_when);
-                let _ = self.calendar.save(&self.store);
+                if let Err(error) = self.calendar.save(&self.store) {
+                    self.calendar = previous;
+                    self.calendar.request_refresh();
+                    return Some(format!("I couldn't confirm the calendar change ({error}). Refresh the calendar before trying again; its saved status is unconfirmed."));
+                }
                 let moved = self.calendar.event(found.id).map(|e| e.say_when()).unwrap_or_default();
                 Some(format!("Moved {} to {moved}.", found.title))
             }
@@ -397,6 +505,24 @@ impl<'a> Daemon<'a> {
         let lnow = zone.to_local(now as i64).max(0) as u64;
         let back = |local: u64| zone.to_utc(local as i64).max(0) as u64;
 
+        if self.pending_reminder_edit.is_some() { return Some(self.defer_reminder_edit(said, t)); }
+        let _transaction = match self.store.transaction() {
+            Ok(guard) => guard,
+            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => return Some(self.defer_reminder_edit(said, t)),
+            Err(error) => return Some(format!("I haven't set that reminder: storage is unavailable ({error}). Please try again.")),
+        };
+        let before = self.scheduler.clone();
+        let previous_last = self.last_reminder_set;
+        macro_rules! keep_reminder {
+            () => {
+                if let Err(error) = self.scheduler.save(&self.store) {
+                    self.scheduler = before.clone();
+                    self.last_reminder_set = previous_last;
+                    return Some(format!("I couldn't save that reminder ({error}); it has not been set."));
+                }
+            };
+        }
+
         // (1) Relative: "in 20 minutes", "in 2 hours".
         if let Some(secs) = relative_secs(&low) {
             let text = reminder_text(said);
@@ -405,7 +531,7 @@ impl<'a> Daemon<'a> {
             // disagreed whenever they weren't the same clock).
             let id = self.scheduler.at(&format!("reminder Reminder: {text}"), now + secs);
             self.last_reminder_set = Some(id);
-            let _ = self.scheduler.save(&self.store);
+            keep_reminder!();
             return Some(format!(
                 "Right — in {}, I'll remind you to {text}. (#{id})",
                 say_duration(secs)
@@ -423,7 +549,7 @@ impl<'a> Daemon<'a> {
                     return Some(format!("What time? — \"remind me {} at 9 to …\".", rule.describe()));
                 };
                 let id = self.scheduler.on_rule(&format!("reminder Reminder: {text}"), &rule, back(when.start), &zone);
-                let _ = self.scheduler.save(&self.store);
+                keep_reminder!();
                 return Some(format!("Set — {} I'll remind you to {text}. (#{id})", rule.describe()));
             }
             let Ok(first) = first_occurrence(said, lnow) else {
@@ -447,7 +573,7 @@ impl<'a> Daemon<'a> {
                 };
                 return Some(match self.scheduler.on_cron(&format!("reminder Reminder: {text}"), &expr, now, &zone) {
                     Ok(id) => {
-                        let _ = self.scheduler.save(&self.store);
+                        keep_reminder!();
                         format!("Set — {cadence} at {h:02}:{m:02} {} I'll remind you to {text}. (#{id})", zone.abbreviation_at(now as i64))
                     }
                     Err(why) => format!("I couldn't set that: {why}"),
@@ -463,7 +589,7 @@ impl<'a> Daemon<'a> {
                     return Some(
                         match self.scheduler.on_cron(&format!("reminder Reminder: {text}"), &format!("{m} {h} * * MON-FRI"), now, &zone) {
                             Ok(id) => {
-                                let _ = self.scheduler.save(&self.store);
+                                keep_reminder!();
                                 format!("Set — every weekday I'll remind you to {text}. (#{id})")
                             }
                             Err(why) => format!("I couldn't set that: {why}"),
@@ -473,7 +599,7 @@ impl<'a> Daemon<'a> {
                 crate::calendar::Repeat::Once | crate::calendar::Repeat::Rule(_) => unreachable!(),
             };
             let id = self.scheduler.every(&format!("reminder Reminder: {text}"), every, first);
-            let _ = self.scheduler.save(&self.store);
+            keep_reminder!();
             return Some(format!("Set — {cadence} I'll remind you to {text}. (#{id})"));
         }
 
@@ -485,7 +611,7 @@ impl<'a> Daemon<'a> {
             Ok(first) => {
                 let text = reminder_text(said);
                 let id = self.scheduler.at(&format!("reminder Reminder: {text}"), back(first));
-                let _ = self.scheduler.save(&self.store);
+                keep_reminder!();
                 return Some(format!("Set — {} I'll remind you to {text}. (#{id})", local_moment(first, lnow)));
             }
             Err(Some(why)) => {
@@ -727,4 +853,95 @@ impl<'a> Daemon<'a> {
     pub(super) fn called(&self) -> String {
         self.memory.preference("called").unwrap_or("").trim().to_string()
     }
+}
+
+#[cfg(test)]
+mod durable_reminder_changes {
+    use super::*;
+    fn config() -> crate::config::Config {
+        let mut config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        config.tools.as_mut().unwrap().backup.enabled = false;
+        config
+    }
+    fn root(tag: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("atlas-reminder-proof-{tag}-{}-{}", std::process::id(), crate::store::now()));
+        std::fs::create_dir_all(&root).unwrap(); root
+    }
+    #[test]
+    fn busy_storage_cannot_claim_a_reminder_or_timer_was_set() {
+        let root = root("busy"); let store = crate::store::Store::new(&root);
+        let config = config(); let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let (ready, received) = std::sync::mpsc::channel(); let (release, wait) = std::sync::mpsc::channel();
+        let held = store.clone();
+        let worker = std::thread::spawn(move || { let _guard = crate::store::wait_for_state_transaction(held.root()).unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); });
+        received.recv().unwrap();
+        let reminder = daemon.remind_help("remind me in 20 minutes to drink water", 1000).unwrap();
+        let timer = daemon.keeping_track("set a timer for 10 minutes", 1000).unwrap();
+        let count = daemon.scheduler.active().len();
+        release.send(()).unwrap(); worker.join().unwrap();
+        assert!(reminder.contains("not saved yet"), "{reminder}");
+        assert!(timer.contains("haven't replaced"), "{timer}");
+        assert_eq!(count, 0);
+        assert_eq!(daemon.last_reminder_set, None);
+        drop(daemon); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn failed_save_keeps_a_previous_reminder_and_refuses_new_timers() {
+        let root = root("disk"); let store = crate::store::Store::new(&root);
+        let config = config(); let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let id = daemon.scheduler.at("reminder Drink water", 2200);
+        daemon.last_reminder_set = Some(id);
+        let guard = crate::store::wait_for_state_transaction(&root).unwrap();
+        daemon.scheduler.save(&store).unwrap();
+        let saved = root.join("schedule.json"); std::fs::remove_file(&saved).unwrap(); std::fs::create_dir(&saved).unwrap();
+        std::fs::write(saved.join("owner.txt"), "keep this folder").unwrap();
+        let cancel = daemon.keeping_track("cancel all reminders", 1000).unwrap();
+        let timer = daemon.keeping_track("set a timer for 10 minutes", 1000).unwrap();
+        let reminder = daemon.remind_help("remind me in 20 minutes to walk", 1000).unwrap();
+        assert!(cancel.contains("couldn't save"), "{cancel}");
+        assert!(timer.contains("couldn't save"), "{timer}");
+        assert!(reminder.contains("couldn't save"), "{reminder}");
+        assert_eq!(daemon.scheduler.active().iter().map(|j| j.id).collect::<Vec<_>>(), vec![id]);
+        assert_eq!(daemon.last_reminder_set, Some(id));
+        assert_eq!(std::fs::read_to_string(saved.join("owner.txt")).unwrap(), "keep this folder");
+        drop(guard); drop(daemon); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn held_snooze_retries_once_at_original_time_and_invalidations_save_nothing() {
+        for case in ["release", "cancel", "expiry", "owner"] {
+            let root = root(case); let store = crate::store::Store::new(&root);
+            let config = config(); let platform = crate::platform::mock::MockPlatform::new(vec![]);
+            let mut daemon = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+            daemon.last_reminder_fired = Some(("reminder Reminder: stretch".into(), 1000));
+            let (ready, received) = std::sync::mpsc::channel(); let (release, wait) = std::sync::mpsc::channel();
+            let held = store.clone();
+            let worker = std::thread::spawn(move || { let _guard = held.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); });
+            received.recv().unwrap();
+            let started = std::time::Instant::now();
+            let waiting = daemon.keeping_track("snooze", 1130).unwrap();
+            assert!(waiting.contains("not saved yet"));
+            assert!(daemon.poll_pending_reminder_edit().is_none());
+            assert!(started.elapsed() < std::time::Duration::from_millis(200));
+            assert!(daemon.scheduler.jobs.is_empty());
+            release.send(()).unwrap(); worker.join().unwrap();
+            match case {
+                "cancel" => { let reply = daemon.turn("stop", 1131); assert!(reply.contains("not saved")); }
+                "expiry" => daemon.pending_reminder_edit.as_mut().unwrap().deadline = std::time::Instant::now(),
+                "owner" => std::fs::write(root.join("handover.json"), "changed fixture owner").unwrap(),
+                _ => {}
+            }
+            let terminal = daemon.poll_pending_reminder_edit();
+            if case == "release" {
+                assert_eq!(terminal.as_deref(), Some("I'll say it again in 10 minutes."));
+                assert_eq!(daemon.scheduler.jobs.len(), 1);
+                assert_eq!(daemon.scheduler.jobs[0].due, 1730, "retry must use the original request's time");
+                assert_eq!(store.load::<crate::scheduler::Scheduler>("schedule").jobs.len(), 1);
+            } else { assert!(daemon.scheduler.jobs.is_empty(), "{case} saved an invalidated request"); }
+            assert!(daemon.poll_pending_reminder_edit().is_none(), "request was repeated");
+            drop(daemon); std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
 }

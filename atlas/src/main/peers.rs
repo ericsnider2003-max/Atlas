@@ -529,7 +529,7 @@ pub(super) fn run_handoffs(args: &[String]) {
                             // own. Leaving both means the same file twice on
                             // disk and a stale one to wonder about later.
                             if let Some(f) = &got.file {
-                                atlas::heard!(std::fs::remove_file(store.root().join(&f.stored_at)));
+                                atlas::heard!(atlas::store::remove_state_file(store.root(), &store.root().join(&f.stored_at)));
                             }
                             println!("Kept it — it's in the tray as {tid}.");
                         }
@@ -551,7 +551,7 @@ pub(super) fn run_handoffs(args: &[String]) {
                         // that leaves the file on disk is a lie about what
                         // just happened.
                         if let Some(f) = &got.file {
-                            atlas::heard!(std::fs::remove_file(store.root().join(&f.stored_at)));
+                            atlas::heard!(atlas::store::remove_state_file(store.root(), &store.root().join(&f.stored_at)));
                         }
                         println!("Dropped the one from {}.", got.from);
                     }

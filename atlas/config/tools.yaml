@@ -1576,7 +1576,6 @@ mail:
   # Sending. Both default off, and the second one is not sufficient on its
   # own: cold outreach also needs the per-recipient approval list to say yes
   # to that specific recipient. A master switch and an allowlist, both.
-  may_email_clients: false        # send drafted replies to known clients unasked
   may_email_brands: false         # cold outreach at all
   cold_outreach_daily_cap: 5      # client replies are never counted against this
 

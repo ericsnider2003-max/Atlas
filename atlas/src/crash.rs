@@ -173,10 +173,7 @@ pub fn watch(store_root: &Path) {
             // — which is exactly the situation the hook is for — would leave
             // an empty or half-written note where the previous crash's note
             // used to be, and the previous one is the more useful of the two.
-            let tmp = path.with_extension("json.writing");
-            if std::fs::write(&tmp, json).is_ok() {
-                crate::kept!(std::fs::rename(&tmp, &path));
-            }
+            crate::kept!(crate::store::write_whole_in_state(path.parent().unwrap_or(Path::new(".")), &path, json.as_bytes()));
         }
         previous(info);
     }));
@@ -205,7 +202,7 @@ pub fn last(store: &Store) -> Option<Note> {
 pub fn take(store: &Store) -> Option<Note> {
     let n = last(store);
     if n.is_some() {
-        crate::heard!(std::fs::remove_file(note_path(store.root())));
+        crate::heard!(crate::store::remove_state_file(store.root(), &note_path(store.root())));
     }
     n
 }
@@ -281,6 +278,7 @@ fn restarts_path(state_dir: &Path) -> PathBuf {
 /// that wasn't coming. Task Scheduler doesn't restart a program that exits
 /// with an error.
 pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
+    let Ok(_state) = crate::store::state_transaction(state_dir) else { return false };
     let path = restarts_path(state_dir);
     let mut recent: Vec<u64> = std::fs::read_to_string(&path)
         .ok()
@@ -294,7 +292,7 @@ pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
     crate::heard!(std::fs::create_dir_all(state_dir));
     // A restart that can't be counted isn't made: uncounted, a crash on
     // every start would restart for ever.
-    serde_json::to_string(&recent).ok().is_some_and(|json| std::fs::write(&path, json).is_ok())
+    serde_json::to_string(&recent).ok().is_some_and(|json| crate::store::write_whole(&path, json.as_bytes()).is_ok())
 }
 
 #[cfg(test)]

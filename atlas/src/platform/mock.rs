@@ -31,6 +31,8 @@ pub struct MockPlatform {
     launched: RefCell<HashSet<String>>,
     running: RefCell<HashMap<String, WindowId>>,
     pub log: RefCell<Vec<Action>>,
+    /// Fault injection after the fake OS has actually closed an app.
+    pub after_close: RefCell<Option<Box<dyn Fn()>>>,
     pub active: RefCell<Option<ActiveWindow>>,
     next_id: RefCell<u64>,
     /// A real in-memory clipboard, so read/write can be driven end to end in a
@@ -102,6 +104,7 @@ impl MockPlatform {
             readings: RefCell::new(crate::health::Readings::default()),
             kind: std::cell::Cell::new(crate::sync::Kind::Full),
             log: RefCell::new(Vec::new()),
+            after_close: RefCell::new(None),
             active: RefCell::new(None),
             next_id: RefCell::new(1),
             clipboard: RefCell::new(None),
@@ -355,6 +358,7 @@ impl Platform for MockPlatform {
         self.polls.borrow_mut().remove(&k);
         self.launched.borrow_mut().remove(&k);
         self.log.borrow_mut().push(Action::Close(k));
+        if let Some(callback) = self.after_close.borrow().as_ref() { callback(); }
         Ok(())
     }
 

@@ -177,7 +177,7 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
     );
     let out = until(&mut d, atlas::store::now() + 50, |_, out| out.iter().any(|l| l.contains("call notes are written")));
     assert!(out.iter().any(|l| l.contains("call notes are written")), "{out:?}");
-    let notes = std::fs::read_dir(dir.join("notes")).unwrap().flatten().next().expect("no notes file");
+    let notes = std::fs::read_dir(dir.join("notes")).unwrap().flatten().find(|entry| entry.path().extension().is_some_and(|extension| extension == "md")).expect("no notes document");
     let text = std::fs::read_to_string(notes.path()).unwrap();
     assert!(text.contains("Agreed to ship Friday."), "{text}");
     assert!(d.journal.events.iter().any(|e| e.what.starts_with("call notes:")), "not on the record");

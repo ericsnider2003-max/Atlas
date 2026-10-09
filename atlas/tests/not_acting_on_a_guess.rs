@@ -108,12 +108,15 @@ fn a_matched_phrase_is_not_second_guessed() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, Some(Arc::new(ConfidentlyWrong)), "matched");
 
+    std::fs::create_dir_all(d.notes_dir()).unwrap();
+    std::fs::write(d.notes_dir().join("matched-proof.md"), "Disposable matched proof").unwrap();
     let reply = d.turn("rebuild the index", 100);
 
     assert!(
-        reply.contains("nothing to index"),
+        reply.contains("Rebuilt the index"),
         "a phrase it matched exactly did not just run: {reply}"
     );
+    assert!(d.contents.lines.iter().any(|line| line.name.contains("matched-proof")));
     assert!(
         !reply.contains("I took that as"),
         "asked about a phrase it matched exactly: {reply}"
@@ -129,12 +132,16 @@ fn switching_it_off_restores_the_old_behaviour_exactly() {
     let p = plat();
     let mut d = daemon(&c, &p, Some(Arc::new(ConfidentlyWrong)), "off");
 
+    std::fs::create_dir_all(d.notes_dir()).unwrap();
+    std::fs::write(d.notes_dir().join("gate-off-proof.md"), "Disposable gate proof").unwrap();
+
     let reply = d.turn("mmh the thing with the files would you", 100);
 
     assert!(
-        reply.contains("nothing to index"),
+        reply.contains("Rebuilt the index"),
         "with the gate off the action should simply run: {reply}"
     );
+    assert!(d.contents.lines.iter().any(|line| line.name.contains("gate-off-proof")), "inferred rebuild did not index the seeded note");
     assert!(!reply.contains("I took that as"), "still gating with the setting off: {reply}");
 }
 

@@ -24,6 +24,44 @@ fn plat() -> MockPlatform {
 const NOW: u64 = 1_790_776_800;
 
 #[test]
+fn a_reviewed_lead_and_explicit_client_draft_survive_restart_without_submission() {
+    let (mut c, p) = (cfg(), plat());
+    c.tools.as_mut().unwrap().mail = serde_yaml::from_str("may_email_clients: true\n").unwrap();
+    c.tools.as_mut().unwrap().mail.accounts = vec![atlas::mail::Account { name: "personal".into(), address: "me@example.com".into(), password_from_vault: "synthetic missing mail".into(), ..Default::default() }];
+    c.tools.as_mut().unwrap().browser.launch = None;
+    let store = Store::new(tmp("business-journey"));
+    let now = atlas::store::now();
+    let lead = atlas::hunt::Found { id: "reviewed-video-lead".into(), source: atlas::hunt::Source::Hn, kind: atlas::hunt::Kind::Gig, title: "Video editor for local demonstrations".into(), link: "https://example.org/synthetic-lead".into(), summary: "Owner must contact separately".into(), at: now, closes: None, pay: None, remote: true };
+    let mut hunt = atlas::hunt::HuntState::default(); hunt.merge(vec![lead.clone()], &atlas::hunt::Interests::default(), now); store.save(atlas::hunt::FILE, &hunt).unwrap();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let review = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Opportunities));
+    assert!(review.body.contains("Video editor"));
+    atlas::hublive::reply(&mut d, atlas::server::Action::HubPost { path: "/hub/opportunities".into(), fields: vec![("what".into(), "save".into()), ("id".into(), lead.id.clone())] });
+    assert!(atlas::clients::ClientList::load_checked(&store).unwrap().is_empty());
+    assert!(atlas::outbox::Outbox::load_checked(&store).unwrap().waiting().is_empty());
+    drop(d);
+    let saved: atlas::hunt::HuntState = store.load_checked(atlas::hunt::FILE).unwrap().unwrap(); assert!(saved.saved.iter().any(|item| item.id == lead.id));
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    atlas::hublive::reply(&mut d, atlas::server::Action::HubPost { path: "/hub/clients".into(), fields: vec![("address".into(), "sam@example.com".into()), ("name".into(), "Sam".into())] });
+    d.turn("Sam's email is sam@example.com", now);
+    let drafted = d.turn("email Sam saying I'll prepare a video editing outline", now + 1); assert!(drafted.contains("send it"), "{drafted}");
+    let before = atlas::outbox::Outbox::load_checked(&store).unwrap().waiting_for("sam@example.com").unwrap().clone();
+    assert_eq!(before.status, atlas::outbox::Status::Waiting); assert_eq!(d.crew.active(), 0);
+    drop(d);
+    let after = atlas::outbox::Outbox::load_checked(&Store::new(store.root())).unwrap().waiting_for("sam@example.com").unwrap().clone(); assert_eq!(serde_json::to_value(&before).unwrap(), serde_json::to_value(&after).unwrap());
+    c.tools.as_mut().unwrap().mail.accounts.clear();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let review = d.turn("send the reply to Sam", now + 2);
+    assert!(review.starts_with("Review the current reply"), "{review}");
+    assert!(review.contains(&before.body) && review.contains(&before.to_address) && review.contains("Nothing sent"), "the restarted draft must be reviewed before approval: {review}");
+    assert_eq!(d.crew.active(), 0);
+    let refusal = d.turn("send it", now + 3);
+    assert!(refusal.contains("original mailbox") && refusal.contains("no longer connected") && refusal.contains("Nothing sent"), "fresh approval cannot silently switch mailboxes: {refusal}");
+    assert_eq!(d.crew.active(), 0);
+    assert_eq!(serde_json::to_value(atlas::outbox::Outbox::load_checked(&store).unwrap().waiting_for("sam@example.com").unwrap()).unwrap(), serde_json::to_value(&before).unwrap());
+}
+
+#[test]
 fn a_note_is_kept_and_found_again() {
     let (c, p) = (cfg(), plat());
     let mut d = Daemon::new(&c, &p, None, Store::new(tmp("notes")), Proactive::new(ProactiveConfig::default()));
@@ -252,7 +290,43 @@ fn the_days_brief_waits_until_you_are_here() {
     // You sit down.
     *p.input_idle.borrow_mut() = Some(5);
     d.tick(t + 60);
-    assert_eq!(store.load::<u64>("last_brief_at"), t + 60, "you're here and it's a new day");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while store.load::<u64>("last_brief_attempt_at") == 0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        d.tick(t + 60);
+    }
+    assert_eq!(store.load::<u64>("last_brief_attempt_at"), t + 60, "you're here and it's a new day, so the brief is prepared");
+    assert_eq!(store.load::<u64>("last_brief_at"), 0, "preparing text is not a delivery receipt");
+}
+
+#[test]
+fn a_prepared_brief_gets_a_receipt_only_after_its_complete_delivery() {
+    struct Speaker(bool);
+    impl atlas::daemon::Mouth for Speaker {
+        fn speak(&self, _: &str) -> atlas::error::Result<()> {
+            if self.0 { Ok(()) } else { Err(std::io::Error::other("speaker unavailable").into()) }
+        }
+    }
+    let (mut c, p) = (cfg(), plat());
+    let tools = c.tools.get_or_insert_with(Default::default);
+    tools.sound.muted = false;
+    tools.sound.speak_replies = "always".into();
+    tools.sound.quiet_hours = false;
+    let store = Store::new(tmp("brief-delivery"));
+    let prepared = Some(("First item. Second item.".to_string(), NOW));
+    store.save("brief_prepared", &prepared).unwrap();
+    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    // Force an available speaking tier so this fixture exercises playback,
+    // not the typed fallback which is also a legitimate visible delivery.
+    d.tiers.tier = atlas::input::Tier::Voice;
+    d.say_volunteered_with(&Speaker(false), "First item. Second item.", &mut || None);
+    assert_eq!(store.load::<u64>("last_brief_at"), 0);
+    assert_eq!(store.load::<Option<(String, u64)>>("brief_prepared"), prepared);
+    d.say_volunteered_with(&Speaker(true), "First item.", &mut || None);
+    assert_eq!(store.load::<u64>("last_brief_at"), 0, "a partial delivery is not the whole brief");
+    d.say_volunteered_with(&Speaker(true), "First item. Second item.", &mut || None);
+    assert!(store.load::<u64>("last_brief_at") > 0);
+    assert!(store.load::<Option<(String, u64)>>("brief_prepared").is_none());
 }
 
 /// 30 Sep 2026: "how's that going?" had no answer; the model guessed.

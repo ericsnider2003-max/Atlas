@@ -448,11 +448,25 @@ fn a_failure_caused_by_this_machine_is_not_blamed_on_the_build() {
 
 #[test]
 fn a_report_carries_no_user_name_or_home_folder() {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/tester".into());
-    let line = format!("can't read your settings folder {home}/Atlas/config: denied");
+    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).expect("the runtime must provide its actual private home folder");
+    let portable = home.replace('\\', "/");
+    let line = format!("can't read your settings folder {portable}/Atlas/config: denied");
     let clean = apply::scrub_personal(&line);
     assert!(!clean.contains(&home), "{clean}");
+    assert!(!clean.contains(&portable), "{clean}");
     assert!(clean.contains("~/Atlas/config"), "{clean}");
+    let report = apply::FailureReport {
+        version: "9.1.0".into(), sha256: "ab".repeat(32),
+        replaces: "9.0.0".into(), platform: "windows-x86_64".into(),
+        stage: "health check".into(), reasons: vec![clean], at: 123,
+        ..Default::default()
+    };
+    let wire = serde_json::to_value(&report).unwrap();
+    let restored: apply::FailureReport = serde_json::from_value(wire).unwrap();
+    assert_eq!(restored, report, "redaction must preserve structured diagnostic fields");
+    assert_eq!(restored.reasons, vec!["can't read your settings folder ~/Atlas/config: denied"]);
+    assert_eq!(restored.sha256, "ab".repeat(32));
+    assert_eq!(restored.at, 123);
 }
 
 /// The real program on the releaser's side: `atlas update failures` lists a

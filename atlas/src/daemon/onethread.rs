@@ -58,6 +58,10 @@ pub struct Elsewhere {
     /// The words, as the job holds them ("Reminder: stretch").
     pub text: String,
     pub due: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_version: Option<crate::sync::Version>,
+    #[serde(default)]
+    pub cancel_pending: bool,
 }
 
 impl Elsewhere {
@@ -156,6 +160,18 @@ impl Daemon<'_> {
             self.synclog.append(e, t);
             if let Some(event) = self.synclog.events.last() {
                 later_version_changed |= later.note_version(event);
+                self.facts.note_sync_version(event);
+                if let crate::sync::What::Changed { id, field, .. } = &event.what {
+                    if field == "reminder" {
+                        if let Some((device, number)) = owner_of(id) {
+                            if device == self.synclog.device {
+                                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == number) {
+                                    job.sync_version = Some(crate::sync::Version::of(event));
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         if later_version_changed {
@@ -168,21 +184,47 @@ impl Daemon<'_> {
 
     /// The sync log, written out once a tick when a turn added to it.
     pub(super) fn save_the_synclog_if_changed(&mut self) {
-        if std::mem::take(&mut self.synclog_unsaved) {
-            let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+        let Ok(_guard) = self.store.transaction() else { return };
+        let pending = self.store.load_checked::<Vec<Elsewhere>>(ELSEWHERE_KEY);
+        if let Ok(Some(rows)) = &pending {
+            for row in rows.iter().filter(|row| row.cancel_pending) {
+                self.synclog_unsaved = true;
+                let already = self.synclog.events.iter().any(|e| matches!(&e.what, crate::sync::What::Changed { id, to, field } if id == &row.key && to.is_empty() && field == "reminder") && e.device == self.synclog.device && row.sync_version.as_ref().is_none_or(|old| crate::sync::Version::of(e) >= *old));
+                if !already {
+                    if let Some(version) = &row.sync_version { self.synclog.observe_version(version, crate::store::now()); }
+                    self.synclog.append(crate::sync::What::Changed { id: row.key.clone(), field: "reminder".into(), to: String::new() }, crate::store::now());
+                    self.synclog_unsaved = true;
+                }
+            }
+        }
+        if self.synclog_unsaved {
+            if self.store.save("synclog", &Some(self.synclog.clone())).is_ok() {
+                self.synclog_unsaved = false;
+                if let Ok(Some(mut rows)) = pending {
+                    let mut changed = false;
+                    for row in rows.iter_mut().filter(|row| row.cancel_pending) {
+                        if let Some(event) = self.synclog.events.iter().rev().find(|e| e.device == self.synclog.device && matches!(&e.what, crate::sync::What::Changed { id, to, field } if id == &row.key && to.is_empty() && field == "reminder")) {
+                            if row.sync_version.as_ref().is_none_or(|old| crate::sync::Version::of(event) >= *old) {
+                                row.sync_version = Some(crate::sync::Version::of(event)); row.cancel_pending = false; changed = true;
+                            }
+                        }
+                    }
+                    if changed { let _ = self.store.save(ELSEWHERE_KEY, &rows); }
+                }
+            }
         }
     }
 
     /// An exchange from your other device, into this one's thread.
-    pub(super) fn take_an_exchange(&mut self, text: &str, sealed: bool) {
+    pub(super) fn take_an_exchange(&mut self, text: &str, sealed: bool) -> crate::error::Result<()> {
         if !sealed {
-            return;
+            return Ok(());
         }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
-        let (Some(said), Some(reply)) = (v.get("said").and_then(|s| s.as_str()), v.get("reply").and_then(|s| s.as_str())) else { return };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return Ok(()) };
+        let (Some(said), Some(reply)) = (v.get("said").and_then(|s| s.as_str()), v.get("reply").and_then(|s| s.as_str())) else { return Ok(()) };
         let at = v.get("at").and_then(|a| a.as_u64()).unwrap_or(0);
         if self.thread.recent.iter().any(|x| x.at == at && x.said == said) {
-            return;
+            return self.thread.save(&self.store);
         }
         let about = v.get("about").and_then(|a| a.as_str()).map(str::to_string);
         // In time order, not arrival order: an exchange from while the
@@ -191,72 +233,80 @@ impl Daemon<'_> {
         self.thread.recent.insert(i, crate::thread::Exchange { at, said: said.into(), reply: reply.into(), about });
         self.thread.last_active = self.thread.last_active.max(at);
         self.arrived_by_sync.thread.insert((at, said.into()));
-        let _ = self.thread.save(&self.store);
+        self.thread.save(&self.store)
     }
 
     /// A fact from your other device: kept when it's newer than ours.
-    pub(super) fn take_a_fact(&mut self, to: &str, sealed: bool) {
+    pub(super) fn take_a_fact(&mut self, event: &crate::sync::Event, sealed: bool) -> crate::error::Result<()> {
         if !sealed {
-            return;
+            return Ok(());
         }
-        let Ok(f) = serde_json::from_str::<crate::facts::Fact>(to) else { return };
-        if self.facts.facts.iter().any(|x| x.name == f.name && x.as_of >= f.as_of) {
-            return;
+        for old in &self.synclog.events { self.facts.note_sync_version(old); }
+        if self.facts.apply_synced(event) {
+            if let crate::sync::What::Changed { to, .. } = &event.what {
+                if let Ok(f) = serde_json::from_str::<crate::facts::Fact>(to) {
+                    self.arrived_by_sync.facts.insert((f.name, f.as_of));
+                }
+            }
         }
-        self.arrived_by_sync.facts.insert((f.name.clone(), f.as_of));
-        self.facts.put(f);
-        let _ = self.facts.save(&self.store);
+        self.facts.save(&self.store)
     }
 
     /// The later list, from your other device.
-    pub(super) fn take_a_later_item(&mut self, event: &crate::sync::Event, sealed: bool) {
-        if !sealed { return; }
-        let crate::sync::What::Changed { id, .. } = &event.what else { return };
-        let Some(what) = id.strip_prefix(LATER_PREFIX) else { return };
-        let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
+    pub(super) fn take_a_later_item(&mut self, event: &crate::sync::Event, sealed: bool) -> crate::error::Result<()> {
+        if !sealed { return Ok(()); }
+        let crate::sync::What::Changed { id, .. } = &event.what else { return Ok(()) };
+        let Some(what) = id.strip_prefix(LATER_PREFIX) else { return Ok(()) };
+        let mut later: crate::later::Later = self.store.load_checked(crate::later::RECORD)?.unwrap_or_default();
         // Bootstrap versions from the durable event log when upgrading an
         // older list. New lists retain the version with the items themselves.
         for old in &self.synclog.events {
             later.note_version(old);
         }
         if later.apply_synced(event) {
+            self.store.save(crate::later::RECORD, &later)?;
             self.arrived_by_sync.later.insert(what.to_string());
-            let _ = self.store.save(crate::later::RECORD, &later);
         }
+        Ok(())
     }
 
     /// A reminder from your other device: noted here, never rung here (it
     /// rings where it was set). An empty `to` means it was cancelled -- and
     /// when it is one of OURS, cancelled from the other device, it is
     /// cancelled here, where it lives.
-    pub(super) fn take_a_reminder(&mut self, id: &str, to: &str, sealed: bool) {
+    pub(super) fn take_a_reminder(&mut self, event: &crate::sync::Event, sealed: bool) -> crate::error::Result<()> {
         if !sealed {
-            return;
+            return Ok(());
         }
-        let Some((device, job)) = owner_of(id) else { return };
-        let mut elsewhere = self.reminders_elsewhere();
-        if to.is_empty() {
-            elsewhere.retain(|e| e.key != id);
-            let _ = self.store.save(ELSEWHERE_KEY, &elsewhere);
-            if device == self.synclog.device && self.scheduler.cancel(job) {
-                let _ = self.scheduler.save(&self.store);
-                self.log.info(&format!("reminder #{job} cancelled from your other device"));
-            }
-            return;
-        }
+        let crate::sync::What::Changed { id, field, to } = &event.what else { return Ok(()) };
+        if field != "reminder" { return Ok(()); }
+        let Some((device, job)) = owner_of(id) else { return Ok(()) };
+        let version = crate::sync::Version::of(event);
         if device == self.synclog.device {
-            return;
+            let Some(current) = self.scheduler.jobs.iter().find(|j| j.id == job && j.command.starts_with("reminder ") && j.every.is_none() && j.on.is_none()) else { return Ok(()) };
+            if current.sync_version.as_ref().is_some_and(|old| old >= &version) { return self.scheduler.save(&self.store); }
+            if to.is_empty() { self.cancel_scheduled_job(job); }
+            if let Some(current) = self.scheduler.jobs.iter_mut().find(|j| j.id == job) { current.sync_version = Some(version); }
+            return self.scheduler.save(&self.store);
         }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(to) else { return };
-        let (Some(command), Some(due)) = (v.get("command").and_then(|c| c.as_str()), v.get("due").and_then(|d| d.as_u64())) else { return };
-        let Some(text) = command.strip_prefix("reminder ") else { return };
-        if due <= crate::store::now() {
-            return;
-        }
-        elsewhere.retain(|e| e.key != id);
-        elsewhere.push(Elsewhere { key: id.to_string(), text: text.to_string(), due });
-        elsewhere.sort_by_key(|e| e.due);
-        let _ = self.store.save(ELSEWHERE_KEY, &elsewhere);
+        let mut elsewhere: Vec<Elsewhere> = self.store.load_checked(ELSEWHERE_KEY)?.unwrap_or_default();
+        if elsewhere.iter().find(|e| e.key == *id).and_then(|e| e.sync_version.as_ref()).is_some_and(|old| old >= &version) { return Ok(()); }
+        let (text, due) = if to.is_empty() {
+            (String::new(), 0)
+        } else {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(to) else { return Ok(()) };
+            let (Some(command), Some(due)) = (v.get("command").and_then(|c| c.as_str()), v.get("due").and_then(|d| d.as_u64())) else { return Ok(()) };
+            let Some(text) = command.strip_prefix("reminder ") else { return Ok(()) };
+            if due <= crate::store::now() {
+                (String::new(), 0)
+            } else {
+                (text.to_string(), due)
+            }
+        };
+        elsewhere.retain(|e| e.key != *id);
+        elsewhere.push(Elsewhere { key: id.to_string(), text, due, sync_version: Some(version), cancel_pending: false });
+        elsewhere.sort_by(|a, b| a.due.cmp(&b.due).then(a.key.cmp(&b.key)));
+        self.store.save(ELSEWHERE_KEY, &elsewhere)
     }
 
     /// Your other devices' reminders still to come (the ones that have rung
@@ -270,11 +320,18 @@ impl Daemon<'_> {
 
     /// One of your other devices' reminders, cancelled from here: gone from
     /// this list now, and cancelled where it lives on the next sync.
-    pub(super) fn cancel_elsewhere(&mut self, key: &str) {
-        let mut v = self.reminders_elsewhere();
-        v.retain(|e| e.key != key);
-        let _ = self.store.save(ELSEWHERE_KEY, &v);
-        self.reminders_cancelled_elsewhere.push(key.to_string());
+    pub(super) fn cancel_elsewhere(&mut self, key: &str, t: u64) -> crate::error::Result<()> {
+        let _guard = self.store.transaction()?;
+        let mut rows: Vec<Elsewhere> = self.store.load_checked(ELSEWHERE_KEY)?.unwrap_or_default();
+        let Some(row) = rows.iter_mut().find(|row| row.key == key) else { return Ok(()) };
+        let mut log = self.synclog.clone();
+        if let Some(version) = &row.sync_version { log.observe_version(version, t); }
+        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: String::new() }, t);
+        row.sync_version = log.events.last().map(crate::sync::Version::of);
+        row.text.clear(); row.due = 0; row.cancel_pending = true;
+        self.store.save(ELSEWHERE_KEY, &rows)?;
+        self.synclog = log; self.synclog_unsaved = true;
+        Ok(())
     }
 
     /// Which device a reminder from elsewhere rings on, as said.

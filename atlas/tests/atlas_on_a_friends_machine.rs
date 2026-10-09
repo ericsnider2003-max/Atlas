@@ -197,6 +197,7 @@ fn every_door_with_a_model_starts_its_server() {
 }
 
 /// Real bytes for a small model, so the registry picks it.
+#[cfg(unix)]
 fn tiny_model() -> Vec<u8> {
     fn u32b(v: u32) -> Vec<u8> { v.to_le_bytes().to_vec() }
     fn u64b(v: u64) -> Vec<u8> { v.to_le_bytes().to_vec() }

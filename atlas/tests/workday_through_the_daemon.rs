@@ -168,6 +168,25 @@ fn meeting_prep_names_the_people_and_what_is_open() {
 }
 
 #[test]
+fn unavailable_calendar_is_not_an_empty_day_or_a_first_run() {
+    let t = now();
+    let (c, p, dir) = (cfg(), plat(), tmp("calendar-unavailable"));
+    let store = Store::new(&dir);
+    std::fs::write(store.root().join("calendar.json"), b"{broken").unwrap();
+    let mut d = daemon(&c, &p, &dir);
+    assert!(d.calendar.availability_error().is_some());
+    let said = d.turn("prep me for my next meeting", t);
+    assert!(said.contains("calendar is unavailable") && !said.contains("Nothing on your calendar"), "{said}");
+    // Even a retained in-memory event is not offered as current evidence.
+    d.calendar.add("Unconfirmed cached call with Sam Lee", atlas::calendar::When { start: t + 600, end: t + 4200, all_day: false }, None, t);
+    let deck = d.deck(t, 0);
+    assert!(deck.now_sub.contains("Calendar unavailable"));
+    assert!(!deck.first_run);
+    assert!(deck.spine.iter().all(|(_, title, _)| !title.contains("Unconfirmed cached call")));
+    assert!(d.tick(t + 120).iter().all(|line| !line.contains("Unconfirmed cached call")));
+}
+
+#[test]
 fn a_snippet_is_saved_and_typed_into_the_app_in_front() {
     let T = now();
     let (c, p, dir) = (cfg(), plat(), tmp("snippet"));
