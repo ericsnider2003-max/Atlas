@@ -115,7 +115,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
 | look something up, and save the write-up as a Word or PDF file with its sources as links | built, never run for real | `research` `readable` `report` | ready | ready | ready | ready | ready | ready |
-| hand heavy background work to an online worker and check what comes back | local delegation is available without an account; optional Cloudflare setup is per-user and guided | `online` | ready | would | would | catch | would | **no** |
+| hand heavy background work to an online worker and check what comes back | waiting on a Cloudflare account and token | `online` | ready | would | would | catch | would | **no** |
 | drive a browser | built, never run for real | `browser` `cdp` | ready | catch | would | **no** | catch | **no** |
 | post something, with approval | built, never run for real | `publish` `publishing` `delivery` | ready | ready | ready | ready | ready | ready |
 | follow sites by their feeds, list what's new, read one here or keep it for later, trackers taken off every link | built, never run for real | `feeds` | ready | would | would | catch | would | **no** |
@@ -170,7 +170,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | warn about mail from an address made to look like someone you deal with, or that its own server marked as forged — and draft nothing to it | built, never run for real | `lookalike` `imap` | ready | ready | ready | ready | ready | ready |
 | read what's been sent to a chat bot you own, and sort it like the inbox | switched off | `telegram` `messaging` | ready | ready | ready | catch | would | catch |
 | sort an inbox by what it asks of you | working | `triage` | ready | ready | ready | ready | ready | ready |
-| reach your mailbox, whoever provides it | switched off | `mail` `imap` `smtp` `mailthread` `ratelimit` `himalaya` `msoauth` `connect` `connecting` `oauthlink` | ready | ready | ready | ready | ready | ready |
+| reach your mailbox, whoever provides it | switched off | `mail` `imap` `smtp` `mailthread` `ratelimit` `himalaya` `msoauth` `connect` `connecting` `oauthlink` `connection_removal` `connectors` | ready | ready | ready | ready | ready | ready |
 | clear out what you never read, safely | switched off | `unsub` | ready | ready | ready | ready | ready | ready |
 | write a text to someone whose number you've given, ready on your phone to send with one tap -- Atlas can't send or read texts itself | built, never run for real | `texting` | ready | ready | ready | catch | would | catch |
 | keep who owes you a reply and what you promised, read from the mail you sent, and learn from what you say was never one | built, never run for real | `waitingfor` `mailbook` | ready | ready | ready | catch | would | catch |
@@ -366,4 +366,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-247 things, across 438 of 488 source files. The other 50 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+247 things, across 440 of 489 source files. The other 49 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

@@ -368,12 +368,18 @@ fn taken_back(d: &mut Daemon, p: Provider, token: Option<String>) -> String {
             if youtube_too {
                 return " Google's permission stays: your YouTube numbers use the same sign-in. Disconnect YouTube on the Social page to end both.".into();
             }
-            // Off the page's thread: Google's answer is a courtesy, the vault
-            // is already clear.
-            std::thread::spawn(move || {
-                crate::heard!(oauthlink::revoke_google(&crate::social::apis::Https, &token));
-            });
-            " Google's permission is being taken back too.".into()
+            // The vault is already clear. Google's answer is kept as a receipt
+            // (the same durable path YouTube uses), never guessed at, and the
+            // revocation runs as an errand rather than on a loose thread.
+            let t = crate::store::now();
+            let id = match crate::connection_removal::begin(&d.store, "Google calendar", "Google", t) {
+                Ok(id) => id,
+                Err(e) => return format!(" I couldn't record taking Google's permission back ({e}); {}", crate::connection_removal::provider_check("Google")),
+            };
+            if let Err(e) = crate::connection_removal::complete(&d.store, id, "Calendar sign-in removed from this Atlas vault.") {
+                return format!(" The sign-in is out of the vault, but its receipt wasn't saved ({e}); Google's permission is unconfirmed. {}", crate::connection_removal::provider_check("Google"));
+            }
+            format!(" {}", d.queue_google_revocation(id, token, t))
         }
     }
 }
@@ -491,7 +497,11 @@ pub fn tick(d: &mut Daemon, now: u64) {
     for (url, got) in came {
         let Some(l) = links.iter_mut().find(|l| l.url == url) else { continue };
         let home = d.home_zone();
-        let took = got.and_then(|text| d.calendar.import_ics(&text, now, &home).map(|(n, _)| n));
+        // A complete read replaces only this connection's own events (cancelled
+        // ones go; other calendars' events stay). A signed-in read covers a
+        // window, so only events inside it can be dropped.
+        let window = oauthlink::parse_calendar_key(&url).map(|_| (now.saturating_sub(oauthlink::BACK_SECS), now + oauthlink::AHEAD_SECS));
+        let took = got.and_then(|text| d.calendar.reconcile_ics_window(&url, &text, now, &home, window).map(|(n, _)| n));
         match took {
             Ok(n) => {
                 let _ = d.calendar.save(&d.store);

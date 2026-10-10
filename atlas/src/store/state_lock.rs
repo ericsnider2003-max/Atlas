@@ -52,7 +52,7 @@ pub(super) fn root_for(path: &Path) -> io::Result<Option<PathBuf>> {
                 if std::fs::read(owned.join(MARKER))? != VERSION { return Err(io::Error::new(io::ErrorKind::InvalidData, "the Atlas output's state root marker is invalid")); }
                 return Ok(Some(owned));
             }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+            Err(error) if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::NotADirectory) => {},
             Err(error) => return Err(error),
         }
         if ancestor.parent().and_then(Path::file_name).is_some_and(|n| n == "data")
@@ -64,7 +64,7 @@ pub(super) fn root_for(path: &Path) -> io::Result<Option<PathBuf>> {
         match std::fs::read(ancestor.join(MARKER)) {
             Ok(bytes) if bytes == VERSION => root = Some(ancestor.to_path_buf()),
             Ok(_) => return Err(io::Error::new(io::ErrorKind::InvalidData, "the Atlas state-root marker is invalid; no state was changed")),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            Err(e) if matches!(e.kind(), io::ErrorKind::NotFound | io::ErrorKind::NotADirectory) => {
                 if structural { root = Some(ancestor.to_path_buf()); }
             }
             Err(e) => return Err(e),
