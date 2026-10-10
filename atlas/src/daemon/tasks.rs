@@ -45,6 +45,9 @@ pub(crate) struct TaskLoop {
     tainted: bool,
     /// The crew job whose typed completion the dependent worker is awaiting.
     waiting_for: Option<u64>,
+    /// A crew completion received while Atlas was paused. Keep it until the
+    /// user resumes so a dependent step cannot advance behind the pause.
+    deferred_background: Option<crate::taskloop::Outcome>,
     waiting_for_file_move: Option<u64>,
     /// Kept-file path retained while the edit and original decisions are pending.
     waiting_for_media: Option<String>,
@@ -448,6 +451,7 @@ impl<'a> Daemon<'a> {
             started: std::time::Instant::now(),
             tainted: false,
             waiting_for: None,
+            deferred_background: None,
             waiting_for_file_move: None,
             waiting_for_media: None,
             waiting_for_operating: false,
@@ -489,12 +493,27 @@ impl<'a> Daemon<'a> {
     pub(super) fn finish_background_step(&mut self, id: u64, outcome: crate::taskloop::Outcome) -> bool {
         if let Some(tl) = self.task_loop.as_mut() {
             if tl.waiting_for == Some(id) {
+                if self.attention.is_paused() {
+                    tl.deferred_background = Some(outcome);
+                    return true;
+                }
                 tl.waiting_for = None;
                 let _ = tl.reply.send(outcome);
                 return true;
             }
         }
         false
+    }
+
+    /// Release a completion held during a whole-system pause.
+    pub(super) fn release_deferred_background_step(&mut self) {
+        if self.attention.is_paused() { return; }
+        if let Some(tl) = self.task_loop.as_mut() {
+            if let Some(outcome) = tl.deferred_background.take() {
+                tl.waiting_for = None;
+                let _ = tl.reply.send(outcome);
+            }
+        }
     }
 
     /// Only the matching edit job may park this dependent request for consent.
@@ -643,7 +662,7 @@ impl<'a> Daemon<'a> {
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
-        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.waiting_for_file_move.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating) || tl.waiting_for_approval.take().is_some() || tl.waiting_for_question.take().is_some() || std::mem::take(&mut tl.waiting_for_scan)) {
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.deferred_background.take().is_some() || tl.waiting_for_file_move.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating) || tl.waiting_for_approval.take().is_some() || tl.waiting_for_question.take().is_some() || std::mem::take(&mut tl.waiting_for_scan)) {
             let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
         }
         // A model call already in flight can submit a tool while paused.
@@ -915,6 +934,7 @@ impl<'a> Daemon<'a> {
             started: std::time::Instant::now(),
             tainted: false,
             waiting_for: None,
+            deferred_background: None,
             waiting_for_file_move: None,
             waiting_for_media: None,
             waiting_for_operating: false,
