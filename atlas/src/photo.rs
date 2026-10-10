@@ -521,7 +521,7 @@ fn run(ffmpeg: &str, args: &[String], limit: std::time::Duration) -> Result<std:
             Ok(Some(s)) => break s,
             Ok(None) if began.elapsed() > limit => {
                 let _ = child.kill();
-                let _ = child.wait();
+                crate::heard!(child.wait());
                 return Err(format!("ffmpeg took longer than {} seconds, so I stopped it", limit.as_secs()));
             }
             Ok(None) => {

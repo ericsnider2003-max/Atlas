@@ -85,7 +85,7 @@ impl Scope {
         if let Err(error) = resume_owned(&child) {
             drop(scope);
             let _ = child.kill();
-            let _ = child.wait();
+            crate::heard!(child.wait());
             return Err(error);
         }
         Ok((child, scope))

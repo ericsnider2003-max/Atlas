@@ -888,7 +888,7 @@ impl<'a> Voice<'a> {
             }
         }
         let _ = child.kill();
-        let _ = child.wait();
+        crate::heard!(child.wait());
         let said = complaint.and_then(|h| h.join().ok()).unwrap_or_default();
         if bytes.is_empty() {
             if let Some(why) = recorder_could_not_open(&said) {
@@ -1490,7 +1490,7 @@ impl Voice<'_> {
             }
         }
         let _ = child.kill();
-        let _ = child.wait();
+        crate::heard!(child.wait());
         // The stream ended mid-sentence: what was said so far still counts.
         if heard.is_none() && ep.heard_anything && !stop() {
             let said = self.heard_in(&kept, &vars, stop).unwrap_or_default();
@@ -1939,7 +1939,7 @@ impl crate::micthread::MicStream for PcmStream {
         // The recorder has ended (that's why `read` gave nothing), so its
         // complaint is all written.
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        crate::heard!(self.child.wait());
         let said = self.said.take().and_then(|h| h.join().ok()).unwrap_or_default();
         recorder_could_not_open(&said)
     }
@@ -1948,7 +1948,7 @@ impl crate::micthread::MicStream for PcmStream {
 impl Drop for PcmStream {
     fn drop(&mut self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        crate::heard!(self.child.wait());
     }
 }
 

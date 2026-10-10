@@ -253,12 +253,12 @@ pub fn make(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, se
         }
         if stop() {
             let _ = child.kill();
-            let _ = child.wait();
+            crate::heard!(child.wait());
             return Err("stopped".into());
         }
         if started.elapsed().as_secs() > cfg.most_secs {
             let _ = child.kill();
-            let _ = child.wait();
+            crate::heard!(child.wait());
             return Err(format!("it took longer than {} minutes, so I stopped it", cfg.most_secs / 60));
         }
         std::thread::sleep(std::time::Duration::from_millis(200));

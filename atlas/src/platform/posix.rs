@@ -179,7 +179,7 @@ impl Platform for Posix {
             };
             if let Some(mut stdin) = child.stdin.take() {
                 if stdin.write_all(text.as_bytes()).is_err() {
-                    let _ = child.wait();
+                    crate::heard!(child.wait());
                     continue;
                 }
             }

@@ -405,7 +405,7 @@ impl Helpers {
         if let Some(i) = self.live.iter().position(|(n, _)| n == name) {
             let (_, mut child) = self.live.remove(i);
             let _ = child.kill();
-            let _ = child.wait();
+            crate::heard!(child.wait());
         }
     }
 }
@@ -415,7 +415,7 @@ impl Drop for Helpers {
     fn drop(&mut self) {
         for (_, child) in self.live.iter_mut() {
             let _ = child.kill();
-            let _ = child.wait();
+            crate::heard!(child.wait());
         }
     }
 }
