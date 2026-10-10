@@ -208,6 +208,8 @@ mod console {
 
     impl Quiet {
         pub(super) fn start() -> Option<Quiet> {
+            // SAFETY: plain console calls; the handle opened here is closed on the failure paths or
+            // by `Quiet`'s Drop.
             unsafe {
                 let h = CreateFileW(
                     w!("CONIN$"),
@@ -236,6 +238,8 @@ mod console {
         /// Read back from the console itself, not assumed.
         pub(super) fn echo_is_off(&self) -> bool {
             let mut now = CONSOLE_MODE(0);
+            // SAFETY: `self.h` is the console handle owned by this `Quiet` until Drop, and `now` is
+            // a live local the call writes.
             unsafe { GetConsoleMode(self.h, &mut now).is_ok() && now.0 & ENABLE_ECHO_INPUT.0 == 0 }
         }
 
@@ -245,6 +249,8 @@ mod console {
             let mut buf = [0u16; 256];
             loop {
                 let mut n = 0u32;
+                // SAFETY: `buf` is a live array of `buf.len()` u16 and the length passed is in
+                // characters, as ReadConsoleW requires; `n` is a live local.
                 let ok = unsafe { ReadConsoleW(self.h, buf.as_mut_ptr() as *mut _, buf.len() as u32, &mut n, None) };
                 if ok.is_err() || n == 0 {
                     buf.iter_mut().for_each(|c| *c = 0);
@@ -264,6 +270,8 @@ mod console {
 
     impl Drop for Quiet {
         fn drop(&mut self) {
+            // SAFETY: `self.h` is the console handle owned by this `Quiet`; it is restored and
+            // closed here exactly once.
             unsafe {
                 let _ = SetConsoleMode(self.h, self.was);
                 let _ = CloseHandle(self.h);

@@ -909,12 +909,17 @@ pub(crate) fn rename_held_no_replace(file: &std::fs::File, to: &Path) -> Result<
     let name: Vec<u16> = target.as_os_str().encode_wide().collect();
     if name.len() >= 32_768 { return Err(AtlasError::Platform("native destination name is too long; held original retained".into())); }
     let mut expected = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: the handle is borrowed from the live `file` and `expected` is a live local the call
+    // writes.
     unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut expected) }.map_err(|e| AtlasError::Platform(format!("held source identity cannot be verified: {e}")))?;
     // Win32 path conversion reads the NUL-terminated name even though the
     // logical FileNameLength excludes that terminator. Rounded allocation
     // padding is not a terminator when the name ends exactly on its boundary.
     let bytes = std::mem::offset_of!(FILE_RENAME_INFO, FileName) + (name.len() + 1) * 2;
     let mut storage = vec![0u64; bytes.div_ceil(8)];
+    // SAFETY: `storage` is zeroed, 8-byte aligned and sized for FILE_RENAME_INFO plus the name and
+    // its NUL (`bytes`); the name is copied within that allocation, and the handle is borrowed from
+    // the live `file`.
     let renamed = unsafe {
         let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
         (*info).Anonymous.ReplaceIfExists = BOOLEAN(0); (*info).RootDirectory = HANDLE(std::ptr::null_mut());
@@ -925,6 +930,8 @@ pub(crate) fn rename_held_no_replace(file: &std::fs::File, to: &Path) -> Result<
     };
     if renamed.is_err() { return Ok(false); }
     let mut buffer = vec![0u16; 32_768];
+    // SAFETY: `buffer` is a live slice the call writes; the handle is borrowed from the live
+    // `file`.
     let length = unsafe { GetFinalPathNameByHandleW(HANDLE(file.as_raw_handle()), &mut buffer, GETFINALPATHNAMEBYHANDLE_FLAGS(0)) } as usize;
     if length == 0 || length >= buffer.len() { return Err(AtlasError::Platform("native rename reported success but the held object's final path cannot be verified; no cleanup was attempted".into())); }
     let actual = String::from_utf16(&buffer[..length]).map_err(|_| AtlasError::Platform("native rename final path cannot be decoded; no cleanup was attempted".into()))?;
@@ -932,6 +939,8 @@ pub(crate) fn rename_held_no_replace(file: &std::fs::File, to: &Path) -> Result<
     let is_directory = file.metadata()?.is_dir();
     let published = std::fs::OpenOptions::new().read(true).custom_flags(0x0020_0000 | if is_directory { 0x0200_0000 } else { 0 }).open(&target).map_err(|e| AtlasError::Platform(format!("native rename reached {actual} but its destination cannot be inspected ({e}); no cleanup was attempted")))?;
     let mut observed = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: the handle is borrowed from the live `published` and `observed` is a live local the
+    // call writes.
     unsafe { GetFileInformationByHandle(HANDLE(published.as_raw_handle()), &mut observed) }.map_err(|e| AtlasError::Platform(format!("native destination at {actual} lost verifiable identity ({e}); no cleanup was attempted")))?;
     if (expected.dwVolumeSerialNumber, expected.nFileIndexHigh, expected.nFileIndexLow) != (observed.dwVolumeSerialNumber, observed.nFileIndexHigh, observed.nFileIndexLow) {
         return Err(AtlasError::Platform(format!("native destination identity changed at {actual}; both objects retained without cleanup")));
@@ -970,6 +979,8 @@ impl MoveCohort {
         for (path, held, directory) in &self.objects {
             if stopped() { return Err(AtlasError::Platform("movement stopped; inspect the recorded source and destination before retrying".into())); }
             let mut text = vec![0u16; 32_768];
+            // SAFETY: `text` is a live slice the call writes; the handle is borrowed from the live
+            // `held` file.
             let length = unsafe { GetFinalPathNameByHandleW(HANDLE(held.as_raw_handle()), &mut text, GETFINALPATHNAMEBYHANDLE_FLAGS(0)) } as usize;
             if length == 0 || length >= text.len() { return Err(AtlasError::Platform("a held source location cannot be verified; both locations retained".into())); }
             let actual = String::from_utf16(&text[..length]).map_err(|_| AtlasError::Platform("a held source location cannot be decoded".into()))?;
@@ -1011,6 +1022,8 @@ impl MoveCohort {
         for (_, held, _) in self.objects.into_iter().rev() {
             if stopped() { return Err(AtlasError::Platform("movement stopped during source cleanup; inspect both saved locations before retrying".into())); }
             let disposition = FILE_DISPOSITION_INFO { DeleteFile: BOOLEAN(1) };
+            // SAFETY: `disposition` is a live FILE_DISPOSITION_INFO of the size passed; the handle
+            // is borrowed from `held`.
             unsafe { SetFileInformationByHandle(HANDLE(held.as_raw_handle()), FileDispositionInfo, (&disposition as *const FILE_DISPOSITION_INFO).cast(), std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32) }
                 .map_err(|e| AtlasError::Platform(format!("source cleanup incomplete; both locations remain in recovery: {e}")))?;
             drop(held);
@@ -1044,10 +1057,16 @@ fn atomic_move_no_replace(from: &Path, to: &Path) -> Result<()> {
     let source = std::ffi::CString::new(from.as_os_str().as_bytes()).map_err(|_| AtlasError::Platform("source path contains a null byte".into()))?;
     let destination = std::ffi::CString::new(to.as_os_str().as_bytes()).map_err(|_| AtlasError::Platform("destination path contains a null byte".into()))?;
     #[cfg(target_os = "linux")]
+    // SAFETY: `source` and `destination` are live NUL-terminated C strings for the duration of the
+    // call.
     let result = unsafe { libc::renameat2(libc::AT_FDCWD, source.as_ptr(), libc::AT_FDCWD, destination.as_ptr(), libc::RENAME_NOREPLACE) } as i64;
     #[cfg(target_os = "android")]
+    // SAFETY: `source` and `destination` are live NUL-terminated C strings; the raw syscall takes
+    // exactly these five arguments.
     let result = unsafe { libc::syscall(libc::SYS_renameat2, libc::AT_FDCWD, source.as_ptr(), libc::AT_FDCWD, destination.as_ptr(), 1u32) } as i64;
     #[cfg(any(target_os = "macos", target_os = "ios"))]
+    // SAFETY: `source` and `destination` are live NUL-terminated C strings for the duration of the
+    // call.
     let result = unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) } as i64;
     #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios")))]
     return Err(AtlasError::Platform("atomic no-clobber movement is unavailable on this platform; original retained".into()));

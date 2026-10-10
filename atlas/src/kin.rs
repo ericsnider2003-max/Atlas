@@ -694,7 +694,6 @@ impl Door {
     /// sender may actually see that business is the *receiver's* roster's call,
     /// made when the message is filed (`chat::Chats::open`/`receive`), because
     /// the door knows peers and the roster knows businesses.
-    #[allow(clippy::too_many_arguments)]
     pub fn receive_chat(
         &mut self,
         token: &str,
@@ -1523,7 +1522,6 @@ impl TorConnections {
 /// the one already open to `onion` if it's still there, else a new one, which
 /// is kept for next time if the far side agrees. A kept connection the far
 /// side had closed is replaced once, with the request sealed afresh.
-#[allow(clippy::too_many_arguments)]
 fn sealed_post_kept(
     me: &crate::peerkey::Identity,
     to: &str,
@@ -1871,7 +1869,6 @@ impl PeerLink {
     /// so people in a group who aren't paired with each other still hear each
     /// other. The author travels as their key (`on_behalf_of`); the far side
     /// believes it only because this Atlas owns the group.
-    #[allow(clippy::too_many_arguments)]
     pub fn relay(
         &self,
         peer: &str,

@@ -202,8 +202,11 @@ fn ask_apple(req: &ChatRequest) -> Apple {
     let Some(f) = APPLE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) else { return Apple::Unavailable };
     let Ok(body) = CString::new(request_json(req)) else { return Apple::Failed("the request had a NUL in it".into()) };
     let mut buf = vec![0u8; ANSWER_BYTES];
+    // SAFETY: `f` is the host's registered callback; `body` is a live NUL-terminated string and
+    // `buf` a live writable buffer of `buf.len()` bytes, both outliving the call.
     let rc = unsafe { f(body.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
-    let out = unsafe { CStr::from_ptr(buf.as_ptr().cast()) }.to_string_lossy().into_owned();
+    // Bounded by the buffer: a callback that filled it without a NUL reads as empty, not past the end.
+    let out = CStr::from_bytes_until_nul(&buf).map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
     read_apple_answer(rc, &out)
 }
 

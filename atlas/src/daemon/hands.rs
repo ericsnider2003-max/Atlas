@@ -2378,7 +2378,6 @@ mod camera_reuse_tests {
 /// One look, on its own thread: a frame from the kept camera (opened if it
 /// isn't), the movement check, and the light look at you -- with the camera,
 /// the models and the last sight handed back for the next one.
-#[allow(clippy::too_many_arguments)]
 fn look_on_its_own(
     camera: Option<crate::frames::Latest>,
     feed: crate::frames::Feed,

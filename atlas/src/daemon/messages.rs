@@ -1350,7 +1350,7 @@ impl<'a> Daemon<'a> {
             }
             return crate::phonemodel::download_said(crate::phonemodel::download_state().as_ref(), attached.as_deref());
         }
-        #[allow(unreachable_code)]
+        #[cfg(not(feature = "phone-llm"))]
         {
             let _ = what;
             "That's for Atlas on a phone, which runs a small model inside the app. Here, Atlas uses the model in its \

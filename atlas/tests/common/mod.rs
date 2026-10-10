@@ -13,7 +13,7 @@
 //! One copy, two readers. Nothing here knows about lists or ceilings — it
 //! answers one question and the callers decide what it means.
 
-#![allow(dead_code)]
+#![allow(dead_code, reason = "shared helpers; each test crate that includes this module uses only some of them")]
 
 /// Does this text use `name` — call it, or pass it by name?
 ///

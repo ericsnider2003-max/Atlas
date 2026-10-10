@@ -55,6 +55,8 @@ fn module() -> Option<*mut c_void> {
             }
         }
         let wide: Vec<u16> = path.as_os_str().encode_wide_z();
+        // SAFETY: `wide` is a live NUL-terminated UTF-16 path (`encode_wide_z`) that outlives the
+        // call.
         unsafe { LoadLibraryW(wide.as_ptr()) as usize }
     });
     (m != 0).then_some(m as *mut c_void)
@@ -74,6 +76,8 @@ impl WideZ for std::ffi::OsStr {
 /// The loader's function by name, if the loader could be loaded.
 fn find(name: &[u8]) -> Option<*mut c_void> {
     let m = module()?;
+    // SAFETY: `m` is the loader module loaded above and never unloaded; every caller passes a
+    // NUL-terminated byte-string literal.
     let f = unsafe { GetProcAddress(m, name.as_ptr()) };
     (!f.is_null()).then_some(f)
 }

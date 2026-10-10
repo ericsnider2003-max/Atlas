@@ -26,6 +26,8 @@ pub fn own_cpu_ms() -> Option<u64> {
         use windows::Win32::Foundation::FILETIME;
         use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
         let (mut c, mut e, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        // SAFETY: the current-process pseudo-handle is always valid, and the four FILETIMEs are
+        // live locals the call writes.
         unsafe { GetProcessTimes(GetCurrentProcess(), &mut c, &mut e, &mut k, &mut u) }.ok()?;
         let t = |f: FILETIME| ((f.dwHighDateTime as u64) << 32 | f.dwLowDateTime as u64) / 10_000;
         Some(t(k) + t(u))

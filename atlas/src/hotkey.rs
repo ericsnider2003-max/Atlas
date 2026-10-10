@@ -261,6 +261,8 @@ mod platform {
             },
         };
         let inputs = [key(KEYBD_EVENT_FLAGS(0)), key(KEYEVENTF_KEYUP)];
+        // SAFETY: `inputs` is a live slice of fully initialised INPUT records and the size passed
+        // is that of one INPUT.
         unsafe {
             SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         }
@@ -270,6 +272,8 @@ mod platform {
         let vk = windows_vk(key).ok_or_else(|| format!("I don't know a key called \"{key}\""))?;
         *STATE.lock().map_err(|_| "the key state is poisoned")? = Some(Shared { vk, gate: Gate::new(hold_ms), tx });
         let (ok_tx, ok_rx) = std::sync::mpsc::channel();
+        // SAFETY: this thread installs the hook and then pumps its messages for as long as it
+        // lives, as a low-level hook requires; `hook` is a valid callback for the process lifetime.
         std::thread::spawn(move || unsafe {
             match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0) {
                 Ok(_) => {

@@ -77,6 +77,7 @@ impl Changes {
 /// can't be found or read.
 #[cfg(windows)]
 fn read(name: &str) -> Option<InputLevel> {
+    // SAFETY: `v` is a live endpoint-volume interface lent by `with_endpoint` for this call.
     win::with_endpoint(name, |v| unsafe {
         let scalar = v.GetMasterVolumeLevelScalar().ok()?;
         let muted = v.GetMute().map(|b| b.as_bool()).unwrap_or(false);
@@ -93,6 +94,8 @@ fn read(_name: &str) -> Option<InputLevel> {
 /// Set `name`'s input level to `scalar` (0..1); the level it was at.
 #[cfg(windows)]
 fn set(name: &str, scalar: f32) -> Result<f32, String> {
+    // SAFETY: `v` is a live endpoint-volume interface lent by `with_endpoint`; the null event
+    // context is the documented "no context".
     win::with_endpoint(name, |v| unsafe {
         let was = v.GetMasterVolumeLevelScalar().map_err(|e| e.to_string())?;
         v.SetMasterVolumeLevelScalar(scalar.clamp(0.0, 1.0), std::ptr::null()).map_err(|e| e.to_string())?;
@@ -138,6 +141,8 @@ mod win {
     /// Run `f` on the endpoint volume of the active capture device called
     /// `name`. `None` when there's no such device or COM refuses.
     pub(super) fn with_endpoint<T>(name: &str, f: impl FnOnce(&IAudioEndpointVolume) -> T) -> Option<T> {
+        // SAFETY: COM is initialised on this thread first, and every interface used is an owned
+        // smart pointer that lives through the closure `f`.
         unsafe {
             // Already initialised on this thread (in either model) is fine.
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);

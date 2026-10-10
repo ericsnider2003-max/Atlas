@@ -116,6 +116,8 @@ mod imp {
         let (p, n) = (wide(path), wide(name));
         let mut v: u32 = 0;
         let mut len: u32 = 4;
+        // SAFETY: `p` and `n` are live NUL-terminated wide strings; `v` is a live u32 and `len` its
+        // size in bytes, as the call requires.
         let rc = unsafe {
             RegGetValueW(HKEY_CURRENT_USER, p.as_ptr(), n.as_ptr(), RRF_RT_REG_DWORD, std::ptr::null_mut(), &mut v as *mut u32 as *mut _, &mut len)
         };
@@ -126,8 +128,11 @@ mod imp {
         let dark = dword(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme").map(|v| v == 0);
         let text_scale = dword(r"Software\Microsoft\Accessibility", "TextScaleFactor").map(|p| text_scale_from_percent(p)).unwrap_or(1.0);
         let mut hc = HighContrastW { cb_size: std::mem::size_of::<HighContrastW>() as u32, dw_flags: 0, default_scheme: std::ptr::null_mut() };
+        // SAFETY: `hc` is a live repr(C) HIGHCONTRAST with `cb_size` set to its size, as
+        // SPI_GETHIGHCONTRAST requires.
         let hc_on = unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cb_size, &mut hc as *mut _ as *mut _, 0) } != 0
             && hc.dw_flags & HCF_HIGHCONTRASTON != 0;
+        // SAFETY: GetSysColor takes a plain index and touches no memory of ours.
         let contrast = hc_on.then(|| unsafe {
             Contrast {
                 window: colorref_to_rgb(GetSysColor(COLOR_WINDOW)),
@@ -138,6 +143,7 @@ mod imp {
             }
         });
         let mut anim: i32 = 1;
+        // SAFETY: SPI_GETCLIENTAREAANIMATION writes one BOOL, and `anim` is a live 4-byte local.
         let got = unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &mut anim as *mut i32 as *mut _, 0) } != 0;
         OsLook { dark, contrast, text_scale, reduce_motion: got && anim == 0 }
     }

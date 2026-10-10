@@ -78,9 +78,12 @@ mod platform {
         let thread = std::thread::spawn(move || {
             // The state belongs to the thread that set it, so this thread
             // lives as long as the hold does.
+            // SAFETY: SetThreadExecutionState takes only flags; it affects the calling thread,
+            // which is why this thread stays alive for the hold.
             let prev = unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) };
             let _ = ok_tx.send(prev.0 != 0);
             let _ = stop_rx.recv();
+            // SAFETY: the same flags-only call, on the same thread that set the state, clearing it.
             unsafe {
                 SetThreadExecutionState(ES_CONTINUOUS);
             }

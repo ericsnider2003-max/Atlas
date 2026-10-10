@@ -425,6 +425,8 @@ mod win {
                 },
             },
         };
+        // SAFETY: the slice is two fully initialised INPUT records and the size passed is that of
+        // one INPUT.
         unsafe {
             SendInput(&[key(false), key(true)], std::mem::size_of::<INPUT>() as i32);
         }
@@ -476,6 +478,8 @@ mod win {
         let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Vec<String>>();
         let timer_gate = gate.clone();
         let timer_tx = tx.clone();
+        // SAFETY: this thread installs the hooks and then pumps its messages for as long as it
+        // lives, as a low-level hook requires; `hook` is a valid callback for the process lifetime.
         std::thread::spawn(move || unsafe {
             let mut problems = Vec::new();
             if let Some((vk, _)) = keys.talk {

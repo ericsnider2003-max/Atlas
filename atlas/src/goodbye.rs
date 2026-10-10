@@ -191,6 +191,8 @@ pub fn asked_twice() -> bool {
 /// cannot act on is noise.
 pub fn listen() {
     #[cfg(unix)]
+    // SAFETY: `signal` is declared with libc's own signature; the handler only stores to an atomic,
+    // which is async-signal-safe.
     unsafe {
         // The two that mean "stop": Ctrl-C at a terminal, and the polite kill
         // that a service manager or `systemctl stop` sends.
@@ -218,6 +220,8 @@ pub fn listen() {
     }
 
     #[cfg(windows)]
+    // SAFETY: the handler is a plain `extern "system"` fn that only stores to an atomic, valid for
+    // the life of the process.
     unsafe {
         // `SetConsoleCtrlHandler`, declared here the way `platform/win.rs`
         // declares what it needs.
@@ -228,7 +232,6 @@ pub fn listen() {
         // Windows gives roughly five seconds before killing the process
         // regardless, which is ample for a persist and a lock release but is
         // the reason the shutdown does the important things first.
-        #[allow(clippy::upper_case_acronyms, reason = "the Win32 type, by its Win32 name")]
         type BOOL = i32;
         const TRUE: BOOL = 1;
         unsafe extern "system" {

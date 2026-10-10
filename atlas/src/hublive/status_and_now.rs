@@ -444,8 +444,10 @@ pub(super) fn phone_model_block(said: Option<&str>) -> String {
         };
         return format!("{notice}<h2>This phone's own model</h2><p>{}</p>{button}", hub::esc(&state));
     }
-    #[allow(unreachable_code)]
-    notice
+    #[cfg(not(feature = "phone-llm"))]
+    {
+        notice
+    }
 }
 
 /// A field of a query or a posted form, decoded.

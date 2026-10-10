@@ -397,7 +397,7 @@ pub(super) fn inner_request(inner: &crate::wire::Inner) -> Request {
 /// is usually dual-stack). Asked of the socket rather than assumed.
 /// `only_v6` is deprecated because *setting* it after bind does nothing;
 /// reading it back is exactly right.
-#[allow(deprecated)]
+#[allow(deprecated, reason = "only_v6 is deprecated for setting it after bind; this only reads it back")]
 fn v6_only(l: &std::net::TcpListener) -> bool {
     l.only_v6().unwrap_or(true)
 }

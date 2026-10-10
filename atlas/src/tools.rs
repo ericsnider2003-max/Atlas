@@ -217,6 +217,8 @@ mod scoped_process_tests {
         #[cfg(windows)]
         {
             use windows::Win32::System::Threading::{OpenProcess, GetExitCodeProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+            // SAFETY: the process handle is opened here and closed on every path; `code` is a live
+            // local the call writes.
             unsafe {
                 let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return false; };
                 let mut code = 0;
@@ -229,6 +231,8 @@ mod scoped_process_tests {
         {
             #[cfg(target_os = "linux")]
             if std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().is_some_and(|stat| stat.rsplit_once(") ").is_some_and(|(_, state)| state.starts_with('Z'))) { return false; }
+            // SAFETY: signal 0 only checks that the process exists; it sends nothing and touches no
+            // memory of ours.
             unsafe { libc::kill(pid as i32, 0) == 0 }
         }
         #[cfg(not(any(windows, unix)))]
@@ -697,7 +701,6 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
             None => p.to_os_string(),
         }
     };
-    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);
     #[cfg(windows)]
     {

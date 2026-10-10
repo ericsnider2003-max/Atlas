@@ -84,8 +84,10 @@ fn device_ram() -> Option<u64> {
         let (pages, size) = unsafe { (libc::sysconf(libc::_SC_PHYS_PAGES), libc::sysconf(libc::_SC_PAGESIZE)) };
         return (pages > 0 && size > 0).then(|| pages as u64 * size as u64);
     }
-    #[allow(unreachable_code)]
-    None
+    #[cfg(not(unix))]
+    {
+        None
+    }
 }
 
 /// The model file this phone has, if any: the one that suits it, else the

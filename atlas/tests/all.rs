@@ -15,7 +15,7 @@
 //!      per process (a `OnceLock`). Run in one process they would stomp each
 //!      other's handover/lock state and refuse each other's turns; a process
 //!      per file keeps that state to itself, exactly as before.
-#![allow(clippy::all)]
+#![allow(clippy::all, reason = "the consolidated suite includes many test files; CI lints the library only (`cargo clippy --lib`)")]
 
 // Shared helpers for the included files, reached as `crate::common::...` --
 // chiefly `source_of`, which reads a module's source wherever its files live

@@ -105,7 +105,6 @@ fn open_in_browser(url: &str) {
 }
 
 #[cfg(not(windows))]
-#[allow(dead_code)]
 fn open_in_browser(_url: &str) {}
 
 /// Keep a line about what the hub region did, beside its own data — the one

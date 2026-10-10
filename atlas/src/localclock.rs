@@ -126,6 +126,8 @@ fn read_offset() -> i64 {
         daylight_bias: 0,
     };
     // 0 unknown, 1 standard, 2 daylight; 0xFFFFFFFF failed. UTC = local + bias.
+    // SAFETY: `tz` is a live local of the layout the API expects (a repr(C) TIME_ZONE_INFORMATION)
+    // and is only written by the call.
     let which = unsafe { GetTimeZoneInformation(&mut tz) };
     let extra = match which {
         1 => tz.standard_bias,

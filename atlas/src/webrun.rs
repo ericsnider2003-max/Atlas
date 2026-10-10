@@ -483,10 +483,6 @@ pub fn sign_up_unless(b: &mut crate::browser::Browser, enrolment: &mut crate::en
     SignedUp::Unconfirmed("The bounded form run ended without a verified account receipt.".into())
 }
 
-/// Historical entry point retained for compatibility with older Atlas builds.
-#[allow(dead_code)]
-pub fn sign_up() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
