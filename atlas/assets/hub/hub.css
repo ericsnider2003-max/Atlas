@@ -243,8 +243,8 @@ a.btn{text-decoration:none;display:inline-block}
 form.ask{margin:0;display:flex;align-items:center;gap:10px;background:var(--raise-2);
   border:1px solid var(--edge);border-radius:10px;padding:4px 8px 4px 14px}
 form.ask input{flex:1;min-width:0;margin:0;border:0;background:transparent;padding:8px 0;font-size:14px}
-form.ask input:focus{border:0}
-form.ask:focus-within{border-color:var(--accent)}
+form.ask input:focus{border:0;box-shadow:none}
+form.ask:focus-within{border-color:var(--accent-fill);box-shadow:0 0 0 1px var(--accent-fill)}
 form.ask button{background:none;border:0;padding:0}
 .glances{display:flex;flex-direction:column;gap:18px}
 .tiles{display:flex;gap:8px;margin:12px 0 14px}
@@ -433,7 +433,7 @@ input[type=text],input:not([type]){
   min-width:220px;margin-right:8px;
 }
 input::placeholder{color:var(--ink-faint)}
-input:focus{outline:none;border-color:var(--accent)}
+input:focus{outline:none;border-color:var(--accent-fill);box-shadow:0 0 0 1px var(--accent-fill)}
 
 
 /* --- the palette ------------------------------------------------------
@@ -451,7 +451,7 @@ input:focus{outline:none;border-color:var(--accent)}
 .palq{display:block;width:100%;min-width:0;margin:0;border:0;border-radius:0;
   border-bottom:1px solid var(--edge);background:transparent;
   padding:16px 18px;font-size:16px;color:var(--ink)}
-.palq:focus{outline:none;border-color:var(--edge)}
+.palq:focus{outline:2px solid var(--accent-fill);outline-offset:-2px}
 .hits{max-height:52vh;overflow-y:auto}
 .hitform{display:block;margin:0}
 .hit{display:block;width:100%;text-align:left;padding:11px 18px;background:none;
@@ -607,9 +607,9 @@ header .tool.icon::-webkit-details-marker{display:none}
 :root[data-contrast=high] .toggle a[data-v=contrast-normal],
 :root[data-motion=off] .toggle a[data-v=motion-on]{display:block}
 :root[data-contrast=high] .toggle:has(a[data-v=contrast-high]) .pair,
-:root[data-motion=off] .toggle:has(a[data-v=motion-off]) .pair{background:var(--accent-dim);border-color:var(--accent)}
+:root[data-motion=off] .toggle:has(a[data-v=motion-off]) .pair{background:var(--accent-dim);border-color:var(--accent-fill)}
 :root[data-contrast=high] .toggle:has(a[data-v=contrast-high]) .pair:before,
-:root[data-motion=off] .toggle:has(a[data-v=motion-off]) .pair:before{transform:translateX(18px);background:var(--accent)}
+:root[data-motion=off] .toggle:has(a[data-v=motion-off]) .pair:before{transform:translateX(18px);background:var(--accent-fill)}
 /* --- the thinking mark ------------------------------------------------
    Drawn here rather than fetched, because Atlas works offline and a spinner
    that needs the internet is a spinner that stops exactly when something has
