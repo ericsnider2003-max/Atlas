@@ -47,7 +47,7 @@ fn pad(s: &[i16]) -> Vec<i16> {
 }
 
 fn q(v: &mut Vec<f32>, p: f32) -> f32 {
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v.sort_by(|a, b| a.total_cmp(b));
     v[((v.len() - 1) as f32 * p) as usize]
 }
 

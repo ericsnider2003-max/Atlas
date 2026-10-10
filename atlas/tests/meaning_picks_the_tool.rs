@@ -143,7 +143,7 @@ fn with_the_real_encoder() {
     for (said, want) in MEANT {
         let q = route.text(said).unwrap();
         let mut by: Vec<(f32, &String)> = r.meaning_of(&q, tools).into_iter().zip(&names).collect();
-        by.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        by.sort_by(|a, b| b.0.total_cmp(&a.0));
         let got: Vec<String> = r.shortlist_meaning(said, 4, Some((&q, tools))).into_iter().map(|(e, _)| e.name.clone()).collect();
         let want_cos = by.iter().find(|(_, n)| n.as_str() == *want).map(|b| b.0).unwrap_or(0.0);
         eprintln!("{said:?} want {want} ({want_cos:.3}); top {:?}; picked {got:?}", &by[..3]);

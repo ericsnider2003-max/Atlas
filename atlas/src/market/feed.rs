@@ -386,7 +386,7 @@ mod tests {
         // This used to build the bad series with `rebuild` and hand it to
         // `accept`, proving that `check_ohlc` caught it. That was true and
         // not enough: `accept` is one way in, and a `Bars` built any other
-        // way carried NaN straight into `partial_cmp().unwrap()` in
+        // way carried NaN straight into an unchecked float comparison in
         // `market/levels.rs` and ended the process.
         //
         // The refusal moved to `Bars::new`, the one gate every series passes

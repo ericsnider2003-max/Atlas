@@ -140,7 +140,7 @@ fn a_price_series_with_a_hole_in_it_is_refused_rather_than_sorted() {
     // The unwrap that would actually have fired. `Bars::new` validated length
     // and raggedness and never finiteness — the finiteness check lived in
     // `feed::check_ohlc`, reachable only through `feed::accept`. A `Bars`
-    // built any other way carried NaN into `partial_cmp().unwrap()` and ended
+    // built any other way carried NaN into an unchecked float comparison and ended
     // the process.
     use atlas::market::bars::Bars;
     let good = Bars::new(

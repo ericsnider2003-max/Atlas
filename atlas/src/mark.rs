@@ -236,7 +236,7 @@ mod tests {
         // Both legs span the same stretch of the crease: one strip, folded.
         let top = |p: &[(f32, f32)]| {
             let mut xs: Vec<f32> = p.iter().filter(|(_, y)| (*y - CREASE_Y).abs() < 1e-3).map(|(x, _)| *x).collect();
-            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            xs.sort_by(|a, b| a.total_cmp(b));
             xs
         };
         assert_eq!(top(&FRONT), top(&BACK), "the legs don't meet along one crease");
