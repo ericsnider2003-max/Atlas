@@ -270,10 +270,11 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
         let reply = match llm.chat(&req, &mut |_| true) {
             Ok(r) => r,
             Err(e) => {
+                verdict = Verdict::Finished;
                 answer = if steps.is_empty() {
                     format!("My language model stopped before I could start that: {e}")
                 } else {
-                    format!("My language model stopped partway, after {}.", done_so_far(&steps))
+                    format!("My language model stopped partway, after {}: {e}", done_so_far(&steps))
                 };
                 break;
             }
