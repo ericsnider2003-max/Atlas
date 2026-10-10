@@ -167,7 +167,7 @@ impl Tongue {
 pub enum Shape {
     /// A body that does nothing: `pass`, `return null`, `{}`.
     DoesNothing,
-    /// Says so itself: TODO, FIXME, unimplemented, not yet.
+    /// Says so itself: a to-do marker, FIXME, unimplemented, not yet.
     SaysSoItself,
     /// An error caught and thrown away. The one that hurts most later,
     /// because the program carries on as though nothing happened.

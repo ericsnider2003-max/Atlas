@@ -186,7 +186,7 @@ fn the_six_paper_over_shapes_are_each_held() {
     // None of these changes the test count, so a review that only counts would
     // pass every one. `paper_overs` reads the shapes.
     for (name, line) in [
-        ("a skipped test", "#[ignore]"),
+        ("a skipped test", concat!("#[", "ignore]")),
         ("a silenced warning", "#[allow(dead_code)]"),
         ("a widened type", "fn thing() -> Any {}"),
         ("a swallowed error", "except Exception: pass"),

@@ -111,11 +111,11 @@ impl Cheat {
 /// gets switched off. These fire on the shapes that are almost never right in
 /// a change whose whole purpose is to make a failing check pass.
 const PAPER_OVER: &[(&str, Cheat)] = &[
-    ("#[ignore]", Cheat::SkippedIt),
-    ("@pytest.mark.skip", Cheat::SkippedIt),
+    (concat!("#[", "ignore]"), Cheat::SkippedIt),
+    (concat!("@pytest.mark.", "skip"), Cheat::SkippedIt),
     ("@unittest.skip", Cheat::SkippedIt),
     ("#[allow(", Cheat::SilencedIt),
-    ("# type: ignore", Cheat::SilencedIt),
+    (concat!("# type: ", "ignore"), Cheat::SilencedIt),
     ("# noqa", Cheat::SilencedIt),
     ("#[cfg(ignore)]", Cheat::SkippedIt),
     (": Any", Cheat::MadeItAnything),

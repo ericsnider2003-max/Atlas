@@ -1106,7 +1106,7 @@ fn the_social_page_escapes_what_it_shows_and_says_when_the_vault_is_locked() {
 /// and on the network it runs from. What it saw on 29 Sep 2026 is in the
 /// round's report.
 #[test]
-#[ignore]
+#[ignore = "live network: needs the public sites up; run by hand with --ignored"]
 fn live_public_sources_answer_through_atlass_own_reader() {
     let net = apis::Https;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();

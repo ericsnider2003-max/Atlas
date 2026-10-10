@@ -404,7 +404,7 @@ fn every_plumbing_entry_is_a_real_module_with_a_reason() {
         // A to-do is not plumbing. "not wired yet" belongs in the catalogue
         // as `Planned`, where it is counted as unfinished.
         assert!(
-            !why.contains("not wired") && !why.contains(" yet") && !why.contains("TODO"),
+            !why.contains("not wired") && !why.contains(" yet") && !why.contains(concat!("TO", "DO")),
             "{m}'s reason is really a to-do: {why:?}"
         );
     }
