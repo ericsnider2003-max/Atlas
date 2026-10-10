@@ -277,6 +277,17 @@ impl Outbox {
     /// never dropped to make room for a routine one — if that ever has to
     /// happen, the routine one goes.
     pub fn hold(&mut self, note: Note, cfg: &NotifyConfig) {
+        // A watcher may report the same unresolved condition on every tick.
+        // Keep one durable reminder instead of turning a quiet background
+        // failure into a backlog of identical alerts.
+        if self.held.iter().any(|held| {
+            held.title == note.title
+                && held.body == note.body
+                && held.urgency == note.urgency
+                && held.private == note.private
+        }) {
+            return;
+        }
         self.held.push(note);
         while self.held.len() > cfg.max_held {
             let victim = self

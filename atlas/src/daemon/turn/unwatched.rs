@@ -335,6 +335,7 @@ impl<'a> Daemon<'a> {
                 for id in std::mem::take(&mut self.held_by_pause) {
                     self.crew.resume(id);
                 }
+                self.release_deferred_background_step();
                 // What was suspended at the pause, named on the way back —
                 // the return value both call sites used to discard.
                 let held = self.attention.release();

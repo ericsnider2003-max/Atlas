@@ -24,6 +24,30 @@ pub fn recognizer_name() -> &'static str {
     }
 }
 
+/// Compatibility name retained for older integration callers.
+pub fn server_name() -> &'static str { recognizer_name() }
+
+/// Encode a legacy request frame (sample rate, byte count, then f32 samples).
+pub fn request_bytes(samples: &[f32], rate: i32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8 + samples.len() * 4);
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&((samples.len() * 4) as i32).to_le_bytes());
+    for sample in samples { out.extend_from_slice(&sample.to_le_bytes()); }
+    out
+}
+
+/// Legacy thread sizing rule retained for test and plugin compatibility.
+pub fn threads_for(available: usize) -> usize { (available / 2).max(2) }
+
+/// Legacy launch argument shape for callers that only need to inspect it.
+pub fn launch_args(files: &Files, port: u16, threads: usize) -> Vec<String> {
+    vec![format!("--port={port}"), "--model-type=nemo_transducer".into(), format!("--num-threads={threads}"), format!("--encoder={}", files.model.join("encoder.int8.onnx").display()), format!("--decoder={}", files.model.join("decoder.int8.onnx").display()), format!("--joiner={}", files.model.join("joiner.int8.onnx").display()), format!("--tokens={}", files.model.join("tokens.txt").display())]
+}
+
+/// Compatibility wrapper using the current owned-process recognizer.
+pub fn transcribe_file(root: &Path, wav: &Path) -> Option<Result<String>> {
+    transcribe_file_until(root, wav, &|| false).and_then(|r| r.transpose())
+}
 /// Are the socket-free recognizer and the model here (`atlas get hearing`)?
 pub fn installed(root: &Path) -> Option<Files> {
     let program = root.join("tools").join("sherpa").join("bin").join(recognizer_name());
@@ -115,3 +139,6 @@ mod native_roundtrip_proof {
         eprintln!("socket-free native ASR cold={cold:?} repeat={repeat:?} command={command_time:?}; narration={heard}; command={command}; cancel={:?}", cancel_started.elapsed());
     }
 }
+
+
+\r\n

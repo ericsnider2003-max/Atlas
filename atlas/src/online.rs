@@ -75,6 +75,19 @@ impl CloudflareConfig {
     fn verify_default() -> bool {
         true
     }
+
+    /// Plain-language setup guidance for onboarding and diagnostics.
+    /// Cloudflare is an optional per-user speed-up; local crews do not depend
+    /// on it and no friend needs an account to use Atlas.
+    pub const fn setup_steps() -> [&'static str; 5] {
+        [
+            "Atlas's local subagents work without Cloudflare or an internet connection.",
+            "If you want online delegation, use your own Cloudflare account; never share another user's token.",
+            "Create a narrowly scoped Workers AI API token and keep it out of config files.",
+            "Save the token in Atlas's protected vault, then enter your account id and chosen model.",
+            "Run the readiness check before enabling online delegation; failed checks fall back to local work.",
+        ]
+    }
 }
 
 /// Whether a provider can actually be used right now, and if not, the plain
@@ -306,6 +319,16 @@ mod tests {
         c.inference = Some(dummy_llm_cfg());
         assert!(readiness(&c, true).ready_now());
         assert!(readiness(&c, false).why().contains("cloudflare token"));
+    }
+
+    #[test]
+    fn setup_is_optional_and_self_contained() {
+        let steps = CloudflareConfig::setup_steps();
+        assert_eq!(steps.len(), 5);
+        assert!(steps[0].contains("without Cloudflare"));
+        assert!(steps[1].contains("your own"));
+        assert!(steps[2].contains("narrowly scoped"));
+        assert!(steps[4].contains("fall back to local"));
     }
 
     fn dummy_llm_cfg() -> LlmConfig {

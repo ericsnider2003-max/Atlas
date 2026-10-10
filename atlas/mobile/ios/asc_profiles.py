@@ -50,6 +50,25 @@ APPS = {
 }
 
 
+def api_url(path):
+    """Resolve an API path while keeping pagination on Apple's API host."""
+    if not isinstance(path, str) or not path:
+        raise ValueError("API path must be a non-empty string")
+    if path.startswith("/"):
+        return API + path
+    parsed = urllib.parse.urlsplit(path)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "api.appstoreconnect.apple.com"
+        or parsed.port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or not parsed.path.startswith("/v1/")
+    ):
+        raise ValueError("API URL must use Apple's App Store Connect API host")
+    return path
+
+
 def token():
     import jwt  # PyJWT
 
@@ -64,14 +83,7 @@ def token():
 
 
 def call(method, path, tok):
-    # Paginated responses hand back absolute links; never send the bearer
-    # token anywhere but the App Store Connect API itself.
-    if path.startswith("http"):
-        if not path.startswith(API):
-            raise ValueError("refusing to send credentials to a non-ASC url: " + path.split("?")[0])
-        url = path
-    else:
-        url = API + path
+    url = api_url(path)
     req = urllib.request.Request(url, method=method, headers={"Authorization": f"Bearer {tok}"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:

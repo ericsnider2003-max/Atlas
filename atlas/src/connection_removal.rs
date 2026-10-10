@@ -194,7 +194,7 @@ mod durable_local_removal {
     }
     #[test]
     fn exclusive_startup_reconciles_lost_worker_without_provider_retry_and_allows_fresh_connect() {
-        let (root, store, _) = fixture(); let id = begin(&store, "Synthetic account", "Google", 1).unwrap(); complete(&store, id, "Local access removed").unwrap(); provider_receipt(&store, id, ProviderState::Pending, "Previous provider worker pending").unwrap();
+        let (root, store, vault) = fixture(); vault.save(&store).unwrap(); let id = begin(&store, "Synthetic account", "Google", 1).unwrap(); complete(&store, id, "Local access removed").unwrap(); provider_receipt(&store, id, ProviderState::Pending, "Previous provider worker pending").unwrap();
         let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap(); cfg.tools.as_mut().unwrap().browser.launch = None;
         let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
         let other_daemon = crate::daemon::Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
