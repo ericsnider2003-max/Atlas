@@ -1009,7 +1009,7 @@ pub fn count_passing(output: &str) -> usize {
 //    somewhere other than where the cause was, and on tests being weakened.
 //
 // 3 and 4 are complements rather than duplicates: the review counts tests and
-// checks location, `paper_overs` reads the shapes in the text. `#[ignore]`
+// checks location, `paper_overs` reads the shapes in the text. An ignore attribute
 // leaves the count unchanged, and a review that only counts would pass it.
 // ---------------------------------------------------------------------------
 

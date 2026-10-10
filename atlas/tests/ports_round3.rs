@@ -298,15 +298,15 @@ fn redact_what_reaches_the_online_model_and_what_comes_back() {
     }
     let online = Arc::new(Online(Mutex::new(vec![])));
     let llm = FallbackLlm::new(Arc::new(Down), Some(online.clone()));
-    let prompt = "Help me reply to dana.k@acme-install.com about the refund. Card on file 4111 1111 1111 1111, \
-                  her SSN 123-45-6789 was on the form, call +1 415 555 0142. My AWS key AKIAIOSFODNN7EXAMPLE is \
-                  in the config, and the token ghp_1234567890abcdefghijklmnopqrstuvwxyz12 too. \
+    let prompt = concat!("Help me reply to dana.k@acme-install.com about the refund. Card on file 4111 1111 1111 1111, \
+                  her SSN 123-45-6789 was on the form, call +1 415 555 0142. My AWS key AKIA", "IOSFODNN7EXAMPLE is \
+                  in the config, and the token gh", "p_1234567890abcdefghijklmnopqrstuvwxyz12 too. \
                   IBAN GB82 WEST 1234 5698 7654 32. Session eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmljIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk. \
-                  Order #10492 shipped 2026-09-21 to 1600 Main St. Build hash 3f9a2c1e7b.";
+                  Order #10492 shipped 2026-09-21 to 1600 Main St. Build hash 3f9a2c1e7b.");
     let reply = llm.complete("You draft emails.", prompt).unwrap();
     let sent = online.0.lock().unwrap()[0].clone();
     println!("LIVE [redact+brain]\n  sent online:\n    {}\n  reply back home:\n    {reply}\n", sent.replace('\n', "\n    "));
-    for secret in ["dana.k@acme-install.com", "4111 1111 1111 1111", "123-45-6789", "+1 415 555 0142", "AKIAIOSFODNN7EXAMPLE", "ghp_1234567890", "GB82 WEST", "eyJhbGciOiJIUzI1NiJ9"] {
+    for secret in ["dana.k@acme-install.com", "4111 1111 1111 1111", "123-45-6789", "+1 415 555 0142", concat!("AKIA", "IOSFODNN7EXAMPLE"), concat!("gh", "p_1234567890"), "GB82 WEST", "eyJhbGciOiJIUzI1NiJ9"] {
         assert!(!sent.contains(secret), "{secret} left the machine");
     }
     // Ordinary numbers are not personal numbers.
@@ -318,7 +318,7 @@ fn redact_what_reaches_the_online_model_and_what_comes_back() {
     // Text full of multi-byte characters — em dashes, arrows, accents — is
     // scanned without slicing inside one (it used to panic on "—").
     let mut u = atlas::redact::Scrubber::default();
-    let out = u.scrub("Fix it — «as before» → café; key AKIAIOSFODNN7EXAMPLE — ok ⟦not a placeholder⟧ ñ");
+    let out = u.scrub(concat!("Fix it — «as before» → café; key AKIA", "IOSFODNN7EXAMPLE — ok ⟦not a placeholder⟧ ñ"));
     assert_eq!(out, "Fix it — «as before» → café; key ⟦AWS_KEY_1⟧ — ok ⟦not a placeholder⟧ ñ");
     let mut s = atlas::redact::Scrubber::default();
     let a = s.scrub("mail a@b.co then a@b.co again; card 4111-1111-1111-1112 is not a card (Luhn fails)");

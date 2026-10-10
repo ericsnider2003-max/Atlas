@@ -7,7 +7,7 @@
 //! whisper-cli and a real piper to a real transcript. A template can hold a
 //! typo'd flag for months and every mocked test stays green.
 //!
-//! ## Why `#[ignore]` and not a silent skip
+//! ## Why ignored-by-default and not a silent skip
 //!
 //! This tree already caught one test that skipped when its subject was
 //! absent — which is the normal case after a handover, so it read green

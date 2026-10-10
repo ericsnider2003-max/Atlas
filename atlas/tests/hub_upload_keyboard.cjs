@@ -13,7 +13,7 @@ const project = path.resolve(__dirname, '..');
   const browser = await chromium.launch({ channel: process.env.ATLAS_BROWSER_CHANNEL || 'msedge', headless: true });
   try {
     const page = await browser.newPage();
-    await page.setContent('<html lang=en><style>' + css + '</style><main>' + html + '</main></html>');
+    await page.setContent('<html lang=en><title>Files in and out (keyboard test)</title><style>' + css + '</style><main>' + html + '</main></html>');
     for (const theme of ['paper', 'dark', 'access']) {
       await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
       await page.locator('body').click({ position: { x: 1, y: 1 } });

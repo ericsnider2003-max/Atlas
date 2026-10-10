@@ -72,8 +72,11 @@ def walk(root):
             rel = os.path.relpath(p, root).replace(os.sep, "/")
             try:
                 out[rel] = digest(p)
-            except OSError:
-                pass
+            except OSError as e:
+                # Never pretend an unreadable file is absent (that reads as a
+                # deletion). A per-root marker never equals another side's, so
+                # it surfaces as a conflict for a person to look at.
+                out[rel] = "unreadable:%s:%s" % (root, e.strerror)
     return out
 
 

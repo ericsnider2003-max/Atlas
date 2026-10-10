@@ -588,7 +588,7 @@ fn the_setting_is_in_the_list_and_applies_without_a_restart() {
 /// `-- --ignored across_voices --nocapture`. Measured 28 Sep 2026: cut
 /// itself off 0/54, heard you 54/54 (21 minutes on a loaded two-CPU box).
 #[test]
-#[ignore]
+#[ignore = "about ten minutes over six voices; run with -- --ignored across_voices"]
 fn across_voices_echo_strengths_and_delays_atlas_does_not_cut_itself_off_and_you_are_heard() {
     let voices = ["A", "B", "C", "D", "E", "F"];
     let (mut false_cuts, mut heard, mut tries) = (0, 0, 0);
