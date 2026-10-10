@@ -355,7 +355,7 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     let kept = d
         .vault
         .put(&vault_name, crate::vault::Kind::Login, &password, now)
-        .and_then(|()| d.vault.save(&crate::roots::install_state()).map_err(|e| e.to_string()));
+        .and_then(|()| d.vault.save(&d.vault_home).map_err(|e| e.to_string()));
     if let Err(e) = kept {
         return again(&format!("The password worked, but I couldn't seal it in the vault, so nothing was kept: {e}."));
     }
@@ -671,6 +671,14 @@ pub fn keep_sign_in(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String
 }
 
 fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
+    // A pending Google removal is a durable local fence. Check it before
+    // touching the vault so a blocked completion cannot partially connect or
+    // turn the refusal into a misleading stale-vault error.
+    if s.provider == Provider::Google {
+        if let Err(e) = crate::connection_removal::google_connection_allowed(&d.store) {
+            return format!("Nothing connected: {e}");
+        }
+    }
     let name = oauthlink::vault_name(s.provider, &s.email);
     // If it stays shut, the `put` below fails and says so.
     crate::heard!(d.vault_ready(now));
