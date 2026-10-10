@@ -320,12 +320,17 @@ fn load_layered<T: for<'de> Deserialize<'de>>(
         }
         v
     };
-    let to_t = |v: serde_yaml::Value| -> Result<T> {
-        serde_yaml::from_value(v).map_err(|e| AtlasError::Config(format!("{}: {e}", path.display())))
+    let to_t = |v: serde_yaml::Value| -> Result<(T, Vec<String>)> {
+        let mut unknown = Vec::new();
+        let t = serde_ignored::deserialize(v, |p| unknown.push(p.to_string()))
+            .map_err(|e: serde_yaml::Error| AtlasError::Config(format!("{}: {e}", path.display())))?;
+        Ok((t, keys_that_match_nothing(file, unknown)))
     };
 
     if edits.is_empty() {
-        return to_t(with_prefs(shipped, settings_unplaced));
+        let (t, unknown) = to_t(with_prefs(shipped, settings_unplaced))?;
+        settings_unplaced.extend(unknown);
+        return Ok(t);
     }
     let mut mine = shipped.clone();
     for c in crate::yourchanges::apply(&mut mine, &edits) {
@@ -337,8 +342,9 @@ fn load_layered<T: for<'de> Deserialize<'de>>(
     }
     let mut report = Vec::new();
     match to_t(with_prefs(mine, &mut report)) {
-        Ok(t) => {
+        Ok((t, unknown)) => {
             settings_unplaced.extend(report);
+            settings_unplaced.extend(unknown);
             Ok(t)
         }
         Err(e) => {
@@ -347,9 +353,37 @@ fn load_layered<T: for<'de> Deserialize<'de>>(
                  the shipped {file} until they are fixed",
                 crate::yourchanges::overlay_path(dir, file).display()
             ));
-            to_t(with_prefs(shipped, settings_unplaced))
+            let (t, unknown) = to_t(with_prefs(shipped, settings_unplaced))?;
+            settings_unplaced.extend(unknown);
+            Ok(t)
         }
     }
+}
+
+/// Keys a config file sets that no field of its type has.
+///
+/// Not `deny_unknown_fields`: a newer release's file must still load on an
+/// older Atlas, so an unknown key cannot be an error. But a misspelt key
+/// (`poll_msec:` for `poll_ms:`) is the "I changed it and nothing happened"
+/// failure, so each one is written to the log and carried out for `atlas
+/// doctor`. Keys already named in `NO_FIELD_TO_LAND_IN` are left to
+/// `settings_that_do_nothing`, which says what each was for.
+fn keys_that_match_nothing(file: &str, paths: Vec<String>) -> Vec<String> {
+    let known = |p: &str| {
+        file == "tools.yaml"
+            && NO_FIELD_TO_LAND_IN
+                .iter()
+                .any(|(k, _)| p == *k || p.starts_with(&format!("{k}.")))
+    };
+    paths
+        .into_iter()
+        .filter(|p| !known(p))
+        .map(|p| {
+            let msg = format!("{file}: `{p}` is not a setting Atlas has, so it changes nothing (a misspelt key?)");
+            crate::heard!(Err::<(), _>(msg.clone()));
+            msg
+        })
+        .collect()
 }
 
 impl Config {

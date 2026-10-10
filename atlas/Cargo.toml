@@ -104,6 +104,7 @@ libloading = "0.8"
 # llama.cpp `common` library, which Atlas doesn't use.
 llama-cpp-2 = { version = "=0.1.157", default-features = false, optional = true }
 encoding_rs = { version = "0.8", optional = true }
+serde_ignored = "0.1.14"
 
 # The lint gate (5 Oct 2026, audit Q4). CI runs `cargo clippy --lib -- -D warnings`,
 # so a new warning fails the merge rather than joining a pile (it was 332).
@@ -408,3 +409,6 @@ debug = false
 # vendor/webview2-com-sys/ATLAS_VENDORED.md.
 webview2-com-sys = { path = "vendor/webview2-com-sys" }
 
+[[test]]
+name = "a_misspelt_setting_is_reported"
+path = "tests/a_misspelt_setting_is_reported.rs"
