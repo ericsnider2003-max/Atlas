@@ -1062,7 +1062,7 @@ fn download(p: &Piece, part: &Path, tools: &Tools, progress: &dyn Fn(u64, u64)) 
             }
             Ok(None) if std::time::Instant::now() >= until => {
                 let _ = child.kill();
-                let _ = child.wait();
+                crate::heard!(child.wait());
                 return Err(format!(
                     "I couldn't get {}: it was taking far too long ({} minutes), so I stopped it. What arrived is kept \
                      -- try again and it carries on from there",

@@ -123,7 +123,7 @@ impl Drop for Player {
     fn drop(&mut self) {
         self.cdp.close();
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        crate::heard!(self.child.wait());
         crate::heard!(std::fs::remove_dir_all(&self.profile));
     }
 }
@@ -168,7 +168,7 @@ impl Player {
         let fail = |child: &mut Option<std::process::Child>, why: String| -> Result<Player, String> {
             if let Some(mut c) = child.take() {
                 let _ = c.kill();
-                let _ = c.wait();
+                crate::heard!(c.wait());
             }
             Err(why)
         };

@@ -668,7 +668,7 @@ pub fn check_new_build(new: &Path, timeout: std::time::Duration) -> Result<Strin
             Ok(Some(s)) => break s,
             Ok(None) if started.elapsed() >= timeout => {
                 let _ = child.kill();
-                let _ = child.wait();
+                crate::heard!(child.wait());
                 return Err(format!("it didn't finish its check within {} seconds", timeout.as_secs()));
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),

@@ -141,7 +141,7 @@ mod platform {
     pub(super) fn let_go(i: &mut Inner) {
         if let Some(mut c) = i.child.take() {
             let _ = c.kill();
-            let _ = c.wait();
+            crate::heard!(c.wait());
         }
     }
 }

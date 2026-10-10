@@ -156,7 +156,7 @@ pub struct Client {
 impl Drop for Client {
     fn drop(&mut self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        crate::heard!(self.child.wait());
     }
 }
 
@@ -201,7 +201,7 @@ impl Client {
         let stdin = child.stdin.take().ok_or("no way to write to it")?;
         let stdout = child.stdout.take().ok_or("no way to read from it")?;
         let (tx, rx) = mpsc::channel();
-        let _ = std::thread::Builder::new().name(format!("atlas-mcp-{}", cfg.name)).spawn(move || {
+        let reader_thread = std::thread::Builder::new().name(format!("atlas-mcp-{}", cfg.name)).spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
                 let Ok(line) = line else { break };
@@ -218,6 +218,13 @@ impl Client {
                 }
             }
         });
+        // No reader means no answer will ever come; say so now rather than
+        // after the timeout, and don't leave the server running.
+        if let Err(e) = reader_thread {
+            crate::heard!(child.kill());
+            crate::heard!(child.wait());
+            return Err(format!("couldn't start a reader for {cmd}: {e}"));
+        }
         let mut client = Client { child, stdin, rx, next_id: 1, server_info: String::new(), protocol: String::new() };
         let init = client.request(
             "initialize",

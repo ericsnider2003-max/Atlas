@@ -308,7 +308,7 @@ mod scoped_process_tests {
         wait_gone(&stopped_pid);
         assert!(unrelated.try_wait().unwrap().is_none(), "stopping one job ended unrelated work");
         unrelated_scope.stop();
-        let _ = unrelated.wait();
+        crate::heard!(unrelated.wait());
     }
     #[test]
     fn cancellation_before_start_performs_no_command_action() {

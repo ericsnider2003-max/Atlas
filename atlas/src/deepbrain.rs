@@ -492,7 +492,7 @@ impl Engine for ServerEngine {
     fn stop(&mut self) {
         if let Some(mut c) = self.child.take() {
             let _ = c.kill();
-            let _ = c.wait();
+            crate::heard!(c.wait());
         }
     }
 

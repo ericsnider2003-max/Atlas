@@ -153,7 +153,7 @@ impl Drop for Rolling {
     fn drop(&mut self) {
         // A camera left open is a light left on.
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        crate::heard!(self.child.wait());
     }
 }
 

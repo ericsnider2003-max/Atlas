@@ -886,8 +886,21 @@ pub fn rename_patiently_with(
 /// A small JSON file outside a `Store`, read whole: the default when it is
 /// missing or unreadable. With `write_json`, the one way the device lists
 /// (apns, webpush) are kept (audit Q3: each had its own copy).
+///
+/// A file that is there but does not parse is moved aside as
+/// `<name>.corrupt.<ts>.bak` rather than left for the next `write_json` to
+/// overwrite: a damaged list is evidence, not an empty list. A file that
+/// merely cannot be read right now (antivirus holding it) is left untouched.
 pub fn read_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
-    std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    let Ok(bytes) = std::fs::read(path) else { return T::default() };
+    match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            crate::heard!(rename_patiently(path, &path.with_file_name(format!("{name}.corrupt.{}.bak", now()))));
+            T::default()
+        }
+    }
 }
 
 /// `value` written to `path` as pretty JSON, whole (`write_whole`).
@@ -1082,5 +1095,29 @@ mod install_root_tests {
                 d.display()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod read_json_tests {
+    #[test]
+    fn a_damaged_file_is_set_aside_and_a_good_one_is_read() {
+        let dir = std::env::temp_dir().join(format!("atlas-damaged-json-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("list.json");
+        let none: Vec<u32> = super::read_json(&f);
+        assert!(none.is_empty());
+        std::fs::write(&f, b"[1,2,3]").unwrap();
+        let ok: Vec<u32> = super::read_json(&f);
+        assert_eq!(ok, vec![1, 2, 3]);
+        assert!(f.exists());
+        std::fs::write(&f, b"[1,2,").unwrap();
+        let bad: Vec<u32> = super::read_json(&f);
+        assert!(bad.is_empty());
+        assert!(!f.exists(), "a damaged file must not stay where the next save overwrites it");
+        let kept: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert!(kept.iter().any(|n| n.starts_with("list.json.corrupt.") && n.ends_with(".bak")), "{kept:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

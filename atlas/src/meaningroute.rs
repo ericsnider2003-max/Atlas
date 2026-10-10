@@ -116,7 +116,7 @@ impl Resident {
                         }
                     }
                     let _ = child.kill();
-                    let _ = child.wait();
+                    crate::heard!(child.wait());
                 })
                 .ok()?;
             Some(Resident { tx })

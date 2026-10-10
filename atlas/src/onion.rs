@@ -327,7 +327,7 @@ impl Tor {
 impl Drop for Tor {
     fn drop(&mut self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        crate::heard!(self.child.wait());
         crate::heard!(std::fs::remove_file(pid_file(&self.dir)));
     }
 }

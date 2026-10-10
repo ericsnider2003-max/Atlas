@@ -213,7 +213,7 @@ pub fn ask_until(
             }
             _ => {
                 let _ = child.kill();
-                let _ = child.wait();
+                crate::heard!(child.wait());
                 break None;
             }
         }

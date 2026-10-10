@@ -433,7 +433,7 @@ pub fn crash_in_compiler(events: &str) -> Option<String> {
 }
 
 fn verdicts() -> std::collections::BTreeMap<String, String> {
-    std::fs::read(cache_dir().join("verdicts.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    crate::store::read_json(&cache_dir().join("verdicts.json"))
 }
 
 /// Did this model and size lose to the processor before, with this engine?
