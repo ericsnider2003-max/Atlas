@@ -480,7 +480,7 @@ impl<'a> Daemon<'a> {
                 let sent_since = mail_book_on.then(|| {
                     let last = mail_book.checked.get(&account.address).copied().unwrap_or(0);
                     let back = crate::store::now().saturating_sub(last.max(crate::store::now().saturating_sub(look_back_days * 86_400)));
-                    crate::triage::imap_date((back / 86_400 + 1) as u32, crate::store::now())
+                    crate::triage::imap_date(u32::try_from(back / 86_400 + 1).unwrap_or(u32::MAX), crate::store::now())
                 });
                 match connect_and_fetch_inbox(
                     &host,

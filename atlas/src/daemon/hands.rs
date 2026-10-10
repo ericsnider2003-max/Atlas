@@ -243,7 +243,7 @@ impl<'a> Daemon<'a> {
                 // Smoothed before anything acts on it. A detector wobbles by a
                 // pixel or two on a hand that isn't moving, and an unsmoothed
                 // pointer shivers, which reads as broken.
-                let ms = (t.saturating_mul(1000)) as u32;
+                let ms = u32::try_from(t.wrapping_mul(1000) % (1 << 32)).unwrap_or(0);
                 let (x, y) = self.track.saw(h.x, h.y, ms, &tools.smoothing);
                 crate::gaze::Hand { x, y, ..h }
             });
