@@ -1850,7 +1850,7 @@ impl WarmMic {
         let claimed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (c, st) = (claimed.clone(), stop.clone());
-        let _ = std::thread::Builder::new().name("atlas-warm-mic".into()).spawn(move || {
+        let reader_thread = std::thread::Builder::new().name("atlas-warm-mic".into()).spawn(move || {
             let started = std::time::Instant::now();
             // 20 ms at a time.
             while !st.load(Ordering::SeqCst) {
@@ -1865,6 +1865,10 @@ impl WarmMic {
             }
             st.store(true, Ordering::SeqCst);
         });
+        if reader_thread.is_err() {
+            // Nothing will ever read the mic: `alive()` must say so.
+            stop.store(true, Ordering::SeqCst);
+        }
         WarmMic { rx, claimed, stop, pending: std::collections::VecDeque::new() }
     }
     fn alive(&self) -> bool {
