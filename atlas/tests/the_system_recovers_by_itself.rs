@@ -193,7 +193,7 @@ fn the_talk_page_asks_one_question_at_a_time() {
     assert!(guard < fetch);
     assert!(s.contains("r.ok?r.json():null"), "a busy reply is read as done");
     let live = atlas::hub::LIVE_SCRIPT;
-    assert!(live.find("||out)return;").unwrap() < live.find("out=true;fetch('/hub/changed.json").unwrap());
+    assert!(live.find("||out)return;").unwrap() < live.find("out=true;get('/hub/changed.json").unwrap());
 }
 
 // ------------------------------------------------------ the firewall rule
