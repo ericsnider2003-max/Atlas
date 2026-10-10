@@ -727,10 +727,15 @@ impl<'a> Daemon<'a> {
             }
         }
         if gone {
-            out.push("The request of several steps stopped without finishing -- ask me again.".into());
+            let reply = "The request of several steps stopped without finishing -- ask me again.".to_string();
             for s in self.streams.iter_mut().filter(|s| s.state == crate::streams::State::Running) {
                 s.state = crate::streams::State::Failed;
             }
+            if let Some(e) = self.thread.recent.iter_mut().rev().find(|e| e.said == tl.said) {
+                e.reply = reply.clone();
+            }
+            self.persist();
+            out.push(reply);
             return out;
         }
         if let Some((streams, asked, thought_ms)) = parts_done {
