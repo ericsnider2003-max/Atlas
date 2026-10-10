@@ -685,7 +685,7 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     let kept = d
         .vault
         .put(&name, crate::vault::Kind::Login, &s.refresh_token, now)
-        .and_then(|()| d.vault.save(&crate::roots::install_state()).map_err(|e| e.to_string()));
+        .and_then(|()| d.vault.save(&d.vault_home).map_err(|e| e.to_string()));
     if let Err(e) = kept {
         return format!("{} let me in as {}, but I couldn't seal the sign-in in the vault, so nothing was kept: {e}.", s.provider.name(), s.email);
     }
