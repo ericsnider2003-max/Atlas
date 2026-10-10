@@ -141,4 +141,3 @@ mod native_roundtrip_proof {
 }
 
 
-\r\n

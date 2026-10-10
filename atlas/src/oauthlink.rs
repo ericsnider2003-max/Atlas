@@ -595,4 +595,3 @@ pub fn outlook_account(email: &str) -> crate::mail::Account {
     }
 }
 
-\r\n

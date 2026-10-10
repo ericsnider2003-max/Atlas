@@ -53,6 +53,7 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
         out.push_str(&format!("<p class=said role=status>{}</p>", esc(&said)));
     }
     out.push_str(&one_click(d));
+    out.push_str(&publication_status(&d.publisher));
     out.push_str(
         "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=start>\
          <label>Email address <input name=address type=email autocomplete=email required></label>\
@@ -194,6 +195,47 @@ fn disconnect(kind: &str, id: &str) -> String {
     )
 }
 
+/// Posts whose publication the owner has to settle, or approve again after
+/// settling. Nothing here sends anything: it only shows what is known and
+/// offers the owner's own check ("I looked at the service") as a form.
+pub fn publication_status(publisher: &crate::publish::Publisher) -> String {
+    use crate::publish::{PostState, CHECKED_ABSENT};
+    let mut out = String::new();
+    for post in publisher.pending() {
+        let id = post.id;
+        let attachments = if post.media.is_empty() { "None".to_string() } else { post.media.iter().map(|m| esc(m)).collect::<Vec<_>>().join(", ") };
+        match post.state {
+            PostState::PendingSubmission | PostState::Uncertain => out.push_str(&format!(
+                "<section class=publication><h3>Post {id} to {chan}: publication unconfirmed</h3>\
+                 <p>{why}</p>\
+                 <p>I won't retry automatically: it may already be public. Look at the service yourself, then tell me what you found.</p>\
+                 <form method=post action='/hub/connect'><input type=hidden name=what value=post-reconcile><input type=hidden name=id value={id}>\
+                 <label><input type=checkbox name=checked value=yes> I checked the service myself</label>\
+                 <label>Link to the post, if it is there <input name=receipt></label>\
+                 <label><input type=radio name=resolution value=published> It is published</label>\
+                 <label><input type=radio name=resolution value=absent> It is not there</label>\
+                 <button>Record what I found</button></form></section>",
+                chan = esc(&post.channel.name()),
+                why = esc(post.result.as_deref().unwrap_or("The service did not confirm."))
+            )),
+            PostState::Draft if post.result.as_deref() == Some(CHECKED_ABSENT) => out.push_str(&format!(
+                "<section class=publication><h3>Post {id} to {chan}: checked, not published</h3>\
+                 <p>Words: {body}</p><p>Attachments: {attachments}</p>\
+                 <p>If you approve this exact draft again it will go out as soon as a connection is available.</p>\
+                 <form method=post action='/hub/connect'><input type=hidden name=what value=post-reapprove><input type=hidden name=id value={id}>\
+                 <input type=hidden name=review value={fp}>\
+                 <label><input type=checkbox name=checked value=yes> I reviewed these words and attachments</label>\
+                 <button>Approve again</button></form></section>",
+                chan = esc(&post.channel.name()),
+                body = esc(&post.body),
+                fp = esc(&crate::publish::review_fingerprint(post))
+            )),
+            _ => {}
+        }
+    }
+    out
+}
+
 /// POST /hub/connect.
 pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     if d.handover().stance.handed_over() {
@@ -215,6 +257,30 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
             Some(p) => start_signin(d, p, fields),
             None => back("That button isn't wired to anything, so nothing changed."),
         },
+        "post-reconcile" => {
+            let Ok(id) = field(fields, "id").parse::<u64>() else { return back("I couldn't tell which post that was.") };
+            if field(fields, "checked") != "yes" { return back("Nothing changed: tick the box once you have looked at the service yourself."); }
+            let receipt = field(fields, "receipt");
+            let before = d.publisher.clone();
+            let Some(channel) = d.publisher.get(id).map(|p| p.channel.clone()) else { return back("I couldn't find that post.") };
+            let resolved = match field(fields, "resolution").as_str() {
+                "published" if crate::publish::valid_receipt(&channel, &receipt) => d.publisher.reconcile_submission(id, Some(&receipt)),
+                "published" => return back("Nothing changed: that link isn't a post link on the service it was sent to."),
+                "absent" => d.publisher.reconcile_submission(id, None),
+                _ => return back("Nothing changed: say whether the post is published or not there."),
+            };
+            if !resolved { return back("Nothing changed: that post isn't waiting on a check."); }
+            if let Err(e) = d.publisher.save(&d.store) { d.publisher = before; return back(&format!("I couldn't keep that ({e}); nothing changed.")); }
+            back("Recorded. Nothing was sent; a post found missing needs a fresh approval before it can go.")
+        }
+        "post-reapprove" => {
+            let Ok(id) = field(fields, "id").parse::<u64>() else { return back("I couldn't tell which post that was.") };
+            if field(fields, "checked") != "yes" { return back("Nothing changed: tick the box once you have reviewed the draft."); }
+            let before = d.publisher.clone();
+            if !d.publisher.approve_checked_retry(id, &field(fields, "review")) { d.publisher = before; return back("Nothing changed: the draft is not the one you checked, so it needs a new review."); }
+            if let Err(e) = d.publisher.save(&d.store) { d.publisher = before; return back(&format!("I couldn't keep that approval ({e}); nothing changed.")); }
+            back("Approved again. It goes out when its turn comes and a connection is available.")
+        }
         "calendar" => add_calendar(d, &field(fields, "url")),
         "muse-page" => back(&match d.plat.open_path(crate::muse::KEY_PAGE) {
             Ok(()) => "Meta's key page is open in your browser: API keys, then Create API key. Paste it here.".to_string(),
