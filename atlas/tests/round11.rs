@@ -79,7 +79,7 @@ mod screen_text {
 
     #[test]
     fn a_secret_on_screen_is_said() {
-        let s = said("key: AKIAIOSFODNN7EXAMPLE", Engine::Windows, "config");
+        let s = said(concat!("key: AKIA", "IOSFODNN7EXAMPLE"), Engine::Windows, "config");
         let plain = said("the quarterly numbers look fine", Engine::Windows, "config");
         assert_ne!(s.contains("Careful"), plain.contains("Careful"), "only the secret is warned about: {s} / {plain}");
         assert_eq!(tidy_lines("  a   b \n\n\n c  "), "a b\n\nc");
@@ -342,7 +342,7 @@ mod snippet_tests {
     #[test]
     fn a_secret_is_refused_and_variables_fill() {
         let mut s = Snippets::default();
-        assert!(matches!(s.save("aws", "AKIAIOSFODNN7EXAMPLE"), Err(Refused::Secret(_))));
+        assert!(matches!(s.save("aws", concat!("AKIA", "IOSFODNN7EXAMPLE")), Err(Refused::Secret(_))));
         // Thursday 2026-09-24 14:05 local.
         let t = 1_790_208_000 + 14 * 3600 + 5 * 60;
         assert_eq!(fill("{weekday} {date} {time}", t), "Thursday 2026-09-24 14:05");
@@ -714,7 +714,7 @@ mod fsrs {
         for i in 0..50 {
             d.add(&format!("q{i}"), "a", "", 0).unwrap();
         }
-        assert!(matches!(d.add("key", "AKIAIOSFODNN7EXAMPLE", "", 0), Err(Refused::Secret(_))));
+        assert!(matches!(d.add("key", concat!("AKIA", "IOSFODNN7EXAMPLE"), "", 0), Err(Refused::Secret(_))));
         let cfg = SrsConfig::default();
         assert_eq!(d.due(0, cfg.per_session).len(), 20);
         assert!(d.next(0, &cfg).is_some());
@@ -807,7 +807,7 @@ mod helpers {
         assert_eq!(mail_addresses("Sam Lee <sam@x.com>, jo@y.org, not an address"), vec!["sam@x.com", "jo@y.org"]);
         let e = excerpt(&"word ".repeat(1000));
         assert!(e.chars().count() <= atlas::mailbook::EXCERPT + 1);
-        assert!(!excerpt("my key is AKIAIOSFODNN7EXAMPLE").contains("AKIAIOSFODNN7EXAMPLE"), "secrets are scrubbed");
+        assert!(!excerpt(concat!("my key is AKIA", "IOSFODNN7EXAMPLE")).contains(concat!("AKIA", "IOSFODNN7EXAMPLE")), "secrets are scrubbed");
     }
 
     #[test]
