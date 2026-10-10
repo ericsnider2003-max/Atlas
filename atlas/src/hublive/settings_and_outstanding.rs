@@ -250,7 +250,7 @@ impl Daemon<'_> {
                 self.dropped.push(crate::daily::Dropped {
                     title: request.clone(),
                     when: now,
-                    carried_for: (now.saturating_sub(item.first_seen) / 86_400) as u32,
+                    carried_for: u32::try_from(now.saturating_sub(item.first_seen) / 86_400).unwrap_or(u32::MAX),
                     about: None,
                     thinking: Vec::new(),
                 });

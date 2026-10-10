@@ -770,7 +770,7 @@ pub fn gpu_layers_for(model: &Model, vram_bytes: u64, context: u64) -> u32 {
     let layers = 32u64; // typical; refined from block_count when available
     let per_layer = (need / layers).max(1);
     let usable = vram_bytes.saturating_sub(need / 8); // leave room for the cache
-    ((usable / per_layer) as u32).min(layers as u32)
+    u32::try_from((usable / per_layer).min(layers)).unwrap_or(0)
 }
 
 /// The address the model server is told to listen on: loopback, unless

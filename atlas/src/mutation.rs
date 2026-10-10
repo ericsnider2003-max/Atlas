@@ -82,7 +82,8 @@ pub fn from_outcomes_json(json: &str) -> Option<Vec<Survivor>> {
             .and_then(|s| s.get("start"))
             .and_then(|s| s.get("line"))
             .and_then(|l| l.as_u64())
-            .unwrap_or(0) as u32;
+            .and_then(|l| u32::try_from(l).ok())
+            .unwrap_or(0);
         let replacement = m.get("replacement").and_then(|r| r.as_str()).unwrap_or("").to_string();
         if !file.is_empty() {
             out.push(Survivor { file, function, line, replacement });

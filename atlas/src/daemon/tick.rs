@@ -84,7 +84,7 @@ impl<'a> Daemon<'a> {
                     newest
                 }
             };
-            r.days_since_backup = newest.map(|at| (now.saturating_sub(at) / 86_400) as u32);
+            r.days_since_backup = newest.map(|at| u32::try_from(now.saturating_sub(at) / 86_400).unwrap_or(u32::MAX));
         }
         r
     }
@@ -1154,7 +1154,7 @@ impl<'a> Daemon<'a> {
             }
             let hours_straight = self
                 .working_since
-                .map(|from| (t.saturating_sub(from) / 3600) as u32)
+                .map(|from| u32::try_from(t.saturating_sub(from) / 3600).unwrap_or(u32::MAX))
                 .unwrap_or(0);
 
             if self.proactive.may_interrupt(&signals, t) {
@@ -2893,7 +2893,7 @@ impl<'a> Daemon<'a> {
         let held_mins = t.saturating_sub(self.overnight.as_ref().map(|s| s.started_at).unwrap_or(t))
             / 60;
         let (hold, why_not) =
-            self.keep_awake(crate::awake::Because::OvernightWork, &power, held_mins as u32);
+            self.keep_awake(crate::awake::Because::OvernightWork, &power, u32::try_from(held_mins).unwrap_or(u32::MAX));
         // And now it is acted on: the machine is actually held awake while
         // the night runs, and let go when the decision says so.
         if let Some(line) = crate::inhibit::apply(&mut self.sleep_hold, hold, "tonight's work") {

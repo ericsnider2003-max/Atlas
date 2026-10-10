@@ -806,7 +806,7 @@ impl<'a> Voice<'a> {
         if !cfg.enabled || device.trim().is_empty() {
             return Ok(None);
         }
-        let hard_stop_secs = ((cfg.hard_stop_ms / 1000) as u32).max(1);
+        let hard_stop_secs = u32::try_from(cfg.hard_stop_ms / 1000).unwrap_or(u32::MAX / 2).max(1);
         let mut stream = self.open_pcm(device, hard_stop_secs + 5)?;
         let started = std::time::Instant::now();
         // Cut by `utterance`: speech told from the room by the detector that

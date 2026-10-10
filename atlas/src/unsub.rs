@@ -98,7 +98,7 @@ pub fn senders_from(messages: &[crate::imap::Message], now: u64) -> Vec<Sender> 
             entry.name = name;
         }
         if let Some(at) = crate::triage::parse_rfc2822(&m.date) {
-            let days = (now.saturating_sub(at) / 86400) as u32;
+            let days = u32::try_from(now.saturating_sub(at) / 86400).unwrap_or(u32::MAX);
             entry.last_seen_days = entry.last_seen_days.min(days);
         }
     }

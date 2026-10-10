@@ -105,20 +105,20 @@ fn parse_abbr(s: &mut &str) -> Option<String> {
 fn parse_change(s: &mut &str) -> Option<Change> {
     let when = if let Some(rest) = s.strip_prefix('M') {
         *s = rest;
-        let m = parse_num(s)? as u32;
+        let m = u32::try_from(parse_num(s)?).ok()?;
         *s = s.strip_prefix('.')?;
-        let w = parse_num(s)? as u32;
+        let w = u32::try_from(parse_num(s)?).ok()?;
         *s = s.strip_prefix('.')?;
-        let d = parse_num(s)? as u32;
+        let d = u32::try_from(parse_num(s)?).ok()?;
         if !(1..=12).contains(&m) || !(1..=5).contains(&w) || d > 6 {
             return None;
         }
         When::Month(m, w, d)
     } else if let Some(rest) = s.strip_prefix('J') {
         *s = rest;
-        When::Julian1(parse_num(s)? as u32)
+        When::Julian1(u32::try_from(parse_num(s)?).ok()?)
     } else {
-        When::Julian0(parse_num(s)? as u32)
+        When::Julian0(u32::try_from(parse_num(s)?).ok()?)
     };
     let at = if let Some(rest) = s.strip_prefix('/') {
         *s = rest;
@@ -471,3 +471,16 @@ const WINDOWS_DISPLAY: &[(&str, &str)] = &[
     ("Dublin, Edinburgh, Lisbon, London", "Europe/London"),
     ("Amsterdam, Berlin, Bern, Rome", "Europe/Berlin"),
 ];
+
+#[cfg(test)]
+mod cast_tests {
+    use super::*;
+
+    #[test]
+    fn a_rule_number_too_big_for_u32_is_refused_not_wrapped() {
+        // 4294967299 is 3 once truncated to 32 bits: it used to read as March.
+        assert!(Zone::posix("EST5EDT,M4294967299.1.0,M11.1.0").is_none());
+        assert!(Zone::posix("EST5EDT,J4294967297,M11.1.0").is_none());
+        assert!(Zone::posix("EST5EDT,M3.2.0,M11.1.0").is_some());
+    }
+}

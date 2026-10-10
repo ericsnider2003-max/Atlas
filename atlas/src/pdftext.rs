@@ -297,7 +297,8 @@ fn unpack_object_streams(objs: &mut HashMap<u32, Obj>) {
             if start >= data.len() || end > data.len() || start > end {
                 continue;
             }
-            objs.entry(id as u32)
+            let Ok(id) = u32::try_from(id) else { continue };
+            objs.entry(id)
                 .or_insert_with(|| Obj { dict: spaced(&String::from_utf8_lossy(&data[start..end])), ..Default::default() });
         }
     }

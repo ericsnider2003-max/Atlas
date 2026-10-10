@@ -105,8 +105,8 @@ pub fn frame_shape_from_probe(json: &str) -> Option<(u32, u32, f32)> {
     let s = streams
         .iter()
         .find(|s| s.get("codec_type").and_then(|c| c.as_str()) == Some("video"))?;
-    let w = s.get("width")?.as_u64()? as u32;
-    let h = s.get("height")?.as_u64()? as u32;
+    let w = u32::try_from(s.get("width")?.as_u64()?).ok()?;
+    let h = u32::try_from(s.get("height")?.as_u64()?).ok()?;
     // Written as a call rather than `.and_then(parse_rational)` on purpose:
     // the dead-capability guard reads source as text, and a function passed
     // by bare name is not a shape it recognises as use. Passing it by name

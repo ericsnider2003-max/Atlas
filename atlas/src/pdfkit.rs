@@ -481,7 +481,10 @@ impl Doc {
             let mut pairs = Vec::new();
             for _ in 0..n {
                 match (lx.object(0), lx.object(0)) {
-                    (Ok(Obj::Int(num)), Ok(Obj::Int(off))) => pairs.push((num as u32, off as usize)),
+                    (Ok(Obj::Int(num)), Ok(Obj::Int(off))) => match (u32::try_from(num), usize::try_from(off)) {
+                        (Ok(num), Ok(off)) => pairs.push((num, off)),
+                        _ => break,
+                    },
                     _ => break,
                 }
             }

@@ -642,7 +642,7 @@ pub fn from_jobs(s: &crate::scheduler::Scheduler, now: u64) -> (Vec<Item>, Vec<C
                         // Minutes from now rather than from midnight: the
                         // brief is read within an hour of being written, and
                         // this keeps it right without a timezone.
-                        at_minute: (j.due.saturating_sub(now) / 60) as u32,
+                        at_minute: u32::try_from(j.due.saturating_sub(now) / 60).unwrap_or(u32::MAX),
                         minutes: 1,
                         needs_prep: None,
                     });

@@ -1211,7 +1211,7 @@ impl<'a> Daemon<'a> {
             .filter(|e| !e.all_day)
             .map(|e| crate::booking::Slot {
                 start: e.start,
-                mins: (e.end.saturating_sub(e.start) / 60) as u32,
+                mins: u32::try_from(e.end.saturating_sub(e.start) / 60).unwrap_or(u32::MAX),
             })
             .collect()
     }
@@ -1276,7 +1276,7 @@ impl<'a> Daemon<'a> {
         for chunk in after.split(" or ").flat_map(|c| c.split(" and ")) {
             if let Some(w) = crate::calendar::resolve_when(chunk, lnow) {
                 if !w.all_day {
-                    let mins = ((w.end.saturating_sub(w.start)) / 60) as u32;
+                    let mins = u32::try_from(w.end.saturating_sub(w.start) / 60).unwrap_or(u32::MAX);
                     times.push(crate::booking::Slot { start: zone.to_utc(w.start as i64).max(0) as u64, mins });
                 }
             }
