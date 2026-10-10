@@ -516,6 +516,7 @@ impl<'a> Daemon<'a> {
         let by_chat = llm.native_chat();
         let msgs = turn.messages();
         let kept_llm = llm.clone();
+        let spawn_failure_tx = tx.clone();
         // A turn is being answered: the deep model gives way until it is.
         let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
@@ -543,6 +544,10 @@ impl<'a> Daemon<'a> {
         });
         if let Err(e) = spawned {
             self.log.warn(&format!("couldn't start the model call on its own thread: {e}"));
+            // A failed spawn must still complete the channel.  Recording a
+            // pending turn after this point would leave the request stuck
+            // forever because no worker exists to send its terminal message.
+            let _ = spawn_failure_tx.send(TurnNews::Done(no_answer_came_back()));
         }
         self.pending_seq += 1;
         let id = self.pending_seq;
@@ -581,6 +586,7 @@ impl<'a> Daemon<'a> {
         )));
         let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
         let llm = p.llm.clone();
+        let spawn_failure_tx = tx.clone();
         let talking = self.talking_guard();
         let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
             let _talking = talking;
@@ -602,6 +608,9 @@ impl<'a> Daemon<'a> {
         });
         if let Err(e) = spawned {
             self.log.warn(&format!("couldn't start the model call on its own thread: {e}"));
+            // Keep the rephrase path terminal too; otherwise the original
+            // tool request remains pending indefinitely after a spawn error.
+            let _ = spawn_failure_tx.send(TurnNews::Done(no_answer_came_back()));
         }
         self.pending_turn = Some(PendingTurn { rx, started: std::time::Instant::now(), rephrasing: Some(ask), ..p });
     }

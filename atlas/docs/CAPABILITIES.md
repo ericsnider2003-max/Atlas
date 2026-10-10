@@ -115,7 +115,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
 | look something up, and save the write-up as a Word or PDF file with its sources as links | built, never run for real | `research` `readable` `report` | ready | ready | ready | ready | ready | ready |
-| hand heavy background work to an online worker and check what comes back | waiting on a Cloudflare account and token | `online` | ready | would | would | catch | would | **no** |
+| hand heavy background work to an online worker and check what comes back | local delegation is available without an account; optional Cloudflare setup is per-user and guided | `online` | ready | would | would | catch | would | **no** |
 | drive a browser | built, never run for real | `browser` `cdp` | ready | catch | would | **no** | catch | **no** |
 | post something, with approval | built, never run for real | `publish` `publishing` `delivery` | ready | ready | ready | ready | ready | ready |
 | follow sites by their feeds, list what's new, read one here or keep it for later, trackers taken off every link | built, never run for real | `feeds` | ready | would | would | catch | would | **no** |

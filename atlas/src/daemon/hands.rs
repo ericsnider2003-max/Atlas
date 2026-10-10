@@ -1036,6 +1036,15 @@ impl<'a> Daemon<'a> {
         let mut replaced = String::new();
         if let Some(i) = self.working_for_you.iter().position(|w| w.win == win) {
             let old = self.working_for_you.remove(i);
+            // Replacing a window job must also stop the model work already
+            // composing its reply.  Leaving that worker alive makes the old
+            // request consume a crew slot and continue doing model work after
+            // Atlas has told the user it was replaced.  Its result is ignored
+            // by `reply_written`, but the work and its cost would still be
+            // real, and a slow old worker could starve the new request.
+            if let Some(crew_id) = old.composing {
+                self.crew.ask_to_stop(crew_id);
+            }
             replaced = format!(" (That replaces what I was doing in {}.)", old.job.app);
         }
         let drafting = job.reach == crate::delegate::Reach::Draft;

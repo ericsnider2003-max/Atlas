@@ -1,0 +1,1022 @@
+# Scanner leads and their dispositions
+
+948 leads from the scripted checks. Leads that became findings are in REPORT.md; this file lists the dismissed, unconfirmed and untriaged ones so the report does not have to.
+
+## Dismissed · a11y:aria-broken-ref (1)
+- L293 `tests/fixtures/crawl/python-classes.html:65` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:control-empty-name (8)
+- L005 `design/hub/locked-2026-09-21/Give-Desktop.dc.html:71` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L006 `design/hub/locked-2026-09-21/Sound.dc.html:78` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L014 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Give-Desktop.dc.html:71` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L015 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Sound.dc.html:78` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L016 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Give-Desktop.dc.html:71` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L017 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Sound.dc.html:78` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L020 `tests/fixtures/crawl/mdn-content-disposition.html:52` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L022 `tests/fixtures/social/exports/x_archive/data/tweets.js:15` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:duplicate-id (2)
+- L289 `tests/fixtures/crawl/go-loopvar.html:65` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L294 `tests/fixtures/crawl/python-classes.html:188` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:focus-style-removed (3)
+- L049 `design/superseded/hub-before-command-deck.html:226` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L079 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/superseded/hub-before-command-deck.html:226` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L104 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/superseded/hub-before-command-deck.html:226` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:heading-jump (3)
+- L383 `design/superseded/command-deck.html:185` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L391 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/superseded/command-deck.html:185` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L392 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/superseded/command-deck.html:185` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:html-missing-lang (2)
+- L054 `scratch/atlas-r6-film-18172/work/page.html:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L055 `scratch/atlas-r6-film-7688/work/page.html:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:iframe-missing-title (1)
+- L288 `tests/fixtures/crawl/go-loopvar.html:45` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:img-missing-alt (1)
+- L019 `tests/fixtures/crawl/go-loopvar.html:229` (+15 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:low-contrast-css (64)
+- L023 `assets/hub/hub.css:227` (+12 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L027 `design/hub/locked-2026-09-21/Calendar-Week.dc.html:30` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L028 `design/hub/locked-2026-09-21/Calendar.dc.html:27` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L030 `design/hub/locked-2026-09-21/Give-Desktop.dc.html:29` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L031 `design/hub/locked-2026-09-21/Home-Dark.dc.html:26` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L032 `design/hub/locked-2026-09-21/Main.dc.html:20` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L033 `design/hub/locked-2026-09-21/Messages-Phone.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L034 `design/hub/locked-2026-09-21/Messages.dc.html:30` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L035 `design/hub/locked-2026-09-21/Outstanding.dc.html:29` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L036 `design/hub/locked-2026-09-21/Panels.dc.html:24` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L037 `design/hub/locked-2026-09-21/Setup.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L038 `design/hub/locked-2026-09-21/Share-Out.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L039 `design/hub/locked-2026-09-21/Sound.dc.html:31` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L040 `design/hub/locked-2026-09-21/Trusted.dc.html:20` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L041 `design/hub/refined-2026-09-24/Main.dc.html:34` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L042 `design/hub/refined-2026-09-24/MessagesPhone.dc.html:21` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L043 `design/hub/refined-2026-09-24/Now.dc.html:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L045 `design/hub/refined-2026-09-24/Project.dc.html:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L046 `design/hub/refined-2026-09-24/Settings.dc.html:21` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L047 `design/superseded/command-deck.html:51` (+9 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L048 `design/superseded/hub-before-command-deck.html:87` (+34 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L056 `scratch/cargo-mutants-atlas-3E8wLe.tmp/assets/hub/hub.css:227` (+12 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L057 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Calendar-Week.dc.html:30` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L058 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Calendar.dc.html:27` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L060 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Give-Desktop.dc.html:29` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L061 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Home-Dark.dc.html:26` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L062 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Main.dc.html:20` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L063 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Messages-Phone.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L064 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Messages.dc.html:30` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L065 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Outstanding.dc.html:29` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L066 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Panels.dc.html:24` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L067 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Setup.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L068 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Share-Out.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L069 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Sound.dc.html:31` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L070 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Trusted.dc.html:20` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L071 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/refined-2026-09-24/Main.dc.html:34` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L072 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/refined-2026-09-24/MessagesPhone.dc.html:21` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L073 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/refined-2026-09-24/Now.dc.html:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L075 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/refined-2026-09-24/Project.dc.html:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L076 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/refined-2026-09-24/Settings.dc.html:21` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L077 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/superseded/command-deck.html:51` (+9 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L078 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/superseded/hub-before-command-deck.html:87` (+34 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L081 `scratch/cargo-mutants-atlas-fouPP4.tmp/assets/hub/hub.css:227` (+12 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L082 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Calendar-Week.dc.html:30` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L083 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Calendar.dc.html:27` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L085 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Give-Desktop.dc.html:29` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L086 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Home-Dark.dc.html:26` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L087 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Main.dc.html:20` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L088 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Messages-Phone.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L089 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Messages.dc.html:30` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L090 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Outstanding.dc.html:29` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L091 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Panels.dc.html:24` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L092 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Setup.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L093 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Share-Out.dc.html:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L094 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Sound.dc.html:31` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L095 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Trusted.dc.html:20` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L096 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/refined-2026-09-24/Main.dc.html:34` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L097 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/refined-2026-09-24/MessagesPhone.dc.html:21` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L098 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/refined-2026-09-24/Now.dc.html:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L100 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/refined-2026-09-24/Project.dc.html:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L101 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/refined-2026-09-24/Settings.dc.html:21` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L102 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/superseded/command-deck.html:51` (+9 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L103 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/superseded/hub-before-command-deck.html:87` (+34 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L107 `site/style.css:11` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:low-contrast-inline (6)
+- L029 `design/hub/locked-2026-09-21/Customize.dc.html:83` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L044 `design/hub/refined-2026-09-24/Now.dc.html:79` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L059 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/locked-2026-09-21/Customize.dc.html:83` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L074 `scratch/cargo-mutants-atlas-3E8wLe.tmp/design/hub/refined-2026-09-24/Now.dc.html:79` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L084 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/locked-2026-09-21/Customize.dc.html:83` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L099 `scratch/cargo-mutants-atlas-fouPP4.tmp/design/hub/refined-2026-09-24/Now.dc.html:79` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:missing-title (1)
+- L303 `tests/hub_upload_keyboard.cjs:16` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · a11y:status-no-live-region (1)
+- L291 `tests/fixtures/crawl/go-loopvar.html:1476` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · allow-suppression-rust (37)
+- L382 `build.rs:22` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L386 `scratch/atlas-land-shape-19/sandbox-copy.rs:2` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L407 `src/astype.rs:51` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L415 `src/awareness.rs:182` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L481 `src/daemon/hands.rs:2381` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L486 `src/daemon/messages.rs:1353` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L499 `src/diarize.rs:18` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L525 `src/frames.rs:130` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L530 `src/gifenc.rs:19` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L532 `src/gmm.rs:11` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L538 `src/goodbye.rs:231` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L569 `src/hublive/status_and_now.rs:447` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L572 `src/hubwin.rs:108` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L588 `src/kin.rs:697` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L614 `src/market/fixtures.rs:24` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L618 `src/market/verify.rs:14` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L626 `src/mend.rs:117` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L632 `src/mfcc.rs:13` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L639 `src/mobile.rs:253` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L657 `src/npu.rs:514` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L679 `src/overlaywin.rs:440` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L695 `src/phonemodel.rs:87` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L709 `src/plugins.rs:528` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L739 `src/release.rs:466` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L767 `src/server/signal_door.rs:400` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L806 `src/tools.rs:700` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L817 `src/tune.rs:614` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L843 `src/viewing.rs:341` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L852 `src/walkthrough.rs:81` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L862 `src/webpush.rs:129` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L865 `src/webrun.rs:487` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L886 `src/workshop.rs:213` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L894 `tests/all.rs:18` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L898 `tests/common/mod.rs:16` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L902 `tests/fixing_itself_then_and_there.rs:190` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L926 `tests/reliability_jobs.rs:2` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L948 `tests/workday_through_the_daemon.rs:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · bash-no-strict (5)
+- L051 `docs/live/LIVE_TESTS_R6.sh:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L053 `mobile/android/gradlew:1` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L080 `scratch/cargo-mutants-atlas-3E8wLe.tmp/mobile/android/gradlew:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L105 `scratch/cargo-mutants-atlas-fouPP4.tmp/mobile/android/gradlew:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L106 `setup/wine/test-windows-build.sh:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · calendar-expiry (3)
+- L011 `scratch/atlas-cal-clash/thread.json:15` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L012 `scratch/atlas-cal-repeat/thread.json:15` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L013 `scratch/atlas-keeping-calendar-7688/thread.json:9` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · empty-catch (4)
+- L024 `assets/hub/live.js:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L050 `design/superseded/hub-before-command-deck.html:363` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L052 `docs/three_way.py:75` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L292 `tests/fixtures/crawl/mdn-content-disposition.html:9` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · mixed-content (1)
+- L290 `tests/fixtures/crawl/go-loopvar.html:1443` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · no-timeout (1)
+- L381 `assets/hub/live.js:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · rust-f64-parse-no-finite (7)
+- L159 `src/health.rs:492` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L160 `src/hollow.rs:166` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L218 `src/preferences.rs:193` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L230 `src/spoken_form.rs:274` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L237 `src/tools.rs:626` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L255 `src/whystopped.rs:160` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L257 `src/wit.rs:85` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+
+## Dismissed · rust-lossy-cast (40)
+- L891 `tests/a_normal_voice_is_heard.rs:85` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L892 `tests/acting_on_its_own.rs:158` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L893 `tests/adding_a_friend_is_one_step.rs:410` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L895 `tests/call_notes.rs:72` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L896 `tests/capability_routine.rs:186` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L899 `tests/common/mod.rs:351` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L900 `tests/every_screen_is_seen.rs:108` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L905 `tests/gguf_models.rs:51` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L906 `tests/handing_to_a_friend.rs:543` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L907 `tests/handtrack.rs:26` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L908 `tests/handweight.rs:132` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L909 `tests/hedging_its_own_record.rs:72` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L911 `tests/input_identity_ocr.rs:89` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L913 `tests/keys_to_reach_atlas.rs:23` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L914 `tests/listening_until_you_stop.rs:28` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L918 `tests/name_collisions.rs:542` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L919 `tests/one_install_root.rs:129` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L920 `tests/parsers_survive_garbage.rs:55` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L921 `tests/pc_tune_up.rs:303` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L922 `tests/photo_editing.rs:479` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L923 `tests/ports_round3.rs:626` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L924 `tests/posting_with_media.rs:161` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L925 `tests/reading_pictures.rs:77` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L927 `tests/round4.rs:83` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L928 `tests/round5.rs:33` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L929 `tests/round6.rs:79` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L930 `tests/round7.rs:40` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L931 `tests/round8.rs:33` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L933 `tests/speaking_off_the_loop.rs:454` (+5 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L935 `tests/the_gaps_the_audit_found.rs:446` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L936 `tests/the_line_moves.rs:22` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L937 `tests/the_microphone_has_its_own_thread.rs:95` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L939 `tests/the_name_and_the_request_in_one_breath.rs:66` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L940 `tests/the_npu_engine.rs:140` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L941 `tests/the_phone_stands_alone.rs:489` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L942 `tests/the_system_recovers_by_itself.rs:421` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L943 `tests/two_factor_and_signing_in.rs:350` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L944 `tests/vad_measured.rs:40` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L945 `tests/voice_measured.rs:39` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L947 `tests/which_model_fits_here.rs:71` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · rust-partial-cmp-unwrap (5)
+- L612 `src/mark.rs:239` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L613 `src/market/feed.rs:389` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L912 `tests/it_knows_it_crashed.rs:143` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L915 `tests/meaning_picks_the_tool.rs:146` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L946 `tests/voice_measured.rs:50` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · rust-unwrap-input (74)
+- L262 `tests/a_model_without_curl.rs:26` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L263 `tests/a_reader_for_the_messages.rs:207` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L264 `tests/accounts_book.rs:46` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L265 `tests/adapt.rs:99` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L266 `tests/add_ons_do_only_what_you_allowed.rs:364` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L268 `tests/addressing_publish.rs:117` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L272 `tests/ask_my_documents.rs:105` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L273 `tests/atlas_runs_with_nothing_open.rs:279` (+7 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L275 `tests/ceiling.rs:156` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L276 `tests/connecting_accounts.rs:314` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L277 `tests/connecting_is_one_button.rs:51` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L278 `tests/contents_trace_voice.rs:236` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L279 `tests/council_brief.rs:368` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L282 `tests/every_button_says_what_happened.rs:46` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L283 `tests/facts.rs:112` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L285 `tests/filing.rs:29` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L286 `tests/finding_the_other_machine.rs:37` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L287 `tests/finishing_what_it_starts.rs:243` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L297 `tests/flow_refs.rs:268` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L298 `tests/handing_to_a_friend.rs:465` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L299 `tests/hub_in_the_window.rs:161` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L300 `tests/hub_is_not_code.rs:300` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L301 `tests/hub_navigation.rs:276` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L302 `tests/hub_settings.rs:59` (+7 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L304 `tests/hublive.rs:259` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L305 `tests/idle_but_on.rs:33` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L307 `tests/integration_wired.rs:320` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L308 `tests/integration.rs:235` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L310 `tests/kokoro_voice.rs:325` (+7 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L311 `tests/losing_the_passphrase.rs:67` (+9 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L312 `tests/mail_off_the_tick.rs:295` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L314 `tests/mind_hub.rs:38` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L315 `tests/native_settings.rs:44` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L316 `tests/no_quiet_nothings.rs:155` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L318 `tests/nothing_from_any_version_was_lost.rs:127` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L320 `tests/offline_and_cdp.rs:147` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L321 `tests/offline_progress.rs:67` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L322 `tests/opportunity_hunting.rs:298` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L325 `tests/parsers_survive_garbage.rs:218` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L326 `tests/phone_app.rs:165` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L328 `tests/photo_editing.rs:69` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L329 `tests/pictures_are_made_here.rs:89` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L331 `tests/ports_round3.rs:696` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L332 `tests/profiles.rs:121` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L333 `tests/reading_pictures.rs:32` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L334 `tests/reminders_ring_with_the_app_closed.rs:40` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L335 `tests/round11.rs:378` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L337 `tests/round4.rs:354` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L339 `tests/round5.rs:354` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L344 `tests/settings_that_do_something_now.rs:837` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L345 `tests/shared_task.rs:37` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L346 `tests/signin.rs:169` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L347 `tests/speed_measured.rs:671` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L348 `tests/sync.rs:417` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L349 `tests/taking_things_off_outstanding.rs:54` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L350 `tests/talking_freely.rs:327` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L351 `tests/the_ears_and_the_voice_actually_run.rs:101` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L354 `tests/the_hub_design_is_the_locked_one.rs:55` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L355 `tests/the_hub_holds_the_way_back.rs:134` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L356 `tests/the_hub_is_always_there.rs:166` (+7 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L358 `tests/the_mark_is_one_mark.rs:29` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L360 `tests/the_phone_stands_alone.rs:118` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L362 `tests/the_second_scan_holds.rs:425` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L364 `tests/the_system_recovers_by_itself.rs:130` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L365 `tests/the_three_it_promised.rs:279` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L367 `tests/tor_ships_with_atlas.rs:42` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L369 `tests/truthful_publication_and_calendars.rs:12` (+17 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L370 `tests/updates_and_feedback_in_the_hub.rs:238` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L371 `tests/vault_crypto.rs:50` (+10 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L372 `tests/vault_walk.rs:38` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L374 `tests/what_atlas_keeps_and_weighs.rs:244` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L376 `tests/what_the_model_ranking_found.rs:122` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L377 `tests/which_model_fits_here.rs:322` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L378 `tests/wit_setting.rs:72` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · secret-generic (1)
+- L018 `src/connection_removal.rs:213` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+
+## Dismissed · sink-cmd-rust (40)
+- L026 `build.rs:100` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L121 `src/childjob.rs:178` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L138 `src/daemon/project_checks.rs:453` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L182 `src/main/everyday.rs:1911` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L185 `src/mcp.rs:164` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L195 `src/npu.rs:742` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L196 `src/npu/worker.rs:165` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L213 `src/platform/posix.rs:84` (+4 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L216 `src/platform/win.rs:700` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L225 `src/safety/state_transactions.rs:581` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L235 `src/tools.rs:248` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L261 `tests/a_model_for_code.rs:612` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L267 `tests/adding_a_phone.rs:101` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L269 `tests/an_update_that_fails_goes_back.rs:235` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L274 `tests/atlas_runs_with_nothing_open.rs:360` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L280 `tests/craft_wired.rs:94` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L281 `tests/easy_setup.rs:141` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L284 `tests/feedback_from_friends.rs:176` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L306 `tests/installing_a_release.rs:377` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L313 `tests/mail_through_himalaya.rs:103` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L319 `tests/nothing_is_left_in_the_process_table.rs:66` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L323 `tests/other_programs_tools.rs:80` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L324 `tests/own_server_wireguard.rs:104` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L327 `tests/photo_editing.rs:43` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L330 `tests/ports_round3.rs:106` (+5 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L336 `tests/round4.rs:214` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L338 `tests/round5.rs:195` (+6 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L340 `tests/round6.rs:31` (+5 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L341 `tests/round7.rs:22` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L342 `tests/scaffolding_an_ability.rs:11` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L343 `tests/settings_that_do_something_now.rs:376` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L352 `tests/the_ears_and_the_voice_actually_run.rs:109` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L353 `tests/the_gaps_the_audit_found.rs:510` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L357 `tests/the_hub_is_reachable.rs:304` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L359 `tests/the_npu_engine.rs:187` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L363 `tests/the_system_recovers_by_itself.rs:48` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L366 `tests/the_trading_numbers_are_yours.rs:220` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L368 `tests/tor_ships_with_atlas.rs:65` (+3 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L373 `tests/video_studio.rs:102` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L375 `tests/what_broke_it.rs:7` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · sink-eval (1)
+- L021 `tests/fixtures/crawl/python-classes.html:842` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · sink-unsafe-rust (46)
+- L109 `src/applebrain.rs:205` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L110 `src/applewx.rs:168` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L115 `src/callmute.rs:176` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L117 `src/callwatch.rs:128` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L119 `src/childjob.rs:30` (+6 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L122 `src/chords.rs:177` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L129 `src/cpuuse.rs:29` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L148 `src/firstlaunch.rs:280` (+5 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L152 `src/getpieces.rs:824` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L155 `src/goodbye.rs:194` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L157 `src/health.rs:352` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L162 `src/hotkey.rs:264` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L163 `src/hotkeys.rs:428` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L165 `src/hubwin.rs:102` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L169 `src/inhibit.rs:81` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L171 `src/kokoro.rs:384` (+9 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L172 `src/kws.rs:264` (+7 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L176 `src/localclock.rs:129` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L177 `src/loginseal.rs:43` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L179 `src/main.rs:228` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L187 `src/miclevel.rs:80` (+2 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L191 `src/notifyicon.rs:320` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L193 `src/npu.rs:50` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L197 `src/npu/worker.rs:340` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L200 `src/onion.rs:355` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L202 `src/onlyone.rs:448` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L203 `src/oslook.rs:119` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L207 `src/overlaywin.rs:402` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L209 `src/phonemodel.rs:78` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L215 `src/platform/win.rs:47` (+34 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L221 `src/safety.rs:912` (+8 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L222 `src/safety/restore_transaction.rs:86` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L232 `src/timing.rs:314` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L233 `src/tools.rs:220` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L240 `src/tune.rs:380` (+6 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L242 `src/typebox.rs:341` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L244 `src/typed.rs:211` (+3 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L249 `src/voicefirst.rs:50` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L252 `src/webview2_loader.rs:58` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L254 `src/whystopped.rs:154` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L256 `src/winpark.rs:57` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L270 `tests/apple_first_then_atlas.rs:27` (+5 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L271 `tests/apple_weather_first.rs:86` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L309 `tests/kokoro_voice.rs:271` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L317 `tests/no_silent_discards.rs:36` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L361 `tests/the_phone_stands_alone.rs:171` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · skipped-test (13)
+- L379 `.claude/agents/anti-hollow-verifier.md:14` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L380 `.claude/agents/dead-methods-wirer.md:15` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L384 `docs/HANDOVER_2026-09-14.md:2023` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L385 `scratch/atlas-land-all/sandbox-copy.rs:2` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L387 `scratch/atlas-land-shape-9/sandbox-copy.rs:2` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L388 `scratch/atlas-land-why/sandbox-copy.rs:2` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L625 `src/mend.rs:114` (+1 more lines) — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L765 `src/selfwork.rs:1012` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L901 `tests/fixing_itself_then_and_there.rs:189` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L917 `tests/mend.rs:72` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L932 `tests/social.rs:1109` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L934 `tests/the_ears_and_the_voice_actually_run.rs:10` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L938 `tests/the_microphone_has_its_own_thread.rs:591` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · template-autoescape-off (2)
+- L295 `tests/fixtures/models/qwen3.5-4b-9b-chat-template.jinja:122` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L296 `tests/fixtures/models/qwen3.5-chat-template.jinja:123` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · timer-leak (1)
+- L025 `assets/hub/live.js:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · todo (4)
+- L429 `src/build_it.rs:98` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L561 `src/hollowcode.rs:170` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L897 `tests/catalogue.rs:407` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L910 `tests/hollowcode.rs:125` (+9 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · type-suppressed (2)
+- L627 `src/mend.rs:118` — [TM2] scanner match is in a test or non-executing helper; no shipped behavior established
+- L916 `tests/mend.rs:36` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · unpinned-requirement (2)
+- L389 `scratch/atlas-runbook-manifest-18172/requirements.txt:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L390 `scratch/atlas-runbook-manifest-7688/requirements.txt:1` — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · unsafe-target-blank (2)
+- L903 `tests/fixtures/crawl/go-loopvar.html:486` (+2 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+- L904 `tests/fixtures/crawl/mdn-content-disposition.html:513` (+4 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Dismissed · utc-trading-day (1)
+- L008 `docs/genref.py:90` (+1 more lines) — [TM2] test, fixture, generated, or documentation artifact; no shipped runtime behavior
+
+## Unconfirmed · rust-ignored-result (48)
+- L112 `src/awareness.rs:162` — became BUG-005
+- L116 `src/callrec.rs:211` (+4 more lines) — became BUG-005
+- L118 `src/camwatch.rs:365` — became BUG-005
+- L120 `src/childjob.rs:88` — became BUG-005
+- L123 `src/chords.rs:182` — became BUG-005
+- L125 `src/connectivity.rs:150` (+1 more lines) — became BUG-005
+- L126 `src/content.rs:220` (+1 more lines) — became BUG-005
+- L130 `src/crew.rs:538` — became BUG-005
+- L131 `src/daemon/conversation.rs:533` (+4 more lines) — became BUG-005
+- L132 `src/daemon/file_moves.rs:513` — became BUG-005
+- L133 `src/daemon/hands.rs:205` — became BUG-005
+- L136 `src/daemon/model.rs:257` — became BUG-005
+- L139 `src/daemon/running.rs:474` (+1 more lines) — became BUG-005
+- L140 `src/daemon/tasks.rs:106` (+15 more lines) — became BUG-005
+- L142 `src/deepbrain.rs:495` — became BUG-005
+- L146 `src/filmstrip.rs:126` (+1 more lines) — became BUG-005
+- L151 `src/frames.rs:156` — became BUG-005
+- L153 `src/getpieces.rs:1065` — became BUG-005
+- L156 `src/handloop.rs:509` (+6 more lines) — became BUG-005
+- L161 `src/hotkey.rs:236` (+5 more lines) — became BUG-005
+- L164 `src/hotkeys.rs:450` (+3 more lines) — became BUG-005
+- L166 `src/hunting.rs:360` — became BUG-005
+- L167 `src/imagemake.rs:256` (+1 more lines) — became BUG-005
+- L168 `src/index.rs:430` (+1 more lines) — became BUG-005
+- L170 `src/inhibit.rs:82` (+1 more lines) — became BUG-005
+- L173 `src/lib.rs:29` — became BUG-005
+- L174 `src/lifecycle.rs:408` (+1 more lines) — became BUG-005
+- L184 `src/mcp.rs:159` (+1 more lines) — became BUG-005
+- L186 `src/meaningroute.rs:49` (+4 more lines) — became BUG-005
+- L188 `src/micthread.rs:838` — became BUG-005
+- L192 `src/notifyicon.rs:323` (+1 more lines) — became BUG-005
+- L199 `src/onion.rs:330` — became BUG-005
+- L205 `src/outbox.rs:270` — became BUG-005
+- L210 `src/phonemodel.rs:444` (+3 more lines) — became BUG-005
+- L211 `src/photo.rs:524` — became BUG-005
+- L212 `src/picture_talk.rs:201` (+1 more lines) — became BUG-005
+- L214 `src/platform/posix.rs:182` — became BUG-005
+- L227 `src/server/hub_door.rs:563` — became BUG-005
+- L228 `src/server/serving.rs:241` (+26 more lines) — became BUG-005
+- L229 `src/speakthread.rs:101` (+4 more lines) — became BUG-005
+- L236 `src/tools.rs:311` — became BUG-005
+- L239 `src/transport.rs:355` — became BUG-005
+- L241 `src/typebox.rs:228` — became BUG-005
+- L243 `src/typed.rs:71` (+2 more lines) — became BUG-005
+- L246 `src/upgrade.rs:671` — became BUG-005
+- L248 `src/voice.rs:891` (+4 more lines) — became BUG-005
+- L258 `src/workday.rs:1183` — became BUG-005
+- L259 `src/ws.rs:168` — became BUG-005
+
+## Unconfirmed · rust-lossy-cast (160)
+- L398 `src/agefile.rs:80` (+14 more lines) — became BUG-004
+- L411 `src/audio.rs:594` (+2 more lines) — became BUG-004
+- L413 `src/automation.rs:117` — became BUG-004
+- L416 `src/b64.rs:10` (+5 more lines) — became BUG-004
+- L419 `src/backlog.rs:271` — became BUG-004
+- L420 `src/bm25.rs:70` (+1 more lines) — became BUG-004
+- L424 `src/brief.rs:645` — became BUG-004
+- L426 `src/browser.rs:434` — became BUG-004
+- L430 `src/build_it.rs:144` (+1 more lines) — became BUG-004
+- L432 `src/calendar.rs:634` (+1 more lines) — became BUG-004
+- L433 `src/callmute.rs:179` — became BUG-004
+- L435 `src/callrec.rs:64` (+1 more lines) — became BUG-004
+- L436 `src/callwatch.rs:143` — became BUG-004
+- L437 `src/camwatch.rs:350` — became BUG-004
+- L445 `src/childjob.rs:38` (+3 more lines) — became BUG-004
+- L446 `src/chords.rs:63` — became BUG-004
+- L448 `src/civil.rs:32` (+3 more lines) — became BUG-004
+- L453 `src/coder.rs:349` — became BUG-004
+- L464 `src/consult.rs:192` — became BUG-004
+- L472 `src/cronspec.rs:189` (+1 more lines) — became BUG-004
+- L473 `src/cutout.rs:74` (+2 more lines) — became BUG-004
+- L476 `src/daemon/away.rs:314` — became BUG-004
+- L479 `src/daemon/execute.rs:42` (+1 more lines) — became BUG-004
+- L480 `src/daemon/hands.rs:228` (+3 more lines) — became BUG-004
+- L482 `src/daemon/inbox.rs:483` — became BUG-004
+- L483 `src/daemon/late.rs:76` (+2 more lines) — became BUG-004
+- L484 `src/daemon/making.rs:1214` (+1 more lines) — became BUG-004
+- L485 `src/daemon/messages.rs:270` — became BUG-004
+- L488 `src/daemon/running.rs:1683` (+1 more lines) — became BUG-004
+- L490 `src/daemon/small_words.rs:209` — became BUG-004
+- L491 `src/daemon/tick.rs:87` (+6 more lines) — became BUG-004
+- L492 `src/daemon/turn/around_the_turn.rs:189` — became BUG-004
+- L494 `src/daily.rs:207` (+2 more lines) — became BUG-004
+- L500 `src/diarize.rs:198` (+1 more lines) — became BUG-004
+- L502 `src/digest.rs:179` (+3 more lines) — became BUG-004
+- L518 `src/filmstrip.rs:68` — became BUG-004
+- L523 `src/fit.rs:458` — became BUG-004
+- L528 `src/gaze.rs:465` (+1 more lines) — became BUG-004
+- L529 `src/gguf.rs:334` (+1 more lines) — became BUG-004
+- L531 `src/gifenc.rs:101` (+22 more lines) — became BUG-004
+- L535 `src/goal.rs:182` (+3 more lines) — became BUG-004
+- L543 `src/guessable.rs:259` (+3 more lines) — became BUG-004
+- L545 `src/handloop.rs:303` (+5 more lines) — became BUG-004
+- L547 `src/handoff.rs:87` — became BUG-004
+- L550 `src/handshape.rs:250` (+1 more lines) — became BUG-004
+- L552 `src/handtrack.rs:243` (+1 more lines) — became BUG-004
+- L554 `src/handweight.rs:164` (+2 more lines) — became BUG-004
+- L556 `src/health.rs:423` — became BUG-004
+- L562 `src/hotkey.rs:101` (+3 more lines) — became BUG-004
+- L563 `src/hotkeys.rs:78` (+5 more lines) — became BUG-004
+- L566 `src/hub/pieces.rs:78` — became BUG-004
+- L568 `src/hublive/settings_and_outstanding.rs:250` — became BUG-004
+- L570 `src/hubpages.rs:604` (+1 more lines) — became BUG-004
+- L574 `src/hunt.rs:322` (+4 more lines) — became BUG-004
+- L575 `src/hunting.rs:276` — became BUG-004
+- L580 `src/infer.rs:466` — became BUG-004
+- L584 `src/interrupt.rs:160` — became BUG-004
+- L587 `src/kin.rs:592` (+6 more lines) — became BUG-004
+- L590 `src/kokoro.rs:101` (+3 more lines) — became BUG-004
+- L591 `src/kws.rs:316` (+1 more lines) — became BUG-004
+- L594 `src/language.rs:268` — became BUG-004
+- L598 `src/layout.rs:100` (+3 more lines) — became BUG-004
+- L602 `src/leveller.rs:130` (+1 more lines) — became BUG-004
+- L605 `src/localclock.rs:166` (+3 more lines) — became BUG-004
+- L606 `src/loginseal.rs:40` (+3 more lines) — became BUG-004
+- L607 `src/look_paint.rs:66` — became BUG-004
+- L608 `src/lookalike.rs:42` — became BUG-004
+- L611 `src/main/everyday.rs:187` (+1 more lines) — became BUG-004
+- L615 `src/market/fixtures.rs:53` — became BUG-004
+- L616 `src/market/levels.rs:407` — became BUG-004
+- L617 `src/market/time.rs:54` (+5 more lines) — became BUG-004
+- L619 `src/marketdays.rs:61` (+3 more lines) — became BUG-004
+- L622 `src/measure.rs:108` (+1 more lines) — became BUG-004
+- L629 `src/meshio.rs:130` (+3 more lines) — became BUG-004
+- L631 `src/messaging.rs:404` — became BUG-004
+- L633 `src/mfcc.rs:190` — became BUG-004
+- L636 `src/micthread.rs:629` (+1 more lines) — became BUG-004
+- L640 `src/mobile.rs:318` — became BUG-004
+- L642 `src/models.rs:773` (+1 more lines) — became BUG-004
+- L646 `src/motion.rs:503` (+3 more lines) — became BUG-004
+- L650 `src/mutation.rs:85` — became BUG-004
+- L654 `src/notifyicon.rs:363` (+3 more lines) — became BUG-004
+- L655 `src/npu.rs:125` — became BUG-004
+- L659 `src/npu/worker.rs:100` (+1 more lines) — became BUG-004
+- L661 `src/nudge.rs:284` — became BUG-004
+- L663 `src/onion.rs:104` (+2 more lines) — became BUG-004
+- L665 `src/onnxfix.rs:41` (+1 more lines) — became BUG-004
+- L667 `src/operate.rs:494` — became BUG-004
+- L671 `src/oslook.rs:85` (+1 more lines) — became BUG-004
+- L672 `src/ota.rs:752` (+16 more lines) — became BUG-004
+- L677 `src/overlay.rs:277` — became BUG-004
+- L678 `src/overlaywin.rs:97` (+4 more lines) — became BUG-004
+- L682 `src/palette.rs:506` — became BUG-004
+- L684 `src/pdfkit.rs:194` (+9 more lines) — became BUG-004
+- L685 `src/pdftext.rs:221` (+10 more lines) — became BUG-004
+- L687 `src/people.rs:265` (+1 more lines) — became BUG-004
+- L690 `src/person.rs:296` — became BUG-004
+- L693 `src/phone.rs:184` — became BUG-004
+- L697 `src/phonemodel.rs:419` (+5 more lines) — became BUG-004
+- L698 `src/photo.rs:173` (+2 more lines) — became BUG-004
+- L705 `src/platform/mock.rs:442` (+1 more lines) — became BUG-004
+- L706 `src/platform/mod.rs:60` (+2 more lines) — became BUG-004
+- L707 `src/platform/win.rs:77` (+20 more lines) — became BUG-004
+- L708 `src/playout.rs:199` (+1 more lines) — became BUG-004
+- L710 `src/plugins.rs:1385` (+1 more lines) — became BUG-004
+- L711 `src/pngcodec.rs:155` (+9 more lines) — became BUG-004
+- L716 `src/proactive.rs:135` (+1 more lines) — became BUG-004
+- L719 `src/prose.rs:595` (+1 more lines) — became BUG-004
+- L721 `src/publishing.rs:350` (+3 more lines) — became BUG-004
+- L724 `src/reach.rs:302` (+1 more lines) — became BUG-004
+- L726 `src/recall.rs:623` — became BUG-004
+- L728 `src/receipts.rs:128` (+3 more lines) — became BUG-004
+- L731 `src/recur.rs:146` (+11 more lines) — became BUG-004
+- L732 `src/redact.rs:107` — became BUG-004
+- L737 `src/register.rs:264` (+1 more lines) — became BUG-004
+- L740 `src/release.rs:956` (+1 more lines) — became BUG-004
+- L742 `src/report.rs:172` (+10 more lines) — became BUG-004
+- L744 `src/research.rs:635` — became BUG-004
+- L749 `src/revise.rs:164` — became BUG-004
+- L752 `src/route.rs:284` — became BUG-004
+- L754 `src/routine.rs:168` — became BUG-004
+- L756 `src/safety.rs:921` (+1 more lines) — became BUG-004
+- L760 `src/scene3d.rs:638` (+3 more lines) — became BUG-004
+- L770 `src/setupwin.rs:766` — became BUG-004
+- L772 `src/signals.rs:107` (+2 more lines) — became BUG-004
+- L776 `src/social/analysis.rs:326` — became BUG-004
+- L778 `src/social/exports.rs:239` (+2 more lines) — became BUG-004
+- L783 `src/sound.rs:125` (+3 more lines) — became BUG-004
+- L786 `src/speaking.rs:199` — became BUG-004
+- L787 `src/spoken_form.rs:164` — became BUG-004
+- L789 `src/srs.rs:95` — became BUG-004
+- L803 `src/timing.rs:349` — became BUG-004
+- L810 `src/transport.rs:58` — became BUG-004
+- L812 `src/tray.rs:736` (+1 more lines) — became BUG-004
+- L814 `src/triage.rs:73` (+3 more lines) — became BUG-004
+- L818 `src/tune.rs:1368` (+2 more lines) — became BUG-004
+- L820 `src/typed.rs:255` — became BUG-004
+- L821 `src/tz.rs:108` (+5 more lines) — became BUG-004
+- L825 `src/unheard.rs:197` — became BUG-004
+- L828 `src/unsub.rs:101` (+1 more lines) — became BUG-004
+- L832 `src/update_courier.rs:613` (+1 more lines) — became BUG-004
+- L836 `src/utterance.rs:520` (+1 more lines) — became BUG-004
+- L837 `src/vadcal.rs:110` (+4 more lines) — became BUG-004
+- L839 `src/vault.rs:1290` (+5 more lines) — became BUG-004
+- L842 `src/viewing.rs:173` — became BUG-004
+- L846 `src/voice.rs:575` (+1 more lines) — became BUG-004
+- L855 `src/wants.rs:347` — became BUG-004
+- L857 `src/watch.rs:150` — became BUG-004
+- L860 `src/weather.rs:135` (+2 more lines) — became BUG-004
+- L863 `src/webpush.rs:168` — became BUG-004
+- L866 `src/webrun.rs:533` — became BUG-004
+- L867 `src/webview2_loader.rs:27` — became BUG-004
+- L868 `src/when.rs:236` (+1 more lines) — became BUG-004
+- L873 `src/window.rs:339` (+1 more lines) — became BUG-004
+- L875 `src/wireguard.rs:374` — became BUG-004
+- L878 `src/words.rs:889` (+2 more lines) — became BUG-004
+- L880 `src/workday.rs:707` — became BUG-004
+- L883 `src/worklog.rs:284` — became BUG-004
+- L888 `src/ws.rs:62` (+5 more lines) — became BUG-004
+- L890 `src/zipread.rs:72` (+9 more lines) — became BUG-004
+
+## Unconfirmed · rust-serde-unknown-fields (301)
+- L393 `src/accounts.rs:25` (+5 more lines) — became BUG-006
+- L394 `src/activity.rs:14` (+3 more lines) — became BUG-006
+- L395 `src/adapt.rs:25` (+2 more lines) — became BUG-006
+- L396 `src/addressing.rs:14` — became BUG-006
+- L397 `src/afterme.rs:28` (+5 more lines) — became BUG-006
+- L399 `src/android.rs:16` (+1 more lines) — became BUG-006
+- L400 `src/answering.rs:48` — became BUG-006
+- L401 `src/anticipate.rs:18` (+2 more lines) — became BUG-006
+- L402 `src/apns.rs:38` (+2 more lines) — became BUG-006
+- L403 `src/appearance.rs:30` (+5 more lines) — became BUG-006
+- L404 `src/applewx.rs:267` — became BUG-006
+- L405 `src/applied.rs:20` (+2 more lines) — became BUG-006
+- L406 `src/asking.rs:74` (+1 more lines) — became BUG-006
+- L408 `src/astype.rs:69` (+2 more lines) — became BUG-006
+- L409 `src/attention.rs:28` (+1 more lines) — became BUG-006
+- L410 `src/audio.rs:280` — became BUG-006
+- L412 `src/automation.rs:77` (+1 more lines) — became BUG-006
+- L414 `src/awake.rs:20` (+7 more lines) — became BUG-006
+- L417 `src/backends.rs:21` (+2 more lines) — became BUG-006
+- L418 `src/backlog.rs:17` (+3 more lines) — became BUG-006
+- L421 `src/booking.rs:15` (+4 more lines) — became BUG-006
+- L422 `src/brain.rs:22` — became BUG-006
+- L423 `src/brief.rs:35` (+6 more lines) — became BUG-006
+- L425 `src/browser.rs:16` (+1 more lines) — became BUG-006
+- L427 `src/budget.rs:26` (+4 more lines) — became BUG-006
+- L428 `src/build_it.rs:38` (+4 more lines) — became BUG-006
+- L431 `src/calendar.rs:28` (+7 more lines) — became BUG-006
+- L434 `src/callnotes.rs:97` (+1 more lines) — became BUG-006
+- L438 `src/capability.rs:15` (+1 more lines) — became BUG-006
+- L439 `src/capture.rs:25` (+4 more lines) — became BUG-006
+- L440 `src/certainty.rs:25` — became BUG-006
+- L441 `src/chain.rs:16` (+1 more lines) — became BUG-006
+- L442 `src/channel.rs:22` (+1 more lines) — became BUG-006
+- L443 `src/chat.rs:75` (+3 more lines) — became BUG-006
+- L444 `src/checks.rs:24` (+2 more lines) — became BUG-006
+- L447 `src/chords.rs:77` — became BUG-006
+- L449 `src/clients.rs:16` (+1 more lines) — became BUG-006
+- L450 `src/clipboard.rs:83` — became BUG-006
+- L451 `src/cliphist.rs:33` (+2 more lines) — became BUG-006
+- L452 `src/cloudsync.rs:14` (+3 more lines) — became BUG-006
+- L454 `src/codes.rs:28` (+1 more lines) — became BUG-006
+- L455 `src/companion.rs:22` (+3 more lines) — became BUG-006
+- L456 `src/confirmed.rs:20` (+5 more lines) — became BUG-006
+- L457 `src/connect.rs:195` (+1 more lines) — became BUG-006
+- L458 `src/connection_removal.rs:4` (+2 more lines) — became BUG-006
+- L459 `src/connectivity.rs:40` — became BUG-006
+- L460 `src/connectors.rs:12` (+4 more lines) — became BUG-006
+- L461 `src/consent.rs:27` (+2 more lines) — became BUG-006
+- L462 `src/consolidate.rs:23` (+4 more lines) — became BUG-006
+- L463 `src/consult.rs:45` (+2 more lines) — became BUG-006
+- L465 `src/contents.rs:27` (+2 more lines) — became BUG-006
+- L466 `src/council.rs:29` (+5 more lines) — became BUG-006
+- L467 `src/cpuuse.rs:46` — became BUG-006
+- L468 `src/craft.rs:40` (+4 more lines) — became BUG-006
+- L469 `src/crash.rs:70` — became BUG-006
+- L470 `src/credentials.rs:26` (+2 more lines) — became BUG-006
+- L471 `src/crew.rs:315` — became BUG-006
+- L474 `src/daemon.rs:412` (+8 more lines) — became BUG-006
+- L475 `src/daemon/askthelaptop.rs:19` (+1 more lines) — became BUG-006
+- L477 `src/daemon/brief_prep.rs:29` (+3 more lines) — became BUG-006
+- L478 `src/daemon/calendar_delivery.rs:9` (+2 more lines) — became BUG-006
+- L487 `src/daemon/onethread.rs:54` — became BUG-006
+- L489 `src/daemon/running.rs:2186` — became BUG-006
+- L493 `src/daily.rs:16` (+4 more lines) — became BUG-006
+- L495 `src/dash.rs:41` (+3 more lines) — became BUG-006
+- L496 `src/decide.rs:36` (+4 more lines) — became BUG-006
+- L497 `src/delegate.rs:33` (+3 more lines) — became BUG-006
+- L498 `src/diagnose.rs:15` (+2 more lines) — became BUG-006
+- L501 `src/dictate.rs:15` — became BUG-006
+- L503 `src/draft.rs:14` (+2 more lines) — became BUG-006
+- L504 `src/earned.rs:49` (+4 more lines) — became BUG-006
+- L505 `src/edit.rs:17` (+2 more lines) — became BUG-006
+- L506 `src/editcraft.rs:23` (+6 more lines) — became BUG-006
+- L507 `src/editors.rs:33` (+2 more lines) — became BUG-006
+- L508 `src/elsewhere.rs:44` (+1 more lines) — became BUG-006
+- L509 `src/endpoint.rs:16` — became BUG-006
+- L510 `src/enrol.rs:138` (+8 more lines) — became BUG-006
+- L511 `src/explain.rs:18` (+2 more lines) — became BUG-006
+- L512 `src/facts.rs:35` (+2 more lines) — became BUG-006
+- L513 `src/faithful.rs:27` (+1 more lines) — became BUG-006
+- L514 `src/feedback.rs:53` (+2 more lines) — became BUG-006
+- L515 `src/feeds.rs:422` (+3 more lines) — became BUG-006
+- L516 `src/files.rs:14` (+2 more lines) — became BUG-006
+- L517 `src/filing.rs:37` — became BUG-006
+- L519 `src/finance.rs:19` (+2 more lines) — became BUG-006
+- L520 `src/firewall.rs:65` (+1 more lines) — became BUG-006
+- L521 `src/firstrun.rs:15` (+2 more lines) — became BUG-006
+- L522 `src/fit.rs:20` (+3 more lines) — became BUG-006
+- L524 `src/flow.rs:16` (+5 more lines) — became BUG-006
+- L526 `src/freshness.rs:24` (+2 more lines) — became BUG-006
+- L527 `src/gaze.rs:41` — became BUG-006
+- L533 `src/gmm.rs:15` — became BUG-006
+- L534 `src/goal.rs:25` (+3 more lines) — became BUG-006
+- L536 `src/goingaway.rs:27` (+3 more lines) — became BUG-006
+- L537 `src/goodbye.rs:47` — became BUG-006
+- L539 `src/grade.rs:35` (+5 more lines) — became BUG-006
+- L540 `src/grading.rs:15` (+3 more lines) — became BUG-006
+- L541 `src/grants.rs:14` (+2 more lines) — became BUG-006
+- L542 `src/growth.rs:28` (+2 more lines) — became BUG-006
+- L544 `src/habits.rs:29` (+1 more lines) — became BUG-006
+- L546 `src/handoff.rs:21` (+3 more lines) — became BUG-006
+- L548 `src/handover.rs:48` (+1 more lines) — became BUG-006
+- L549 `src/handshape.rs:39` (+4 more lines) — became BUG-006
+- L551 `src/handtrack.rs:42` (+1 more lines) — became BUG-006
+- L553 `src/handweight.rs:46` (+1 more lines) — became BUG-006
+- L555 `src/health.rs:49` (+1 more lines) — became BUG-006
+- L557 `src/hearing.rs:29` (+3 more lines) — became BUG-006
+- L558 `src/hlc.rs:61` (+1 more lines) — became BUG-006
+- L559 `src/hollow.rs:25` (+1 more lines) — became BUG-006
+- L560 `src/hollowcode.rs:40` (+2 more lines) — became BUG-006
+- L564 `src/household.rs:16` (+8 more lines) — became BUG-006
+- L565 `src/hub.rs:443` — became BUG-006
+- L567 `src/hublive.rs:65` (+1 more lines) — became BUG-006
+- L571 `src/hubvault.rs:99` — became BUG-006
+- L573 `src/hunt.rs:56` (+6 more lines) — became BUG-006
+- L576 `src/identity.rs:57` (+2 more lines) — became BUG-006
+- L577 `src/imagemake.rs:37` — became BUG-006
+- L578 `src/improve.rs:13` (+2 more lines) — became BUG-006
+- L579 `src/index.rs:14` (+4 more lines) — became BUG-006
+- L581 `src/install.rs:15` (+3 more lines) — became BUG-006
+- L582 `src/integrations.rs:29` (+2 more lines) — became BUG-006
+- L583 `src/interrupt.rs:15` (+5 more lines) — became BUG-006
+- L585 `src/ios.rs:14` (+2 more lines) — became BUG-006
+- L586 `src/judgment.rs:119` — became BUG-006
+- L589 `src/knowhow.rs:18` (+3 more lines) — became BUG-006
+- L592 `src/lanes.rs:23` (+7 more lines) — became BUG-006
+- L593 `src/language.rs:20` (+3 more lines) — became BUG-006
+- L595 `src/later.rs:13` (+1 more lines) — became BUG-006
+- L596 `src/launcher.rs:28` (+1 more lines) — became BUG-006
+- L597 `src/layout_prefs.rs:15` (+4 more lines) — became BUG-006
+- L599 `src/learned.rs:15` (+2 more lines) — became BUG-006
+- L600 `src/ledger.rs:22` — became BUG-006
+- L601 `src/leveller.rs:69` (+2 more lines) — became BUG-006
+- L603 `src/levels.rs:59` (+2 more lines) — became BUG-006
+- L604 `src/lifecycle.rs:15` — became BUG-006
+- L609 `src/mail.rs:18` (+6 more lines) — became BUG-006
+- L610 `src/mailbook.rs:23` (+1 more lines) — became BUG-006
+- L620 `src/mcp.rs:67` (+1 more lines) — became BUG-006
+- L621 `src/meaning.rs:42` (+1 more lines) — became BUG-006
+- L623 `src/memory.rs:16` (+4 more lines) — became BUG-006
+- L624 `src/mend.rs:37` (+3 more lines) — became BUG-006
+- L628 `src/mesh.rs:16` (+1 more lines) — became BUG-006
+- L630 `src/messaging.rs:12` (+6 more lines) — became BUG-006
+- L634 `src/miclevel.rs:27` (+1 more lines) — became BUG-006
+- L635 `src/micthread.rs:174` (+1 more lines) — became BUG-006
+- L637 `src/mind.rs:16` (+6 more lines) — became BUG-006
+- L638 `src/misses.rs:44` (+3 more lines) — became BUG-006
+- L641 `src/models.rs:114` (+1 more lines) — became BUG-006
+- L643 `src/modes.rs:15` (+2 more lines) — became BUG-006
+- L644 `src/money.rs:17` (+3 more lines) — became BUG-006
+- L645 `src/motion.rs:24` (+4 more lines) — became BUG-006
+- L647 `src/msoauth.rs:46` (+2 more lines) — became BUG-006
+- L648 `src/muse.rs:35` (+1 more lines) — became BUG-006
+- L649 `src/mutation.rs:27` — became BUG-006
+- L651 `src/nearby.rs:73` (+1 more lines) — became BUG-006
+- L652 `src/notify.rs:44` (+3 more lines) — became BUG-006
+- L653 `src/notifyicon.rs:28` — became BUG-006
+- L656 `src/npu.rs:321` — became BUG-006
+- L658 `src/npu/worker.rs:56` (+1 more lines) — became BUG-006
+- L660 `src/nudge.rs:29` (+5 more lines) — became BUG-006
+- L662 `src/ocr.rs:34` — became BUG-006
+- L664 `src/online.rs:48` — became BUG-006
+- L666 `src/operate.rs:43` (+4 more lines) — became BUG-006
+- L668 `src/opportunity.rs:25` (+3 more lines) — became BUG-006
+- L669 `src/opsec.rs:15` (+2 more lines) — became BUG-006
+- L670 `src/orders.rs:17` (+2 more lines) — became BUG-006
+- L673 `src/otherside.rs:22` (+1 more lines) — became BUG-006
+- L674 `src/outbox.rs:13` (+5 more lines) — became BUG-006
+- L675 `src/outreach.rs:20` (+1 more lines) — became BUG-006
+- L676 `src/overlay.rs:31` (+3 more lines) — became BUG-006
+- L680 `src/overnight.rs:25` (+4 more lines) — became BUG-006
+- L681 `src/palette.rs:469` — became BUG-006
+- L683 `src/panel.rs:17` (+1 more lines) — became BUG-006
+- L686 `src/people.rs:31` (+1 more lines) — became BUG-006
+- L688 `src/perf.rs:11` — became BUG-006
+- L689 `src/person.rs:20` (+4 more lines) — became BUG-006
+- L691 `src/persona.rs:14` (+1 more lines) — became BUG-006
+- L692 `src/phone.rs:39` — became BUG-006
+- L694 `src/phoneadd.rs:41` (+1 more lines) — became BUG-006
+- L696 `src/phonemodel.rs:218` — became BUG-006
+- L699 `src/photo.rs:224` (+1 more lines) — became BUG-006
+- L700 `src/phrasebook.rs:62` (+2 more lines) — became BUG-006
+- L701 `src/picture_talk.rs:27` — became BUG-006
+- L702 `src/pipeline.rs:23` (+9 more lines) — became BUG-006
+- L703 `src/plainchange.rs:16` — became BUG-006
+- L704 `src/plainly.rs:15` — became BUG-006
+- L712 `src/policy.rs:11` — became BUG-006
+- L713 `src/portable.rs:14` (+3 more lines) — became BUG-006
+- L714 `src/presence.rs:27` (+1 more lines) — became BUG-006
+- L715 `src/proactive.rs:16` (+1 more lines) — became BUG-006
+- L717 `src/profiles.rs:21` (+2 more lines) — became BUG-006
+- L718 `src/prose.rs:20` (+4 more lines) — became BUG-006
+- L720 `src/publishing.rs:10` (+3 more lines) — became BUG-006
+- L722 `src/quickinput.rs:22` (+1 more lines) — became BUG-006
+- L723 `src/reach.rs:13` (+4 more lines) — became BUG-006
+- L725 `src/recall.rs:23` (+5 more lines) — became BUG-006
+- L727 `src/receipts.rs:27` (+1 more lines) — became BUG-006
+- L729 `src/reclaim.rs:44` (+1 more lines) — became BUG-006
+- L730 `src/recovery.rs:13` (+2 more lines) — became BUG-006
+- L733 `src/reference.rs:20` (+4 more lines) — became BUG-006
+- L734 `src/references.rs:14` — became BUG-006
+- L735 `src/refusals.rs:55` (+1 more lines) — became BUG-006
+- L736 `src/register.rs:14` — became BUG-006
+- L738 `src/regressions.rs:23` (+1 more lines) — became BUG-006
+- L741 `src/remote.rs:15` (+5 more lines) — became BUG-006
+- L743 `src/research.rs:15` (+2 more lines) — became BUG-006
+- L745 `src/resume.rs:29` (+1 more lines) — became BUG-006
+- L746 `src/retention.rs:56` — became BUG-006
+- L747 `src/returning.rs:56` (+3 more lines) — became BUG-006
+- L748 `src/revise.rs:31` (+3 more lines) — became BUG-006
+- L750 `src/roster.rs:60` — became BUG-006
+- L751 `src/route.rs:17` (+3 more lines) — became BUG-006
+- L753 `src/routine.rs:15` (+3 more lines) — became BUG-006
+- L755 `src/safety.rs:93` (+4 more lines) — became BUG-006
+- L757 `src/safety/restore_transaction.rs:7` (+1 more lines) — became BUG-006
+- L758 `src/sandbox.rs:23` (+1 more lines) — became BUG-006
+- L759 `src/scene3d.rs:62` (+9 more lines) — became BUG-006
+- L761 `src/scheduler.rs:11` (+2 more lines) — became BUG-006
+- L762 `src/selfaudit.rs:19` (+3 more lines) — became BUG-006
+- L763 `src/selfgrant.rs:16` (+2 more lines) — became BUG-006
+- L764 `src/selfwork.rs:23` (+3 more lines) — became BUG-006
+- L766 `src/server.rs:22` (+2 more lines) — became BUG-006
+- L768 `src/session.rs:11` — became BUG-006
+- L769 `src/settings.rs:15` (+3 more lines) — became BUG-006
+- L771 `src/shared_task.rs:46` (+2 more lines) — became BUG-006
+- L773 `src/signin.rs:26` (+4 more lines) — became BUG-006
+- L774 `src/snippets.rs:25` — became BUG-006
+- L775 `src/social.rs:52` — became BUG-006
+- L777 `src/social/apis.rs:301` (+1 more lines) — became BUG-006
+- L779 `src/social/glue.rs:34` (+2 more lines) — became BUG-006
+- L780 `src/social/snapshots.rs:30` (+4 more lines) — became BUG-006
+- L781 `src/social/watchlist.rs:42` (+4 more lines) — became BUG-006
+- L782 `src/sound.rs:19` — became BUG-006
+- L784 `src/speaker.rs:27` (+1 more lines) — became BUG-006
+- L785 `src/speaking.rs:25` — became BUG-006
+- L788 `src/srs.rs:39` (+3 more lines) — became BUG-006
+- L790 `src/stance.rs:16` (+4 more lines) — became BUG-006
+- L791 `src/store.rs:95` — became BUG-006
+- L792 `src/strategy.rs:20` (+3 more lines) — became BUG-006
+- L793 `src/subject.rs:16` — became BUG-006
+- L794 `src/sync.rs:27` (+11 more lines) — became BUG-006
+- L795 `src/system.rs:17` (+1 more lines) — became BUG-006
+- L796 `src/taste.rs:27` (+2 more lines) — became BUG-006
+- L797 `src/telegram.rs:62` — became BUG-006
+- L798 `src/texting.rs:19` (+1 more lines) — became BUG-006
+- L799 `src/thread.rs:16` (+2 more lines) — became BUG-006
+- L800 `src/tier.rs:29` (+2 more lines) — became BUG-006
+- L801 `src/timebox.rs:13` — became BUG-006
+- L802 `src/timing.rs:30` (+2 more lines) — became BUG-006
+- L804 `src/together.rs:77` (+1 more lines) — became BUG-006
+- L805 `src/tools.rs:22` — became BUG-006
+- L807 `src/trace.rs:27` (+4 more lines) — became BUG-006
+- L808 `src/tradeday.rs:22` (+6 more lines) — became BUG-006
+- L809 `src/translation.rs:34` — became BUG-006
+- L811 `src/tray.rs:44` (+3 more lines) — became BUG-006
+- L813 `src/triage.rs:13` (+3 more lines) — became BUG-006
+- L815 `src/tts.rs:14` (+4 more lines) — became BUG-006
+- L816 `src/tune.rs:20` (+10 more lines) — became BUG-006
+- L819 `src/twofactor.rs:27` (+1 more lines) — became BUG-006
+- L822 `src/uia.rs:16` (+1 more lines) — became BUG-006
+- L823 `src/understood.rs:65` — became BUG-006
+- L824 `src/undo.rs:15` (+2 more lines) — became BUG-006
+- L826 `src/unpack.rs:245` — became BUG-006
+- L827 `src/unsub.rs:23` (+3 more lines) — became BUG-006
+- L829 `src/untrusted.rs:37` (+1 more lines) — became BUG-006
+- L830 `src/update_apply.rs:63` (+6 more lines) — became BUG-006
+- L831 `src/update_courier.rs:41` (+2 more lines) — became BUG-006
+- L833 `src/upgrade.rs:37` (+2 more lines) — became BUG-006
+- L834 `src/used.rs:167` — became BUG-006
+- L835 `src/utterance.rs:75` — became BUG-006
+- L838 `src/vault.rs:26` (+6 more lines) — became BUG-006
+- L840 `src/vault/signing_assets.rs:61` — became BUG-006
+- L841 `src/viewing.rs:36` (+1 more lines) — became BUG-006
+- L844 `src/vision.rs:79` (+3 more lines) — became BUG-006
+- L845 `src/voice.rs:12` (+6 more lines) — became BUG-006
+- L847 `src/voiceid.rs:51` (+2 more lines) — became BUG-006
+- L848 `src/voiceover.rs:14` (+2 more lines) — became BUG-006
+- L849 `src/waitingfor.rs:29` (+3 more lines) — became BUG-006
+- L850 `src/wakeword.rs:21` (+1 more lines) — became BUG-006
+- L851 `src/walkthrough.rs:24` (+2 more lines) — became BUG-006
+- L853 `src/wanted.rs:23` (+2 more lines) — became BUG-006
+- L854 `src/wants.rs:85` (+1 more lines) — became BUG-006
+- L856 `src/watch.rs:16` (+3 more lines) — became BUG-006
+- L858 `src/watching.rs:13` (+3 more lines) — became BUG-006
+- L859 `src/weather.rs:17` — became BUG-006
+- L861 `src/webpush.rs:45` (+1 more lines) — became BUG-006
+- L864 `src/webrun.rs:31` (+2 more lines) — became BUG-006
+- L869 `src/whichone.rs:112` — became BUG-006
+- L870 `src/why.rs:16` (+1 more lines) — became BUG-006
+- L871 `src/whystopped.rs:32` (+2 more lines) — became BUG-006
+- L872 `src/window.rs:28` (+1 more lines) — became BUG-006
+- L874 `src/wireguard.rs:47` — became BUG-006
+- L876 `src/wit.rs:124` — became BUG-006
+- L877 `src/words.rs:73` — became BUG-006
+- L879 `src/workday.rs:28` — became BUG-006
+- L881 `src/workingset.rs:15` (+3 more lines) — became BUG-006
+- L882 `src/worklog.rs:35` (+3 more lines) — became BUG-006
+- L884 `src/worksession.rs:14` — became BUG-006
+- L885 `src/workshop.rs:29` (+5 more lines) — became BUG-006
+- L887 `src/workspace_view.rs:22` (+11 more lines) — became BUG-006
+- L889 `src/yata.rs:22` (+1 more lines) — became BUG-006
+
+## Unconfirmed · rust-state-read-default (25)
+- L111 `src/applewx.rs:275` — became BUG-007
+- L128 `src/contents.rs:363` — became BUG-007
+- L135 `src/daemon/making.rs:455` — became BUG-007
+- L137 `src/daemon/on_itself.rs:1193` — became BUG-007
+- L141 `src/daemon/time_words.rs:127` — became BUG-007
+- L143 `src/doctor.rs:630` (+1 more lines) — became BUG-007
+- L144 `src/doorrule.rs:173` — became BUG-007
+- L147 `src/filmstrip.rs:178` — became BUG-007
+- L149 `src/firstlaunch.rs:749` — became BUG-007
+- L150 `src/fixloop.rs:318` — became BUG-007
+- L154 `src/goodbye.rs:172` — became BUG-007
+- L158 `src/health.rs:376` (+2 more lines) — became BUG-007
+- L180 `src/main.rs:709` (+1 more lines) — became BUG-007
+- L181 `src/main/everyday.rs:1272` (+1 more lines) — became BUG-007
+- L190 `src/mutation.rs:59` — became BUG-007
+- L194 `src/npu.rs:436` — became BUG-007
+- L198 `src/onion.rs:307` (+2 more lines) — became BUG-007
+- L217 `src/plugins.rs:930` (+1 more lines) — became BUG-007
+- L226 `src/selfwork.rs:1125` — became BUG-007
+- L231 `src/store.rs:890` — became BUG-007
+- L238 `src/trace.rs:580` — became BUG-007
+- L245 `src/upgrade.rs:514` (+1 more lines) — became BUG-007
+- L251 `src/webview2_loader.rs:48` — became BUG-007
+- L253 `src/whystopped.rs:79` — became BUG-007
+- L260 `src/yourchanges.rs:531` — became BUG-007
+
+## Unconfirmed · rust-unwrap-input (22)
+- L108 `src/agefile.rs:531` — became BUG-003
+- L113 `src/bisect.rs:246` (+2 more lines) — became BUG-003
+- L114 `src/calendar.rs:1867` — became BUG-003
+- L124 `src/clients.rs:256` (+6 more lines) — became BUG-003
+- L127 `src/content.rs:608` — became BUG-003
+- L134 `src/daemon/late.rs:2909` (+6 more lines) — became BUG-003
+- L145 `src/facts.rs:72` (+1 more lines) — became BUG-003
+- L175 `src/lifecycle.rs:441` — became BUG-003
+- L178 `src/look_paint.rs:291` (+2 more lines) — became BUG-003
+- L183 `src/market/verify.rs:325` — became BUG-003
+- L189 `src/models.rs:2560` — became BUG-003
+- L201 `src/onion.rs:674` (+4 more lines) — became BUG-003
+- L204 `src/ota.rs:1025` — became BUG-003
+- L206 `src/outbox.rs:291` (+3 more lines) — became BUG-003
+- L208 `src/phoneadd.rs:574` — became BUG-003
+- L219 `src/release.rs:1237` (+1 more lines) — became BUG-003
+- L220 `src/research.rs:1118` (+3 more lines) — became BUG-003
+- L223 `src/safety/restore_transaction.rs:324` — became BUG-003
+- L224 `src/safety/state_transactions.rs:390` — became BUG-003
+- L234 `src/tools.rs:238` — became BUG-003
+- L247 `src/vault.rs:1795` (+1 more lines) — became BUG-003
+- L250 `src/voicepick.rs:229` — became BUG-003

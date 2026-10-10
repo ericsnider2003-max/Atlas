@@ -18,7 +18,11 @@ use super::*;
 /// the vault with another was told "that isn't the passphrase" -- eleven
 /// failures in a full run, from a file no test had meant to create.
 pub(super) fn keeps_the_install_vault(store: &crate::store::Store) -> bool {
-    store.root().starts_with(crate::roots::state_dir()) || crate::roots::how() == crate::roots::Chosen::Told
+    // The install vault belongs to the install state, not to every profile
+    // opened while ATLAS_HOME is configured.  Sharing it with a temporary or
+    // profile store lets another daemon change the on-disk snapshot underneath
+    // this one, so a legitimate sign-in is rejected as stale.
+    store.root() == crate::roots::install_state().root()
 }
 
 /// The tools whose result is information to put into words, not an action

@@ -1116,6 +1116,10 @@ impl<'a> Daemon<'a> {
             .map(|w| {
                 let state = if w.held {
                     "paused, nothing lost"
+                } else if w.composing.is_some() {
+                    "a worker is writing a reply"
+                } else if w.ready.is_some() {
+                    "has a worker reply ready to type"
                 } else if w.waiting_for_gap {
                     "has a reply to type, waiting for you to stop typing"
                 } else {

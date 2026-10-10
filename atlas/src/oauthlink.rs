@@ -482,6 +482,10 @@ pub fn ics_from_graph(body: &str) -> Result<String, String> {
 
 /// Read the calendar from now - a week to now + ten weeks, as iCalendar.
 
+/// Compatibility wrapper for callers using the default calendar selection.
+pub fn calendar_ics(net: &dyn Net, p: Provider, refresh_token: &str, now: u64) -> Result<String, String> {
+    calendar_ics_selected(net, p, refresh_token, now, &[])
+}
 /// Read explicitly selected calendars; empty selection retains the default
 /// calendar. Every page must succeed before a snapshot can replace the cache.
 pub fn calendar_ics_selected(net: &dyn Net, p: Provider, refresh_token: &str, now: u64, selected: &[String]) -> Result<String, String> {
@@ -590,3 +594,5 @@ pub fn outlook_account(email: &str) -> crate::mail::Account {
         ..Default::default()
     }
 }
+
+\r\n
