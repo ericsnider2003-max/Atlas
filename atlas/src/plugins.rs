@@ -1529,7 +1529,6 @@ pub fn append_changes_checked(store: &Store, dir: &Path, log: &mut crate::sync::
 
 
 
-#[allow(clippy::too_many_arguments)]
 pub fn take_synced_versioned(
     store: &Store, dir: &Path, commands: &CommandsConfig,
     subject: &str, field: &str, value: &str, sealed: bool, from_device: &str,
@@ -1610,7 +1609,6 @@ pub fn take_synced_versioned(
 }
 
 /// One press of a button on the hub's Add-ons page.
-#[allow(clippy::too_many_arguments)]
 pub fn hub_action(
     store: &Store,
     dir: &Path,

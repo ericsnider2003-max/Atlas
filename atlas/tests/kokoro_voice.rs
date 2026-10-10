@@ -268,7 +268,10 @@ fn kokoro_really_speaks_and_is_measured() {
     let check_provider_isolation = || {
         use windows::core::w;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        // SAFETY: GetModuleHandleW only reads a live NUL-terminated wide string and takes no
+        // reference on the module.
         assert!(unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(), "CPU voice loaded a quarantined provider");
+        // SAFETY: as above, a read-only lookup by name.
         assert!(unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err(), "CPU voice loaded the NPU compiler");
     };
     #[cfg(windows)]

@@ -473,6 +473,8 @@ impl RuntimeFolderCohort {
         let mut reserved = Self::hold(destination, stop)?;
         fn identity(file: &std::fs::File) -> Result<(u32, u32, u32), String> {
             let mut info = BY_HANDLE_FILE_INFORMATION::default();
+            // SAFETY: the handle is borrowed from the live `file` and `info` is a live local the
+            // call writes.
             unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut info) }.map_err(|e| e.to_string())?;
             Ok((info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow))
         }
@@ -492,6 +494,8 @@ impl RuntimeFolderCohort {
         fn dispose(file: std::fs::File, quarantine: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<(), String> {
             if stop() { return Err("Runtime movement stopped; remaining reserved originals are retained".into()); }
             let mut buffer = vec![0u16; 32_768];
+            // SAFETY: `buffer` is a live slice the call writes; the handle is borrowed from the
+            // live `file`.
             let length = unsafe { GetFinalPathNameByHandleW(HANDLE(file.as_raw_handle()), &mut buffer, GETFINALPATHNAMEBYHANDLE_FLAGS(0)) } as usize;
             if length == 0 || length >= buffer.len() { return Err("A reserved object no longer has a verifiable location; it was retained".into()); }
             let actual = String::from_utf16(&buffer[..length]).map_err(|_| "A reserved object location cannot be decoded safely")?.to_lowercase();
@@ -500,6 +504,8 @@ impl RuntimeFolderCohort {
             let disposition = FILE_DISPOSITION_INFO { DeleteFile: BOOLEAN(1) };
             // Delete the held object, never a pathname that another program
             // could replace. A directory with any new child refuses deletion.
+            // SAFETY: `disposition` is a live FILE_DISPOSITION_INFO of the size passed; the handle
+            // is borrowed from the live `file`.
             unsafe { SetFileInformationByHandle(HANDLE(file.as_raw_handle()), FileDispositionInfo, (&disposition as *const FILE_DISPOSITION_INFO).cast(), std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32) }
                 .map_err(|e| format!("New or changed runtime entries remain in the reserved source folder: {e}"))?;
             drop(file); Ok(())
@@ -610,9 +616,6 @@ pub fn move_folder_durably(store: &crate::store::Store, from: &std::path::Path, 
     Ok(moved)
 }
 
-/// Historical entry point retained for compatibility with older Atlas builds.
-#[allow(dead_code)]
-pub fn move_folder() {}
 
 
 

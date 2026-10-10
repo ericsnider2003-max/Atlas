@@ -338,6 +338,8 @@ impl Drop for Standby {
 /// Atlas just received your key press, so Windows lets it hand that on.
 fn allow_to_front() {
     #[cfg(windows)]
+    // SAFETY: AllowSetForegroundWindow takes a plain process id constant and touches no memory of
+    // ours.
     unsafe {
         use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
         let _ = AllowSetForegroundWindow(ASFW_ANY);
@@ -348,6 +350,7 @@ fn allow_to_front() {
 #[cfg_attr(not(feature = "desktop-ui"), allow(dead_code))]
 fn front_window() -> Option<isize> {
     #[cfg(windows)]
+    // SAFETY: GetForegroundWindow takes no arguments and returns a handle by value.
     unsafe {
         let h = windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
         if !h.0.is_null() {
@@ -363,6 +366,8 @@ fn front_window() -> Option<isize> {
 fn give_back(to: Option<isize>) {
     #[cfg(windows)]
     if let Some(h) = to {
+        // SAFETY: `h` is a window handle; a stale one makes SetForegroundWindow fail, which is
+        // ignored.
         unsafe {
             let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(windows::Win32::Foundation::HWND(h as *mut std::ffi::c_void));
         }
@@ -376,6 +381,7 @@ fn give_back(to: Option<isize>) {
 fn show_now(hwnd: isize) {
     crate::winpark::unpark(hwnd);
     #[cfg(windows)]
+    // SAFETY: `h` is the box's own window handle; a stale one makes these calls fail harmlessly.
     unsafe {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow, SW_SHOW};

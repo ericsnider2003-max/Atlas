@@ -24,6 +24,8 @@ static ASKED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 fn write(out: *mut c_char, len: usize, s: &str) {
     let b = s.as_bytes();
     let n = b.len().min(len - 1);
+    // SAFETY: `out` is the host-provided buffer of `len` bytes (len >= 1); at most `len - 1` bytes
+    // are copied, then one NUL.
     unsafe {
         std::ptr::copy_nonoverlapping(b.as_ptr(), out.cast(), n);
         *out.add(n) = 0;
@@ -71,6 +73,8 @@ fn brain() -> (AppleFirst, Arc<Own>) {
 #[test]
 fn apple_answers_first_and_atlas_takes_what_it_refuses_one_request_at_a_time() {
     let _g = alone();
+    // SAFETY: registers or clears a plain fn pointer; `stand_in` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applebrain::atlas_mobile_apple_model(Some(stand_in)) };
     let (b, own) = brain();
 
@@ -90,6 +94,8 @@ fn apple_answers_first_and_atlas_takes_what_it_refuses_one_request_at_a_time() {
     let r = b.chat(&talk("best fishing knots"), &mut |_| true).unwrap();
     assert_eq!(r.text, "From Atlas's model.");
     assert_eq!(*own.0.lock().unwrap(), 2);
+    // SAFETY: registers or clears a plain fn pointer; `stand_in` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applebrain::atlas_mobile_apple_model(None) };
 }
 
@@ -116,6 +122,8 @@ fn some_requests_never_go_to_apples_model() {
 #[test]
 fn a_phone_without_apples_model_always_uses_atlas() {
     let _g = alone();
+    // SAFETY: registers or clears a plain fn pointer; `stand_in` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applebrain::atlas_mobile_apple_model(None) };
     ASKED.lock().unwrap().clear();
     let (b, own) = brain();
@@ -128,12 +136,16 @@ fn a_phone_without_apples_model_always_uses_atlas() {
 #[test]
 fn hard_work_never_goes_to_the_small_model() {
     let _g = alone();
+    // SAFETY: registers or clears a plain fn pointer; `stand_in` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applebrain::atlas_mobile_apple_model(Some(stand_in)) };
     ASKED.lock().unwrap().clear();
     let (b, _) = brain();
     let r = b.complete_hard("Write code.", "a function that sorts a list").unwrap();
     assert_eq!(r, "From Atlas's model.");
     assert!(ASKED.lock().unwrap().is_empty());
+    // SAFETY: registers or clears a plain fn pointer; `stand_in` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applebrain::atlas_mobile_apple_model(None) };
 }
 

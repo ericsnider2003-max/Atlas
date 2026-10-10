@@ -250,8 +250,10 @@ fn phone_llm(tools: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn cra
         // registers Apple's, and every request goes straight to Atlas's.
         return Some(std::sync::Arc::new(crate::applebrain::AppleFirst::new(atlas)));
     }
-    #[allow(unreachable_code)]
-    configured.map(|c| std::sync::Arc::new(crate::applebrain::AppleFirst::new(c)) as std::sync::Arc<dyn crate::brain::Llm>)
+    #[cfg(not(feature = "phone-llm"))]
+    {
+        configured.map(|c| std::sync::Arc::new(crate::applebrain::AppleFirst::new(c)) as std::sync::Arc<dyn crate::brain::Llm>)
+    }
 }
 
 /// Start Atlas on the phone. `home`: a NUL-terminated UTF-8 path to the app's

@@ -47,6 +47,7 @@ fn set_priority(pid: u32, lowered: bool) {
     use windows::Win32::System::Threading::{
         OpenProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, PROCESS_SET_INFORMATION,
     };
+    // SAFETY: the process handle is opened here and closed here; no memory of ours is passed.
     unsafe {
         if let Ok(h) = OpenProcess(PROCESS_SET_INFORMATION, false, pid) {
             let class = if lowered { BELOW_NORMAL_PRIORITY_CLASS } else { NORMAL_PRIORITY_CLASS };

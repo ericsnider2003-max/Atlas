@@ -179,7 +179,6 @@ impl Awareness {
         self.signals(plat, active, input_idle_secs, os_quiet, at_breakpoint, in_conversation, recent_changes, t)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn signals(
         &self,
         plat: &dyn Platform,

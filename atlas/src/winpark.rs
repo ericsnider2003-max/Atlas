@@ -54,6 +54,8 @@ pub fn unpark(hwnd: isize) {
 
 fn set_minimized_bit(hwnd: isize, on: bool) {
     #[cfg(windows)]
+    // SAFETY: `h` is only a window handle; a stale one makes Get/SetWindowLongPtrW fail harmlessly
+    // instead of touching memory.
     unsafe {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, GWL_STYLE};

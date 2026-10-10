@@ -399,6 +399,8 @@ impl eframe::App for App {
 /// True once applied; false while the window isn't there yet.
 fn see_through(hwnd: isize) -> bool {
     #[cfg(windows)]
+    // SAFETY: `h` is only a window handle given by the overlay's own window; Win32 rejects a stale
+    // handle with an error, which is checked, not dereferenced.
     unsafe {
         use windows::Win32::Foundation::{COLORREF, HWND};
         use windows::Win32::UI::WindowsAndMessaging::{
@@ -426,6 +428,8 @@ fn show_without_focus(hwnd: isize) {
     // Unparked first: a parked window's loop doesn't run (`winpark`).
     crate::winpark::unpark(hwnd);
     #[cfg(windows)]
+    // SAFETY: `hwnd` is the overlay's own window handle; a stale one makes ShowWindow fail
+    // harmlessly.
     unsafe {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
@@ -437,7 +441,6 @@ fn show_without_focus(hwnd: isize) {
 
 #[cfg(feature = "desktop-ui")]
 /// Paint one element of `overlay`'s design.
-#[allow(clippy::too_many_arguments)]
 fn draw(painter: &eframe::egui::Painter, e: &Element, origin: eframe::egui::Vec2, wrap: f32, opacity: f32, level: Option<f32>, started_ms: u64, now_ms: u64) {
     use crate::look_paint::MarkState as Paint;
     use eframe::egui::{self, pos2, vec2, Color32, FontId, Rect};

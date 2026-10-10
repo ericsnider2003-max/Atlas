@@ -225,6 +225,7 @@ fn main() {
     // its old code page shows each of those as two or three junk characters
     // (seen on the laptop, 26 Sep 2026). Tell the console it's UTF-8.
     #[cfg(windows)]
+    // SAFETY: SetConsoleOutputCP takes a plain code-page number and touches no memory of ours.
     unsafe {
         let _ = windows::Win32::System::Console::SetConsoleOutputCP(65001);
     }

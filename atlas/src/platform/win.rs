@@ -44,6 +44,8 @@ pub struct WindowsPlatform;
 /// asks for the same awareness when it starts, so nothing else changes.
 pub fn become_dpi_aware() {
     static ONCE: std::sync::Once = std::sync::Once::new();
+    // SAFETY: SetProcessDpiAwarenessContext takes a plain context constant and touches no memory of
+    // ours; a refusal is ignored on purpose.
     ONCE.call_once(|| unsafe {
         use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
         // Refused when the awareness was already set (by a manifest, or by
@@ -92,6 +94,8 @@ unsafe extern "system" fn mon_cb(h: HMONITOR, _: HDC, _: *mut RECT, lp: LPARAM) 
 fn all_monitors() -> Vec<WinMon> {
     become_dpi_aware();
     let mut acc = MonAcc(Vec::new());
+    // SAFETY: `mon_cb` is called synchronously during this call only, and `acc` outlives it; the
+    // LPARAM round-trips the same `&mut MonAcc`.
     unsafe {
         let _ = EnumDisplayMonitors(None, None, Some(mon_cb), LPARAM(&mut acc as *mut MonAcc as isize));
     }
@@ -199,6 +203,8 @@ unsafe extern "system" fn win_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
 
 impl Platform for WindowsPlatform {
     fn active_window(&self) -> Result<Option<ActiveWindow>> {
+        // SAFETY: plain Win32 queries on the foreground window handle just fetched; a stale handle
+        // makes the call fail, not misbehave.
         unsafe {
             let hwnd = windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
             if hwnd.0.is_null() {
@@ -228,6 +234,7 @@ impl Platform for WindowsPlatform {
     }
 
     fn active_window_id(&self) -> Result<Option<WindowId>> {
+        // SAFETY: GetForegroundWindow takes no arguments and returns a handle by value.
         let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
         Ok((!hwnd.0.is_null()).then_some(WindowId(hwnd.0 as u64)))
     }
@@ -241,6 +248,7 @@ impl Platform for WindowsPlatform {
 
     fn move_cursor(&self, x: i32, y: i32) -> Result<()> {
         become_dpi_aware();
+        // SAFETY: SetCursorPos takes two integers and touches no memory of ours.
         unsafe { windows::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y) }
             .map_err(|e| AtlasError::Platform(format!("couldn't move the pointer: {e}")))
     }
@@ -248,6 +256,7 @@ impl Platform for WindowsPlatform {
     fn cursor(&self) -> Result<(i32, i32)> {
         become_dpi_aware();
         let mut p = windows::Win32::Foundation::POINT::default();
+        // SAFETY: `p` is a live POINT the call writes.
         unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) }
             .map_err(|e| AtlasError::Platform(format!("couldn't read the pointer: {e}")))?;
         Ok((p.x, p.y))
@@ -284,6 +293,8 @@ impl Platform for WindowsPlatform {
     fn rect_of(&self, win: WindowId) -> Result<PixelRect> {
         become_dpi_aware();
         let mut r = RECT::default();
+        // SAFETY: `r` is a live RECT the call writes; a stale window handle makes the call fail
+        // with an error.
         unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(HWND(win.0 as *mut _), &mut r) }
             .map_err(|e| AtlasError::Platform(format!("couldn't read where that window is: {e}")))?;
         Ok(PixelRect { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top })
@@ -292,10 +303,12 @@ impl Platform for WindowsPlatform {
     fn window_at(&self, x: i32, y: i32) -> Result<Option<WindowId>> {
         use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
         become_dpi_aware();
+        // SAFETY: WindowFromPoint takes a POINT by value and returns a handle by value.
         let h = unsafe { WindowFromPoint(windows::Win32::Foundation::POINT { x, y }) };
         if h.0.is_null() {
             return Ok(None);
         }
+        // SAFETY: GetAncestor takes a window handle by value; a stale one yields null.
         let top = unsafe { GetAncestor(h, GA_ROOT) };
         let h = if top.0.is_null() { h } else { top };
         Ok(Some(WindowId(h.0 as u64)))
@@ -382,6 +395,8 @@ impl Platform for WindowsPlatform {
     /// reader hears. Capped in depth and size so a huge page can't stall
     /// Atlas.
     fn read_window(&self, win: WindowId) -> Result<Option<crate::uia::Node>> {
+        // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
+        // pointer, and a stale window handle makes UIA return an error.
         unsafe {
             let ua = automation()?;
             let root = ua
@@ -402,6 +417,8 @@ impl Platform for WindowsPlatform {
             IUIAutomationInvokePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants, UIA_InvokePatternId,
             UIA_NamePropertyId,
         };
+        // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
+        // pointer, and a stale window handle makes UIA return an error.
         unsafe {
             let ua = automation()?;
             let root = ua
@@ -432,6 +449,8 @@ impl Platform for WindowsPlatform {
             IUIAutomationTogglePattern, IUIAutomationValuePattern, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
             UIA_SelectionItemPatternId, UIA_TogglePatternId, UIA_ValuePatternId,
         };
+        // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
+        // pointer, and a stale window handle makes UIA return an error.
         unsafe {
             let ua = automation()?;
             let mut el = ua
@@ -481,6 +500,8 @@ impl Platform for WindowsPlatform {
 
     fn focused_text(&self) -> Result<Option<String>> {
         use windows::Win32::UI::Accessibility::{IUIAutomationTextPattern, UIA_TextPatternId, UIA_ValueValuePropertyId};
+        // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
+        // pointer that lives through the call.
         unsafe {
             let ua = automation()?;
             let Ok(el) = ua.GetFocusedElement() else { return Ok(None) };
@@ -511,6 +532,8 @@ impl Platform for WindowsPlatform {
 
     fn focused_is_editable(&self) -> Result<Option<bool>> {
         use windows::Win32::UI::Accessibility::{UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ValueIsReadOnlyPropertyId};
+        // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
+        // pointer that lives through the call.
         unsafe {
             let ua = automation()?;
             let Ok(el) = ua.GetFocusedElement() else { return Ok(None) };
@@ -532,6 +555,8 @@ impl Platform for WindowsPlatform {
         // screen owns it: the standard way to tell a locked session.
         use windows::Win32::System::StationsAndDesktops::{CloseDesktop, OpenInputDesktop, DESKTOP_ACCESS_FLAGS, DESKTOP_CONTROL_FLAGS};
         const DESKTOP_SWITCHDESKTOP: u32 = 0x0100;
+        // SAFETY: the desktop handle from OpenInputDesktop is closed on the success path and not
+        // used otherwise; no memory of ours is passed.
         unsafe {
             match OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_ACCESS_FLAGS(DESKTOP_SWITCHDESKTOP)) {
                 Ok(h) => {
@@ -545,6 +570,7 @@ impl Platform for WindowsPlatform {
 
     fn input_idle_secs(&self) -> Option<u64> {
         let last = last_input_tick()?;
+        // SAFETY: GetTickCount takes no arguments.
         let now = unsafe { windows::Win32::System::SystemInformation::GetTickCount() };
         let own = OWN_INPUT.lock().or_else(crate::crash::unpoison).ok().and_then(|o| *o);
         Some(crate::platform::idle::idle_of_yours(last, own, now))
@@ -553,6 +579,7 @@ impl Platform for WindowsPlatform {
     fn quiet_state(&self) -> Option<super::OsQuiet> {
         use super::OsQuiet;
         use windows::Win32::UI::Shell::SHQueryUserNotificationState;
+        // SAFETY: SHQueryUserNotificationState takes no arguments and returns the state by value.
         let state = unsafe { SHQueryUserNotificationState() }.ok()?;
         Some(match state.0 {
             1 => OsQuiet::Away,
@@ -570,6 +597,9 @@ impl Platform for WindowsPlatform {
             GetDisplayConfigBufferSizes, QueryDisplayConfig, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
             DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO, QDC_ALL_PATHS,
         };
+        // SAFETY: the path and mode arrays are `Vec`s sized from GetDisplayConfigBufferSizes and
+        // handed back with their counts, as QueryDisplayConfig requires; entries are read only up
+        // to the counts it returns.
         unsafe {
             let (mut np, mut nm) = (0u32, 0u32);
             if GetDisplayConfigBufferSizes(QDC_ALL_PATHS, &mut np, &mut nm).is_err() {
@@ -625,6 +655,8 @@ impl Platform for WindowsPlatform {
 
     fn grab_screen(&self, monitor: u32) -> Result<Option<super::Grab>> {
         let Some(m) = all_monitors().into_iter().find(|m| m.id == monitor) else { return Ok(None) };
+        // SAFETY: `grab_rect` only needs a screen rectangle; it manages and releases its own device
+        // contexts.
         Ok(unsafe { grab_rect(m.full) }.map(|(width, height, rgb)| super::Grab { width, height, rgb, title: String::new() }))
     }
 
@@ -632,6 +664,8 @@ impl Platform for WindowsPlatform {
         use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
         use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
         become_dpi_aware();
+        // SAFETY: plain Win32 queries on the foreground window handle just fetched; a stale handle
+        // makes the call fail, not misbehave.
         unsafe {
             let hwnd = GetForegroundWindow();
             if hwnd.0.is_null() {
@@ -652,6 +686,9 @@ impl Platform for WindowsPlatform {
             DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO,
             DISPLAYCONFIG_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
         };
+        // SAFETY: the path and mode arrays are `Vec`s sized from GetDisplayConfigBufferSizes and
+        // handed back with their counts, as QueryDisplayConfig requires; entries are read only up
+        // to the counts it returns.
         let names: Vec<String> = unsafe {
             let (mut np, mut nm) = (0u32, 0u32);
             if GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut np, &mut nm).is_err() {
@@ -716,6 +753,8 @@ impl Platform for WindowsPlatform {
             title_hints: spec.title_hints.clone(),
             found: None,
         };
+        // SAFETY: `win_cb` is called synchronously during EnumWindows only, and `acc` outlives it;
+        // the LPARAM round-trips the same `&mut WinAcc`.
         unsafe {
             let _ = EnumWindows(Some(win_cb), LPARAM(&mut acc as *mut WinAcc as isize));
         }
@@ -724,6 +763,8 @@ impl Platform for WindowsPlatform {
 
     fn place(&self, win: WindowId, r: PixelRect) -> Result<()> {
         let hwnd = HWND(win.0 as *mut std::ffi::c_void);
+        // SAFETY: `hwnd` is a window handle; a stale one makes ShowWindow/SetWindowPos fail, which
+        // is returned as an error.
         unsafe {
             let _ = ShowWindow(hwnd, SW_RESTORE);
             SetWindowPos(hwnd, HWND_TOP, r.x, r.y, r.width, r.height, SWP_NOZORDER)
@@ -736,6 +777,8 @@ impl Platform for WindowsPlatform {
         use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
         use windows::Win32::UI::WindowsAndMessaging::{BringWindowToTop, GetForegroundWindow};
         let hwnd = HWND(win.0 as *mut std::ffi::c_void);
+        // SAFETY: `hwnd` is a window handle; a stale one makes these calls fail, which falls
+        // through to the next attempt.
         unsafe {
             let _ = ShowWindow(hwnd, SW_RESTORE);
             if SetForegroundWindow(hwnd).as_bool() && GetForegroundWindow() == hwnd {
@@ -796,6 +839,7 @@ impl Platform for WindowsPlatform {
     fn clipboard_change(&self) -> Option<u32> {
         use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
         // 0 means the process can't see the clipboard (another desktop).
+        // SAFETY: GetClipboardSequenceNumber takes no arguments.
         Some(unsafe { GetClipboardSequenceNumber() }).filter(|n| *n != 0)
     }
 
@@ -807,6 +851,9 @@ impl Platform for WindowsPlatform {
         };
         use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
         const CF_UNICODETEXT: u32 = 13;
+        // SAFETY: the clipboard is opened before any data call and closed on every path out; a
+        // locked HGLOBAL is read only within GlobalSize (u16 reads stop at the first NUL) and
+        // unlocked right after.
         unsafe {
             // The formats a password manager sets to say "don't keep this".
             // Checked before any text is read, so a private copy never
@@ -863,6 +910,8 @@ impl Platform for WindowsPlatform {
     fn grab_window(&self) -> Result<Option<super::Grab>> {
         use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
         become_dpi_aware();
+        // SAFETY: `r` is a live RECT the call writes; the window handle was just fetched and a
+        // stale one makes the call fail.
         unsafe {
             let hwnd = GetForegroundWindow();
             if hwnd.0.is_null() {
@@ -1068,6 +1117,8 @@ pub fn random_bytes(n: usize) -> crate::error::Result<Vec<u8>> {
     const USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
 
     let mut buf = vec![0u8; n];
+    // SAFETY: BCryptGenRandom writes exactly `buf.len()` bytes into `buf`, a live Vec; the null
+    // algorithm handle with USE_SYSTEM_PREFERRED_RNG is the documented form.
     let status = unsafe {
         BCryptGenRandom(
             core::ptr::null_mut(),
@@ -1151,6 +1202,8 @@ fn dpapi(input: &[u8], extra: &[u8], encrypting: bool) -> crate::error::Result<V
     let mut ent = DataBlob { cb_data: extra.len() as u32, pb_data: extra.as_ptr() as *mut u8 };
     let mut out = DataBlob { cb_data: 0, pb_data: core::ptr::null_mut() };
 
+    // SAFETY: `inp` and `ent` borrow `input` and `extra` for the call (DPAPI does not write through
+    // them); `out` is a live DataBlob the call fills.
     let ok = unsafe {
         if encrypting {
             CryptProtectData(
@@ -1188,7 +1241,9 @@ fn dpapi(input: &[u8], extra: &[u8], encrypting: bool) -> crate::error::Result<V
             },
         ));
     }
-    let result = unsafe { std::slice::from_raw_parts(out.pb_data, out.cb_data as usize).to_vec() };
+    // SAFETY: on success `out` is a LocalAlloc block of `cb_data` bytes (null only when empty, which
+    // from_raw_parts forbids); it is copied out, then freed exactly once.
+    let result = if out.pb_data.is_null() { Vec::new() } else { unsafe { std::slice::from_raw_parts(out.pb_data, out.cb_data as usize).to_vec() } };
     unsafe { LocalFree(out.pb_data as *mut core::ffi::c_void) };
     Ok(result)
 }
@@ -1203,10 +1258,12 @@ static OWN_INPUT: std::sync::Mutex<Option<super::OwnInput>> = std::sync::Mutex::
 fn last_input_tick() -> Option<u32> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
     let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+    // SAFETY: `info` is a live LASTINPUTINFO with `cbSize` set, as the call requires.
     unsafe { GetLastInputInfo(&mut info).as_bool().then_some(info.dwTime) }
 }
 
 fn send_groups(groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>]) -> Result<()> {
+    // SAFETY: GetTickCount takes no arguments.
     let now = || unsafe { windows::Win32::System::SystemInformation::GetTickCount() };
     if let (Some(last), Ok(mut own)) = (last_input_tick(), OWN_INPUT.lock()) {
         *own = Some(crate::platform::idle::own_input_starts(last, *own, now()));
@@ -1229,6 +1286,8 @@ fn send_groups_now(groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::IN
         if batch.is_empty() {
             return Ok(());
         }
+        // SAFETY: `batch` is a live slice of initialised INPUT records and the size passed is that
+        // of one INPUT.
         let sent = unsafe { SendInput(batch, std::mem::size_of::<INPUT>() as i32) };
         let all = sent as usize == batch.len();
         batch.clear();
@@ -1288,6 +1347,8 @@ fn release_modifiers() {
             Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: *vk, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } },
         })
         .collect();
+    // SAFETY: `up` is a live Vec of initialised INPUT records and the size passed is that of one
+    // INPUT.
     unsafe {
         let _ = SendInput(&up, std::mem::size_of::<INPUT>() as i32);
     }

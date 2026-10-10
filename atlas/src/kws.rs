@@ -261,6 +261,8 @@ unsafe impl Send for Spotter {}
 impl Drop for Spotter {
     fn drop(&mut self) {
         if !self.kws.is_null() {
+            // SAFETY: `kws` came from a successful `create` on this library, which `_capi` still
+            // keeps loaded, and it is destroyed only here.
             unsafe { (self.destroy)(self.kws) };
         }
     }
@@ -270,12 +272,21 @@ impl Spotter {
     /// Open the library in `runtime` and the model in `model`.
     fn load(runtime: &Path, model: &Path) -> Result<Spotter, String> {
         let (ort_name, capi_name) = crate::kokoro::runtime_files().ok_or("the wake-word spotter isn't available on this kind of computer")?;
+        // SAFETY: loading the runtime runs its initialisers; it is a file Atlas downloaded and
+        // pinned to SHERPA_VERSION, opened by full path.
         let ort = unsafe { libloading::Library::new(runtime.join(ort_name)) }.map_err(|e| format!("the wake-word spotter's engine wouldn't open ({ort_name}: {e})"))?;
+        // SAFETY: as above, the pinned sherpa-onnx library opened by full path; the version is
+        // checked before any other symbol is used.
         let capi = unsafe { libloading::Library::new(runtime.join(capi_name)) }.map_err(|e| format!("the wake-word spotter's engine wouldn't open ({capi_name}: {e})"))?;
         fn sym<T: Copy>(lib: &libloading::Library, name: &[u8]) -> Result<T, String> {
+            // SAFETY: each symbol is looked up with the exact C signature of that function in the
+            // version-checked library, and the copied fn pointer is kept only alongside `_capi`,
+            // which keeps the library loaded.
             unsafe { lib.get::<T>(name) }.map(|s| *s).map_err(|e| format!("the wake-word spotter's engine is missing a part ({e})"))
         }
         let version: VersionFn = sym(&capi, b"SherpaOnnxGetVersionStr\0")?;
+        // SAFETY: the symbol has the declared `VersionFn` signature in the sherpa-onnx C API; the
+        // returned pointer is a NUL-terminated static string or null.
         let v = unsafe {
             let p = version();
             if p.is_null() { String::new() } else { CStr::from_ptr(p).to_string_lossy().into_owned() }
@@ -303,6 +314,8 @@ impl Spotter {
         let words = CString::new(KEYWORDS).unwrap_or_default();
 
         // All zero is sherpa-onnx's "use the default" for every field not set.
+        // SAFETY: SpotterConfig is plain integers, floats and raw pointers; all-zero is valid for
+        // every field (null pointers, zero numbers).
         let mut cfg: SpotterConfig = unsafe { std::mem::zeroed() };
         cfg.feat_config = FeatureConfig { sample_rate: 16000, feature_dim: 80 };
         cfg.model_config.transducer = TransducerConfig { encoder: enc.as_ptr(), decoder: dec.as_ptr(), joiner: joi.as_ptr() };
@@ -314,6 +327,8 @@ impl Spotter {
         cfg.keywords_threshold = THRESHOLD;
         cfg.keywords_buf = words.as_ptr();
         cfg.keywords_buf_size = KEYWORDS.len() as i32;
+        // SAFETY: `cfg` and every C string it points at are locals that live past this call; the
+        // library copies what it keeps.
         let kws = unsafe { create(&cfg) };
         if kws.is_null() {
             return Err("the wake-word spotter's files are there but wouldn't load — `atlas get wakeword` fetches them again".into());
@@ -323,6 +338,10 @@ impl Spotter {
 
     /// Is the name anywhere in these 16 kHz samples?
     fn heard(&self, samples: &[f32]) -> bool {
+        // SAFETY: `self.kws` is live (destroyed only in Drop) and calls are serialised by the
+        // Mutex; the stream `s` is non-null, used only here and destroyed on every path out; each
+        // sample slice outlives its call; a result pointer is null-checked before it is read and
+        // freed once.
         unsafe {
             let s = (self.stream)(self.kws);
             if s.is_null() {

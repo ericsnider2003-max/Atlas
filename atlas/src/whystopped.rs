@@ -151,6 +151,7 @@ pub fn computer_started(now: u64) -> Option<u64> {
 fn uptime_secs() -> Option<u64> {
     // Milliseconds since the computer started; sleep counts as running, so a
     // laptop that slept is not mistaken for one that restarted.
+    // SAFETY: GetTickCount64 takes no arguments.
     Some(unsafe { windows::Win32::System::SystemInformation::GetTickCount64() } / 1000)
 }
 
@@ -172,6 +173,7 @@ pub fn come_back_after_updates(args: &str) -> bool {
         // RESTART_NO_CRASH | RESTART_NO_HANG: only restarts and updates.
         const FLAGS: u32 = 1 | 2;
         let wide: Vec<u16> = args.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is a live NUL-terminated UTF-16 string; the call copies it.
         unsafe {
             windows::Win32::System::Recovery::RegisterApplicationRestart(
                 PCWSTR(wide.as_ptr()),

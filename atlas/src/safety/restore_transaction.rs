@@ -83,6 +83,8 @@ fn publish_directory(source: &Path, destination: &Path) -> Result<()> {
         use std::os::unix::ffi::OsStrExt;
         let source = std::ffi::CString::new(source.as_os_str().as_bytes()).map_err(|_| AtlasError::Platform("directory path contains a null byte".into()))?;
         let destination = std::ffi::CString::new(destination.as_os_str().as_bytes()).map_err(|_| AtlasError::Platform("directory path contains a null byte".into()))?;
+        // SAFETY: `source` and `destination` are live NUL-terminated C strings for the duration of
+        // the call.
         let result = unsafe { libc::renameat2(libc::AT_FDCWD, source.as_ptr(), libc::AT_FDCWD, destination.as_ptr(), libc::RENAME_NOREPLACE) };
         if result != 0 { return Err(std::io::Error::last_os_error().into()); }
         Ok(())

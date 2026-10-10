@@ -210,7 +210,6 @@ impl Workshop {
 
     /// File a completed, checked change into a project's queue as `Ready`.
     /// Returns the change id, or None if the project name is empty.
-    #[allow(clippy::too_many_arguments)] // a proposed change is genuinely this many fields; a struct here would only move the list.
     pub fn propose(
         &mut self,
         project: &str,

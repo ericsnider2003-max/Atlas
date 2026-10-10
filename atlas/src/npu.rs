@@ -47,6 +47,7 @@ pub fn worker_entry() -> i32 {
     if std::env::args_os().count() != 2 { return 2; }
     IN_WORKER.store(true, std::sync::atomic::Ordering::Relaxed);
     #[cfg(windows)]
+    // SAFETY: SetErrorMode takes only flags and touches no memory of ours.
     unsafe { windows::Win32::System::Diagnostics::Debug::SetErrorMode(windows::Win32::System::Diagnostics::Debug::SEM_NOGPFAULTERRORBOX | windows::Win32::System::Diagnostics::Debug::SEM_FAILCRITICALERRORS); }
     worker::serve()
 }
@@ -123,6 +124,8 @@ fn accelerators() -> Vec<String> {
         let value = HSTRING::from("DriverDesc");
         let mut buf = [0u16; 256];
         let mut len = (buf.len() * 2) as u32;
+        // SAFETY: `key`/`value` are live NUL-terminated wide strings; `buf` is a live buffer of
+        // `len` bytes, and `len` is its size in bytes as the call requires.
         let ok = unsafe {
             RegGetValueW(
                 HKEY_LOCAL_MACHINE,
@@ -838,7 +841,10 @@ mod a_crash_turns_it_off {
         assert!(!first.is_empty() && first.iter().all(|values| !values.is_empty() && values.iter().all(|value| value.is_finite())));
         assert!(first.iter().flatten().any(|value| value.abs() > 0.001));
         assert_eq!(first, again, "fallback inference must remain deterministic on the same input");
+        // SAFETY: GetModuleHandleW only reads a live NUL-terminated wide string and takes no
+        // reference on the module.
         assert!(unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(), "a quarantined DLL must never enter Atlas's process");
+        // SAFETY: as above, a read-only lookup by name.
         assert!(unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err());
     }
 

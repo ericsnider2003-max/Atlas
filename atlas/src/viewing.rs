@@ -338,7 +338,6 @@ pub fn frame_times(told: &str) -> Vec<f32> {
 /// Returns the frames to keep with their real times, and separately the paths
 /// to delete — so the caller cannot keep a file it has stopped tracking, which
 /// is how a temp directory quietly fills up.
-#[allow(clippy::type_complexity)]
 pub fn one_per_moment(
     frames: Vec<std::path::PathBuf>,
     got: &[f32],

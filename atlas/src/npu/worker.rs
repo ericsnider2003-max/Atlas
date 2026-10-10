@@ -337,6 +337,8 @@ mod tests {
         let output=session.run(inputs()).expect("real CPU fallback after helper exits");assert_eq!(session.on(),Where::Cpu);assert!(!output.is_empty());assert!(output.iter().flatten().all(|value|value.is_finite()));
         assert_eq!(output,session.run(inputs()).unwrap());
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        // SAFETY: GetModuleHandleW only reads a live NUL-terminated wide string and takes no
+        // reference on the module.
         assert!(unsafe{GetModuleHandleW(windows::core::w!("onnxruntime_providers_openvino_plugin.dll"))}.is_err());
     }
 }

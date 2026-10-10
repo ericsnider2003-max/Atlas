@@ -83,11 +83,15 @@ unsafe extern "C" fn phone(req: *const c_char, out: *mut c_char, len: usize) -> 
 #[test]
 fn on_the_iphone_the_apps_weather_answers_first() {
     let _g = alone();
+    // SAFETY: registers or clears a plain fn pointer; `phone` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applewx::atlas_mobile_apple_weather(Some(phone)) };
     let r = applewx::reading(&here(), &atlas::apns::ApnsConfig::default()).expect("the phone's weather");
     assert_eq!(r.days.len(), 2);
     let asked: serde_json::Value = serde_json::from_str(ASKED.lock().unwrap().as_deref().unwrap()).unwrap();
     assert_eq!(asked["lat"], 39.96);
+    // SAFETY: registers or clears a plain fn pointer; `phone` is a valid `extern "C"` fn for the
+    // whole test.
     unsafe { applewx::atlas_mobile_apple_weather(None) };
     // Without the phone's and without a key: nothing from Apple, so
     // Open-Meteo answers (`weather::answer`).

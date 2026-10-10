@@ -326,6 +326,8 @@ mod win {
                 };
                 HWND_NOW.store(hwnd.0 as isize, Ordering::SeqCst);
                 let _ = tx.send(Ok(hwnd.0 as isize));
+                // SAFETY: `msg` is a live local; the window being pumped was created on this
+                // thread, as a message loop requires.
                 unsafe {
                     let mut msg = MSG::default();
                     while GetMessageW(&mut msg, HWND::default(), 0, 0).0 > 0 {

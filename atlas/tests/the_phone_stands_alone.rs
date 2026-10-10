@@ -168,6 +168,7 @@ fn starting_twice_while_the_first_is_on_its_way_starts_one_atlas() {
     assert_eq!(start_once(h.clone(), 0, std::time::Duration::ZERO), Started::AlreadyRunning(url.clone()));
     assert_eq!(atlas::mobile::atlas_mobile_state(), 2);
     let mut buf = [0 as std::os::raw::c_char; 512];
+    // SAFETY: `buf` is a live writable array of `buf.len()` C chars.
     assert!(unsafe { atlas::mobile::atlas_mobile_url(buf.as_mut_ptr(), buf.len()) } > 0);
     assert_eq!(starts(), before + 1);
     // Stopped, it says so, and a start after that is a real new start.
@@ -177,6 +178,7 @@ fn starting_twice_while_the_first_is_on_its_way_starts_one_atlas() {
         assert!(std::time::Instant::now() < until, "it never stopped: {:?}", phase());
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+    // SAFETY: as above, a live writable array of `buf.len()` C chars.
     assert_eq!(unsafe { atlas::mobile::atlas_mobile_url(buf.as_mut_ptr(), buf.len()) }, -1, "no address once stopped");
 }
 

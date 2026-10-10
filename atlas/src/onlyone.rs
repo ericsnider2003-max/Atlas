@@ -445,6 +445,8 @@ fn process_gone(pid: u32) -> bool {
     {
         use windows::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER};
         use windows::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        // SAFETY: the process handle is opened here and closed on every path; `code` is a live
+        // local the call writes.
         unsafe {
             match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
                 Ok(h) => {

@@ -381,6 +381,8 @@ unsafe impl Send for Kokoro {}
 impl Drop for Kokoro {
     fn drop(&mut self) {
         if !self.tts.is_null() {
+            // SAFETY: `tts` came from a successful `create` on this library, which `_capi` still
+            // keeps loaded, and it is destroyed only here.
             unsafe { (self.destroy)(self.tts) };
         }
     }
@@ -395,11 +397,17 @@ impl Kokoro {
         // older `onnxruntime.dll` in System32 (Windows' own), and a DLL's
         // imports are looked for beside atlas.exe and in System32 — not beside
         // the DLL. Already loaded by name, ours is the one it gets.
+        // SAFETY: loading the runtime runs its initialisers; it is a file Atlas downloaded and
+        // pinned to SHERPA_VERSION, opened by full path.
         let ort = unsafe { libloading::Library::new(runtime.join(ort_name)) }
             .map_err(|e| format!("the Kokoro voice's engine wouldn't open ({ort_name}: {e})"))?;
+        // SAFETY: as above, the pinned sherpa-onnx library opened by full path; the version is
+        // checked before any other symbol is used.
         let capi = unsafe { libloading::Library::new(runtime.join(capi_name)) }
             .map_err(|e| format!("the Kokoro voice's engine wouldn't open ({capi_name}: {e})"))?;
 
+        // SAFETY: the symbol has the declared `VersionFn` signature in the sherpa-onnx C API; the
+        // returned pointer is a NUL-terminated static string or null.
         let version = unsafe {
             let f = *capi
                 .get::<VersionFn>(b"SherpaOnnxGetVersionStr\0")
@@ -414,6 +422,9 @@ impl Kokoro {
             ));
         }
         fn sym<T: Copy>(lib: &libloading::Library, name: &[u8]) -> Result<T, String> {
+            // SAFETY: each symbol is looked up with the exact C signature of that function in the
+            // version-checked library, and the copied fn pointer is kept only alongside `_capi`,
+            // which keeps the library loaded.
             unsafe { lib.get::<T>(name) }
                 .map(|s| *s)
                 .map_err(|e| format!("the Kokoro voice's engine is missing a part ({e})"))
@@ -441,6 +452,8 @@ impl Kokoro {
         // All zero is sherpa-onnx's own "use the default" for every field not
         // set here (its C side reads a null string as "" and a zero number as
         // the default), which is also how its Rust wrapper starts one.
+        // SAFETY: TtsConfig is plain integers, floats and raw pointers; all-zero is valid for every
+        // field (null pointers, zero numbers).
         let mut cfg: TtsConfig = unsafe { std::mem::zeroed() };
         cfg.model.kokoro.model = m.as_ptr();
         cfg.model.kokoro.voices = voices.as_ptr();
@@ -454,10 +467,13 @@ impl Kokoro {
         cfg.max_num_sentences = 1;
         cfg.silence_scale = 0.2;
 
+        // SAFETY: `cfg` and every C string it points at (`m`, `voices`, ..) are locals that live
+        // past this call; the library copies what it keeps.
         let tts = unsafe { create(&cfg) };
         if tts.is_null() {
             return Err("the Kokoro voice's files are there but wouldn't load — download it again from Sound & voice".into());
         }
+        // SAFETY: `tts` was just checked to be non-null and came from this library's `create`.
         let r = unsafe { rate(tts) };
         Ok(Kokoro { tts, generate, free_audio, destroy, rate: r.max(1) as u32, _capi: capi, _ort: ort })
     }
@@ -472,10 +488,15 @@ impl Kokoro {
     pub fn synth(&self, text: &str, sid: i32, speed: f32) -> Result<Vec<f32>, String> {
         let t = CString::new(text.replace('\0', " ")).map_err(|_| "unspeakable text".to_string())?;
         let speed = if speed.is_finite() && speed > 0.0 { speed } else { 1.0 };
+        // SAFETY: `self.tts` is live (destroyed only in Drop), `t` is a NUL-terminated string that
+        // outlives the call, and calls are serialised by the engine's Mutex.
         let audio = unsafe { (self.generate)(self.tts, t.as_ptr(), sid, speed) };
         if audio.is_null() {
             return Err("the Kokoro voice produced nothing".into());
         }
+        // SAFETY: `audio` was checked non-null; `samples` is read only for `n` floats after its own
+        // null/positive-length check, copied out, and the block is then freed once with the
+        // library's own free function.
         let out = unsafe {
             let a = &*audio;
             let v = if a.samples.is_null() || a.n <= 0 {

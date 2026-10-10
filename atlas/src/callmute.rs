@@ -173,6 +173,8 @@ mod platform {
     use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
 
     fn exe_of(pid: u32) -> Option<String> {
+        // SAFETY: plain Win32 calls on a handle opened here and closed here; `buf` and `len`
+        // describe one live local buffer.
         unsafe {
             let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
             let mut buf = [0u16; 520];
@@ -185,6 +187,8 @@ mod platform {
 
     /// Every capture session on every active microphone, with its process.
     fn each_session(mut f: impl FnMut(u32, &str, bool, &ISimpleAudioVolume)) {
+        // SAFETY: COM is initialised on this thread first; every interface used is an owned smart
+        // pointer that lives through the call, and `f` only borrows a session for its duration.
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let Ok(en) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else { return };
@@ -213,6 +217,8 @@ mod platform {
 
     pub(super) fn mute_calls() -> Vec<Muted> {
         let mut out: Vec<Muted> = Vec::new();
+        // SAFETY: `vol` is a live session interface lent by `each_session` for this call; the null
+        // event context is the documented "no context".
         each_session(|pid, exe, active, vol| unsafe {
             if !active || !is_call_program(exe) {
                 return;
@@ -229,6 +235,8 @@ mod platform {
     }
 
     pub(super) fn unmute(what: &[Muted]) {
+        // SAFETY: `vol` is a live session interface lent by `each_session` for this call; the null
+        // event context is the documented "no context".
         each_session(|pid, _exe, _active, vol| unsafe {
             if what.iter().any(|m| m.pid == pid) {
                 crate::heard!(vol.SetMute(false, std::ptr::null()));

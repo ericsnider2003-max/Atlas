@@ -165,11 +165,14 @@ fn from_the_phone(p: &Place) -> Option<Reading> {
     let f = ON_PHONE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g)?;
     let req = CString::new(serde_json::json!({ "lat": p.lat, "lon": p.lon }).to_string()).ok()?;
     let mut buf = vec![0u8; 64 * 1024];
+    // SAFETY: `f` is the host's registered callback; `req` is a live NUL-terminated string and
+    // `buf` a live writable buffer of `buf.len()` bytes, both outliving the call.
     let rc = unsafe { f(req.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
     if rc != 0 {
         return None;
     }
-    from_apple_json(&unsafe { CStr::from_ptr(buf.as_ptr().cast()) }.to_string_lossy())
+    // Bounded by the buffer: a callback that filled it without a NUL reads as empty, not past the end.
+    from_apple_json(&CStr::from_bytes_until_nul(&buf).map(|c| c.to_string_lossy().into_owned()).unwrap_or_default())
 }
 
 // ------------------------------------------------------------------ the laptop
