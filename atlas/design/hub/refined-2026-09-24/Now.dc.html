@@ -11,7 +11,7 @@
 <style>
 :root{
   --bezel:#0d0f12;--page:#ffffff;--side:#f6f3ec;--side-active:#ece7dc;
-  --ink:#2b2926;--body:#413d37;--muted:#8b867c;--faint:#a9a49a;
+  --ink:#2b2926;--body:#413d37;--muted:#6b665c;--faint:#6b665c;
   --line:#ece7de;--line2:#e4dfd5;--accent:#c46a24;--link:#4f74a0;
   --done-ink:#3f7d52;--blue-ink:#456e9c;--amber-ink:#a9741f;
   --sans:-apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif;
@@ -20,7 +20,7 @@
 body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:antialiased}
 .navitem{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:8px;font-size:13.5px;color:var(--body)}
 .navitem .chev{color:var(--faint);width:12px;display:flex;justify-content:center;font-size:12px}
-.badge{margin-left:auto;font-size:11px;font-weight:600;color:var(--accent);background:#f2e5d6;border-radius:999px;padding:1px 7px}
+.badge{margin-left:auto;font-size:11px;font-weight:600;color:#9a4a10;background:#f2e5d6;border-radius:999px;padding:1px 7px}
 .sec{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;padding:0 10px}
 .slabel{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
 .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;margin-top:4px}
@@ -74,9 +74,9 @@ body{margin:0;font-family:var(--sans);color:var(--body);-webkit-font-smoothing:a
           </div>
 
           <!-- steps -->
-          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div><div class="slabel" style="color:#a58c66">◇ PLAN</div><div style="font-size:14px;margin-top:4px;line-height:1.5">One page for finance. Numbers come from <strong style="color:var(--ink)">revenue.xlsx</strong> — I don't invent any.</div></div></div>
-          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div><div class="slabel" style="color:#a58c66">▷ DOING</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Read the Q3 figures from the spreadsheet — 4 sheets, 1,240 rows.</div></div></div>
-          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div style="flex-grow:1"><div class="slabel" style="color:#a58c66">⌞ DELEGATED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Handed the first draft to a worker.</div><div style="margin-top:9px;background:#f7f4ee;border-radius:9px;padding:11px 13px;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)"><span style="width:22px;height:22px;border-radius:6px;background:#e7e2d8;color:#8a857c;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">W</span>Worker · draft came back in 22s — I'm checking it against the real numbers before you see it.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div><div class="slabel" style="color:#7a6240">◇ PLAN</div><div style="font-size:14px;margin-top:4px;line-height:1.5">One page for finance. Numbers come from <strong style="color:var(--ink)">revenue.xlsx</strong> — I don't invent any.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div><div class="slabel" style="color:#7a6240">▷ DOING</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Read the Q3 figures from the spreadsheet — 4 sheets, 1,240 rows.</div></div></div>
+          <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#cdb28f"></span><div style="flex-grow:1"><div class="slabel" style="color:#7a6240">⌞ DELEGATED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Handed the first draft to a worker.</div><div style="margin-top:9px;background:#f7f4ee;border-radius:9px;padding:11px 13px;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)"><span style="width:22px;height:22px;border-radius:6px;background:#e7e2d8;color:#8a857c;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">W</span>Worker · draft came back in 22s — I'm checking it against the real numbers before you see it.</div></div></div>
           <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:var(--accent)"></span><div><div class="slabel" style="color:var(--accent)">↝ REROUTED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">The worker's draft rounded revenue wrong — <strong style="color:var(--ink)">I didn't take it</strong>. Rewriting that section myself, straight from the sheet.</div></div></div>
           <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:#67a37f"></span><div><div class="slabel" style="color:var(--done-ink)">✓ CHECKED</div><div style="font-size:14px;margin-top:4px;line-height:1.5">Ran the totals twice — they match the spreadsheet to the cent.</div></div></div>
           <div style="display:flex;gap:13px;margin-bottom:18px"><span class="dot" style="background:var(--accent);box-shadow:0 0 0 4px #f4e2cd"></span><div><div class="slabel" style="color:var(--accent)">▷ NOW</div><div style="font-size:14.5px;margin-top:4px;font-weight:600;color:var(--ink)">Writing the summary paragraph.</div></div></div>

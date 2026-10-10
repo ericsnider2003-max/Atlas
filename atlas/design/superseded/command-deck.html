@@ -12,7 +12,7 @@
 :root{
   color-scheme:dark;
   /* cool slate base + one warm signature accent (an ember, not a corporate blue) */
-  --ink:#eef1f4; --ink-dim:#9aa6b2; --ink-faint:#697585;
+  --ink:#eef1f4; --ink-dim:#9aa6b2; --ink-faint:#8b97a5;
   --bg:#0b0e13; --panel:#12161d; --panel-2:#171d26; --edge:#212a35; --edge-soft:#1a212b;
   --ember:#f0a24b; --ember-soft:#3a2a17; --ember-line:#5a3f1e;
   --cool:#6fb2ff; --good:#5fca9b; --hot:#ef6f6c;
@@ -23,7 +23,7 @@
 }
 :root[data-theme=light]{
   color-scheme:light;
-  --ink:#182028; --ink-dim:#51606f; --ink-faint:#8593a2;
+  --ink:#182028; --ink-dim:#51606f; --ink-faint:#5d6b7a;
   --bg:#eef1f5; --panel:#ffffff; --panel-2:#f5f7fa; --edge:#dde3ea; --edge-soft:#e7ecf1;
   --ember:#c9761a; --ember-soft:#f8ecdd; --ember-line:#e8cca2;
   --cool:#1f6fe0; --good:#1f8b64; --hot:#c94b48;
@@ -77,11 +77,11 @@ body{
   background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 140%);
   border:1px solid var(--edge);border-radius:var(--r);padding:18px 20px;min-width:0;
 }
-.panel h3{
+.panel h2{
   margin:0 0 14px;font-size:11px;font-weight:680;letter-spacing:.13em;text-transform:uppercase;
   color:var(--ink-faint);display:flex;align-items:center;gap:8px;
 }
-.panel h3 .ring{width:7px;height:7px;border-radius:99px;border:2px solid var(--ember);display:inline-block}
+.panel h2 .ring{width:7px;height:7px;border-radius:99px;border:2px solid var(--ember);display:inline-block}
 
 /* hero: "right now" spans two rows, tall */
 .hero{grid-row:span 2;position:relative;overflow:hidden}
@@ -182,7 +182,7 @@ body{
 
       <!-- HERO: right now + the day spine -->
       <div class="panel hero">
-        <h3><span class=ring></span> Right now</h3>
+        <h2><span class=ring></span> Right now</h2>
         <p class=now>Drafting the Q3 summary for finance.</p>
         <p class=nowsub>Checking the revenue figures against the spreadsheet you attached — about a minute left.</p>
 
@@ -199,7 +199,7 @@ body{
 
       <!-- waiting on you -->
       <div class=panel>
-        <h3>Waiting on you</h3>
+        <h2>Waiting on you</h2>
         <div class=figs>
           <div class="fig warm"><b>3</b><span>to act</span></div>
           <div class="fig cool"><b>2</b><span>proposed</span></div>
@@ -214,7 +214,7 @@ body{
 
       <!-- projects -->
       <div class=panel>
-        <h3>Projects</h3>
+        <h2>Projects</h2>
         <ul class=rows>
           <li><span class=dot></span><span class=t>Atlas</span><span class=meta>1 ready</span></li>
           <li><span class="dot cool"></span><span class=t>Homelab</span><span class=meta>building</span></li>
@@ -224,7 +224,7 @@ body{
 
       <!-- health, as rings -->
       <div class=panel>
-        <h3>Health</h3>
+        <h2>Health</h2>
         <div class=gauge>
           <svg class=dial viewBox="0 0 36 36"><circle cx=18 cy=18 r=15 fill=none stroke="var(--edge)" stroke-width=3/><circle cx=18 cy=18 r=15 fill=none stroke="var(--good)" stroke-width=3 stroke-linecap=round stroke-dasharray="66 94" transform="rotate(-90 18 18)"/></svg>
           <div class=lab><b>7.1 GB</b><span>memory, 70% free</span></div>
@@ -237,7 +237,7 @@ body{
 
       <!-- recent, spans two -->
       <div class=panel style="grid-column:span 2">
-        <h3>What I did without being asked</h3>
+        <h2>What I did without being asked</h2>
         <ul class=rows>
           <li><span class="dot mute"></span><span class=t>Filed 40 receipts from your Downloads into Ledger</span><span class=meta>14:02</span></li>
           <li><span class="dot mute"></span><span class=t>Backed up the vault before the update</span><span class=meta>13:40</span></li>
