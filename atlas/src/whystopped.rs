@@ -76,7 +76,7 @@ impl Runs {
     }
 
     pub fn load(state_dir: &Path) -> Runs {
-        std::fs::read(Self::path(state_dir)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        crate::store::read_json(&Self::path(state_dir))
     }
 
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {

@@ -886,8 +886,21 @@ pub fn rename_patiently_with(
 /// A small JSON file outside a `Store`, read whole: the default when it is
 /// missing or unreadable. With `write_json`, the one way the device lists
 /// (apns, webpush) are kept (audit Q3: each had its own copy).
+///
+/// A file that is there but does not parse is moved aside as
+/// `<name>.corrupt.<ts>.bak` rather than left for the next `write_json` to
+/// overwrite: a damaged list is evidence, not an empty list. A file that
+/// merely cannot be read right now (antivirus holding it) is left untouched.
 pub fn read_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
-    std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    let Ok(bytes) = std::fs::read(path) else { return T::default() };
+    match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            crate::heard!(rename_patiently(path, &path.with_file_name(format!("{name}.corrupt.{}.bak", now()))));
+            T::default()
+        }
+    }
 }
 
 /// `value` written to `path` as pretty JSON, whole (`write_whole`).

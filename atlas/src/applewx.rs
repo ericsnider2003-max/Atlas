@@ -272,7 +272,7 @@ pub struct CarriedToken {
 
 impl CarriedToken {
     pub fn load(state_dir: &std::path::Path) -> CarriedToken {
-        std::fs::read(state_dir.join(CARRIED_FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        crate::store::read_json(&state_dir.join(CARRIED_FILE))
     }
 
     pub fn save(&self, state_dir: &std::path::Path) -> std::io::Result<()> {

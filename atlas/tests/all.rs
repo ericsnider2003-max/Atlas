@@ -1037,3 +1037,6 @@ mod what_broke_it;
 mod scaffolding_an_ability;
 #[path = "connectors_are_data.rs"]
 mod connectors_are_data;
+
+#[path = "a_damaged_json_is_kept.rs"]
+mod a_damaged_json_is_kept;
