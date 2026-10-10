@@ -64,7 +64,14 @@ def token():
 
 
 def call(method, path, tok):
-    url = path if path.startswith("http") else API + path
+    # Paginated responses hand back absolute links; never send the bearer
+    # token anywhere but the App Store Connect API itself.
+    if path.startswith("http"):
+        if not path.startswith(API):
+            raise ValueError("refusing to send credentials to a non-ASC url: " + path.split("?")[0])
+        url = path
+    else:
+        url = API + path
     req = urllib.request.Request(url, method=method, headers={"Authorization": f"Bearer {tok}"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:

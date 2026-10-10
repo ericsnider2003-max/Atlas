@@ -112,26 +112,26 @@ def commands_catalog():
     # A comment above an entry belongs to that entry; one inside it, before
     # its phrases, too.
     entries = []
-    pending = []
+    lead_comments = []
     cur = None
     for line in y.splitlines():
         t = line.strip()
         m = re.match(r"-\s*intent:\s*([a-z0-9_]+)", t)
         if m:
-            cur = [m.group(1), "", list(pending), False]
+            cur = [m.group(1), "", list(lead_comments), False]
             entries.append(cur)
-            pending = []
+            lead_comments = []
         elif t.startswith("#"):
             if cur is not None and not cur[3]:
                 cur[2].append(t)
             else:
-                pending.append(t)
+                lead_comments.append(t)
         elif cur is not None and t:
             cur[1] += line + "\n"
             if t.startswith("phrases"):
                 cur[3] = True
         elif not t:
-            pending = [] if cur is None or cur[3] else pending
+            lead_comments = [] if cur is None or cur[3] else lead_comments
     entries = [(n, b + "\n".join(c)) for n, b, c, _ in entries]
     rows = []
     for name, body in entries:
