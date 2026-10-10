@@ -190,15 +190,15 @@ fn set_at(root: &mut Value, path: &str, raw: &str) -> bool {
             Some(b) => Value::Bool(b),
             None => return false,
         },
-        Some(Value::Number(_)) => match raw.trim().parse::<f64>() {
-            Ok(f) if f.fract() == 0.0 && f.abs() < 9e15 => Value::Number((f as i64).into()),
-            Ok(f) => Value::Number(f.into()),
+        Some(Value::Number(_)) => match raw.trim().parse::<f64>().ok().filter(|f| f.is_finite()) {
+            Some(f) if f.fract() == 0.0 && f.abs() < 9e15 => Value::Number((f as i64).into()),
+            Some(f) => Value::Number(f.into()),
             // A setting that was a number and is now a word: an older
             // tools.yaml still holds the number, and the word is what the
             // setting takes now. Named, not inferred -- any other number
             // slot given a word is still refused.
-            Err(_) if NOW_WORDS.contains(&path) => Value::String(raw.to_string()),
-            Err(_) => return false,
+            None if NOW_WORDS.contains(&path) => Value::String(raw.to_string()),
+            None => return false,
         },
         Some(Value::String(_)) => Value::String(raw.to_string()),
         Some(_) => return false,
@@ -231,6 +231,15 @@ mod tests {
 
     fn yaml(s: &str) -> Value {
         serde_yaml::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn a_non_finite_number_is_refused() {
+        let mut v = yaml("models:\n  memory_budget_mb: 6000\n");
+        for bad in ["nan", "inf", "-inf"] {
+            assert!(!set_at(&mut v, "models.memory_budget_mb", bad), "{bad}");
+        }
+        assert_eq!(v["models"]["memory_budget_mb"], Value::Number(6000.into()));
     }
 
     #[test]

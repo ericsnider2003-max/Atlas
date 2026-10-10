@@ -273,6 +273,7 @@ fn rewrite_unit(text: &str, abbr: &str, one: &str, many: &str) -> String {
                     .replace(',', "")
                     .parse::<f64>()
                     .ok()
+                    .filter(|f| f.is_finite())
                     .map(|f| (f - 1.0).abs() < f64::EPSILON)
                     .unwrap_or(false);
                 out.push_str(&num);

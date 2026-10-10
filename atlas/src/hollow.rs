@@ -163,14 +163,14 @@ fn numbers_in(text: &str) -> Vec<f64> {
             cur.push(c);
         } else {
             if !cur.is_empty() {
-                if let Ok(n) = cur.trim_end_matches('.').parse::<f64>() {
+                if let Some(n) = cur.trim_end_matches('.').parse::<f64>().ok().filter(|n| n.is_finite()) {
                     out.push(n);
                 }
                 cur.clear();
             }
         }
     }
-    if let Ok(n) = cur.trim_end_matches('.').parse::<f64>() {
+    if let Some(n) = cur.trim_end_matches('.').parse::<f64>().ok().filter(|n| n.is_finite()) {
         out.push(n);
     }
     out

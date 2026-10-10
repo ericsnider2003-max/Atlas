@@ -157,7 +157,7 @@ fn uptime_secs() -> Option<u64> {
 #[cfg(not(windows))]
 fn uptime_secs() -> Option<u64> {
     let s = std::fs::read_to_string("/proc/uptime").ok()?;
-    s.split_whitespace().next()?.parse::<f64>().ok().map(|f| f as u64)
+    s.split_whitespace().next()?.parse::<f64>().ok().filter(|f| f.is_finite()).map(|f| f as u64)
 }
 
 /// Ask Windows to start Atlas again after an update restarts the computer

@@ -82,7 +82,7 @@ impl Wit {
             "off" | "none" | "no" | "false" | "serious" | "straight" => Some(Wit::Off),
             "dry" | "some" | "default" | "on" | "true" => Some(Wit::Dry),
             "full" | "smartass" | "smartarse" | "sarcastic" | "max" | "high" => Some(Wit::Full),
-            n => n.parse::<f64>().ok().map(Wit::from_number),
+            n => n.parse::<f64>().ok().filter(|f| f.is_finite()).map(Wit::from_number),
         }
     }
 
@@ -484,5 +484,17 @@ pub fn confirm(before: Wit, after: Wit) -> String {
         Wit::Full => "Fine. Smart-ass it is. Answers first, and never about anything that matters.".into(),
         Wit::Dry => "Toned down: the odd dry aside, in conversation only.".into(),
         Wit::Off => "No more jokes. Straight answers.".into(),
+    }
+}
+
+#[cfg(test)]
+mod finite_tests {
+    use super::*;
+
+    #[test]
+    fn a_non_finite_number_is_not_a_level() {
+        assert_eq!(Wit::parse("0.3"), Some(Wit::Dry));
+        assert_eq!(Wit::parse("nan"), None);
+        assert_eq!(Wit::parse("inf"), None);
     }
 }

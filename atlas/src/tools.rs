@@ -623,7 +623,7 @@ pub fn curl_call(cmd: &str, args: &[String], stdin: Option<&str>, timeout_secs: 
                 i += 1;
             }
             "-m" | "--max-time" => {
-                secs = next()?.parse::<f64>().ok()?.ceil() as u64;
+                secs = next()?.parse::<f64>().ok().filter(|f| f.is_finite())?.ceil() as u64;
                 i += 1;
             }
             u if (u.starts_with("http://") || u.starts_with("https://")) && url.is_none() => url = Some(u.to_string()),
@@ -753,7 +753,16 @@ pub fn resolve_on_path(name: &str, dirs: &[std::path::PathBuf], pathext: &str) -
 
 #[cfg(test)]
 mod finding_programs {
-    use super::resolve_on_path;
+    #[test]
+    fn a_non_finite_max_time_is_not_read_as_a_timeout() {
+        let a = |t: &str| ["-m", t, "http://127.0.0.1/x"].map(String::from).to_vec();
+        assert_eq!(curl_call("curl", &a("2.5"), None, 30).unwrap().secs, 3);
+        for bad in ["nan", "inf"] {
+            assert!(curl_call("curl", &a(bad), None, 30).is_none(), "{bad}");
+        }
+    }
+
+    use super::{curl_call, resolve_on_path};
 
     #[test]
     fn a_cmd_script_on_the_path_is_found_and_an_exe_is_left_alone() {

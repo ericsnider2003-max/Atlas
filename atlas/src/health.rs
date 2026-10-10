@@ -489,7 +489,7 @@ fn read_memory(r: &mut Readings) {
 #[cfg(not(windows))]
 fn read_memory_bsd(r: &mut Readings) {
     let Ok(o) = crate::tools::command("sysctl").args(["-n", "hw.memsize"]).output() else { return };
-    let Ok(total) = String::from_utf8_lossy(&o.stdout).trim().parse::<f64>() else { return };
+    let Some(total) = String::from_utf8_lossy(&o.stdout).trim().parse::<f64>().ok().filter(|f| f.is_finite()) else { return };
     const B_PER_GB: f64 = 1024.0 * 1024.0 * 1024.0;
     r.ram_total_gb = (total / B_PER_GB) as f32;
 
@@ -501,6 +501,7 @@ fn read_memory_bsd(r: &mut Readings) {
         .and_then(|l| l.split("page size of ").nth(1))
         .and_then(|s| s.split_whitespace().next())
         .and_then(|n| n.parse::<f64>().ok())
+        .filter(|f| f.is_finite())
         .unwrap_or(4096.0);
     let pages = |key: &str| -> f64 {
         text.lines()
@@ -508,6 +509,7 @@ fn read_memory_bsd(r: &mut Readings) {
             .and_then(|l| l.rsplit(':').next())
             .map(|v| v.trim().trim_end_matches('.'))
             .and_then(|n| n.parse::<f64>().ok())
+            .filter(|f| f.is_finite())
             .unwrap_or(0.0)
     };
     let avail = (pages("Pages free") + pages("Pages inactive")) * page;
