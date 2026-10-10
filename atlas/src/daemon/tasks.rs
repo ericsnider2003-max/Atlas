@@ -649,6 +649,7 @@ impl<'a> Daemon<'a> {
     /// each step and the answer as they come. Never waits on the worker.
     pub(super) fn take_task_loop_news(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
+        self.read_left_waiting();
         let Some(mut tl) = self.task_loop.take() else { return out };
         if tl.checkpoint_pending && !tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
             if self.save_task_loop_checkpoint(&tl).is_err() {

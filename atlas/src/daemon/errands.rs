@@ -529,16 +529,27 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// Read what the previous run left, once, before this run writes its own
+    /// task checkpoints to the same record. Otherwise a checkpoint written by a
+    /// request just started could be read back as "I was partway through this
+    /// when I stopped" -- which is what happened under load.
+    pub(super) fn read_left_waiting(&mut self) {
+        if self.left_waiting_read { return; }
+        self.left_waiting_read = true;
+        self.last_run_left = self.store.load(super::running::LEFT_WAITING);
+        let _ = self.store.save(super::running::LEFT_WAITING, &Vec::<super::running::LeftWaiting>::new());
+    }
+
     /// The first tick after a start: what the last run left unfinished.
     pub(super) fn pick_up_after_restart(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
         // Questions you hadn't answered and a request being worked through
         // when Atlas last stopped: named once, never acted on from an old
         // yes. A day later they're stale and dropped quietly.
-        if !self.left_waiting_read {
-            self.left_waiting_read = true;
-            let left: Vec<super::running::LeftWaiting> = self.store.load(super::running::LEFT_WAITING);
-            let _ = self.store.save(super::running::LEFT_WAITING, &Vec::<super::running::LeftWaiting>::new());
+        self.read_left_waiting();
+        if !self.left_pickup_done {
+            self.left_pickup_done = true;
+            let left = std::mem::take(&mut self.last_run_left);
             let fresh: Vec<_> = left.into_iter().filter(|l| t.saturating_sub(l.at) < 86_400).collect();
             let asked: Vec<String> = fresh.iter().filter(|l| l.asked).map(|l| l.what.trim_end_matches(['?', '.']).to_string()).collect();
             let doing: Vec<String> = fresh.iter().filter(|l| !l.asked).map(|l| l.what.clone()).collect();

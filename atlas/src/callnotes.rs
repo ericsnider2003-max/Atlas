@@ -615,7 +615,8 @@ fn write_up_from(
     let text = notes_text(&done.app, minutes, summary.as_deref(), &transcript, done.theirs.is_some());
     std::fs::create_dir_all(notes_dir).map_err(|e| format!("couldn't make the notes folder: {e}"))?;
     let path = free_name(notes_dir, &notes_name(&done.app, done.started));
-    crate::store::write_owned_file(&path, text.as_bytes()).map_err(|e| format!("couldn't write the notes: {e}"))?;
+    // A worker: a snapshot or another save may hold the state lock for a moment, so wait for it (up to ten seconds) rather than give the notes up.
+    crate::store::write_owned_file_until(&path, text.as_bytes(), &|| false).map_err(|e| format!("couldn't write the notes: {e}"))?;
     Ok(WrittenUp { path, summary_ms, prompt_chars, reply_chars, summary: asked, follow })
 }
 

@@ -30,7 +30,11 @@ fn plat() -> MockPlatform {
 }
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-finishing-{tag}-{}", std::process::id()));
+    // Unique per call: tests that share a tag run in parallel in one process,
+    // and sharing a folder meant sharing the state lock (and deleting each
+    // other's files).
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let p = std::env::temp_dir().join(format!("atlas-finishing-{tag}-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).unwrap();
     p

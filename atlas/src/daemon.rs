@@ -1108,6 +1108,11 @@ pub struct Daemon<'a> {
     /// Whether what a restart cut off (`LEFT_WAITING`) has been read back
     /// yet; until then it isn't written over.
     left_waiting_read: bool,
+    /// What the previous run left (`LEFT_WAITING`), read before this run writes
+    /// its own checkpoints there, so a checkpoint is never taken for a restart.
+    last_run_left: Vec<running::LeftWaiting>,
+    /// Whether the first-tick pick-up of what the last run left has happened.
+    left_pickup_done: bool,
     /// Atlas's own CPU and where the loop's time goes, by window (`cpuuse`).
     cpu_meter: crate::cpuuse::Meter,
     /// `models.talk` as last followed (`follow_the_talk_setting`), and the
@@ -1984,6 +1989,8 @@ impl<'a> Daemon<'a> {
             task_loop: None,
             last_crew_handoff: None,
             left_waiting_read: false,
+            last_run_left: Vec::new(),
+            left_pickup_done: false,
             cpu_meter: Default::default(),
             talk_setting_seen: None,
             model_running_id: None,

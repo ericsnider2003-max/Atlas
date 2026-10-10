@@ -744,6 +744,7 @@ impl<'a> Daemon<'a> {
                 }
             } else if self.pending_routine_run.is_none() && matches!(self.session.pending, Pending::Nothing) {
                 let question = crate::routine::starting(&r);
+                self.read_left_waiting();
                 let mut pending: Vec<LeftWaiting> = match self.store.load_checked(LEFT_WAITING) { Ok(value) => value.unwrap_or_default(), Err(error) => { self.log.warn(&format!("couldn't preserve routine question ({error})")); continue; } };
                 if !pending.iter().any(|entry| entry.what == question) { pending.push(LeftWaiting { what: question.clone(), asked: true, at: t }); }
                 if self.store.save(LEFT_WAITING, &pending).is_err() { continue; }
