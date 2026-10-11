@@ -1,0 +1,15 @@
+{
+  "extraKnownMarketplaces": {
+    "eric-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ericsnider2003-max/Plugins",
+        "ref": "main"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "usage-max@eric-plugins": true
+  }
+}
