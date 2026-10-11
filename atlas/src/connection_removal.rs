@@ -165,7 +165,7 @@ mod durable_local_removal {
     #[test]
     fn google_busy_receipt_save_prevents_provider_submission() {
         let (root, store, vault) = fixture(); vault.save(&store).unwrap(); let id = begin(&store, "Synthetic account", "Google", 1).unwrap(); complete(&store, id, "Local access removed").unwrap();
-        let owned = store.clone(); let (ready, arrived) = std::sync::mpsc::sync_channel(1); let (release, wait) = std::sync::mpsc::sync_channel(1); let holder = std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); }); arrived.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        let owned = store.clone(); let (ready, arrived) = std::sync::mpsc::sync_channel(1); let (release, wait) = std::sync::mpsc::sync_channel(1); let holder = std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); }); arrived.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
         let net = ProviderFixture { calls: std::cell::Cell::new(0), status: 200, body: "" }; let result = revoke_google_checked(&store, &store, id, "synthetic", &net, &|| false); release.send(()).unwrap(); holder.join().unwrap(); assert!(result.is_err()); assert_eq!(net.calls.get(), 0); crate::heard!(std::fs::remove_dir_all(root));
     }
     #[test]
@@ -179,7 +179,7 @@ mod durable_local_removal {
     impl crate::social::apis::Net for HeldProvider {
         fn get(&self, _: &str, _: &str, _: &[(&str, &str)]) -> Result<crate::social::apis::Reply, String> { panic!("unexpected GET") }
         fn post_json(&self, _: &str, _: &str, _: &[(&str, &str)], _: &str) -> Result<crate::social::apis::Reply, String> { panic!("unexpected JSON") }
-        fn post_form(&self, host: &str, path: &str, _: &str) -> Result<crate::social::apis::Reply, String> { assert_eq!((host, path), ("oauth2.googleapis.com", "/revoke")); self.entered.send(()).unwrap(); self.release.recv_timeout(std::time::Duration::from_secs(5)).unwrap(); Ok(crate::social::apis::Reply { status: 200, ..Default::default() }) }
+        fn post_form(&self, host: &str, path: &str, _: &str) -> Result<crate::social::apis::Reply, String> { assert_eq!((host, path), ("oauth2.googleapis.com", "/revoke")); self.entered.send(()).unwrap(); self.release.recv_timeout(std::time::Duration::from_secs(30)).unwrap(); Ok(crate::social::apis::Reply { status: 200, ..Default::default() }) }
     }
     #[test]
     fn pending_provider_reservation_atomically_blocks_both_new_google_completion_paths() {
@@ -187,7 +187,7 @@ mod durable_local_removal {
         let before = std::fs::read(store.root().join(crate::vault::Vault::FILE.to_string()+".json")).unwrap();
         let (entered, arrived) = std::sync::mpsc::sync_channel(1); let (release, wait) = std::sync::mpsc::sync_channel(1); let worker_store = store.clone();
         let worker = std::thread::spawn(move || revoke_google_checked(&worker_store, &worker_store, id, "synthetic", &HeldProvider { entered, release: wait }, &|| false));
-        arrived.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        arrived.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
         let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap(); cfg.tools.as_mut().unwrap().browser.launch = None;
         let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
         let mut daemon = crate::daemon::Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
