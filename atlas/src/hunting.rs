@@ -138,7 +138,7 @@ mod owner_action_durability_tests {
     fn owner_save_merges_latest_disk_and_preserves_unrelated_listings() {
         fixture(|d, store| {
             let first = state_with(&["one"]); d.workday.hunt.state = Some(first); d.workday.hunt.shown = vec!["one".into()];
-            let latest = state_with(&["one", "two"]); store.save(hunt::FILE, &latest).unwrap();
+            let latest = state_with(&["one", "two"]); store.keep_briefly(hunt::FILE, &latest).unwrap();
             assert!(edit_opportunity(d, "one", OwnerEdit::Save).unwrap().is_some());
             let saved: HuntState = store.load_checked(hunt::FILE).unwrap().unwrap(); assert!(saved.saved.iter().any(|item| item.id == "one")); assert!(saved.find("two").is_some()); assert!(d.workday.hunt.shown.is_empty());
         });

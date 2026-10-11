@@ -2354,7 +2354,13 @@ mod proposal_recovery_tests {
         daemon.proposals_recovery = Some(vec![]);
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("proposals.json"), b"broken proposal record").unwrap();
-        daemon.persist();
+        // A save the state lock turns away for a moment is simply tried again on
+        // the next persist; the failure is recorded by the one that gets in.
+        for _ in 0..200 {
+            daemon.persist();
+            if daemon.persist_failures.iter().any(|(name, _)| *name == "proposals") { break; }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
         assert_eq!(std::fs::read(root.join("proposals.json")).unwrap(), b"broken proposal record");
         assert!(daemon.proposals_recovery.is_some());
         assert!(daemon.persist_failures.iter().any(|(name, _)| *name == "proposals"));

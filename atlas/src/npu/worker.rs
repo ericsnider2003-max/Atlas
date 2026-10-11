@@ -12,15 +12,16 @@ static SIGNATURES: OnceLock<Mutex<std::collections::BTreeMap<String, String>>> =
 static ACTIVE: OnceLock<Mutex<std::collections::BTreeSet<PathBuf>>> = OnceLock::new();
 static LIVE: Mutex<usize> = Mutex::new(0);
 static FAILURES: OnceLock<Mutex<std::collections::BTreeMap<String, String>>> = OnceLock::new();
-struct Permit;
+struct Permit(&'static Mutex<usize>);
 impl Permit {
-    fn take() -> Result<Self, String> {
-        let mut live = LIVE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    fn take() -> Result<Self, String> { Self::take_from(&LIVE) }
+    fn take_from(counter: &'static Mutex<usize>) -> Result<Self, String> {
+        let mut live = counter.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if *live >= HELPERS { return Err("the three isolated inference slots are occupied; using the processor".into()); }
-        *live += 1; Ok(Self)
+        *live += 1; Ok(Self(counter))
     }
 }
-impl Drop for Permit { fn drop(&mut self) { let mut live=LIVE.lock().unwrap_or_else(std::sync::PoisonError::into_inner); *live=live.saturating_sub(1); } }
+impl Drop for Permit { fn drop(&mut self) { let mut live=self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner); *live=live.saturating_sub(1); } }
 
 struct Attempt { path: PathBuf, retain: bool }
 impl Attempt {
@@ -322,7 +323,9 @@ mod tests {
         assert!(dimensions(&[i64::MAX,i64::MAX]).is_err());
         assert!(validate_inputs(&[In::F32("x".into(),vec![2],vec![1.0])]).is_err());
         assert!(validate_inputs(&[In::F32("x".into(),vec![1],vec![f32::NAN])]).is_err());
-        let a=Permit::take().unwrap();let b=Permit::take().unwrap();let c=Permit::take().unwrap();assert!(Permit::take().is_err());drop((a,b,c));assert!(Permit::take().is_ok());
+        // Its own counter: the real one is shared with every helper another test has running.
+        let own: &'static Mutex<usize> = Box::leak(Box::new(Mutex::new(0)));
+        let a=Permit::take_from(own).unwrap();let b=Permit::take_from(own).unwrap();let c=Permit::take_from(own).unwrap();assert!(Permit::take_from(own).is_err());drop((a,b,c));assert!(Permit::take_from(own).is_ok());
     }
     #[cfg(all(windows, feature = "onnx"))]
     #[test]

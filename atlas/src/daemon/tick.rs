@@ -1087,10 +1087,12 @@ impl<'a> Daemon<'a> {
         }
         if look && due_for_backup(&bcfg, t) {
             let root = self.store.root().to_path_buf();
-            let scope = crate::safety::check_configured_scope(&self.store, &self.notes_dir(), std::path::Path::new(&self.trash.cfg.dir));
+            // Checked on the crew, not here: binding the output folders waits for
+            // the state lock, and the loop must never wait for it.
+            let store_for_scope = self.store.clone();
             let notes = self.notes_dir(); let trash = std::path::PathBuf::from(&self.trash.cfg.dir);
             let cfg_for_errand = bcfg.clone();
-            let work: crew::Work = Box::new(move |_stop| match scope.and_then(|_| crate::safety::back_up_with_inputs(&root, &cfg_for_errand, crate::store::now(), &notes, &trash)) {
+            let work: crew::Work = Box::new(move |_stop| match crate::safety::check_configured_scope(&store_for_scope, &notes, &trash).and_then(|_| crate::safety::back_up_with_inputs(&root, &cfg_for_errand, crate::store::now(), &notes, &trash)) {
                 Ok(b) => {
                     prune_backups(&cfg_for_errand);
                     Ok(format!("backed up {} files", b.files.unwrap_or(0)))

@@ -78,8 +78,12 @@ fn history_returns_an_archived_file_only_without_an_original_collision() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "archived-recovery-return");
     let archive = ".restored-recovery-.restoring-fixture";
-    let folder = d.store.root().join(archive).join("trash");
-    let source = d.store.root().join("owner-document.txt");
+    // The restore writes its archive under the canonical spelling of the state
+    // folder (on Windows `\\?\C:\...`), and the listing insists on that same
+    // spelling; a fixture built from the plain one is a different path.
+    let root = std::fs::canonicalize(d.store.root()).unwrap();
+    let folder = root.join(archive).join("trash");
+    let source = root.join("owner-document.txt");
     std::fs::write(&source, b"archived owner bytes").unwrap();
     let trash = atlas::safety::Trash::new(atlas::safety::TrashConfig { dir: folder.display().to_string(), keep_days: 30 });
     let record = trash.take(&source, "restored backup fixture").unwrap();
