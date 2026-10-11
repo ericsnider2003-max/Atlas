@@ -328,6 +328,10 @@ impl Groups {
     pub fn save(&self, store: &Store) -> crate::error::Result<()> {
         store.save(FILE, self)
     }
+    /// For what a person just asked for: a moment's wait, not a refusal.
+    pub fn save_briefly(&self, store: &Store) -> crate::error::Result<()> {
+        store.keep_briefly(FILE, self)
+    }
 
     /// Take a signed list from someone. Only a newer one for a group already
     /// held, and only from the same owner.
@@ -835,7 +839,7 @@ pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, w
         }
         other => return Err(format!("I don't know how to {other} a group")),
     };
-    groups.save(store).map_err(|e| format!("couldn't save it: {e}"))?;
+    groups.save_briefly(store).map_err(|e| format!("couldn't save it: {e}"))?;
     Ok(said)
 }
 

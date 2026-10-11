@@ -539,7 +539,8 @@ impl<'a> Daemon<'a> {
                 for (name, _) in &plugin.schedules { self.scheduled_anchors_pending.entry(format!("{}/{name}", plugin.id)).or_insert(t); }
             }
             let reserved = (|| -> crate::error::Result<Option<(String, crate::flow::Workflow, String)>> {
-                let _guard = crate::store::state_transaction_briefly(self.store.root())?;
+                // Every tick looks here, so it never waits: a busy state means "next tick".
+                let _guard = self.store.transaction()?;
                 let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
                 let before = runs.clone();
                 for (key, anchor) in &self.scheduled_anchors_pending { runs.last.entry(key.clone()).or_insert(*anchor); }

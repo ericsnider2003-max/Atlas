@@ -268,7 +268,14 @@ fn a_scheduled_add_on_runs_itself_through_the_same_checks() {
     let first = d.tick(100_000).join(" ");
     assert!(!first.contains("add-on"), "fired on first sight: {first}");
     assert_eq!(scheduled_actions(&d), 0, "first sight records an anchor, not an action");
-    let later = d.tick(100_000 + 15 * 60).join(" ");
+    // A backup the first tick started may still hold the state for a moment, and
+    // a due add-on then waits for the next tick rather than being dropped.
+    let mut later = String::new();
+    for _ in 0..200 {
+        later.push_str(&d.tick(100_000 + 15 * 60).join(" "));
+        if later.contains("Running wind down (the wind-down add-on)") { break; }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
     assert!(later.contains("Running wind down (the wind-down add-on)"), "{later}");
     let completed_actions = scheduled_actions(&d);
     assert_eq!(completed_actions, 2, "one occurrence must execute its two approved steps once");

@@ -119,7 +119,7 @@ impl Invites {
         store.load(INVITES)
     }
     fn save(&self, store: &crate::store::Store) -> Result<(), String> {
-        store.save(INVITES, self).map_err(|e| format!("couldn't save it: {e}"))
+        store.keep_briefly(INVITES, self).map_err(|e| format!("couldn't save it: {e}"))
     }
 }
 
@@ -274,7 +274,7 @@ impl Outbox {
         store.load(OUTBOX)
     }
     pub fn save(&self, store: &crate::store::Store) -> Result<(), String> {
-        store.save(OUTBOX, self).map_err(|e| format!("couldn't save it: {e}"))
+        store.keep_briefly(OUTBOX, self).map_err(|e| format!("couldn't save it: {e}"))
     }
     pub fn add(&mut self, p: Pending) {
         self.pending.retain(|x| x.hello.invite != p.hello.invite);
@@ -401,7 +401,7 @@ impl Requests {
         store.load(REQUESTS)
     }
     pub fn save(&self, store: &crate::store::Store) -> Result<(), String> {
-        store.save(REQUESTS, self).map_err(|e| format!("couldn't save it: {e}"))
+        store.keep_briefly(REQUESTS, self).map_err(|e| format!("couldn't save it: {e}"))
     }
     /// A request, unless the same person already has one waiting.
     pub fn add(&mut self, r: Request) {
