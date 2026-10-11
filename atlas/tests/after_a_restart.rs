@@ -29,7 +29,11 @@ fn plat() -> MockPlatform {
 }
 
 fn cfg() -> &'static Config {
-    Box::leak(Box::new(Config::load(Path::new("config")).unwrap()))
+    let mut c = Config::load(Path::new("config")).unwrap();
+    // A tick that walks the person's real Desktop, Documents and Downloads can
+    // outlast the slow seats these tests rely on; that walk is the machine's.
+    c.indexing = None;
+    Box::leak(Box::new(c))
 }
 
 /// Slow enough that the redone council is still in hand after the tick.

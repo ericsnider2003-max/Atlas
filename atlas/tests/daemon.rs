@@ -255,7 +255,14 @@ fn a_parked_job_is_not_lost_it_resumes_when_approved() {
     d.tick(100);
     d.scheduler.approve(id);
     d.autonomy = Autonomy::Supervised;
-    let out = d.tick(200);
+    // The first tick's backup may hold the state for a moment; a job that finds it
+    // busy simply goes on the next tick.
+    let mut out = d.tick(200);
+    for _ in 0..200 {
+        if out.iter().any(|s| s.contains("down")) { break; }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        out.extend(d.tick(200));
+    }
     assert!(out.iter().any(|s| s.contains("down")), "got {out:?}");
 }
 

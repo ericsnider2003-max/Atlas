@@ -482,7 +482,12 @@ impl<'a> Daemon<'a> {
                 continue;
             }
             if let Err(e) = self.scheduler.start_durably(id, &self.store) {
-                out.push(format!("Scheduled work did not start because its start couldn't be saved: {e}."));
+                // A backup owns the state for a moment: nothing started and the
+                // job is still due, so it goes next tick, with no alarm raised
+                // (the queued work above is treated the same way).
+                if !matches!(&e, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock) {
+                    out.push(format!("Scheduled work did not start because its start couldn't be saved: {e}."));
+                }
                 continue;
             }
             self.last_crew_handoff = None;
