@@ -607,7 +607,16 @@ fn two_parts_are_worked_out_at_the_same_time_on_both_slots() {
     // once; a total under a wall-clock figure only said the same thing
     // while the machine was idle, and failed when it wasn't.
     assert!(reply.contains("Rain taps") && reply.contains("Second Wind"), "{reply}");
-    // Nothing is left running, and it says so.
+    // Nothing is left running, and it says so. The backup a fresh daemon starts
+    // on its first tick is not this request's work, and on a slow machine it can
+    // still be copying: let it finish first.
+    let settled = Instant::now() + Duration::from_secs(20);
+    let mut later = 1_790_740_030;
+    while d.crew.active() > 0 && Instant::now() < settled {
+        later += 1;
+        d.tick(later);
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let status = d.turn("what are you working on", 1_790_740_060);
     assert_eq!(status, "Nothing's running right now.");
 }
