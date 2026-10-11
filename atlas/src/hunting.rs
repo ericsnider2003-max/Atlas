@@ -123,7 +123,10 @@ enum OwnerEdit { Save, Reject, RejectKind }
 mod owner_action_durability_tests {
     use super::*;
     fn fixture(run: impl FnOnce(&mut Daemon<'_>, &crate::store::Store)) {
-        let root = std::env::temp_dir().join(format!("atlas-owner-opportunity-{}-{}", std::process::id(), crate::store::now()));
+        // Unique per fixture: the second-resolution clock gave two tests started in
+        // the same second one folder, and so one state lock.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!("atlas-owner-opportunity-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
         let store = crate::store::Store::new(&root);
         let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap(); cfg.tools.as_mut().unwrap().browser.launch = None;
         let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
@@ -138,7 +141,7 @@ mod owner_action_durability_tests {
     fn owner_save_merges_latest_disk_and_preserves_unrelated_listings() {
         fixture(|d, store| {
             let first = state_with(&["one"]); d.workday.hunt.state = Some(first); d.workday.hunt.shown = vec!["one".into()];
-            let latest = state_with(&["one", "two"]); store.keep_briefly(hunt::FILE, &latest).unwrap();
+            let latest = state_with(&["one", "two"]); store.save(hunt::FILE, &latest).unwrap();
             assert!(edit_opportunity(d, "one", OwnerEdit::Save).unwrap().is_some());
             let saved: HuntState = store.load_checked(hunt::FILE).unwrap().unwrap(); assert!(saved.saved.iter().any(|item| item.id == "one")); assert!(saved.find("two").is_some()); assert!(d.workday.hunt.shown.is_empty());
         });

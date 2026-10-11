@@ -75,7 +75,8 @@ fn until(d: &mut Daemon, from: u64, done: impl Fn(&Daemon, &[String]) -> bool) -
 #[test]
 fn a_slow_model_writing_a_reply_never_holds_up_the_tick() {
     let p = plat();
-    let mut d = daemon(&p, Config::load(Path::new("config")).unwrap(), "slow-model");
+    let mut quiet = Config::load(Path::new("config")).unwrap(); quiet.indexing = None; // the person's real folders are not what this times
+    let mut d = daemon(&p, quiet, "slow-model");
     d.llm = Some(Arc::new(Slow(Duration::from_millis(800), "Friday works.")));
     // The first tick of a fresh daemon does its start-up looking around
     // (most of a second here, model or no model); what's measured is a tick

@@ -22,7 +22,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 fn cfg() -> atlas::config::Config {
-    atlas::config::Config::load(Path::new("config")).unwrap()
+    let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
+    // These tests time the loop; walking the person's real Desktop, Documents
+    // and Downloads on every tick is the machine's work, not Atlas's.
+    c.indexing = None;
+    c
 }
 
 fn plat() -> MockPlatform {

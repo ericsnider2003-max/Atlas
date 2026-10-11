@@ -20,7 +20,11 @@ fn ticks_after_the_first_take_well_under_the_slow_line() {
     let dir = std::env::temp_dir().join(format!("atlas-quiet-tick-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let c = Config::load(Path::new("config")).unwrap();
+    let mut c = Config::load(Path::new("config")).unwrap();
+    // The shipped config indexes the person's own Desktop, Documents and
+    // Downloads; on a real machine that walk is hundreds of milliseconds of
+    // the machine's own work, not what this test measures.
+    c.indexing = None;
     let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
     let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
     let t0 = 1_790_700_000u64;

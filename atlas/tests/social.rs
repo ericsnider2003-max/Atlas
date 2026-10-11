@@ -232,7 +232,10 @@ fn csv_rows_handle_quotes_commas_and_a_bom() {
 // ---------------------------------------------------------------- what the numbers say
 
 fn book_of(recs: Vec<Record>) -> Book {
-    let dir = tmp(&format!("book-{}", recs.len()));
+    // One folder per call: tests that keep the same number of records shared one,
+    // and removed each other's file while they ran side by side.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = tmp(&format!("book-{}-{}", recs.len(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let path = dir.join("b.jsonl");
     let mut b = Book::load(&path);
     b.add(&path, recs).unwrap();
