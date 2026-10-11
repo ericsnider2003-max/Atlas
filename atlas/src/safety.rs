@@ -34,7 +34,7 @@ pub struct ArchivedRecovery {
 /// Restored recovery bytes stay separate from today's trash identifiers.
 /// Callers present this list for an explicit owner decision, never auto-undo.
 pub fn archived_recovery(state: &Path) -> Result<Vec<ArchivedRecovery>> {
-    let guard = crate::store::state_transaction(state)?;
+    let guard = crate::store::state_transaction_briefly(state)?;
     // Restore journals bind archive paths to the canonical locked root.
     // Use that same spelling here (Windows canonical paths include \\?\).
     let state = guard.root.as_path();
@@ -78,7 +78,7 @@ pub fn archived_recovery(state: &Path) -> Result<Vec<ArchivedRecovery>> {
 }
 
 pub fn return_archived_file(state: &Path, archive: &str, kind: &str, id: u64) -> Result<String> {
-    let _guard = crate::store::state_transaction(state)?;
+    let _guard = crate::store::state_transaction_briefly(state)?;
     // Resolve exclusively through the validated inventory. Never accept a
     // caller-supplied folder path or reuse a live trash identifier.
     let selected = archived_recovery(state)?.into_iter().find(|entry| entry.archive == archive && entry.kind == kind && entry.record.id == id)

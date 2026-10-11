@@ -329,7 +329,7 @@ impl Groups {
         store.save(FILE, self)
     }
     /// For what a person just asked for: a moment's wait, not a refusal.
-    pub fn save_briefly(&self, store: &Store) -> crate::error::Result<()> {
+    fn save_briefly(&self, store: &Store) -> crate::error::Result<()> {
         store.keep_briefly(FILE, self)
     }
 
