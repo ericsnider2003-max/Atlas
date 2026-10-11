@@ -54,6 +54,7 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
     }
     out.push_str(&one_click(d));
     out.push_str(&publication_status(&d.publisher));
+    out.push_str(&removal_notes(&d.store));
     out.push_str(
         "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=start>\
          <label>Email address <input name=address type=email autocomplete=email required></label>\
@@ -198,6 +199,16 @@ fn disconnect(kind: &str, id: &str) -> String {
 /// Posts whose publication the owner has to settle, or approve again after
 /// settling. Nothing here sends anything: it only shows what is known and
 /// offers the owner's own check ("I looked at the service") as a form.
+/// One line per removed connection whose permission at the provider has not
+/// been confirmed gone, with where to check it.
+pub fn removal_notes(store: &crate::store::Store) -> String {
+    let mut out = String::new();
+    for r in crate::connection_removal::unconfirmed_removals(store) {
+        out.push_str(&format!("<p class=note role=status>{} was removed from this Atlas. {}</p>", esc(&r.connection), esc(&crate::connection_removal::provider_check(&r.provider))));
+    }
+    out
+}
+
 pub fn publication_status(publisher: &crate::publish::Publisher) -> String {
     use crate::publish::{PostState, CHECKED_ABSENT};
     let mut out = String::new();

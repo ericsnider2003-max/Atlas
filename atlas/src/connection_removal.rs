@@ -105,6 +105,12 @@ pub fn remove_credentials(vault_home: &crate::store::Store, vault: &mut crate::v
     if let Err(error) = vault.save(vault_home) { *vault = previous; return Err(format!("credential removal was not saved; original vault restored: {error}")); }
     Ok(())
 }
+/// Removals whose provider-side permission is still unconfirmed, newest last.
+/// Shown on the connect page so the owner can go and check them.
+pub fn unconfirmed_removals(store: &crate::store::Store) -> Vec<Receipt> {
+    let receipts: Vec<Receipt> = store.load_checked(KEY).ok().flatten().unwrap_or_default();
+    receipts.into_iter().filter(|r| r.provider_state == ProviderState::Unconfirmed && r.phase == Phase::LocalDisabled).collect()
+}
 pub fn provider_check(provider: &str) -> String {
     let page = match provider { "Google" => "https://myaccount.google.com/connections", "Microsoft" => crate::oauthlink::MICROSOFT_PERMISSIONS, "Meta" => "https://www.facebook.com/settings?tab=business_tools", _ => "the provider's account permissions page" };
     format!("Provider permission remains unconfirmed. Review and revoke it on {page}; shared grants may still serve another connection. An already running operation may still finish.")
