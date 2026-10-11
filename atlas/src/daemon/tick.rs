@@ -490,7 +490,7 @@ impl<'a> Daemon<'a> {
             let result = self.execute(&intent);
             if let Some(files) = self.active_file_move_id().filter(|id| Some(*id) != files_before) {
                 if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) { job.file_move_id = Some(files); job.last_result = Some(result.clone()); }
-                if let Err(e) = self.scheduler.save(&self.store) {
+                if let Err(e) = briefly_busy(|| self.scheduler.save(&self.store)) {
                     self.stop_file_move(files);
                     out.push(format!("Scheduled file ownership couldn't be saved ({e}); stop was requested. Check its outcome."));
                 }
@@ -498,7 +498,7 @@ impl<'a> Daemon<'a> {
             }
             if let Some(worker) = self.last_crew_handoff.filter(|worker| self.crew_links.get(worker).is_some_and(|link| matches!(link.label, "research" | "read-file" | "edit-media" | "studio" | "creator planning"))) {
                 if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) { job.worker_id = Some(worker); job.last_result = Some(result.clone()); }
-                if let Err(e) = self.scheduler.save(&self.store) {
+                if let Err(e) = briefly_busy(|| self.scheduler.save(&self.store)) {
                     self.crew.ask_to_stop(worker);
                     out.push(format!("Scheduled worker ownership couldn't be saved ({e}); I asked it to stop. Its outcome is unconfirmed."));
                 }
@@ -669,7 +669,7 @@ impl<'a> Daemon<'a> {
             let result = self.execute(&intent);
             if let Some(files) = self.active_file_move_id().filter(|id| Some(*id) != files_before) {
                 if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.file_move_id = Some(files); task.result = Some(result.clone()); }
-                if let Err(e) = self.queue.save(&self.store) {
+                if let Err(e) = briefly_busy(|| self.queue.save(&self.store)) {
                     self.stop_file_move(files);
                     out.push(format!("Queued file ownership couldn't be saved ({e}); stop was requested. Check its outcome."));
                 }
@@ -677,7 +677,7 @@ impl<'a> Daemon<'a> {
             }
             if let Some(worker) = self.last_crew_handoff.filter(|worker| self.crew_links.get(worker).is_some_and(|link| matches!(link.label, "research" | "read-file" | "edit-media" | "studio" | "creator planning"))) {
                 self.queue.attach_worker(id, worker, &result);
-                if let Err(e) = self.queue.save(&self.store) {
+                if let Err(e) = briefly_busy(|| self.queue.save(&self.store)) {
                     self.crew.ask_to_stop(worker);
                     out.push(format!("The queued worker's ownership couldn't be saved ({e}); I asked it to stop. Its result is not confirmed."));
                 }
@@ -3121,4 +3121,19 @@ mod sync_storage_recovery {
         drop(daemon);
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+/// A save the control loop makes must not wait on the state lock for long, but
+/// a worker holds that lock only while it writes a file. Losing the race by a
+/// few milliseconds is not a failed save, and treating it as one stopped a
+/// perfectly good worker. Try again for a quarter of a second; anything still
+/// refused after that is reported as before.
+fn briefly_busy<T>(mut attempt: impl FnMut() -> crate::error::Result<T>) -> crate::error::Result<T> {
+    for _ in 0..25 {
+        match attempt() {
+            Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(10)),
+            other => return other,
+        }
+    }
+    attempt()
 }

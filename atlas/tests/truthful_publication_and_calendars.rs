@@ -183,7 +183,7 @@ fn owner_reconciliation_form_refuses_unchecked_or_wrong_provider_receipts_and_re
     let mut daemon = Daemon::new(&cfg, &platform, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
     let id = daemon.publisher.draft(Channel::X, "hello");
     daemon.publisher.mark_submission(id, true, "confirmation lost");
-    let page = atlas::connecting::publication_status(&daemon.publisher);
+    let page = atlas::connecting::publication_status(&daemon.publisher, &|_| false);
     assert!(page.contains("publication unconfirmed") && page.contains("I won't retry automatically"));
     let fields = |checked: &str, receipt: &str, resolution: &str| vec![("what".into(), "post-reconcile".into()), ("id".into(), id.to_string()), ("checked".into(), checked.into()), ("receipt".into(), receipt.into()), ("resolution".into(), resolution.into())];
     atlas::connecting::post(&mut daemon, &fields("", "https://x.com/me/status/123", "published"));
@@ -193,7 +193,7 @@ fn owner_reconciliation_form_refuses_unchecked_or_wrong_provider_receipts_and_re
     atlas::connecting::post(&mut daemon, &fields("yes", "", "absent"));
     assert_eq!(daemon.publisher.get(id).unwrap().state, PostState::Draft);
     assert!(matches!(daemon.publisher.check(id, true, None), SendCheck::Hold(_)));
-    let page = atlas::connecting::publication_status(&daemon.publisher);
+    let page = atlas::connecting::publication_status(&daemon.publisher, &|_| false);
     assert!(page.contains("hello") && page.contains("Attachments: None") && page.contains("as soon as a connection is available"));
     let review = atlas::publish::review_fingerprint(daemon.publisher.get(id).unwrap());
     let approval = |checked: &str, review: &str| vec![("what".into(), "post-reapprove".into()), ("id".into(), id.to_string()), ("checked".into(), checked.into()), ("review".into(), review.into())];

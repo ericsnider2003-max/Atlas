@@ -1361,7 +1361,7 @@ impl<'a> Daemon<'a> {
                      ({daily_cap}) is already reached."
                 )
             } else {
-                crate::outbox::Outbox::keep_draft(&store, pending.clone()).map_err(|e| format!("Couldn't keep the outreach draft before sending: {e}"))?;
+                crate::outbox::Outbox::keep_draft_waiting(&store, pending.clone()).map_err(|e| format!("Couldn't keep the outreach draft before sending: {e}"))?;
                 let sent = crate::outbox::send_fenced_capped(&store, &pending, Some((today_start, daily_cap as usize)), || send_reply_routed(
                     himalaya.as_ref(),
                     &pending,
@@ -1378,7 +1378,7 @@ impl<'a> Daemon<'a> {
                     Err(e) => format!("Tried to send the outreach to {to_address}, but: {e}"),
                 }
             };
-            crate::outbox::Outbox::keep_draft(&store, pending).map_err(|e| format!("Couldn't keep the outreach result: {e}"))?;
+            crate::outbox::Outbox::keep_draft_waiting(&store, pending).map_err(|e| format!("Couldn't keep the outreach result: {e}"))?;
             Ok(said)
         });
 

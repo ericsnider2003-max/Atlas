@@ -187,9 +187,12 @@ pub(super) fn recover(root: &Path) -> Result<()> {
 
 
 #[cfg(test)]
-pub(super) fn restore_with_hook(backup: &Path, state: &Path, trash: &Trash, mine: &crate::household::Household, before: &mut dyn FnMut(usize) -> Result<()>) -> Result<usize> {
-    let notes = crate::store::Store::new(state.to_path_buf()).notes_dir();
-    restore_with_notes_and_hook(backup, state, trash, mine, &notes, before)
+pub(super) mod hooks {
+    use super::*;
+    pub(in crate::safety) fn restore_with_hook(backup: &Path, state: &Path, trash: &Trash, mine: &crate::household::Household, before: &mut dyn FnMut(usize) -> Result<()>) -> Result<usize> {
+        let notes = crate::store::Store::new(state.to_path_buf()).notes_dir();
+        restore_with_notes_and_hook(backup, state, trash, mine, &notes, before)
+    }
 }
 
 pub(super) fn restore_with_notes(backup: &Path, state: &Path, trash: &Trash, mine: &crate::household::Household, notes: &Path) -> Result<usize> {

@@ -134,7 +134,8 @@ pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
         };
         let fix = match parsed {
             Some((p, _)) if l.needs_signin => again(d, p),
-            _ => String::new(),
+            Some(_) => super::calendar_picker(d, l),
+            None => String::new(),
         };
         out.push(Row { connector: id.into(), which: l.name.clone(), state, said, fix, take_away: disconnect("calendar", &l.url) });
     }

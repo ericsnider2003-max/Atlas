@@ -133,6 +133,21 @@ impl Outbox {
         outbox.save(store)
     }
 
+    /// For a worker thread: `keep_draft`, retried while another operation holds
+    /// the state lock. The control loop must never wait on that lock, but a
+    /// worker with a result in hand has nowhere else to put it, and dropping an
+    /// outreach outcome because a snapshot was mid-write would lose the record
+    /// of whether a message went out.
+    pub fn keep_draft_waiting(store: &Store, reply: PendingReply) -> Result<()> {
+        let started = std::time::Instant::now();
+        loop {
+            match Self::keep_draft(store, reply.clone()) {
+                Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock && started.elapsed() < std::time::Duration::from_secs(10) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                other => return other,
+            }
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<&PendingReply> {
         self.replies.iter().find(|r| r.id == id)
     }

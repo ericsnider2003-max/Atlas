@@ -1304,7 +1304,7 @@ mod signing_backend_tests {
             started_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
             let (_send, receiver) = std::sync::mpsc::channel(); let (ack, receive_ack) = std::sync::mpsc::channel();
             d.signing_pending = Some(SigningPending { crew_id, root: std::fs::canonicalize(store.root()).unwrap(), deadline: std::time::Instant::now() + std::time::Duration::from_secs(30), prepared: receiver, held: Some(prepared), ack, owner });
-            if handed { store.save("handover", &crate::handover::Handover { stance: crate::handover::Stance::HandedOver, ..Default::default() }).unwrap(); }
+            if handed { store.save("handover", &{ let mut h = crate::handover::Handover::default(); h.hand_over("test", 1_000); h }).unwrap(); }
             else {
                 store.save("profiles", &crate::profiles::Profiles { active: Some("another-person".into()), ..Default::default() }).unwrap();
                 store.save("profiles", &crate::profiles::Profiles::default()).unwrap();
@@ -1332,7 +1332,7 @@ mod signing_backend_tests {
         let destination = area.join("must-not-be-created.json"); let nonce = d.shown_once.mark_signing("export");
         let reply = d.signing_post("export", "", "", destination.to_str().unwrap(), crate::server::Secret::new(PHRASE), false, &nonce);
         assert!(reply.body.contains("job=")); assert_eq!(d.crew.queued(), 1); assert!(!destination.exists());
-        store.save("handover", &crate::handover::Handover { stance: crate::handover::Stance::HandedOver, ..Default::default() }).unwrap();
+        store.save("handover", &{ let mut h = crate::handover::Handover::default(); h.hand_over("test", 1_000); h }).unwrap();
         release_tx.send(()).unwrap();
         let receipt = await_receipt(&mut d, &store);
         assert_eq!(receipt.status, "failed", "{}", receipt.message); assert!(receipt.message.contains("owner/profile changed"), "{}", receipt.message);

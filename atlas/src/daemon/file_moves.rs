@@ -239,8 +239,6 @@ fn spawn(source: Source, sys: crate::system::SystemConfig) -> Result<(Receiver<N
 }
 
 impl Daemon<'_> {
-    #[cfg(test)]
-    pub(super) fn undo_waiting_for_ack(&self) -> bool { self.file_moves.job.as_ref().is_some_and(|job| job.undo.is_some() && job.pending.is_some()) }
     pub(super) fn cancel_undo_worker(&mut self) -> bool { if let Some(job) = self.file_moves.job.as_ref().filter(|job| job.undo.is_some()) { job.control.stop(); true } else { false } }
     pub(super) fn start_undo_worker(&mut self, row: crate::undo::Did, identity: Option<String>, recovery: crate::tune::TuneUndo) -> String {
         let paths = undo_paths(&recovery);
@@ -423,6 +421,9 @@ impl Drop for Live {
 
 #[cfg(test)]
 mod tests {
+    impl super::Daemon<'_> {
+        pub(in crate::daemon) fn undo_waiting_for_ack(&self) -> bool { self.file_moves.job.as_ref().is_some_and(|job| job.undo.is_some() && job.pending.is_some()) }
+    }
     fn undo_fixture(tag: &str, count: usize) -> (PathBuf, crate::store::Store, UndoApproval) {
         let (root, store) = fixture(tag);
         let mut moves = Vec::new();

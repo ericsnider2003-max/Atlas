@@ -217,8 +217,7 @@ fn connection()->Result<TcpStream,String> {
     let port=std::env::var("ATLAS_NPU_WORKER_PORT").map_err(|_|"missing helper port")?.parse::<u16>().map_err(|_|"invalid helper port")?;
     let mut token=[0;32];std::io::stdin().read_exact(&mut token).map_err(|_|"missing helper authentication")?;
     let mut stream=TcpStream::connect_timeout(&std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST,port)),Duration::from_secs(2)).map_err(|e|e.to_string())?;
-    #[cfg(test)]
-    if std::env::var("ATLAS_NPU_SYNTHETIC_FAULT").ok().as_deref()==Some("auth-delay") {
+    if cfg!(test) && std::env::var("ATLAS_NPU_SYNTHETIC_FAULT").ok().as_deref()==Some("auth-delay") {
         // Force the parent to accept before any authentication bytes exist.
         std::thread::sleep(Duration::from_millis(100));
     }

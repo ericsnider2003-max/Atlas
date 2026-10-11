@@ -66,6 +66,13 @@ fn install() -> Store {
     atlas::roots::install_state()
 }
 
+/// Every test here starts from a vault nobody has saved yet. The vault now
+/// refuses to overwrite a file it did not read, so a fixture that begins with
+/// `Vault::default()` must first clear what the previous test left behind.
+fn no_vault_yet() {
+    let _ = std::fs::remove_file(install().root().join("vault.json"));
+}
+
 /// A vault with a passphrase genuinely set, saved where the daemon reads it.
 ///
 /// Two opens, as `handover.rs`'s own tests do: the first *chooses* the
@@ -73,6 +80,7 @@ fn install() -> Store {
 /// that stopped after the first would be setting up the exact case this
 /// feature refuses, while reading as though it set up the normal one.
 fn a_vault_with_a_passphrase() {
+    no_vault_yet();
     let mut v = Vault::default();
     v.open(PASSPHRASE, 100, &VaultConfig::default()).expect("first open sets it");
     assert!(v.has_a_passphrase());
@@ -112,6 +120,10 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     let dir = home().join(format!("person-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    // A daemon on its own profile directory reads the vault from there, not
+    // from the install's state (`keeps_the_install_vault`), so give it the
+    // vault the fixture just saved.
+    let _ = std::fs::copy(install().root().join("vault.json"), dir.join("vault.json"));
     Daemon::new(c, p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()))
 }
 
@@ -354,6 +366,7 @@ fn with_no_passphrase_on_the_vault_it_says_so_instead_of_asking_for_one() {
     // worse than refusing: they type it, it "works", and the lock has opened
     // for a string chosen by whoever typed first.
     let _lock = alone();
+    no_vault_yet();
     let mut fresh = Vault::default();
     fresh.lock();
     fresh.save(&install()).unwrap();

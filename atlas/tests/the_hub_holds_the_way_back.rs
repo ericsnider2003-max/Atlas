@@ -81,16 +81,28 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str, dir: &Path) -> Daem
     let store = home().join(format!("person-{tag}"));
     let _ = std::fs::remove_dir_all(&store);
     std::fs::create_dir_all(&store).unwrap();
+    // A daemon on its own profile directory keeps its vault there, not in the
+    // install's state, so start it with the one the fixture just saved.
+    let _ = std::fs::copy(install().root().join("vault.json"), store.join("vault.json"));
     Daemon::new(c, p, None, Store::new(store), Proactive::new(ProactiveConfig::default())).watch_settings(dir.to_path_buf())
 }
 
 fn empty_vault() {
+    no_vault_yet();
     let mut v = Vault::default();
     v.lock();
     v.save(&install()).unwrap();
 }
 
+/// Every test here starts from a vault nobody has saved yet. The vault now
+/// refuses to overwrite a file it did not read, so a fixture that begins with
+/// `Vault::default()` must first clear what the previous test left behind.
+fn no_vault_yet() {
+    let _ = std::fs::remove_file(install().root().join("vault.json"));
+}
+
 fn a_vault_with_a_passphrase() {
+    no_vault_yet();
     let mut v = Vault::default();
     v.open(PASSPHRASE, 100, &VaultConfig::default()).unwrap();
     v.lock();
@@ -171,7 +183,7 @@ fn a_first_passphrase_set_in_the_hub_shows_its_recovery_key_once_and_never_in_an
     let location = r.body.clone();
 
     // Set, kept, and shut again.
-    let on_disk = Vault::load(&install());
+    let on_disk = Vault::load(&d.vault_home);
     assert!(on_disk.has_a_passphrase(), "nothing was set");
     assert!(on_disk.has_a_recovery_key(), "no recovery key was made with it");
     assert_eq!(d.vault.state(), State::Sealed, "the vault was left open");
@@ -188,7 +200,7 @@ fn a_first_passphrase_set_in_the_hub_shows_its_recovery_key_once_and_never_in_an
     assert!(!again.contains(&code), "the recovery key was shown a second time");
 
     // And it is a real key: it opens the vault.
-    let mut v = Vault::load(&install());
+    let mut v = Vault::load(&d.vault_home);
     v.open_with_recovery_key(&code, 200, &VaultConfig::default()).expect("the key shown does not open the vault");
 
     // A refresh re-sends the same form: answered, not acted on.
@@ -201,7 +213,7 @@ fn a_first_passphrase_set_in_the_hub_shows_its_recovery_key_once_and_never_in_an
     assert!(html.contains("Change the passphrase") && html.contains("autocomplete=current-password"));
     let wrong = format!("what=change&old={}&new={}&again={}&nonce={}", enc("not the passphrase at all"), enc("a brand new sentence to keep"), enc("a brand new sentence to keep"), mark(&html));
     atlas::hublive::reply(&mut d, post("/hub/vault", &wrong));
-    let mut v = Vault::load(&install());
+    let mut v = Vault::load(&d.vault_home);
     assert!(v.open(PASSPHRASE, 300, &VaultConfig::default()).is_ok(), "a wrong current passphrase changed it");
 }
 
@@ -549,8 +561,10 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
     let html = page(&mut d, atlas::hub::Page::Status);
     assert!(html.contains("Looking through the disk now"), "{html}");
 
+    // A deadline, not a pace: on a loaded machine the crew takes ten seconds
+    // or more to start and report, and 200 turns of 50 ms was that edge.
     let mut landed = false;
-    for _ in 0..200 {
+    for _ in 0..1200 {
         d.tick(atlas::store::now());
         let s: atlas::hubvault::Survey = d.store.load(atlas::hubvault::SURVEY);
         if s.at > 0 {
@@ -559,7 +573,7 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    assert!(landed, "the survey never came back from the crew");
+    assert!(landed, "the survey never came back from the crew: {}", page(&mut d, atlas::hub::Page::Status));
     let html = page(&mut d, atlas::hub::Page::Status);
     assert!(html.contains("Last looked"), "{html}");
     assert!(html.contains("Look for space"), "the button did not come back");

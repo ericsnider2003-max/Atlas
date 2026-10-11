@@ -210,6 +210,12 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     "mail::trace",
     "mend::refusal",
     "mend::should_ask",
+    // mesh::setup_steps: reached in production through
+    // `what_a_private_network_would_give_you` inside mesh.rs, which main/peers.rs
+    // calls; the integration tests in own_server_wireguard.rs and
+    // android_mesh_household.rs call it directly. It collides with
+    // online::CloudflareConfig::setup_steps. Advice text, not a transport.
+    "mesh::setup_steps",
     "messaging::interrupts",
     // Both of these are `src/platform/mod.rs`, and both have real production
     // callers -- `platform::here()` and `platform::what_am_i()`. The scan

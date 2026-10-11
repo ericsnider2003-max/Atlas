@@ -619,6 +619,7 @@ pub fn move_folder_durably(store: &crate::store::Store, from: &std::path::Path, 
 
 
 
+#[cfg(windows)]
 fn prepare_move_parent(parent: &std::path::Path, source: &std::path::Path) -> Result<std::path::PathBuf, String> {
     let mut missing = Vec::new(); let mut existing = parent;
     loop {
@@ -647,6 +648,7 @@ fn prepare_move_parent(parent: &std::path::Path, source: &std::path::Path) -> Re
     Ok(resolved)
 }
 
+#[cfg(windows)]
 fn save_location_note(from: &std::path::Path, to: &std::path::Path) -> Result<(), String> {
     let note = format!("This folder was moved by Atlas to {}. Its runtime settings may still require confirmation.\n", to.display());
     use std::io::Write;

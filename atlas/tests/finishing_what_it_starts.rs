@@ -1178,10 +1178,10 @@ fn queued_research_remains_running_until_the_worker_finishes() {
     let mut d = Daemon::new(&c, &p, Some(Arc::new(HeldResearch(released.clone()))), Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
     d.connectivity.set(atlas::connectivity::Reach::Online, 0);
     let id = d.queue.push("research Ventura tide times", atlas::lanes::Lane::Background);
-    d.tick(1_790_740_000);
+    let said_on_start = d.tick(1_790_740_000);
     let running = d.queue.tasks.iter().find(|task| task.id == id).map(|task| task.state);
     released.store(true, std::sync::atomic::Ordering::SeqCst);
-    assert_eq!(running, Some(atlas::lanes::TaskState::Running), "starting a worker is not completion");
+    assert_eq!(running, Some(atlas::lanes::TaskState::Running), "starting a worker is not completion: {:?} said {:?}", d.queue.tasks.iter().find(|task| task.id == id), said_on_start);
     d.errands_done_for_test();
     assert_eq!(d.queue.tasks.iter().find(|task| task.id == id).map(|task| task.state), Some(atlas::lanes::TaskState::Done));
 }

@@ -77,7 +77,9 @@ pub(super) fn root_for(path: &Path) -> io::Result<Option<PathBuf>> {
 /// the same native state lock even for an explicitly configured external root.
 pub(super) fn bind_output(explicit_root: &Path, folder: &Path) -> io::Result<()> {
     use std::io::Write;
-    let guard = try_acquire(explicit_root)?;
+    // Starting up, not the control loop: wait out another operation's brief
+    // hold on the state rather than refusing to start because of it.
+    let guard = acquire(explicit_root)?;
     std::fs::create_dir_all(folder)?;
     if std::fs::symlink_metadata(folder)?.file_type().is_symlink() { return Err(io::Error::new(io::ErrorKind::InvalidInput, "the configured Atlas output root is a symbolic link")); }
     let folder = std::fs::canonicalize(folder)?;

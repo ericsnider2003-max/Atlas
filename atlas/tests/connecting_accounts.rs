@@ -275,7 +275,7 @@ impl Net for Fake {
 #[test]
 fn a_signed_in_outlook_calendar_is_read_with_a_fresh_token_in_utc() {
     let net = Fake { asked: RefCell::new(vec![]) };
-    let ics = oauthlink::calendar_ics(&net, Provider::Microsoft, "RT", 1_790_000_000).unwrap();
+    let ics = oauthlink::calendar_ics_selected(&net, Provider::Microsoft, "RT", 1_790_000_000, &[]).unwrap();
     assert!(ics.starts_with("BEGIN:VCALENDAR"));
     let asked = net.asked.borrow();
     assert!(asked[0].starts_with("POST login.microsoftonline.com/common/oauth2/v2.0/token grant_type=refresh_token&refresh_token=RT"), "{}", asked[0]);

@@ -234,6 +234,25 @@ fn hash_file(path: &Path) -> Result<String> {
 }
 
 fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> {
+    // A file that grows while it is read is not a failed backup, just a moment
+    // to try again: Atlas writes while it runs. Three honest tries, then the
+    // refusal stands, so a file that never settles is still reported.
+    let mut last = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            let _ = std::fs::remove_file(destination);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        match copy_file_once(source, destination) {
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => last = Some(e),
+            other => return other,
+        }
+    }
+    let _ = std::fs::remove_file(destination);
+    Err(last.expect("three attempts were made"))
+}
+
+fn copy_file_once(source: &Path, destination: &Path) -> std::io::Result<u64> {
     let meta = std::fs::symlink_metadata(source)?;
     if !meta.is_file() || meta.file_type().is_symlink() { return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "snapshot source is not a regular file")); }
     let mut input = std::fs::File::open(source)?;

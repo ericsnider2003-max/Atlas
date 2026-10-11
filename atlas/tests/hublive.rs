@@ -89,7 +89,7 @@ fn history_returns_an_archived_file_only_without_an_original_collision() {
     let action = || Action::HubPost { path: "/hub/back".into(), fields: vec![("what".into(), "return-file".into()), ("archive".into(), archive.into()), ("kind".into(), "trash".into()), ("id".into(), record.id.to_string())] };
     std::fs::write(&source, b"current owner bytes").unwrap();
     let refused = atlas::hublive::reply(&mut d, action());
-    assert!(said_in(&refused).contains("Couldn't return"));
+    assert!(said_in(&refused).contains("Couldn't return"), "{}", said_in(&refused));
     assert_eq!(std::fs::read(&source).unwrap(), b"current owner bytes");
     assert_eq!(std::fs::read(&record.held).unwrap(), b"archived owner bytes");
     std::fs::remove_file(&source).unwrap();
@@ -972,7 +972,7 @@ fn saves_of(dir: &Path, record: &str) {
 
 fn said_in(reply: &atlas::server::Reply) -> String {
     // A redirect carries the sentence in its address, encoded.
-    reply.body.replace("%20", " ").replace('+', " ")
+    reply.body.replace("%20", " ").replace("%27", "'").replace('+', " ")
 }
 
 #[test]
@@ -1049,3 +1049,44 @@ fn a_file_from_the_phone_that_could_not_be_kept_says_so() {
 
 #[path = "offline_progress.rs"]
 mod offline_progress;
+
+#[test]
+fn a_signed_in_calendar_can_choose_which_of_its_calendars_are_read() {
+    use atlas::connect::{self, CalendarLink};
+    use atlas::oauthlink::{self, Provider};
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "calendar-picker");
+    let key = oauthlink::calendar_key(Provider::Google, "me@gmail.com");
+    d.store.save(connect::CALENDAR_LINKS, &vec![CalendarLink { name: "Google Calendar (me@gmail.com)".into(), url: key.clone(), last_read: 5, last_ok: true, ..Default::default() }]).unwrap();
+    let post = |d: &mut Daemon, what: &str, extra: Vec<(&str, &str)>| {
+        let mut fields = vec![("what".to_string(), what.to_string()), ("id".to_string(), key.clone())];
+        fields.extend(extra.into_iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        atlas::hublive::reply(d, Action::HubPost { path: "/hub/connect".into(), fields })
+    };
+
+    // The page offers to list them; nothing to tick until they are listed.
+    let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
+    assert!(page.contains("Choose calendars"), "no way to ask for the list");
+    assert!(!page.contains("Read these"), "choices shown before any were listed");
+
+    // Choosing before listing is refused, and changes nothing.
+    let early = post(&mut d, "calendars-choose", vec![("pick", "work@example.com")]);
+    assert!(said_in(&early).contains("ask for the list first"), "{}", said_in(&early));
+    assert!(d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS)[0].selected.is_empty());
+
+    // Asking with the vault locked says why and starts nothing.
+    let asked = post(&mut d, "calendars-find", vec![]);
+    assert!(said_in(&asked).to_lowercase().contains("vault") || said_in(&asked).contains("Asking for the list"), "{}", said_in(&asked));
+
+    // Once listed, the page shows them, and only listed ones can be chosen.
+    let listed: std::collections::BTreeMap<String, Vec<(String, String)>> = [(key.clone(), vec![("primary".to_string(), "Me".to_string()), ("work@example.com".to_string(), "Work".to_string())])].into();
+    d.store.save("calendar_choices", &listed).unwrap();
+    let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
+    assert!(page.contains("Read these") && page.contains("Work") && page.contains("work@example.com"), "{page}");
+    post(&mut d, "calendars-choose", vec![("pick", "work@example.com"), ("pick", "invented@nowhere"), ("pick", "work@example.com")]);
+    let link = d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS).remove(0);
+    assert_eq!(link.selected, vec!["work@example.com".to_string()], "only the listed calendar, once");
+    assert_eq!(link.last_read, 0, "the new choice is read again straight away");
+    let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
+    assert!(page.contains("value='work@example.com' checked"), "the choice was not shown back");
+}

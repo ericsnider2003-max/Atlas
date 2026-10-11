@@ -206,6 +206,9 @@ pub struct CalendarLink {
     /// Its sign-in was refused as revoked or expired (`revoked`): not read
     /// again until you sign in again, which replaces the link (N5).
     pub needs_signin: bool,
+    /// For a signed-in Google or Microsoft calendar: which of its calendars to
+    /// read (their provider ids). Empty reads the account's main one.
+    pub selected: Vec<String>,
 }
 
 /// The calendar links kept, by the store.
@@ -382,7 +385,7 @@ pub fn note_health(store: &crate::store::Store, who: &str, failed: Option<&str>)
     if let Err(error) = note_health_checked(store, who, failed) { crate::heard!(Err::<(), _>(error)); }
 }
 
-pub fn note_health_checked(store: &crate::store::Store, who: &str, failed: Option<&str>) -> crate::error::Result<()> {
+fn note_health_checked(store: &crate::store::Store, who: &str, failed: Option<&str>) -> crate::error::Result<()> {
     let _transaction = store.transaction()?;
     let mut all: std::collections::BTreeMap<String, Health> = store.load_checked(HEALTH)?.unwrap_or_default();
     all.insert(

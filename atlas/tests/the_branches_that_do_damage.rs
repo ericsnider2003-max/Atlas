@@ -505,8 +505,11 @@ fn a_lesson_that_could_not_be_saved_is_not_promised() {
 
     let dir = tmp("lesson-unwritable");
     let blocked = dir.join("state");
-    std::fs::write(&blocked, b"not a directory").unwrap();
 
+    // Atlas now refuses to start on a state folder it cannot open, so the
+    // folder is good at the start and goes bad afterwards -- a disk that fills
+    // or a folder that is swapped out while it runs, which is the case worth
+    // proving.
     let mut d = Daemon::new(
         &c,
         &p,
@@ -514,6 +517,8 @@ fn a_lesson_that_could_not_be_saved_is_not_promised() {
         Store::new(blocked.clone()),
         Proactive::new(ProactiveConfig::default()),
     );
+    let _ = std::fs::remove_dir_all(&blocked);
+    std::fs::write(&blocked, b"not a directory").unwrap();
 
     d.got_it_wrong("you said it in feet, I wanted metres", 1_000);
     d.session.started += 1;

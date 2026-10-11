@@ -21,6 +21,13 @@ const LOOKED_UP: &str = "connect_looked_up";
 /// Calendar links read on their own thread, waiting to be taken in.
 static READ: Mutex<Vec<(String, Result<String, String>)>> = Mutex::new(Vec::new());
 
+/// A signed-in account's list of calendars, fetched on its own thread and
+/// waiting for the tick to keep it for the picker.
+static LISTED: Mutex<Vec<(String, Result<Vec<(String, String)>, String>)>> = Mutex::new(Vec::new());
+
+/// What each signed-in link's account offered: link key -> (id, name).
+const CHOICES: &str = "calendar_choices";
+
 /// Finished one-click sign-ins, waiting for the tick to keep them.
 static SIGNED: Mutex<Vec<Result<oauthlink::SignedIn, String>>> = Mutex::new(Vec::new());
 
@@ -53,7 +60,7 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
         out.push_str(&format!("<p class=said role=status>{}</p>", esc(&said)));
     }
     out.push_str(&one_click(d));
-    out.push_str(&publication_status(&d.publisher));
+    out.push_str(&publication_status(&d.publisher, &|id| d.publication_inflight(id)));
     out.push_str(&removal_notes(&d.store));
     out.push_str(
         "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=start>\
@@ -196,12 +203,9 @@ fn disconnect(kind: &str, id: &str) -> String {
     )
 }
 
-/// Posts whose publication the owner has to settle, or approve again after
-/// settling. Nothing here sends anything: it only shows what is known and
-/// offers the owner's own check ("I looked at the service") as a form.
 /// One line per removed connection whose permission at the provider has not
 /// been confirmed gone, with where to check it.
-pub fn removal_notes(store: &crate::store::Store) -> String {
+fn removal_notes(store: &crate::store::Store) -> String {
     let mut out = String::new();
     for r in crate::connection_removal::unconfirmed_removals(store) {
         out.push_str(&format!("<p class=note role=status>{} was removed from this Atlas. {}</p>", esc(&r.connection), esc(&crate::connection_removal::provider_check(&r.provider))));
@@ -209,13 +213,23 @@ pub fn removal_notes(store: &crate::store::Store) -> String {
     out
 }
 
-pub fn publication_status(publisher: &crate::publish::Publisher) -> String {
+/// Posts whose publication the owner has to settle, or approve again after
+/// settling. Nothing here sends anything: it only shows what is known and
+/// offers the owner's own check ("I looked at the service") as a form.
+/// A post still being sent right now (`in_flight`) is shown as that, with no
+/// form: its outcome isn't unconfirmed yet, it just isn't back.
+pub fn publication_status(publisher: &crate::publish::Publisher, in_flight: &dyn Fn(u64) -> bool) -> String {
     use crate::publish::{PostState, CHECKED_ABSENT};
     let mut out = String::new();
     for post in publisher.pending() {
         let id = post.id;
         let attachments = if post.media.is_empty() { "None".to_string() } else { post.media.iter().map(|m| esc(m)).collect::<Vec<_>>().join(", ") };
         match post.state {
+            PostState::PendingSubmission | PostState::Uncertain if in_flight(id) => out.push_str(&format!(
+                "<section class=publication><h3>Post {id} to {chan}: being sent now</h3>\
+                 <p>It is on its way. I'll say what came of it; there is nothing for you to check yet.</p></section>",
+                chan = esc(&post.channel.name())
+            )),
             PostState::PendingSubmission | PostState::Uncertain => out.push_str(&format!(
                 "<section class=publication><h3>Post {id} to {chan}: publication unconfirmed</h3>\
                  <p>{why}</p>\
@@ -243,6 +257,45 @@ pub fn publication_status(publisher: &crate::publish::Publisher) -> String {
             )),
             _ => {}
         }
+    }
+    out
+}
+
+/// Take in the calendar lists the background threads brought back.
+fn keep_listed(d: &mut Daemon) {
+    let came: Vec<(String, Result<Vec<(String, String)>, String>)> = LISTED.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    if came.is_empty() { return; }
+    let mut offered: std::collections::BTreeMap<String, Vec<(String, String)>> = d.store.load(CHOICES);
+    let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
+    let mut links_changed = false;
+    for (url, got) in came {
+        match got {
+            Ok(list) => { offered.insert(url, list); }
+            Err(e) => {
+                if let Some(l) = links.iter_mut().find(|l| l.url == url) { l.last_said = format!("couldn't list its calendars: {e}"); links_changed = true; }
+            }
+        }
+    }
+    crate::kept!(d.store.save(CHOICES, &offered));
+    if links_changed { crate::kept!(d.store.save(connect::CALENDAR_LINKS, &links)); }
+}
+
+/// The calendar picker for one signed-in link: ask for the list, then choose
+/// which of the account's calendars are read.
+fn calendar_picker(d: &Daemon, l: &CalendarLink) -> String {
+    let offered: std::collections::BTreeMap<String, Vec<(String, String)>> = d.store.load(CHOICES);
+    let id = esc(&l.url);
+    let mut out = format!(
+        "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=calendars-find>\
+         <input type=hidden name=id value='{id}'><button>Choose calendars</button></form>"
+    );
+    if let Some(list) = offered.get(&l.url) {
+        out.push_str(&format!("<form method=post action='/hub/connect'><input type=hidden name=what value=calendars-choose><input type=hidden name=id value='{id}'>"));
+        for (cid, name) in list {
+            let on = l.selected.iter().any(|s| s == cid);
+            out.push_str(&format!("<label><input type=checkbox name=pick value='{}'{}> {}</label>", esc(cid), if on { " checked" } else { "" }, esc(name)));
+        }
+        out.push_str("<button>Read these</button></form>");
     }
     out
 }
@@ -304,6 +357,44 @@ pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
             crate::kept!(d.vault.save(&d.vault_home));
             crate::muse::set_key(None);
             back("Muse is disconnected and its key is gone from the vault. You can also delete the key on Meta's page.")
+        }
+        "calendars-find" => {
+            let url = field(fields, "id");
+            let links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
+            let Some((p, email)) = links.iter().find(|l| l.url == url && !l.needs_signin).and_then(|l| oauthlink::parse_calendar_key(&l.url)) else {
+                return back("That isn't a signed-in calendar I can list.");
+            };
+            let token = match d.vault.get(&oauthlink::vault_name(p, &email), crate::store::now()) {
+                Ok(t) => t,
+                Err(e) => return back(&format!("Its sign-in couldn't be read from the vault ({e}); unlock the vault and try again.")),
+            };
+            std::thread::spawn(move || {
+                let got = oauthlink::available_calendars(&crate::social::apis::Https, p, &token);
+                if let Ok(mut q) = LISTED.lock().or_else(crate::crash::unpoison) {
+                    q.push((url, got));
+                }
+            });
+            back("Asking for the list of calendars on that account; it appears here in a moment.")
+        }
+        "calendars-choose" => {
+            let url = field(fields, "id");
+            let offered: std::collections::BTreeMap<String, Vec<(String, String)>> = d.store.load(CHOICES);
+            let Some(offer) = offered.get(&url) else { return back("I haven't listed that account's calendars yet; ask for the list first."); };
+            let picked: Vec<String> = fields.iter().filter(|(k, _)| k == "pick").map(|(_, v)| v.clone()).collect();
+            // Only calendars the account actually offered, each once.
+            let mut chosen: Vec<String> = Vec::new();
+            for id in picked {
+                if offer.iter().any(|(o, _)| *o == id) && !chosen.contains(&id) { chosen.push(id); }
+            }
+            let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
+            let Some(link) = links.iter_mut().find(|l| l.url == url) else { return back("That calendar isn't connected any more."); };
+            link.selected = chosen.clone();
+            link.last_read = 0;
+            match d.store.save(connect::CALENDAR_LINKS, &links) {
+                Ok(()) if chosen.is_empty() => back("Back to the account's main calendar. I'm reading it again now."),
+                Ok(()) => back(&format!("Reading {} calendar{} from that account. I'm reading again now.", chosen.len(), if chosen.len() == 1 { "" } else { "s" })),
+                Err(e) => back(&format!("I couldn't keep that choice: {e}")),
+            }
         }
         "disconnect" => {
             let id = field(fields, "id");
@@ -499,6 +590,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
     keep_rotated(d, now);
     keep_muse(d, now);
     note_google_data(d);
+    keep_listed(d);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     if links.is_empty() {
         return;
@@ -511,7 +603,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
         // A complete read replaces only this connection's own events (cancelled
         // ones go; other calendars' events stay). A signed-in read covers a
         // window, so only events inside it can be dropped.
-        let window = oauthlink::parse_calendar_key(&url).map(|_| (now.saturating_sub(oauthlink::BACK_SECS), now + oauthlink::AHEAD_SECS));
+        let window = oauthlink::parse_calendar_key(&url).map(|_| oauthlink::snapshot_window(now));
         let took = got.and_then(|text| d.calendar.reconcile_ics_window(&url, &text, now, &home, window).map(|(n, _)| n));
         match took {
             Ok(n) => {
@@ -531,13 +623,14 @@ pub fn tick(d: &mut Daemon, now: u64) {
         l.last_read = now;
         changed = true;
         let url = l.url.clone();
+        let selected = l.selected.clone();
         if let Some((p, email)) = oauthlink::parse_calendar_key(&url) {
             // Signed in: the token from the vault, read on its own thread.
             let token = d.vault.get(&oauthlink::vault_name(p, &email), now);
             std::thread::spawn(move || {
                 let got = token
                     .map_err(|e| format!("its sign-in couldn't be read from the vault ({e})"))
-                    .and_then(|t| oauthlink::calendar_ics_selected(&crate::social::apis::Https, p, &t, now, &[]));
+                    .and_then(|t| oauthlink::calendar_ics_selected(&crate::social::apis::Https, p, &t, now, &selected));
                 if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                     q.push((url, got));
                 }

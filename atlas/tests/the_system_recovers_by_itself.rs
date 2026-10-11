@@ -910,21 +910,16 @@ fn the_talk_bench_catches_made_up_history() {
 // ---- 30 Sep 2026: hearing with Parakeet (a quarter of whisper base.en's
 // mistakes up close, a third across the room, measured on LibriSpeech).
 
-/// The request is what sherpa-onnx's offline server reads: rate, byte count,
-/// then f32 samples, little-endian.
+/// What the recognizer says is read out of its answer: trimmed, and nothing
+/// made up from an answer that isn't one.
 #[test]
-fn a_recording_is_sent_the_way_the_hearing_server_reads_it() {
-    let b = atlas::parakeet::request_bytes(&[0.5, -0.25], 16_000);
-    assert_eq!(&b[0..4], &16_000i32.to_le_bytes());
-    assert_eq!(&b[4..8], &8i32.to_le_bytes());
-    assert_eq!(&b[8..12], &0.5f32.to_le_bytes());
-    assert_eq!(&b[12..16], &(-0.25f32).to_le_bytes());
+fn the_words_are_read_out_of_the_recognizers_answer() {
     assert_eq!(atlas::parakeet::text_from(r#"{"lang": "", "text": " Can you see me? ", "timestamps": []}"#).as_deref(), Some("Can you see me?"));
     assert_eq!(atlas::parakeet::text_from("not json"), None);
 }
 
-/// Only counted as installed when the server and all four model files are
-/// there; the server is told where each file is and how many threads to use.
+/// Only counted as installed when the recognizer program and all four model
+/// files are there.
 #[test]
 fn parakeet_is_installed_only_when_every_file_is_there() {
     let root = std::env::temp_dir().join(format!("atlas-parakeet-{}", std::process::id()));
@@ -933,18 +928,13 @@ fn parakeet_is_installed_only_when_every_file_is_there() {
     let model = root.join("models/parakeet");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::create_dir_all(&model).unwrap();
-    std::fs::write(bin.join(atlas::parakeet::server_name()), b"").unwrap();
+    std::fs::write(bin.join(atlas::parakeet::recognizer_name()), b"").unwrap();
     for f in ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx"] {
         std::fs::write(model.join(f), b"").unwrap();
     }
     assert!(atlas::parakeet::installed(&root).is_none(), "tokens.txt is missing");
     std::fs::write(model.join("tokens.txt"), b"").unwrap();
-    let files = atlas::parakeet::installed(&root).expect("all there");
-    let args = atlas::parakeet::launch_args(&files, 8094, 3).join(" ");
-    assert!(args.contains("--port=8094") && args.contains("--model-type=nemo_transducer") && args.contains("--num-threads=3"), "{args}");
-    assert!(args.contains("encoder.int8.onnx") && args.contains("tokens.txt"));
-    assert_eq!(atlas::parakeet::threads_for(8), 4);
-    assert_eq!(atlas::parakeet::threads_for(2), 2);
+    assert!(atlas::parakeet::installed(&root).is_some(), "all there");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -969,20 +959,19 @@ fn parakeet_hears_real_speech_through_atlas_own_client() {
     let Ok(kit) = std::env::var("ATLAS_PARAKEET_KIT") else { return };
     let kit = std::path::PathBuf::from(kit);
     let started = std::time::Instant::now();
-    let heard = atlas::parakeet::transcribe_file(&kit, &kit.join("speech.wav")).expect("installed").expect("heard");
+    let heard = atlas::parakeet::transcribe_file_until(&kit, &kit.join("speech.wav"), &|| false).expect("installed").expect("heard").expect("not canceled");
     let first = started.elapsed();
     let again = std::time::Instant::now();
-    let heard2 = atlas::parakeet::transcribe_file(&kit, &kit.join("speech.wav")).unwrap().unwrap();
+    let heard2 = atlas::parakeet::transcribe_file_until(&kit, &kit.join("speech.wav"), &|| false).unwrap().unwrap().unwrap();
     let second = again.elapsed();
     atlas::parakeet::stop();
     let want = std::fs::read_to_string(kit.join("speech.txt")).unwrap().to_lowercase();
     let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect::<String>();
     let (h, w) = (norm(&heard), norm(&want));
     let hit = w.split_whitespace().filter(|x| h.split_whitespace().any(|y| y == *x)).count();
-    println!("first {first:?} (starts the server), then {second:?}: {heard}");
+    println!("first {first:?}, then {second:?}: {heard}");
     assert!(hit * 10 >= w.split_whitespace().count() * 8, "heard {heard:?}, said {want:?}");
     assert_eq!(heard, heard2);
-    assert!(second < first);
 }
 
 /// Eric, 30 Sep 2026: "Atlas can still freely talk I just want a question

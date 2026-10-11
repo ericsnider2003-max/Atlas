@@ -731,7 +731,7 @@ impl<'de> Deserialize<'de> for Calendar {
 const FILE: &str = "calendar";
 
 impl Calendar {
-    /// Is anything here read from Google (`oauthlink::calendar_ics` gives
+    /// Is anything here read from Google (`oauthlink::calendar_ics_selected` gives
     /// those events uids starting `google-`)?
     pub fn holds_google_events(&self) -> bool {
         self.events.iter().any(|e| e.phone_key.as_deref().is_some_and(|k| k.starts_with("ics:google-") || (k.starts_with("ics:connection:") && k.contains(":google-"))))

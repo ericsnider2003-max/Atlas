@@ -289,7 +289,7 @@ fn directory_snapshot(area: &Area) -> (PathBuf, Backup, Trash) {
 #[test]
 fn failed_restore_rolls_back_only_its_new_empty_directory() {
     let area = Area::new(); let (state, backup, trash) = directory_snapshot(&area);
-    let result = super::restore_transaction::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| {
+    let result = super::restore_transaction::hooks::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| {
         if operation == 1 { assert!(state.join("owner-empty").is_dir()); Err(AtlasError::Platform("fixture failure after directory publication".into())) } else { Ok(()) }
     });
     assert!(result.unwrap_err().to_string().contains("every original file was put back"));
@@ -301,7 +301,7 @@ fn failed_restore_rolls_back_only_its_new_empty_directory() {
 #[test]
 fn restart_rolls_back_a_published_empty_directory_with_ownership_intact() {
     let area = Area::new(); let (state, backup, trash) = directory_snapshot(&area);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::restore_transaction::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| { if operation == 1 { panic!("fixture process interruption after directory publication"); } Ok(()) }))).is_err());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::restore_transaction::hooks::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| { if operation == 1 { panic!("fixture process interruption after directory publication"); } Ok(()) }))).is_err());
     assert!(state.join("owner-empty").is_dir());
     recover_restore(&state).unwrap();
     assert!(!state.join("owner-empty").exists());
@@ -313,7 +313,7 @@ fn restart_rolls_back_a_published_empty_directory_with_ownership_intact() {
 fn later_owner_files_stop_directory_rollback_without_deleting_them() {
     let area = Area::new(); let (state, backup, trash) = directory_snapshot(&area);
     let foreign = state.join("owner-empty/owner-added.txt");
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::restore_transaction::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| { if operation == 1 { std::fs::write(&foreign, b"later owner bytes").unwrap(); panic!("fixture interruption with later owner content"); } Ok(()) }))).is_err());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::restore_transaction::hooks::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| { if operation == 1 { std::fs::write(&foreign, b"later owner bytes").unwrap(); panic!("fixture interruption with later owner content"); } Ok(()) }))).is_err());
     assert!(recover_restore(&state).unwrap_err().to_string().contains("later files"));
     assert_eq!(std::fs::read(&foreign).unwrap(), b"later owner bytes");
     assert!(state.join(".restore-journal.json").is_file());
@@ -325,7 +325,7 @@ fn later_owner_files_stop_directory_rollback_without_deleting_them() {
 fn a_foreign_directory_created_before_publication_is_never_clobbered() {
     let area = Area::new(); let (state, backup, trash) = directory_snapshot(&area);
     let foreign = state.join("owner-empty/foreign.txt");
-    let result = super::restore_transaction::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| { if operation == 0 { std::fs::create_dir(state.join("owner-empty")).unwrap(); std::fs::write(&foreign, b"foreign directory bytes").unwrap(); } Ok(()) });
+    let result = super::restore_transaction::hooks::restore_with_hook(&backup.path, &state, &trash, &Default::default(), &mut |operation| { if operation == 0 { std::fs::create_dir(state.join("owner-empty")).unwrap(); std::fs::write(&foreign, b"foreign directory bytes").unwrap(); } Ok(()) });
     assert!(result.is_err()); assert_eq!(std::fs::read(&foreign).unwrap(), b"foreign directory bytes");
     assert_eq!(crate::store::Store::new(&state).load::<String>("item"), "current");
     // Only the fixture's owner removes its new foreign directory; recovery
@@ -445,7 +445,7 @@ fn a_failed_swap_after_the_first_file_rolls_back_real_files() {
     std::fs::create_dir(&state).unwrap(); std::fs::create_dir(&backup).unwrap();
     for name in ["a", "b"] { std::fs::write(state.join(name), format!("old {name}")).unwrap(); std::fs::write(backup.join(name), format!("new {name}")).unwrap(); }
     let trash = Trash::new(TrashConfig { dir: area.0.join("trash").display().to_string(), keep_days: 30 });
-    let result = super::restore_transaction::restore_with_hook(&backup, &state, &trash, &crate::household::Household::default(), &mut |count| {
+    let result = super::restore_transaction::hooks::restore_with_hook(&backup, &state, &trash, &crate::household::Household::default(), &mut |count| {
         if count == 1 { Err(AtlasError::Platform("injected failed second swap".into())) } else { Ok(()) }
     });
     assert!(result.unwrap_err().to_string().contains("every original file was put back"));
@@ -460,7 +460,7 @@ fn restart_recovers_an_interrupted_restore_before_reading_state() {
     for name in ["a", "b"] { std::fs::write(state.join(name), format!("old {name}")).unwrap(); std::fs::write(backup.join(name), format!("new {name}")).unwrap(); }
     let trash = Trash::new(TrashConfig { dir: area.0.join("trash").display().to_string(), keep_days: 30 });
     let interrupted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        super::restore_transaction::restore_with_hook(&backup, &state, &trash, &crate::household::Household::default(), &mut |count| { if count == 1 { panic!("fixture process interruption") } Ok(()) })
+        super::restore_transaction::hooks::restore_with_hook(&backup, &state, &trash, &crate::household::Household::default(), &mut |count| { if count == 1 { panic!("fixture process interruption") } Ok(()) })
     }));
     assert!(interrupted.is_err());
     assert_eq!(std::fs::read_to_string(state.join("a")).unwrap(), "new a");

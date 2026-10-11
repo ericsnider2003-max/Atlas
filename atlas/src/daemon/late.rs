@@ -533,6 +533,7 @@ impl<'a> Daemon<'a> {
         if email.is_empty() {
             return "I need an email address to sign you up with, and I don't have one — set up your mail first.".into();
         }
+        if self.signup_inflight(domain) { return format!("I'm already making an account on {domain}; I won't open a second form for it."); }
         let username = email.split('@').next().unwrap_or("").to_string();
         let guard = match self.store.transaction() { Ok(guard) => guard, Err(e) => return format!("Signup didn't start: state is busy ({e}); no external form opened.") };
         let mut attempts: crate::enrol::SignupAttempts = match self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS) { Ok(attempts) => attempts.unwrap_or_default(), Err(e) => return format!("Signup didn't start: earlier attempt coverage is unavailable ({e}); check the service before repeating.") };
@@ -586,7 +587,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    pub(crate) fn signup_inflight(&self, domain: &str) -> bool { self.crew_links.values().any(|link| link.label == "sign-up" && link.topic.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(domain))) }
+    fn signup_inflight(&self, domain: &str) -> bool { self.crew_links.values().any(|link| link.label == "sign-up" && link.topic.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(domain))) }
 }
 
 impl<'a> Daemon<'a> {
@@ -1184,7 +1185,7 @@ impl<'a> Daemon<'a> {
 
 impl<'a> Daemon<'a> {
     /// Schedule a post for a time you said, and approve it. "now" is now.
-    pub(crate) fn approve_post_in_background(&mut self, id: u64, at: Option<u64>, review: Option<&str>, t: u64) -> String {
+    fn approve_post_in_background(&mut self, id: u64, at: Option<u64>, review: Option<&str>, t: u64) -> String {
         let Some(expected) = self.publisher.get(id).cloned() else { return "That post no longer exists.".into(); };
         if let Some(review) = review {
             if expected.state != crate::publish::PostState::Draft || expected.result.as_deref() != Some(crate::publish::CHECKED_ABSENT) || crate::publish::review_fingerprint(&expected) != review {

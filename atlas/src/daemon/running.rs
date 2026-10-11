@@ -87,6 +87,8 @@ impl<'a> Daemon<'a> {
     }
 
     pub fn persist(&mut self) {
+        // Take in what the previous run left before this one overwrites it.
+        self.read_left_waiting();
         fn note(
             failed: &mut Vec<(&'static str, String)>,
             what: &'static str,
