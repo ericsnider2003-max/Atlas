@@ -91,7 +91,10 @@ fn scheduling_a_repeat_stores_it_once_and_reads_it_on_each_day() {
 
 #[test]
 fn a_reminder_is_confirmed_and_then_fires_once_as_it_comes_due() {
-    let (c, p) = (cfg(), plat());
+    let (mut c, p) = (cfg(), plat());
+    // The locked default holds routine reminders in Outstanding (popups =
+    // "urgent"); this test is about the reminder being said, so allow that.
+    c.tools.as_mut().unwrap().sound.popups = "anything".into();
     let mut d = daemon(&c, &p, "reminder");
     // At the desk (keyboard touched just now): a reminder is said here. Away,
     // it goes the way any note does -- see the test below.
@@ -108,6 +111,15 @@ fn a_reminder_is_confirmed_and_then_fires_once_as_it_comes_due() {
         out.iter().any(|line| line.to_lowercase().contains("reminder") && line.contains("dentist")),
         "the reminder should fire inside its window: {out:?}"
     );
+    // Queueing the line is not delivery (a reminder stays owed until it has
+    // actually been said), so say it, then tick again inside the window.
+    struct Speaker;
+    impl atlas::daemon::Mouth for Speaker {
+        fn speak(&self, _: &str) -> atlas::error::Result<()> { Ok(()) }
+    }
+    for line in std::mem::take(&mut d.to_say_aloud) {
+        d.say_volunteered_with(&Speaker, &line, &mut || None);
+    }
     // It doesn't fire again on the next tick still inside the window.
     let again = d.tick(start - 300);
     assert!(

@@ -961,6 +961,8 @@ fn a_calendar_read_is_put_into_words_by_the_model() {
         let start = tomorrow + (9 + 3 * i as u64) * 3600;
         d.calendar.add(what, atlas::calendar::When { start, end: start + 1800, all_day: false }, None, t);
     }
+    // The agenda reads the saved calendar, so the events have to be saved.
+    d.calendar.save(&d.store).unwrap();
     post_talk(&mut d, said);
     let _ = d.tick(t);
     tick_until_quiet(&mut d, t);

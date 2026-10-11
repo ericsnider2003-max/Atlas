@@ -52,7 +52,10 @@ fn saves_are_atomic_leaving_no_temp_file_behind() {
     let s = Store::new(&d);
     Memory::default().save(&s).unwrap();
     let names: Vec<String> = fs::read_dir(&d).unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        // The state root's own bookkeeping files are not temp files.
+        .filter(|n| n != ".atlas-state-root" && n != ".state-operations.lock" && n != ".state-access.lock")
+        .collect();
     assert_eq!(names, vec!["memory.json"]);
 }
 
