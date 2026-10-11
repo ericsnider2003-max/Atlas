@@ -564,8 +564,9 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
     // A deadline, not a pace: on a loaded machine the crew takes ten seconds
     // or more to start and report, and 200 turns of 50 ms was that edge.
     let mut landed = false;
+    let mut said_meanwhile: Vec<String> = Vec::new();
     for _ in 0..1200 {
-        d.tick(atlas::store::now());
+        said_meanwhile.extend(d.tick(atlas::store::now()));
         let s: atlas::hubvault::Survey = d.store.load(atlas::hubvault::SURVEY);
         if s.at > 0 {
             landed = true;
@@ -573,7 +574,11 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    assert!(landed, "the survey never came back from the crew: {}", page(&mut d, atlas::hub::Page::Status));
+    if !landed {
+        let html = page(&mut d, atlas::hub::Page::Status);
+        let at = html.find("Looking through").or_else(|| html.find("space")).unwrap_or(0);
+        panic!("the survey never came back from the crew; said meanwhile: {said_meanwhile:?} ...{}", &html[at.saturating_sub(300)..(at + 300).min(html.len())]);
+    }
     let html = page(&mut d, atlas::hub::Page::Status);
     assert!(html.contains("Last looked"), "{html}");
     assert!(html.contains("Look for space"), "the button did not come back");

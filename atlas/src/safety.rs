@@ -240,7 +240,7 @@ fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> 
     let mut last = None;
     for attempt in 0..3 {
         if attempt > 0 {
-            let _ = std::fs::remove_file(destination);
+            crate::heard!(std::fs::remove_file(destination));
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         match copy_file_once(source, destination) {
@@ -248,7 +248,7 @@ fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> 
             other => return other,
         }
     }
-    let _ = std::fs::remove_file(destination);
+    crate::heard!(std::fs::remove_file(destination));
     Err(last.expect("three attempts were made"))
 }
 
@@ -355,7 +355,7 @@ pub fn back_up_with_inputs(state: &Path, cfg: &BackupConfig, t: u64, notes: &Pat
     let mut files = 0usize;
     let mut bytes = 0u64;
     let copied = (|| -> Result<()> {
-        let _snapshot = crate::store::wait_for_state_transaction(state)?;
+        let snapshot = crate::store::wait_for_state_transaction(state)?;
         recover_restore(state)?;
         // Recordings retain this lease until their header and bytes are closed.
         // Refuse promptly rather than copy a half-written WAV or stall a call.
@@ -383,6 +383,13 @@ pub fn back_up_with_inputs(state: &Path, cfg: &BackupConfig, t: u64, notes: &Pat
         for (kind, source) in &roots { if kind.ends_with("trash") && source.is_dir() { trash_leases.push(Trash::new(TrashConfig { dir: source.display().to_string(), keep_days: 30 }).lock()?); } }
         let excluded: Vec<PathBuf> = roots.iter().filter_map(|(_, source)| std::fs::canonicalize(source).ok()).collect();
         copy_state_into_skipping(state, &staging, &skip, &excluded, &mut files, &mut bytes)?;
+        // The state folder is the part that must be one consistent moment, and
+        // it is copied. Let go of the lock now: everything below is the owned
+        // output folders (each held by its own lease) and checking the copy,
+        // which can take minutes on a large install, and while this thread held
+        // the state lock for all of it every save Atlas made was refused as
+        // "busy".
+        drop(snapshot);
         for (folder, source) in &roots {
             if source.is_dir() {
                 copy_state_into_skipping(source, &staging.join(OWNED_OUTPUTS).join(folder), &skip, &[], &mut files, &mut bytes)?;
@@ -480,12 +487,19 @@ fn copy_state_into_skipping(
         // so the race is the normal state of affairs rather than a rare one.
         let meta = match std::fs::symlink_metadata(&p) {
             Ok(m) => m,
+            // Gone between the listing and now: nothing to back up.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e.into()),
         };
         // Not followed, for the same reason `copy_tree` does not follow them:
         // a link out of the state folder is a way out of the state folder,
         // and a backup is not the place to discover that.
         if meta.file_type().is_symlink() {
+            // A link to nothing holds nothing, so leaving it out loses no data
+            // and must not fail the backup (a failed backup is retried for ever
+            // and never kept). A link that does lead somewhere could hide state
+            // outside the folder, and that still stops the backup.
+            if matches!(std::fs::metadata(&p), Err(e) if e.kind() == std::io::ErrorKind::NotFound) { continue; }
             return Err(AtlasError::Platform(format!("backup won't omit or follow the symbolic link at {}", p.display())));
         }
         if meta.is_dir() {

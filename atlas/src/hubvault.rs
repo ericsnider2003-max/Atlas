@@ -622,7 +622,7 @@ impl Daemon<'_> {
                 Ok(mut s) => {
                     s.at = t;
                     let mb: u64 = s.found.iter().filter(|c| c.kind.atlas_may_move()).map(|c| c.size_mb).sum();
-                    let kept = self.store.save(SURVEY, &s);
+                    let kept = self.store.keep_briefly(SURVEY, &s);
                     let said = match kept {
                         Ok(()) => format!(
                             "I've finished looking for space: about {} I could clear. It's listed on the Status page.",

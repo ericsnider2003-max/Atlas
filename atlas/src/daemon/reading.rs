@@ -911,7 +911,7 @@ impl<'a> Daemon<'a> {
 
     fn fence_scheduled_run(&mut self, run: &crate::flow::Run, phase: crate::plugins::SchedulePhase) -> crate::error::Result<()> {
         let Some(token) = &run.scheduled_claim else { return Ok(()) };
-        let _guard = self.store.transaction()?;
+        let _guard = crate::store::state_transaction_briefly(self.store.root())?;
         let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
         let claim = runs.claims.get_mut(token).ok_or_else(|| crate::error::AtlasError::Platform("the scheduled occurrence lost its durable claim; no next step started".into()))?;
         if run.plugin.as_deref() != Some(claim.plugin.as_str()) || run.workflow != claim.workflow.name || run.steps != claim.workflow.steps || claim.run.as_ref().is_some_and(|saved| saved.position > run.position) || matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed) {

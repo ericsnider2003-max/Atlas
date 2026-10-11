@@ -37,7 +37,9 @@ impl Phases {
     /// so a stop mid-write leaves the phase unfinished rather than half a file.
     pub fn finished<T: Serialize>(&self, phase: &str, result: &T) -> bool {
         let Some(root) = self.dir.parent().and_then(Path::parent) else { return false };
-        let Ok(_state) = crate::store::state_transaction(root) else { return false };
+        // Written by a worker with a finished phase in hand: wait for the lock
+        // rather than lose the record that would let a restart skip this work.
+        let Ok(_state) = crate::store::wait_for_state_transaction(root) else { return false };
         if std::fs::create_dir_all(&self.dir).is_err() {
             return false;
         }
@@ -62,7 +64,9 @@ impl Phases {
     /// The work is filed: its phases aren't needed any more.
     pub fn close(&self) {
         let Some(root) = self.dir.parent().and_then(Path::parent) else { return };
-        let Ok(_state) = crate::store::state_transaction(root) else { return };
+        // Called from the control loop, so a brief retry, not a long wait. Giving
+        // up here left the saved phases behind for good.
+        let Ok(_state) = crate::store::state_transaction_briefly(root) else { return };
         crate::heard!(std::fs::remove_dir_all(&self.dir));
     }
 }

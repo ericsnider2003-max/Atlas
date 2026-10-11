@@ -139,13 +139,8 @@ impl Outbox {
     /// outreach outcome because a snapshot was mid-write would lose the record
     /// of whether a message went out.
     pub fn keep_draft_waiting(store: &Store, reply: PendingReply) -> Result<()> {
-        let started = std::time::Instant::now();
-        loop {
-            match Self::keep_draft(store, reply.clone()) {
-                Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock && started.elapsed() < std::time::Duration::from_secs(10) => std::thread::sleep(std::time::Duration::from_millis(20)),
-                other => return other,
-            }
-        }
+        let _guard = store.transaction_waiting()?;
+        Self::keep_draft(store, reply)
     }
 
     pub fn get(&self, id: &str) -> Option<&PendingReply> {
@@ -235,7 +230,7 @@ impl Outbox {
 
 
 pub fn send_fenced_capped(store: &Store, pending: &PendingReply, cap: Option<(u64, usize)>, send: impl FnOnce() -> std::result::Result<(), String>) -> std::result::Result<(), String> {
-    let guard = store.transaction().map_err(|e| format!("Nothing submitted: could not reserve the draft state ({e})"))?;
+    let guard = store.transaction_waiting().map_err(|e| format!("Nothing submitted: could not reserve the draft state ({e})"))?;
     let mut outbox = Outbox::load_checked(store).map_err(|e| format!("Nothing submitted: outbox state couldn't be read ({e})"))?;
     if let Some((since, limit)) = cap { if pending.kind == Kind::ColdOutreach && outbox.cold_outreach_sent_since(since) >= limit { return Err("Nothing submitted: today's outreach cap, including unconfirmed submissions, is reached.".into()); } }
     if outbox.get(&pending.id).is_none() { outbox.add(pending.clone()); }
@@ -244,14 +239,14 @@ pub fn send_fenced_capped(store: &Store, pending: &PendingReply, cap: Option<(u6
     drop(guard);
     match send() {
         Ok(()) => {
-            let _guard = store.transaction().map_err(|e| format!("The service accepted the reply, but state is busy ({e}); its persisted fence prevents repetition."))?;
+            let _guard = store.transaction_waiting().map_err(|e| format!("The service accepted the reply, but state is busy ({e}); its persisted fence prevents repetition."))?;
             let mut outbox = Outbox::load_checked(store).map_err(|e| format!("The service accepted the reply, but its state couldn't be read ({e}); do not repeat it."))?;
             if outbox.submission_status(&pending.id).is_none() { return Err("The service accepted the reply, but its persisted submission record could not be read; do not repeat it.".into()); }
             outbox.mark_sent(&pending.id);
             outbox.save(store).map_err(|e| format!("The service accepted the reply, but its sent receipt couldn't be saved ({e}); the durable submission fence prevents another send."))
         }
         Err(e) => {
-            let _guard = store.transaction().map_err(|_| format!("Submission remains unconfirmed ({e}); its persisted fence prevents repetition."))?;
+            let _guard = store.transaction_waiting().map_err(|_| format!("Submission remains unconfirmed ({e}); its persisted fence prevents repetition."))?;
             let mut outbox = Outbox::load_checked(store).map_err(|_| format!("Submission remains unconfirmed ({e}); state couldn't be read. Do not repeat it."))?;
             if outbox.submission_status(&pending.id).is_none() { return Err(format!("Submission remains unconfirmed ({e}); its persisted record could not be read. Do not repeat it.")); }
             outbox.uncertain_submission(&pending.id, &e);

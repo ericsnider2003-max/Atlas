@@ -32,6 +32,18 @@ pub fn state_transaction(root: &Path) -> std::io::Result<StateGuard> {
     }
     Ok(guard)
 }
+/// For the control loop, which must not wait on the state lock for long: try
+/// for a quarter of a second, because whatever holds it (a worker writing one
+/// file) lets go in milliseconds. A refusal after that is real.
+pub fn state_transaction_briefly(root: &Path) -> std::io::Result<StateGuard> {
+    for _ in 0..25 {
+        match state_transaction(root) {
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(10)),
+            other => return other,
+        }
+    }
+    state_transaction(root)
+}
 pub fn wait_for_state_transaction(root: &Path) -> std::io::Result<StateGuard> { state_lock::acquire(root) }
 pub(crate) fn try_state_guard(root: &Path) -> std::io::Result<StateGuard> { state_lock::try_acquire(root) }
 pub fn state_root_for(path: &Path) -> std::io::Result<Option<PathBuf>> { state_lock::root_for(path) }
@@ -353,6 +365,11 @@ impl Store {
     /// Hold across a group of saves so a backup sees either whole group.
     pub fn transaction(&self) -> Result<StateGuard> { Ok(state_transaction(&self.root)?) }
 
+    /// The same, for a worker thread with something to keep: waits (up to ten
+    /// seconds) for whoever holds the lock instead of failing at once. The
+    /// control loop uses `transaction`, which never waits.
+    pub fn transaction_waiting(&self) -> Result<StateGuard> { Ok(wait_for_state_transaction(&self.root)?) }
+
     /// The install's own root — the directory a fresh download unpacks
     /// into, and the one `atlas update`'s `upgrade::YOURS` list is checked
     /// against. `data/backups`, `data/notes` and `data/logs` are its
@@ -630,6 +647,19 @@ impl Store {
             Some(seen) => stamp_of(&path) != seen,
             None => false,
         }
+    }
+
+    /// `save`, for the control loop: a worker (a backup, a send) may hold the
+    /// state for a few milliseconds, and the loop must not wait on it for
+    /// long nor lose what it was handed. Tries for a quarter of a second.
+    pub fn keep_briefly<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
+        for _ in 0..25 {
+            match self.save(name, value) {
+                Err(crate::error::AtlasError::Io(io)) if io.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(10)),
+                other => return other,
+            }
+        }
+        self.save(name, value)
     }
 
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {

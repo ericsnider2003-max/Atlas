@@ -532,12 +532,13 @@ fn with_himalaya_a_draft_is_sent_through_himalaya() {
     assert!(sending.contains("Sending the reply to Sam"), "{sending}");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut t = NOW + 21;
+    let mut said_meanwhile: Vec<String> = Vec::new();
     while std::time::Instant::now() < deadline && atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_some() {
-        d.tick(t);
+        said_meanwhile.extend(d.tick(t));
         t += 1;
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert!(atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_none(), "still waiting: never sent");
+    assert!(atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_none(), "still waiting: never sent; said meanwhile: {said_meanwhile:?}");
     assert_eq!(std::fs::read_to_string(&args).unwrap().trim(), "--account gmail message send");
     let sent = std::fs::read_to_string(&got).unwrap();
     assert!(sent.contains("To: sam@example.com") && sent.contains("See you at six"), "{sent}");
