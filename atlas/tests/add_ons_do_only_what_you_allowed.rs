@@ -372,7 +372,10 @@ fn an_interrupted_schedule_claim_is_visible_after_restart_and_never_replayed() {
     // Reproduce a crash after the durable pre-effect claim, before a receipt.
     claim.phase = plugins::SchedulePhase::InFlight;
     claim.run = None;
-    runs.save(&rig.store()).unwrap();
+    // The backup the first tick queued may still hold the state for a moment.
+    let mut saved = runs.save(&rig.store());
+    for _ in 0..200 { if saved.is_ok() { break; } std::thread::sleep(std::time::Duration::from_millis(25)); saved = runs.save(&rig.store()); }
+    saved.unwrap();
     drop(d);
     let mut restarted = rig.daemon(&c, &p);
     let before = scheduled_actions(&restarted);
@@ -422,7 +425,14 @@ fn a_busy_schedule_keeps_its_first_sight_and_retries_after_the_lock_releases() {
     assert_eq!(scheduled_actions(&d), before);
     release_tx.send(()).unwrap();
     holder.join().unwrap();
-    let due = d.tick(100_900).join(" ");
+    // The backup the blocked tick queued takes the state as soon as it is free,
+    // and a tick that finds it busy leaves the add-on for the next one.
+    let mut due = String::new();
+    for _ in 0..200 {
+        due.push_str(&d.tick(100_900).join(" "));
+        if due.contains("Running wind down") { break; }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
     assert!(due.contains("Running wind down"), "original first sight was lost: {due}");
     assert!(scheduled_actions(&d) > before);
     let done = scheduled_actions(&d);

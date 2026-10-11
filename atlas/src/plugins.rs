@@ -445,7 +445,7 @@ impl Approvals {
         store.load(APPROVALS)
     }
     fn save(&self, store: &Store) -> Result<(), String> {
-        store.save(APPROVALS, self).map_err(|e| format!("couldn't save your decision: {e}"))
+        store.keep_briefly(APPROVALS, self).map_err(|e| format!("couldn't save your decision: {e}"))
     }
 }
 
@@ -1193,7 +1193,7 @@ impl Offers {
         store.load(OFFERS)
     }
     fn save(&self, store: &Store) -> Result<(), String> {
-        store.save(OFFERS, self).map_err(|e| format!("couldn't save it: {e}"))
+        store.keep_briefly(OFFERS, self).map_err(|e| format!("couldn't save it: {e}"))
     }
 }
 

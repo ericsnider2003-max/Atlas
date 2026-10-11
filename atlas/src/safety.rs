@@ -252,6 +252,28 @@ fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> 
     Err(last.expect("three attempts were made"))
 }
 
+thread_local! {
+    /// While a backup holds the state still, the files it copies are not
+    /// flushed one by one (on Windows each flush costs tens of milliseconds, and
+    /// every save Atlas made was refused as "busy" for all of it). They are
+    /// listed here and flushed together once the state is let go, before the
+    /// backup is published.
+    static DEFERRED_FLUSH: std::cell::RefCell<Option<Vec<PathBuf>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Ends deferred flushing for this thread, whichever way the backup leaves.
+struct DeferFlush;
+impl DeferFlush {
+    fn begin() -> DeferFlush { DEFERRED_FLUSH.with(|d| *d.borrow_mut() = Some(Vec::new())); DeferFlush }
+    /// Flush what has been copied so far.
+    fn flush(&self) -> std::io::Result<()> {
+        let pending = DEFERRED_FLUSH.with(|d| d.borrow_mut().as_mut().map(std::mem::take)).unwrap_or_default();
+        for path in pending { std::fs::OpenOptions::new().write(true).open(&path)?.sync_all()?; }
+        Ok(())
+    }
+}
+impl Drop for DeferFlush { fn drop(&mut self) { DEFERRED_FLUSH.with(|d| *d.borrow_mut() = None); } }
+
 fn copy_file_once(source: &Path, destination: &Path) -> std::io::Result<u64> {
     let meta = std::fs::symlink_metadata(source)?;
     if !meta.is_file() || meta.file_type().is_symlink() { return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "snapshot source is not a regular file")); }
@@ -261,7 +283,7 @@ fn copy_file_once(source: &Path, destination: &Path) -> std::io::Result<u64> {
     if copied != meta.len() { return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "snapshot source changed while it was copied")); }
     // Windows FlushFileBuffers needs the write handle, not File::open's
     // read-only handle. Keeping this handle also supports read-only sources.
-    output.sync_all()?;
+    if !DEFERRED_FLUSH.with(|d| d.borrow().is_some()) { output.sync_all()?; }
     Ok(copied)
 }
 
@@ -355,6 +377,7 @@ pub fn back_up_with_inputs(state: &Path, cfg: &BackupConfig, t: u64, notes: &Pat
     let mut files = 0usize;
     let mut bytes = 0u64;
     let copied = (|| -> Result<()> {
+        let flush = DeferFlush::begin();
         let snapshot = crate::store::wait_for_state_transaction(state)?;
         recover_restore(state)?;
         // Recordings retain this lease until their header and bytes are closed.
@@ -390,11 +413,13 @@ pub fn back_up_with_inputs(state: &Path, cfg: &BackupConfig, t: u64, notes: &Pat
         // the state lock for all of it every save Atlas made was refused as
         // "busy".
         drop(snapshot);
+        flush.flush()?;
         for (folder, source) in &roots {
             if source.is_dir() {
                 copy_state_into_skipping(source, &staging.join(OWNED_OUTPUTS).join(folder), &skip, &[], &mut files, &mut bytes)?;
             }
         }
+        flush.flush()?;
         let mut included = Vec::new();
         gather(&staging, Path::new(""), &mut included)?;
         let entries = included.into_iter().map(|(path, relative)| Ok(BackupEntry {
@@ -517,6 +542,7 @@ fn copy_state_into_skipping(
             Err(e) => return Err(e.into()),
         }
         crate::store::rename_patiently(&tmp, &to.join(&name))?;
+        DEFERRED_FLUSH.with(|d| if let Some(list) = d.borrow_mut().as_mut() { list.push(to.join(&name)); });
         *files += 1;
         *bytes += meta.len();
     }
