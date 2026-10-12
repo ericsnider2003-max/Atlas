@@ -232,6 +232,11 @@ impl Session {
 
     /// Start a delegated continuation for one problem, bounded by whatever
     /// budget is left for the night.
+    ///
+    /// This sends (`Reach::Converse`). Not live today; when it is wired, its
+    /// queue must hold only problems you wrote yourself, never text read from
+    /// a mail or page, and the caller must refuse while
+    /// `Session::tainted_by_outside` is set (Q2).
     pub fn delegation_for(
         &self,
         problem: &str,

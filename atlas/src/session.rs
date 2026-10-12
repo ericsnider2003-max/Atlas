@@ -44,6 +44,12 @@ pub struct Session {
     /// (2 Oct 2026). `turns` folds away, so its length can't say.
     pub recorded: u64,
     pub last_intent: Option<Intent>,
+    /// Q2: something someone else wrote (a mail, a page) has been read and
+    /// not since answered for by you. Sticky across turns, unlike
+    /// `last_intent`; a tool the model chooses while it is set is asked about
+    /// unless it only reads or answers. Cleared only by your own words routed
+    /// without the model (`run_command`); answering an approval does not.
+    pub tainted_by_outside: bool,
 }
 
 impl Default for Session {
@@ -58,6 +64,7 @@ impl Default for Session {
             max_turns: 40,
             recorded: 0,
             last_intent: None,
+            tainted_by_outside: false,
         }
     }
 }
@@ -79,6 +86,9 @@ impl Session {
             self.last_app = Some(app);
         }
         self.recorded += 1;
+        if crate::brain::reads_outside_text(intent) {
+            self.tainted_by_outside = true;
+        }
         // Never the passphrase, even in memory.
         self.last_intent = (!matches!(intent, Intent::Unlock(_))).then(|| intent.clone());
         self.turns.push(Turn {
