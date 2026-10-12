@@ -1758,7 +1758,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
 // ("think hard about": several tries, the best of them) = 486.
 // 6 Oct 2026: + `watchvideo` ("watch this video", on this computer) = 487.
-pub const MODULES_IN_TREE: usize = 490;
+// 12 Oct 2026: + `splitter` (CONV1 phase 1, free-form speech read without a
+// model) = 491.
+pub const MODULES_IN_TREE: usize = 491;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1796,6 +1798,7 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("gguf", "reads a model file's header so the model loader knows what it is loading"),
     ("http", "a minimal loopback HTTP client for the browser debugger and local helpers"),
     ("intent", "turns a phrase into an intent for every capability; the understanding layer, not a thing you ask for"),
+    ("splitter", "reads a spoken sentence as plain requests in front of the phrase table (fillers off, a correction's last instruction, several instructions cut apart) for every capability; the understanding layer, not a thing you ask for"),
     ("doing", "reads a request that doesn't start with a command's phrase as the command it means, and whether the screen was mentioned; part of the understanding layer"),
     ("repeating", "keeps a reply from saying again what Atlas already said; part of how every reply is spoken, not a thing you ask for"),
     ("judgment", "the shared scale graded judgments are expressed on, borrowed by a dozen capabilities"),

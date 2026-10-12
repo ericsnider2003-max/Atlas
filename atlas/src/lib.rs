@@ -458,6 +458,7 @@ pub mod signin;
 pub mod speaker;
 pub mod speakernet;
 pub mod speech;
+pub mod splitter;
 pub mod spoken_form;
 pub mod stance;
 pub mod stemmer;
