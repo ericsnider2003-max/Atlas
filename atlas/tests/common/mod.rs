@@ -76,9 +76,32 @@ pub fn norm(text: &str) -> String {
     out
 }
 
+/// Where `needle` (already normalised) starts in `hay` (already normalised).
+///
+/// A needle that ends in a comma (`_ => return None,`) was written against a
+/// source where a comma followed; `norm` drops a comma before `)`, `]` or `}`,
+/// so such a needle also matches the same text with no comma when a closing
+/// bracket comes next. Nothing else is loosened.
+fn positions(hay: &str, needle: &str) -> Vec<usize> {
+    let mut out: Vec<usize> = hay.match_indices(needle).map(|(i, _)| i).collect();
+    if let Some(bare) = needle.strip_suffix(',') {
+        if !bare.is_empty() {
+            for (i, _) in hay.match_indices(bare) {
+                let after = hay.as_bytes().get(i + bare.len());
+                if matches!(after, Some(b')') | Some(b']') | Some(b'}')) {
+                    out.push(i);
+                }
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// `needle` appears in `haystack`, ignoring layout (see [`norm`]).
 pub fn contains_code(haystack: &str, needle: &str) -> bool {
-    norm(haystack).contains(&norm(needle))
+    !positions(&norm(haystack), &norm(needle)).is_empty()
 }
 
 /// How many times `needle` appears in `haystack`, ignoring layout.
@@ -87,12 +110,12 @@ pub fn count_code(haystack: &str, needle: &str) -> usize {
     if n.is_empty() {
         return 0;
     }
-    norm(haystack).matches(&n).count()
+    positions(&norm(haystack), &n).len()
 }
 
 /// Byte offset of `needle` within `norm(haystack)`, ignoring layout.
 pub fn find_code(haystack: &str, needle: &str) -> Option<usize> {
-    norm(haystack).find(&norm(needle))
+    positions(&norm(haystack), &norm(needle)).first().copied()
 }
 
 /// `needle` present, and not as the tail of a longer identifier.
