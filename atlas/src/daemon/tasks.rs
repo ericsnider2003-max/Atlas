@@ -306,6 +306,7 @@ impl<'a> Daemon<'a> {
         let outcome = self.act_on_asking(intent, from_model, force_ask);
         if brain::reads_outside_text(intent) {
             *tainted = true;
+            self.session.tainted_by_outside = true;
         }
         outcome
     }
@@ -449,7 +450,7 @@ impl<'a> Daemon<'a> {
             stop,
             paused,
             started: std::time::Instant::now(),
-            tainted: false,
+            tainted: self.session.tainted_by_outside,
             waiting_for: None,
             deferred_background: None,
             waiting_for_file_move: None,
@@ -933,7 +934,7 @@ impl<'a> Daemon<'a> {
             stop,
             paused,
             started: std::time::Instant::now(),
-            tainted: false,
+            tainted: self.session.tainted_by_outside,
             waiting_for: None,
             deferred_background: None,
             waiting_for_file_move: None,

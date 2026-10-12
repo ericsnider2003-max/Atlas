@@ -734,6 +734,9 @@ impl<'a> Daemon<'a> {
                 return self.answer_several(said, answers, t);
             }
             let kind = kind_of(&intent).to_string();
+            // Answering is you speaking for it: what was read stops tainting
+            // (`Session::tainted_by_outside`).
+            self.session.tainted_by_outside = false;
             // A question you were asked is not a question anyone else may
             // answer. Atlas asks "go ahead?", you hand the laptop over, and
             // the next person says "yes" -- so the answer is dropped along

@@ -262,7 +262,7 @@ fn a_single_turn_after_reading_mail_asks_before_acting() {
     let (c, p) = (cfg(), plat());
     let llm = Arc::new(Opens);
     let mut d = Daemon::new(&c, &p, Some(llm as Arc<dyn Llm>), Store::new(tmp("taint1")), Proactive::new(ProactiveConfig::default()));
-    d.session.last_intent = Some(Intent::Mail(String::new()));
+    d.session.tainted_by_outside = true;
     let reply = d.turn("deal with notepad", 1_790_740_000);
     assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "{reply} / {:?} / {:?}", d.session.pending, d.session.turns);
     assert!(reply.ends_with("Go ahead?"), "{reply}");
@@ -270,4 +270,63 @@ fn a_single_turn_after_reading_mail_asks_before_acting() {
     let mut e = Daemon::new(&c, &p, Some(Arc::new(Opens) as Arc<dyn Llm>), Store::new(tmp("taint2")), Proactive::new(ProactiveConfig::default()));
     let reply = e.turn("deal with notepad", 1_790_740_000);
     assert!(!reply.ends_with("Go ahead?") && !matches!(e.session.pending, Pending::Approval(..)), "{reply}");
+}
+
+/// A one-prompt model that picks by what was said last.
+struct Picks;
+impl Llm for Picks {
+    fn complete(&self, _: &str, user: &str) -> atlas::error::Result<String> {
+        let said = user.rsplit("User said:").next().unwrap_or(user);
+        Ok(if said.contains("deal with notepad") {
+            r#"{"action":"open_app","arg":"notepad","say":"Opening notepad."}"#
+        } else if said.contains("deal with the chat") {
+            r#"{"action":"delegate","arg":"finish this conversation","say":"On it."}"#
+        } else {
+            r#"{"action":"say","arg":null,"say":"Hello to you."}"#
+        }
+        .into())
+    }
+}
+
+/// Q2: the taint outlasts the turn that read the mail -- a harmless chat turn
+/// in between does not wash it.
+#[test]
+fn the_taint_survives_a_harmless_turn_in_between() {
+    let (c, p) = (cfg(), plat());
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(Picks) as Arc<dyn Llm>), Store::new(tmp("taint3")), Proactive::new(ProactiveConfig::default()));
+    let _ = d.turn("check my mail", 1_790_740_000);
+    assert!(d.session.tainted_by_outside, "reading mail did not taint the session");
+    let _ = d.turn("hello there, how are you", 1_790_740_010);
+    assert!(d.session.tainted_by_outside, "a chat turn washed the taint");
+    let reply = d.turn("deal with notepad", 1_790_740_020);
+    assert!(reply.ends_with("Go ahead?"), "{reply}");
+    assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "{:?}", d.session.pending);
+}
+
+/// Q2: a loop started after a mail-reading turn begins tainted.
+#[test]
+fn a_loop_started_after_reading_mail_inherits_the_taint() {
+    let (c, p) = (cfg(), plat());
+    let llm = Arc::new(Rules(vec![("check my mail", calls("open_app", "notepad"))], Mutex::new(vec![])));
+    let mut d = Daemon::new(&c, &p, Some(llm as Arc<dyn Llm>), Store::new(tmp("taint4")), Proactive::new(ProactiveConfig::default()));
+    d.session.tainted_by_outside = true; // what the mail turn leaves behind
+    let first = d.turn("check my mail, then open the app it mentions", 1_790_740_000);
+    let mut said = vec![first];
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut t = 1_790_740_000;
+    while d.working_through_steps() && Instant::now() < until {
+        t += 1;
+        said.extend(d.tick(t));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "an inherited-taint loop opened an app unasked: {said:?}");
+}
+
+/// Q2: a delegation the model chose is asked about, through the daemon.
+#[test]
+fn a_delegation_the_model_chose_is_asked_about() {
+    let (c, p) = (cfg(), plat());
+    let mut d = Daemon::new(&c, &p, Some(Arc::new(Picks) as Arc<dyn Llm>), Store::new(tmp("deleg")), Proactive::new(ProactiveConfig::default()));
+    let reply = d.turn("deal with the chat", 1_790_740_000);
+    assert!(matches!(&d.session.pending, Pending::Approval(Intent::Delegate(_), _)), "{reply} / {:?}", d.session.pending);
 }
