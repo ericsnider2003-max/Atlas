@@ -48,7 +48,7 @@ pub const RATE: u32 = 16_000;
 pub const WINDOW: usize = 512;
 const WINDOW_MS: u64 = 32;
 /// Kept from before the voice was sure, so the first word isn't clipped.
-const PRE_ROLL_MS: u64 = 320;
+const PRE_ROLL_MS: u64 = 480;
 /// Windows of speech in a row before it counts as you starting.
 const START_WINDOWS: u32 = 3;
 /// Less speech than this in the whole stretch is a cough or a click.
@@ -172,7 +172,9 @@ impl Segmenter {
             while self.pre.len() > keep {
                 self.pre.pop_front();
             }
-            self.run = if speech { self.run + 1 } else { 0 };
+            // A miss costs one window of progress, not all of it: soft speech
+            // flickers around the detector's line and must still start.
+            self.run = if speech { self.run + 1 } else { self.run.saturating_sub(1) };
             if self.run < START_WINDOWS {
                 return Seg::Quiet;
             }

@@ -53,7 +53,7 @@ impl Default for EndpointConfig {
             silence_below_db: -38.0,
             // Production voice systems aim for a turn gap under half a second;
             // these are chosen against that.
-            short_reply_ms: 380,
+            short_reply_ms: 420,
             sentence_ms: 700,
             mid_phrase_ms: 1100,
             no_speech_after_ms: 2500,
@@ -96,18 +96,26 @@ pub enum Why {
 pub enum Shape {
     Short,
     Sentence,
+    /// Text that ends in . ? or ! -- the speech engine heard a full stop.
+    Complete,
     MidPhrase,
 }
 
+/// How far above the room a level must stand to count as speech.
+pub const ROOM_MARGIN_DB: f32 = 12.0;
+
+/// Silence that ends text which finishes with . ? or !.
+pub const COMPLETE_MS: u64 = 500;
+
 /// Speech this short, with no words yet, is taken for a short reply ("yes",
 /// "the second one", "stop"): about two or three words at a normal pace.
-pub const SHORT_SPEECH_MS: u64 = 900;
+pub const SHORT_SPEECH_MS: u64 = 600;
 
 /// Words that mean more is coming, however long the pause.
 const HANGING: &[&str] = &[
     "and", "but", "or", "so", "then", "because", "which", "that", "the", "a", "an",
     "to", "for", "with", "of", "in", "on", "at", "if", "when", "my", "your",
-    "is", "was", "will", "can", "could", "would", "should", "i", "we", "it",
+    "is", "was", "will", "can", "could", "would", "should", "i", "we",
 ];
 
 pub fn shape_of(text: &str) -> Shape {
@@ -115,11 +123,18 @@ pub fn shape_of(text: &str) -> Shape {
     if t.is_empty() {
         return Shape::MidPhrase;
     }
+    // Trailing comma or dash: the speaker paused inside a sentence.
+    if t.ends_with(',') || t.ends_with('-') || t.ends_with('\u{2014}') || t.ends_with('\u{2013}') {
+        return Shape::MidPhrase;
+    }
     let words: Vec<&str> = t.split_whitespace().collect();
     let last = words.last().copied().unwrap_or("");
     // A dangling connective means you're mid-thought whatever the silence.
     if HANGING.contains(&last.trim_matches(|c: char| !c.is_alphanumeric())) {
         return Shape::MidPhrase;
+    }
+    if t.ends_with('.') || t.ends_with('?') || t.ends_with('!') {
+        return if words.len() <= 3 { Shape::Short } else { Shape::Complete };
     }
     if words.len() <= 3 {
         return Shape::Short;
@@ -132,6 +147,7 @@ impl Shape {
         match self {
             Shape::Short => cfg.short_reply_ms,
             Shape::Sentence => cfg.sentence_ms,
+            Shape::Complete => COMPLETE_MS.min(cfg.sentence_ms),
             Shape::MidPhrase => cfg.mid_phrase_ms,
         }
     }
@@ -147,6 +163,8 @@ pub struct Endpointer {
     /// Total time you were actually speaking.
     pub speech_ms: u64,
     last_ms: u64,
+    /// Quietest level heard so far: the room.
+    floor_db: Option<f32>,
 }
 
 impl Default for Endpointer {
@@ -158,6 +176,7 @@ impl Default for Endpointer {
             heard_anything: false,
             speech_ms: 0,
             last_ms: 0,
+            floor_db: None,
         }
     }
 }
@@ -195,7 +214,14 @@ impl Endpointer {
             return self.state;
         }
 
-        let loud = level_db > cfg.silence_below_db;
+        // Room-relative line: a little above the quietest level heard, so a
+        // noisy room is not speech and a quiet mic's soft voice is. It never
+        // goes above the configured line (so real speech never reads as
+        // silence) nor below -70 dB.
+        let floor = self.floor_db.map_or(level_db, |f| f.min(level_db));
+        self.floor_db = Some(floor);
+        let line = (floor + ROOM_MARGIN_DB).clamp(-70.0, cfg.silence_below_db.max(-70.0));
+        let loud = level_db > line;
         if loud {
             self.heard_anything = true;
             self.speech_ms += step;
