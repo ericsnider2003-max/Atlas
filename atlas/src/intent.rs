@@ -808,6 +808,23 @@ impl Parser {
         });
     }
 
+    /// Does this command name something Atlas knows -- an app it has, a mode
+    /// it has? `open` takes any name on its own ("open spotify" is asked
+    /// about, `grants`), but a name the free-form splitter (`splitter`) put
+    /// together from a cut sentence ("open chrome, oh and also ...") must be
+    /// one Atlas knows. Always true for a command that takes no name, and
+    /// until names are known.
+    pub fn names_something_known(&self, intent: &Intent) -> bool {
+        let (name, arg) = match intent {
+            Intent::OpenApp(a) => ("open_app", a),
+            Intent::CloseApp(a) => ("close_app", a),
+            Intent::FocusApp(a) => ("focus_app", a),
+            Intent::SetMode(a) => ("set_mode", a),
+            _ => return true,
+        };
+        self.is_a_known_name(name, &without_fillers(&normalize(arg)))
+    }
+
     /// Is `arg` a name this command may take? Always, until names are known.
     fn is_a_known_name(&self, intent: &str, arg: &str) -> bool {
         let Some(n) = &self.names else { return true };

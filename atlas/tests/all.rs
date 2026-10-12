@@ -252,6 +252,8 @@ mod flight_recorder;
 mod flow_refs;
 #[path = "frames.rs"]
 mod frames;
+#[path = "free_form_corpus.rs"]
+mod free_form_corpus;
 #[path = "freshness.rs"]
 mod freshness;
 #[path = "fxday.rs"]

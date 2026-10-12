@@ -202,4 +202,5 @@ fn asks_about_what_happened(said: &str) -> bool {
 // The rest of this module, by what it does (audit Q6, 6 Oct 2026).
 mod around_the_turn;
 mod run_command;
+mod spoken_steps;
 mod unwatched;

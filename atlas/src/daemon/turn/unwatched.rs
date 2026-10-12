@@ -1506,6 +1506,17 @@ impl<'a> Daemon<'a> {
             self.permissions.grant(&app, None, span, t);
         }
 
+        // Said the way people talk (CONV1 phase 1): fillers, a correction
+        // ("open notepad, no wait, chrome") or several instructions in one
+        // breath ("open chrome and then put it on the left monitor and remind
+        // me at 5"). Read without a model, and only when every part reads as
+        // something Atlas does; each part then goes through `run_command` on
+        // its own, gates and all (`spoken_steps`). Anything else carries on
+        // below exactly as before.
+        if let Some(steps) = crate::splitter::spoken_steps(said, &self.parser) {
+            return self.run_spoken_steps(said, steps, t);
+        }
+
         // The Talk page and the voice loop let this turn's model call run on
         // a worker (`pending_turn`); nothing else does.
         self.may_defer = self.defer_turns;

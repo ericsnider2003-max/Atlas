@@ -684,33 +684,12 @@ impl<'a> Daemon<'a> {
         // "set a reminder for tomorrow at 9 to call mom" is the same request
         // as "remind me tomorrow at 9 to call mom". (It used to be a calendar
         // phrase, which booked an event called "a reminder" and lost the rest.)
-        let low0 = said.to_lowercase();
-        let restated;
         // "give me a nudge at 4 to call the dentist" (1 Oct 2026 model
-        // ranking: the model reached for signing in somewhere).
-        let said = match [
-            "set a reminder for ",
-            "set a reminder ",
-            "set reminder for ",
-            "set reminder ",
-            "add a reminder for ",
-            "add a reminder ",
-            "give me a nudge ",
-            "nudge me ",
-            "ping me ",
-            "give me a shout ",
-            "give me a reminder ",
-            "send me a reminder ",
-        ]
-        .iter()
-        .find(|p| low0.starts_with(**p))
-        {
-            Some(p) => {
-                restated = format!("remind me {}", said.get(p.len()..).unwrap_or(""));
-                restated.as_str()
-            }
-            None => said,
-        };
+        // ranking: the model reached for signing in somewhere). The other
+        // wordings are one list, shared with the free-form splitter
+        // (`splitter::reminder_restated`), so the two never disagree.
+        let restated = crate::splitter::reminder_restated(said);
+        let said = restated.as_deref().unwrap_or(said);
         let low = said.to_lowercase();
         if !low.starts_with("remind me") && !low.starts_with("remind ") {
             return None;
