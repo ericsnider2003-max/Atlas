@@ -303,6 +303,23 @@ fn the_taint_survives_a_harmless_turn_in_between() {
     assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "{:?}", d.session.pending);
 }
 
+/// Q2: answering (or ignoring) an approval does not lift the taint: a later
+/// model-chosen action is still asked about.
+#[test]
+fn answering_an_approval_does_not_lift_the_taint() {
+    let (c, p) = (cfg(), plat());
+    for (tag, answer) in [("no", "no"), ("unrelated", "hello there, how are you"), ("yes", "yes")] {
+        let mut d = Daemon::new(&c, &p, Some(Arc::new(Picks) as Arc<dyn Llm>), Store::new(tmp(&format!("taint-{tag}"))), Proactive::new(ProactiveConfig::default()));
+        d.session.tainted_by_outside = true;
+        d.session.await_approval(Intent::WorkspaceOff, "Shutting your workspace down. Go ahead?");
+        let _ = d.turn(answer, 1_790_740_000);
+        assert!(d.session.tainted_by_outside, "{tag}: the answer lifted the taint");
+        let reply = d.turn("deal with notepad", 1_790_740_010);
+        assert!(reply.ends_with("Go ahead?"), "{tag}: {reply}");
+        assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "{tag}: {:?}", d.session.pending);
+    }
+}
+
 /// Q2: a loop started after a mail-reading turn begins tainted.
 #[test]
 fn a_loop_started_after_reading_mail_inherits_the_taint() {

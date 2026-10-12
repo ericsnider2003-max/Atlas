@@ -1497,6 +1497,11 @@ impl<'a> Daemon<'a> {
         for line in &news {
             self.thread.append("", line, None, t);
         }
+        // An errand's result may be what a mail or a page said, now in what
+        // the model reads: tainted until your own words say otherwise (Q2).
+        if !news.is_empty() {
+            self.session.tainted_by_outside = true;
+        }
         if !news.is_empty() && self.quiet_for(t) > self.away_after {
             for line in news {
                 let note = crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);

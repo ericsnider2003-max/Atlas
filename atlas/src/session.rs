@@ -47,8 +47,8 @@ pub struct Session {
     /// Q2: something someone else wrote (a mail, a page) has been read and
     /// not since answered for by you. Sticky across turns, unlike
     /// `last_intent`; a tool the model chooses while it is set is asked about
-    /// unless it only reads or answers. Cleared by your own words routed
-    /// without the model, and by answering an approval.
+    /// unless it only reads or answers. Cleared only by your own words routed
+    /// without the model (`run_command`); answering an approval does not.
     pub tainted_by_outside: bool,
 }
 
