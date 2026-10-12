@@ -272,7 +272,7 @@ impl<'a> Daemon<'a> {
                 return Err(format!("I couldn't write the vault: {e}"));
             }
             self.log.info("vault started on your Windows sign-in");
-            return Ok(());
+            Ok(())
         }
     }
 

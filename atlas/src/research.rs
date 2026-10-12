@@ -394,7 +394,7 @@ impl Research {
         if should_stop() {
             return Err(AtlasError::Platform("stopped before finishing".into()));
         }
-        let request = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(SYSTEM), crate::brain::Msg::user(&format!("Topic: {topic}\n{corpus}"))], max_tokens: 1600, ..Default::default() };
+        let request = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(SYSTEM), crate::brain::Msg::user(format!("Topic: {topic}\n{corpus}"))], max_tokens: 1600, ..Default::default() };
         let mut bytes = 0usize;
         let body = llm.chat_until(&request, &mut |text| { bytes += text.len(); bytes <= 32_000 && !should_stop() }, &|| !should_stop())?.text;
         if should_stop() || bytes > 32_000 || body.len() > 32_000 || body.trim().is_empty() { return Err(AtlasError::Platform("research write-up stopped, exceeded its limit, or returned no usable answer".into())); }

@@ -1135,7 +1135,7 @@ impl<'a> Daemon<'a> {
         }
         let calendar = match self.store.load_checked_bounded::<crate::calendar::Calendar>("calendar", 2 * 1024 * 1024) {
             Err(error) => return format!("Your saved calendar is unavailable ({error}); I can't confirm what's scheduled."),
-            Ok(None) if self.calendar.len() != 0 => return "The saved calendar is missing. Its last known view was retained; I can't confirm what's scheduled.".into(),
+            Ok(None) if !self.calendar.is_empty() => return "The saved calendar is missing. Its last known view was retained; I can't confirm what's scheduled.".into(),
             Ok(saved) => {
                 let calendar = saved.unwrap_or_default();
                 if match (brief_snapshot_value(&calendar), brief_snapshot_value(&self.calendar)) { (Ok(saved), Ok(cached)) => saved != cached, _ => true } { self.calendar.request_refresh(); }

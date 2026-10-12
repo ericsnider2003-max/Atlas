@@ -663,9 +663,8 @@ impl Daemon<'_> {
                 Err(e) => self.log.warn(&e),
             }
         }
-        if effects.asked.as_ref().is_some_and(|line| contains(line)) {
-            if crate::hunting::acknowledge_brief_question(self) { effects.asked = None; }
-        }
+        if effects.asked.as_ref().is_some_and(|line| contains(line))
+            && crate::hunting::acknowledge_brief_question(self) { effects.asked = None; }
         if effects.noticed.as_ref().is_some_and(|(line, _)| contains(line)) {
             let day = effects.noticed.as_ref().map(|(_, day)| *day).unwrap_or_default();
             match self.store.save("noticed_on", &day) { Ok(()) => effects.noticed = None, Err(e) => self.log.warn(&format!("The delivered observation could not be saved: {e}")) }

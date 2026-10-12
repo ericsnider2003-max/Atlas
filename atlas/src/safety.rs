@@ -327,7 +327,7 @@ fn copy_file_once(source: &Path, destination: &Path) -> std::io::Result<u64> {
 /// `count_real_files` knows to ignore for the case where nothing gets to run
 /// any cleanup — a power cut, a kill.
 pub fn back_up(state: &Path, cfg: &BackupConfig, t: u64) -> Result<Backup> {
-    let store = crate::store::Store::new(state.to_path_buf());
+    let store = crate::store::Store::new(state);
     back_up_with_inputs(state, cfg, t, &store.notes_dir(), &store.trash_dir())
 }
 
@@ -382,7 +382,7 @@ pub fn back_up_with_inputs(state: &Path, cfg: &BackupConfig, t: u64, notes: &Pat
         recover_restore(state)?;
         // Recordings retain this lease until their header and bytes are closed.
         // Refuse promptly rather than copy a half-written WAV or stall a call.
-        let store = crate::store::Store::new(state.to_path_buf());
+        let store = crate::store::Store::new(state);
         check_configured_scope(&store, notes, trash)?;
         let data = store.data_dir();
         let mut roots: Vec<(String, PathBuf)> = OWNED_FOLDERS.into_iter().map(|folder| (folder.to_owned(), data.join(folder))).collect();
@@ -398,8 +398,8 @@ pub fn back_up_with_inputs(state: &Path, cfg: &BackupConfig, t: u64, notes: &Pat
         let mut output_leases = Vec::new();
         for (_, source) in &roots {
             if source.is_dir() {
-                output_leases.push(crate::store::owned_output_lease(&source, true)?);
-                hold_output_children(&source, &mut output_leases)?;
+                output_leases.push(crate::store::owned_output_lease(source, true)?);
+                hold_output_children(source, &mut output_leases)?;
             }
         }
         let mut trash_leases = Vec::new();

@@ -190,7 +190,7 @@ pub(super) fn read_project_context(folder: &str, request: &str, context_tokens: 
 pub(super) fn check_in_project_controlled(root: &std::path::Path, rel: &str, test_cmd: &str, code: &str, base: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> Option<crate::build_it::Check> {
     if let Some(b) = budget { if let Err(why) = b.check() { return Some(crate::build_it::Check::Failed(why)); } }
     let edits = vec![crate::selfwork::Edit { path: rel.to_string(), content: code.to_string(), reason: String::new() }];
-    let proof = crate::selfwork::prove_in_project_controlled(root, test_cmd, &edits, base, budget).map_err(|why| why).ok()?;
+    let proof = crate::selfwork::prove_in_project_controlled(root, test_cmd, &edits, base, budget).ok()?;
     if proof.built_and_passed {
         return Some(crate::build_it::Check::Passed(Vec::new()));
     }

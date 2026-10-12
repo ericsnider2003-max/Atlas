@@ -197,8 +197,8 @@ impl Daemon<'_> {
                 }
             }
         }
-        if self.synclog_unsaved {
-            if self.store.save("synclog", &Some(self.synclog.clone())).is_ok() {
+        if self.synclog_unsaved
+            && self.store.save("synclog", &Some(self.synclog.clone())).is_ok() {
                 self.synclog_unsaved = false;
                 if let Ok(Some(mut rows)) = pending {
                     let mut changed = false;
@@ -212,7 +212,6 @@ impl Daemon<'_> {
                     if changed { let _ = self.store.save(ELSEWHERE_KEY, &rows); }
                 }
             }
-        }
     }
 
     /// An exchange from your other device, into this one's thread.

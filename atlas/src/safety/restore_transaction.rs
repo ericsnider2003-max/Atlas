@@ -43,7 +43,7 @@ fn entry_target(root: &Path, entry: &Entry, notes_root: Option<&Path>) -> Result
                 let destination = notes_root.ok_or_else(|| AtlasError::Platform("restore is missing its configured notes binding".into()))?;
                 if crate::store::state_root_for(destination)?.and_then(|path| std::fs::canonicalize(path).ok()).as_deref() != Some(root) { return Err(AtlasError::Platform("configured restore notes no longer belong to this state root; recovery was stopped".into())); }
                 destination.to_path_buf()
-            } else { crate::store::Store::new(root.to_path_buf()).data_dir().join(folder) };
+            } else { crate::store::Store::new(root).data_dir().join(folder) };
             if relative.as_os_str().is_empty() {
                 if std::fs::symlink_metadata(&destination).is_ok_and(|metadata| metadata.file_type().is_symlink()) { return Err(AtlasError::Platform("restore output root is a symbolic link".into())); }
                 Ok(destination)
@@ -208,7 +208,7 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
     let namespace = actual_state.strip_prefix(&guard.root).map_err(|_| AtlasError::Platform("the restore state root does not match its lock".into()))?.to_path_buf();
     let state = guard.root.as_path();
     recover(state)?;
-    let store = crate::store::Store::new(state.to_path_buf());
+    let store = crate::store::Store::new(state);
     check_configured_scope(&store, notes, Path::new(&trash.cfg.dir))?;
     let notes_root = Some(std::fs::canonicalize(notes)?);
     // Command lifetime leases protect normal launches. Also reject standalone
@@ -272,7 +272,7 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
                 if matches!(folder, "trash" | "recovery" | "configured-trash") {
                     // Preserve current trash IDs and the live key card. Recovery
                     // copies are retained in an operation-specific archive.
-                    journal_relative = PathBuf::from(format!(".restored-recovery-{}", &staging_name)).join(owned_relative);
+                    journal_relative = PathBuf::from(format!(".restored-recovery-{}", staging_name)).join(owned_relative);
                 } else {
                     output = Some(folder.to_owned());
                     journal_relative = relative.clone();

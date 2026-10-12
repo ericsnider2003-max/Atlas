@@ -153,7 +153,7 @@ impl Daemon<'_> {
         if self.calendar_cancel_pending || self.attention.is_paused() || self.calendar.availability_error().is_some() { return out; }
         let store=self.store.clone();
         let calendar=match store.load_checked_bounded::<crate::calendar::Calendar>("calendar",LIMIT) {
-            Ok(Some(c))=>c, Ok(None) if self.calendar.len()==0=>return out,
+            Ok(Some(c))=>c, Ok(None) if self.calendar.is_empty()=>return out,
             _=>{self.calendar.request_refresh();return out;}
         };
         // Do not hold either state lock while there is no calendar data to
@@ -210,7 +210,7 @@ impl Daemon<'_> {
         match sent {
             crate::notify::Sent::Notified => {
                 self.reminded.insert((receipts[index].event.id, receipts[index].start));
-                self.calendar_reminder_receipt(&[delivery_id.clone()],true,now)
+                self.calendar_reminder_receipt(std::slice::from_ref(&delivery_id),true,now)
             },
             crate::notify::Sent::Spoken => {
                 out.push(line.clone());
