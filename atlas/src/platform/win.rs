@@ -17,8 +17,9 @@ use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
-    SetWindowPos, ShowWindow, HWND_TOP, SWP_NOZORDER, SW_RESTORE,
+    EnumWindows, GetWindow, GetWindowLongW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GW_OWNER, HWND_TOP, SWP_NOZORDER,
+    SW_RESTORE, WS_EX_TOOLWINDOW,
 };
 
 /// Set in MONITORINFO.dwFlags for the primary display. Defined here because
@@ -144,6 +145,9 @@ struct WinAcc {
     processes: Vec<String>,
     title_hints: Vec<String>,
     found: Option<HWND>,
+    /// First matching window that is not a proper main window (untitled,
+    /// owned, or a tool window). Used only when no main window exists.
+    fallback: Option<HWND>,
 }
 
 unsafe extern "system" fn win_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
@@ -197,7 +201,19 @@ unsafe extern "system" fn win_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
         }
     }
 
-    acc.found = Some(hwnd);
+    // Chrome, Electron and Store apps keep invisible-ish helper windows
+    // (untitled, owned, tool windows) in the same process. Taking the first
+    // one found placed or waited on the wrong thing; prefer the real main
+    // window and keep a helper only as a fallback.
+    let mut tbuf = [0u16; 8];
+    let has_title = GetWindowTextW(hwnd, &mut tbuf) > 0;
+    let owned = GetWindow(hwnd, GW_OWNER).map(|o| !o.0.is_null()).unwrap_or(false);
+    let tool = (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32) & WS_EX_TOOLWINDOW.0 != 0;
+    if has_title && !owned && !tool {
+        acc.found = Some(hwnd);
+    } else if acc.fallback.is_none() {
+        acc.fallback = Some(hwnd);
+    }
     TRUE
 }
 
@@ -752,13 +768,14 @@ impl Platform for WindowsPlatform {
             processes: spec.process_names.clone(),
             title_hints: spec.title_hints.clone(),
             found: None,
+            fallback: None,
         };
         // SAFETY: `win_cb` is called synchronously during EnumWindows only, and `acc` outlives it;
         // the LPARAM round-trips the same `&mut WinAcc`.
         unsafe {
             let _ = EnumWindows(Some(win_cb), LPARAM(&mut acc as *mut WinAcc as isize));
         }
-        Ok(acc.found.map(|h| WindowId(h.0 as u64)))
+        Ok(acc.found.or(acc.fallback).map(|h| WindowId(h.0 as u64)))
     }
 
     fn place(&self, win: WindowId, r: PixelRect) -> Result<()> {

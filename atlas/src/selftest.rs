@@ -105,11 +105,19 @@ pub fn tier(kind: &str) -> Tier {
 pub struct SafePlatform<'a> {
     real: &'a dyn Platform,
     did: RefCell<Vec<String>>,
+    /// Apps this stand-in was asked to start. It never really starts them, so
+    /// without this `open_app` waited out its whole retry count for a window
+    /// that could not appear and said "I started X, but its window didn't
+    /// show up" -- 22 false alarms in the 5 Oct 2026 report.
+    started: RefCell<Vec<String>>,
 }
+
+/// The window id handed back for an app the stand-in "started".
+pub const STAND_IN_WINDOW: u64 = 0;
 
 impl<'a> SafePlatform<'a> {
     pub fn wrapping(real: &'a dyn Platform) -> SafePlatform<'a> {
-        SafePlatform { real, did: RefCell::new(Vec::new()) }
+        SafePlatform { real, did: RefCell::new(Vec::new()), started: RefCell::new(Vec::new()) }
     }
     /// What was asked of the screen since the last look, emptied.
     pub fn take(&self) -> Vec<String> {
@@ -141,10 +149,18 @@ impl Platform for SafePlatform<'_> {
         self.real.built_in_screen_on()
     }
     fn launch(&self, spec: &AppSpec) -> Result<()> {
+        self.started.borrow_mut().push(spec.launch.clone());
         self.note(format!("start {}", spec.launch))
     }
     fn find_window(&self, spec: &AppSpec) -> Result<Option<WindowId>> {
-        self.real.find_window(spec)
+        if let Some(w) = self.real.find_window(spec)? {
+            return Ok(Some(w));
+        }
+        // Started (in pretence) a moment ago: the window it would have opened.
+        if self.started.borrow().iter().any(|l| *l == spec.launch) {
+            return Ok(Some(WindowId(STAND_IN_WINDOW)));
+        }
+        Ok(None)
     }
     fn place(&self, win: WindowId, rect: PixelRect) -> Result<()> {
         self.note(format!("move window {} to {}x{} at {},{}", win.0, rect.width, rect.height, rect.x, rect.y))
@@ -755,6 +771,17 @@ pub fn reports_dir(real_root: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pretend_start_gives_a_window_instead_of_a_false_alarm() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let mock = crate::platform::mock::MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+        let safe = SafePlatform::wrapping(&mock);
+        crate::workspace::open_app(&cfg, &safe, "notepad").expect("no 'window didn't show up' for a pretend start");
+        let did = safe.take();
+        assert!(did.iter().any(|d| d.starts_with("start ")), "{did:?}");
+        assert!(did.iter().any(|d| d.starts_with("move window")), "{did:?}");
+    }
 
     #[test]
     fn verdicts_read_the_reply() {
