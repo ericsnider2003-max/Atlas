@@ -881,10 +881,12 @@ impl<'a> Daemon<'a> {
         line.push_str(&format!(" model={model_ms}ms/{} call(s) delivering={speaking_ms}ms", calls.len()));
         // When the first sentence went to be spoken, counted from when the
         // model was asked (30 Sep 2026): the target is under 3 s.
+        let first_words = self.first_words_ms.get().map(|m| m.min(u32::MAX as u64) as u32);
         if let Some(ms) = self.first_words_ms.take() {
             line.push_str(&format!(" first_words={ms}ms"));
         }
         // The silence Eric sits through (Phase 0.2, target under 3 s).
+        let silence = self.silence_ms.get().map(|m| m.min(u32::MAX as u64) as u32);
         if let Some(ms) = self.silence_ms.take() {
             line.push_str(&format!(" end_of_speech_to_first_audio={ms}ms"));
         }
@@ -894,7 +896,22 @@ impl<'a> Daemon<'a> {
         if let Some(st) = crate::models::take_last_timings() {
             line.push_str(&format!("; {}", st.line()));
         }
+        // Which ear heard this turn and why (`voicelat`).
+        let asr = crate::voicelat::take_asr();
+        if let Some(a) = &asr {
+            line.push_str(&format!("; {}", a.line()));
+        }
         self.log.info(&line);
+        crate::voicelat::record(&crate::roots::store(), crate::voicelat::TurnRecord {
+            at: crate::store::now(),
+            asr,
+            listening_ms: t.get(crate::timing::Stage::Listening),
+            hearing_ms: t.get(crate::timing::Stage::Hearing),
+            first_words_ms: first_words,
+            first_audio_ms: silence,
+            speaking_ms: t.get(crate::timing::Stage::Speaking),
+            playing_ms: t.get(crate::timing::Stage::Playing),
+        });
     }
 
     /// Whether the wake word is switched on in your settings.
