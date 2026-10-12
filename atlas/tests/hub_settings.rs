@@ -590,18 +590,34 @@ fn the_hub_listens_where_you_said_and_nowhere_public() {
     // friends reach it over the internet -- and is held to a different rule,
     // checked below: from anywhere public it reads sealed envelopes only.
     let src = crate::common::source_of("server");
-    assert!(src.contains("bind_address(&cfg.reachable_from)"));
+    assert!(crate::common::contains_code(
+        &src,
+        "bind_address(&cfg.reachable_from)"
+    ));
     let door = src
         .find("pub struct SignalListener")
         .expect("the peer door");
     let hub = &src[..door];
     assert!(
-        !hub.contains(r#"bind(("0.0.0.0"#),
+        !crate::common::contains_code(hub, r#"bind(("0.0.0.0"#),
         "every network this machine is on is never the answer"
     );
     let peer_door = &src[door..];
     assert!(
-        peer_door.contains("Some(req) if !sealed_only && crate::onion::is_local_origin(remote.ip()) => self.answer(&req, None)"),
+        {
+            // The arm may be written with or without braces around its body
+            // (rustfmt adds them when the line is long), so check the guard,
+            // then that the very next thing is the unsealed answer.
+            let flat = crate::common::norm(peer_door);
+            let arm = crate::common::norm(
+                "Some(req) if !sealed_only && crate::onion::is_local_origin(remote.ip()) =>",
+            );
+            let body = crate::common::norm("self.answer(&req, None)");
+            flat.find(&arm).is_some_and(|at| {
+                let rest = &flat[at + arm.len()..];
+                rest.starts_with(&body) || rest.starts_with(&format!("{{{body}}}"))
+            })
+        },
         "the peer door listens everywhere, so a request in the clear must be refused from anywhere public -- and on the socket Tor feeds, always"
     );
 }

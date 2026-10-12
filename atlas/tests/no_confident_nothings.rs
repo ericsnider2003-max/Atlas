@@ -89,7 +89,7 @@ fn nothing_decides_a_route_from_hardcoded_literals() {
     // nothing was transferred: `path` was computed and discarded.
     let d = code("daemon.rs");
     assert!(
-        !d.contains("mesh::choose(false, false, true, false"),
+        !crate::common::contains_code(&d, "mesh::choose(false, false, true, false"),
         "the sync route is still decided by four constants"
     );
     // 18 Sep: this used to require the answer to mention `connectivity` and
@@ -99,23 +99,37 @@ fn nothing_decides_a_route_from_hardcoded_literals() {
     // guard follows it. What it holds is unchanged: the answer must come from
     // something observed rather than from constants.
     assert!(
-        d.contains("fn carry_to_your_other_devices"),
+        crate::common::contains_code(&d, "fn carry_to_your_other_devices"),
         "the sync answer no longer has a body to observe anything with"
     );
     let at = d
         .find("fn carry_to_your_other_devices")
         .expect("sync is gone");
-    let body: String = d[at..(at + 3000).min(d.len())]
+    // To the next method of the same impl, not a fixed 3000 bytes: the
+    // function grew when it was formatted one argument per line, and a byte
+    // window measures the layout, not the function.
+    let end = [
+        "\n    fn ",
+        "\n    pub fn ",
+        "\n    pub(super) fn ",
+        "\n    pub(crate) fn ",
+    ]
+    .iter()
+    .filter_map(|m| d[at + 1..].find(m).map(|i| at + 1 + i))
+    .min()
+    .unwrap_or(d.len());
+    let body: String = d[at..end]
         .replace('\\', " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
     assert!(
-        body.contains("read_dir") && body.contains("cfg.folder"),
+        crate::common::contains_code(&body, "read_dir")
+            && crate::common::contains_code(&body, "cfg.folder"),
         "the sync answer is not read from the folder it claims to use"
     );
     assert!(
-        !body.contains("isn't built yet"),
+        !crate::common::contains_code(&body, "isn't built yet"),
         "it still reports itself as unbuilt after being built:\n{body}"
     );
 }

@@ -107,12 +107,15 @@ fn no_test_asserts_nothing() {
 /// thing it refused), so it is not prose-only here any more. The second
 /// assertion below is what would have caught that drift.
 const PROSE_ONLY_BASELINE: &[&str] = &[
+    // 11 Oct 2026: 22 entries were dropped from this list, and the notes that
+    // explained them are left where they were. The shape heuristic counts capitals
+    // per line, so rustfmt re-wrapping the tree stopped it flagging them (every
+    // one was, by the notes below, behavioural or already misread) and the
+    // "now check something real" guard at the bottom requires them gone.
     // 2 Oct 2026, merge of Chat A's learning-how-you-talk: both drive a real
     // Daemon turn and read the prompt the stand-in model was actually sent
     // (people, project, a learned wording as a hint); the shape heuristic
     // reads `ProactiveConfig::default()` as a constant.
-    "learning_how_you_talk::a_learned_wording_is_a_hint_when_it_is_only_close",
-    "learning_how_you_talk::the_people_and_project_a_sentence_names_reach_the_model",
     // 2 Oct 2026, merge of Chat A's PC organizing: drives a real Daemon
     // turn with system changes off and checks the refusal it gives back; the
     // shape heuristic reads `ProactiveConfig::default()` as a constant.
@@ -120,25 +123,16 @@ const PROSE_ONLY_BASELINE: &[&str] = &[
     // `atlas_writes_real_code` names as prose-only, but on the merged tree they
     // drive a real Daemon turn and check something real, so they are NOT
     // baselined here -- the guard below would (correctly) reject them.
-    "sorting_a_folder::with_system_changes_off_it_says_so_and_moves_nothing",
     // 28 Sep 2026, round 3 merge: both drive a real Daemon through
     // hublive::reply (a failed save; Pause) and check what comes back; the
     // shape heuristic reads the constants they also check as the whole test.
-    "hublive::a_file_from_the_phone_that_could_not_be_kept_says_so",
-    "the_microphone_has_its_own_thread::the_icon_and_the_hub_say_pause_turns_the_microphone_off",
     // 28 Sep 2026, merge: a source guard (what starts Atlas on Windows never
     // goes through a console) and a rendered page checked for command text;
     // the shape heuristic reads the enum paths as constants.
-    "atlas_runs_with_nothing_open::every_way_atlas_starts_goes_to_atlas_exe_and_never_a_console",
-    "the_hub_holds_the_way_back::nothing_the_hub_says_about_these_names_a_command",
     // 28 Sep 2026: three flagged by the shape heuristic but behavioural --
     // each drives the daemon (`execute`) or the hub and checks what came
     // back and what the stand-in program was asked; the capital-letter
     // `::` lines are enum variants, not constants.
-    "mail_through_himalaya::a_mail_check_goes_through_himalaya_with_nothing_from_the_vault",
-    "other_programs_tools::a_tool_whose_program_has_gone_is_said_plainly_through_the_daemon",
-    "reading_without_the_picture_reader::a_handed_photo_is_read_by_the_recognizer_when_atlas_has_no_reading_models",
-    "a_brief_without_an_inbox::most_blocking_finally_has_something_to_work_on",
     // 29 Sep 2026, round 6 merge: behavioural, misread by the shape
     // heuristic. The five social ones build a record book from made-up posts
     // and account snapshots and check the numbers the analysis worked out of
@@ -150,20 +144,12 @@ const PROSE_ONLY_BASELINE: &[&str] = &[
     // constants. (`photo_editing::real_photos_are_measured_for_tilt_and_say_how_sure`
     // was flagged too, and really did only print what it said: it now checks
     // the sentence against what was measured, so it is not listed.)
-    "social::under_the_pattern_floor_it_gives_numbers_and_calls_patterns_noise",
-    "social::over_the_floor_it_names_the_opening_length_and_retention_that_did_best",
-    "social::posting_times_need_enough_posts_in_each_slot",
-    "social::followers_over_time_per_platform_and_together_naming_the_gaps",
-    "social::the_social_page_escapes_what_it_shows_and_says_when_the_vault_is_locked",
-    "wit_setting::the_model_is_told_no_jokes_when_it_matters_and_never_asked_for_one_in_a_draft",
     // 22 Sep 2026: afterme_companion::an_arrangement_someone_has_not_been_told_about_is_not_one now asserts telling the person empties the gap list.
     // 22 Sep 2026: afterme_companion::an_envelope_nobody_can_find_is_the_same_as_no_envelope now asserts the gap is ranked top-tier (urgency >= 0.9).
     // 22 Sep 2026: afterme_companion::no_envelope_at_all_is_the_top_of_the_list now asserts the gap's urgency is the maximum 1.0.
     // 22 Sep 2026: audio_enumeration::a_headerless_line_is_not_mistaken_for_a_device now asserts exactly three real devices parse.
     // 22 Sep 2026: away_voiceover::accounts_that_would_all_survive_get_nothing now asserts would_lock_you_out is empty.
     "confirmed::generating_new_codes_says_the_old_ones_stop_working",
-    "confirmed::how_to_undo_it_is_answered_because_you_will_ask_and_will_not_remember",
-    "confirmed::the_read_back_carries_the_consequence_you_might_not_have_in_mind",
     // 22 Sep 2026: daily_booking::what_you_hear_when_the_day_turns_is_short now asserts the live task is carried, not finished.
     // 22 Sep 2026: editcraft::perpetual_rights_are_countered_with_a_term_rather_than_refused now asserts the ask returns a counter (Some) while a no-counter case is None.
     // 22 Sep 2026: enrol::a_refusal_says_which_button_it_refused now also asserts the named button is actually blocked.
@@ -176,13 +162,10 @@ const PROSE_ONLY_BASELINE: &[&str] = &[
     "install::nothing_needs_a_key_an_account_or_a_card",
     // 22 Sep 2026: interrupt_mail::each_provider_says_what_you_actually_have_to_do now asserts two providers give different instructions.
     // 22 Sep 2026: money_grading::things_it_could_not_place_are_admitted_rather_than_guessed_into_a_bucket now asserts sort_one leaves an opaque line as Bucket::Unknown.
-    "no_quiet_nothings::the_audit_asks_only_questions_that_change_nothing",
-    "one_install_root::what_atlas_promises_to_keep_includes_the_trash",
     // 22 Sep 2026: opsec_recovery_undo::everything_in_order_says_so_briefly now asserts the gap list is empty when it says "all checked".
     // 22 Sep 2026: opsec_recovery_undo::naming_an_area_undoes_the_right_thing_rather_than_the_last_thing now asserts the files entry differs from the last entry.
     // 22 Sep 2026: opsec_recovery_undo::something_only_you_can_undo_says_where now asserts the reversal is Reversal::OverToYou, not CanDo.
     // 22 Sep 2026: opsec_recovery_undo::two_routes_that_are_both_one_person_is_worth_mentioning now asserts a split route present removes the gap.
-    "panels::the_palette_avoids_both_obvious_routes",
     // 22 Sep 2026: person::everything_it_thinks_it_knows_can_be_read now asserts show() reflects the real stored trait count.
     "phase2::with_no_microphone_it_says_we_will_type_rather_than_failing",
     // 22 Sep 2026: phase3::an_approach_that_was_never_going_to_work_is_refused_the_first_time now asserts a one-off world failure gets TryAgain instead.
@@ -193,6 +176,13 @@ const PROSE_ONLY_BASELINE: &[&str] = &[
     // 22 Sep 2026: strategy::the_same_error_three_times_running_stops_it_early now asserts next() returns Next::Exhausted.
     // 22 Sep 2026: subsystems::an_unknown_variable_is_left_visible_rather_than_blanked now asserts the string is passed through unchanged.
     "sync::a_bundle_is_not_a_file_you_have_to_manage",
+    // 11 Oct 2026, after the tree was formatted with rustfmt: the shape
+    // heuristic counts capitals per LINE, and rustfmt joined these two
+    // tests' `Tongue::Python` and `Shape::NeverRuns` onto one line. They
+    // check what the scanner found in a snippet of code (`Shape` variants),
+    // which is behaviour; the same misreading as the enum-path entries above.
+    "hollowcode::code_that_can_never_run_is_found",
+    "hollowcode::comment_markers_differ_by_language",
 ];
 
 #[test]

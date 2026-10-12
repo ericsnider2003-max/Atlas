@@ -157,23 +157,23 @@ fn the_hub_region_is_not_another_program_and_is_not_on_linux_builds() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        !code.contains("Command::new"),
+        !crate::common::contains_code(&code, "Command::new"),
         "the hub region launches a program — that's a browser by another name"
     );
     // 27 Sep 2026: turned away from the region, a web address now opens in
     // your own browser rather than doing nothing; the region itself still
     // never leaves the hub.
-    assert!(code.contains("with_navigation_handler(move |u| stays_on_the_hub(&u, port) || turn_away(&log_dir, &u, port))"), "navigation isn't held to `stays_on_the_hub`");
+    assert!(crate::common::contains_code(&code, "with_navigation_handler(move |u| { stays_on_the_hub(&u, port) || turn_away(&log_dir, &u, port) })"), "navigation isn't held to `stays_on_the_hub`");
     assert!(
-        code.contains("ShellExecuteW("),
+        crate::common::contains_code(&code, "ShellExecuteW("),
         "links out of the hub don't reach the browser"
     );
     assert!(
-        code.contains(".with_focused(false)"),
+        crate::common::contains_code(&code, ".with_focused(false)"),
         "taking focus at creation throws the hub away when the window is behind another"
     );
     assert!(
-        code.contains("NewWindowResponse::Deny"),
+        crate::common::contains_code(&code, "NewWindowResponse::Deny"),
         "a page could open a window of its own"
     );
     // The web view is Windows' own, and only Windows builds carry it.

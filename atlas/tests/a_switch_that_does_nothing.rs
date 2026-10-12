@@ -67,7 +67,10 @@ fn asking_for_the_settings_page_by_name_still_opens_it() {
     // the dashboard a daemon leaves listening.
     let main = crate::common::source_of("main");
     assert!(
-        main.contains("ServerConfig { enabled: true, ..ServerConfig::default() }"),
+        crate::common::contains_code(
+            &main,
+            "ServerConfig { enabled: true, ..ServerConfig::default() }"
+        ),
         "the settings page no longer enables itself explicitly, so `atlas \
          settings` breaks for anyone who turned the API off"
     );

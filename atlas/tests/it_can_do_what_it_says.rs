@@ -66,12 +66,21 @@ fn files_that_talk() -> Vec<(String, String)> {
 fn commands_that_exist() -> BTreeSet<String> {
     let main = crate::common::source_of("main");
     let mut out = BTreeSet::new();
-    for line in main.lines() {
-        let code = line.split("//").next().unwrap_or("");
-        if !code.contains("words.first()") {
-            continue;
-        }
-        let mut rest = code;
+    // Comments out first, then the text is read by CONDITION, not by line: a
+    // formatter may wrap `words.first()...` and its `Some("x")` onto separate
+    // lines, so each dispatch is the span from `words.first()` to the `{`
+    // that opens its body.
+    let code: String = main
+        .lines()
+        .map(|l| l.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut from = 0;
+    while let Some(at) = code[from..].find("words.first()") {
+        let start = from + at;
+        let end = code[start..].find('{').map_or(code.len(), |e| start + e);
+        from = start + "words.first()".len();
+        let mut rest = &code[start..end];
         while let Some(i) = rest.find("Some(\"") {
             rest = &rest[i + 6..];
             if let Some(end) = rest.find('"') {

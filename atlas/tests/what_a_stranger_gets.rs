@@ -256,7 +256,8 @@ fn an_unrecognised_sentence_is_not_answered_out_of_your_notes() {
         !function_body(&src, "fn answer_before_the_model(").contains("from_notes"),
         "the notes answer on their own before the model again, instead of being a hint to it"
     );
-    let hints = code_only(function_body(&src, "fn notes_as_hints("));
+    // Layout-blind: rustfmt may wrap `self.facts` onto two lines.
+    let hints = crate::common::norm(&code_only(function_body(&src, "fn notes_as_hints(")));
     let guard = hints
         .find("handed_over()")
         .expect("the notes go to the model while somebody else has the machine");

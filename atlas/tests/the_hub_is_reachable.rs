@@ -99,12 +99,12 @@ fn the_token_is_stored_rather_than_minted_every_start() {
     // point is that nothing reaches for it when a token already exists.
     let src = server_rs();
     assert!(
-        src.contains("pub fn token_for("),
+        crate::common::contains_code(&src, "pub fn token_for("),
         "server::token_for is gone -- the hub token is back to being ephemeral \
          and the dashboard URL changes on every restart"
     );
     assert!(
-        src.contains("store.save(FILE, &HeldToken"),
+        crate::common::contains_code(&src, "store.save(FILE, &HeldToken"),
         "token_for no longer writes the token down, so it is regenerated every \
          start and no bookmark survives a reboot"
     );

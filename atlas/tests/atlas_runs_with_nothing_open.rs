@@ -490,11 +490,14 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
         .next()
         .unwrap()
         .to_string();
-    assert!(body.contains("what_opening_does("));
+    assert!(crate::common::contains_code(&body, "what_opening_does("));
     // 29 Sep 2026: both starts go through `start_background_watched`, which
     // is the same no-window `spawn_quietly(.., ["--daemon"])` watched for a
     // few seconds, so a start that fails at once says why.
-    assert!(body.contains("start_background_watched("), "{body}");
+    assert!(
+        crate::common::contains_code(&body, "start_background_watched("),
+        "{body}"
+    );
     let fl = std::fs::read_to_string("src/firstlaunch.rs").unwrap();
     let watched = fl
         .split_once("fn start_background_watched(")
@@ -505,7 +508,7 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
         .unwrap()
         .to_string();
     assert!(
-        watched.contains(r#"spawn_quietly(exe, &["--daemon"])"#),
+        crate::common::contains_code(&watched, r#"spawn_quietly(exe, &["--daemon"])"#),
         "{watched}"
     );
     let setup = std::fs::read_to_string("src/setupwin.rs").unwrap();
@@ -517,9 +520,15 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
         .next()
         .unwrap()
         .to_string();
-    assert!(after.contains("startup::turn_on("));
-    assert!(after.contains("start_background_watched(&place.exe"));
-    assert!(after.contains("startup::remember(&state, true)"));
+    assert!(crate::common::contains_code(&after, "startup::turn_on("));
+    assert!(crate::common::contains_code(
+        &after,
+        "start_background_watched(&place.exe"
+    ));
+    assert!(crate::common::contains_code(
+        &after,
+        "startup::remember(&state, true)"
+    ));
 }
 
 #[test]

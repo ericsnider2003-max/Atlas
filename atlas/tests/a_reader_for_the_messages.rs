@@ -242,11 +242,11 @@ fn the_token_never_goes_in_a_settings_file() {
         .and_then(|r| r.split("\n}\n").next())
         .expect("run_telegram");
     assert!(
-        body.contains("vault.put(atlas::telegram::TOKEN"),
+        crate::common::contains_code(&body, "vault.put(atlas::telegram::TOKEN"),
         "the token isn't kept in the vault"
     );
     assert!(
-        body.contains("vault.get(atlas::telegram::TOKEN"),
+        crate::common::contains_code(&body, "vault.get(atlas::telegram::TOKEN"),
         "it isn't read from the vault"
     );
 

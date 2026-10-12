@@ -113,9 +113,18 @@ fn on_purpose(expr: &str) -> bool {
     if e.ends_with(".lock()") || e.ends_with(".read()") || e.ends_with(".write()") {
         return true;
     }
-    ON_PURPOSE
-        .iter()
-        .any(|(_, pats)| pats.iter().any(|p| e.contains(p)))
+    // Layout-blind: a formatter may break `self.store.save(..)` across lines
+    // (`self\n.store\n.save(..)`), so the patterns are also tried against the
+    // expression with all whitespace removed.
+    let compact: String = e.chars().filter(|c| !c.is_whitespace()).collect();
+    ON_PURPOSE.iter().any(|(_, pats)| {
+        pats.iter().any(|p| {
+            e.contains(p) || {
+                let p: String = p.chars().filter(|c| !c.is_whitespace()).collect();
+                compact.contains(&p)
+            }
+        })
+    })
 }
 
 fn test_module_spans(src: &str) -> Vec<(usize, usize)> {
@@ -237,6 +246,15 @@ fn scan(dir: &Path, found: &mut Vec<String>) {
                 continue;
             }
             let expr = expression(&src, at + "let _ = ".len());
+            // A statement a formatter has wrapped over several lines carries
+            // its note after the closing `;`: `); // unheard-ok: why`.
+            let stmt_end = expr.as_ptr() as usize - src.as_ptr() as usize + expr.len();
+            let end_of_line = src[stmt_end..]
+                .find('\n')
+                .map_or(src.len(), |n| stmt_end + n);
+            if src[stmt_end..end_of_line].contains("unheard-ok") {
+                continue;
+            }
             if !on_purpose(expr) {
                 let n = src[..at].matches('\n').count() + 1;
                 found.push(format!(

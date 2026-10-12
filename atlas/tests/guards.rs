@@ -1743,7 +1743,7 @@ fn every_guard_is_still_present() {
         match shared_rule::read_source_path(path) {
             None => missing.push(format!("{path} is gone entirely — {consequence}")),
             Some(text) => {
-                if !text.contains(needle) {
+                if !shared_rule::contains_code(&text, needle) {
                     missing.push(format!(
                         "{path} no longer contains `{needle}` — {consequence}"
                     ));

@@ -118,7 +118,7 @@ fn the_budget_read_is_yours_rather_than_the_shipped_one() {
     // second reader of these numbers does not repeat it.
     let raw = crate::common::source_of("main");
     assert!(
-        raw.contains("cfg.tools.as_ref().map(|t| t.retention.clone())"),
+        crate::common::contains_code(&raw, "cfg.tools.as_ref().map(|t| t.retention.clone())"),
         "the footprint report builds its own budget instead of reading yours"
     );
     assert_eq!(RetentionConfig::default().total_budget_mb, 500);

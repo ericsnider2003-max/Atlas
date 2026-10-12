@@ -138,15 +138,21 @@ fn setup_with_a_problem_is_tried_again_next_time() {
 
 #[test]
 fn the_overlay_and_typing_box_never_swap_in_an_update() {
-    let main = source("src/main.rs");
+    let main = crate::common::norm(&source("src/main.rs"));
     let helper = main
-        .find("let helper = matches!(")
+        .find(&crate::common::norm("let helper = matches!("))
         .expect("helpers aren't told apart");
     let gate = main
-        .find("if !helper && std::env::var_os(\"ATLAS_UPDATE_PROBE\")")
+        .find(&crate::common::norm(
+            "if !helper && std::env::var_os(\"ATLAS_UPDATE_PROBE\")",
+        ))
         .expect("helpers still swap and count trial starts");
-    let swap = main.find("upgrade::swap_checked(").unwrap();
-    let trial = main.find("upgrade::trial_on_start(").unwrap();
+    let swap = main
+        .find(&crate::common::norm("upgrade::swap_checked("))
+        .unwrap();
+    let trial = main
+        .find(&crate::common::norm("upgrade::trial_on_start("))
+        .unwrap();
     assert!(helper < gate && gate < swap && swap < trial);
 }
 
@@ -229,12 +235,14 @@ fn a_second_question_while_one_is_thinking_takes_the_other_slot() {
     // Both turns named the model's conversation slot, so the second waited
     // on the loop for the first to finish. It now takes the other slot, and
     // is still answered at once (`the_second_scan_holds` measures that).
-    let daemon = source("src/daemon.rs");
+    let daemon = crate::common::norm(&source("src/daemon.rs"));
     let aside = daemon
-        .find("if self.pending_turn.is_some() {\n                        turn.aside = true;")
+        .find(&crate::common::norm(
+            "if self.pending_turn.is_some() {\n                        turn.aside = true;",
+        ))
         .expect("a second turn waits behind the first again");
     let asked = daemon[aside..]
-        .find(".converse_noting(")
+        .find(&crate::common::norm(".converse_noting("))
         .map(|i| i + aside)
         .expect("converse_noting");
     assert!(aside < asked);

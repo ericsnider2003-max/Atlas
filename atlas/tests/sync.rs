@@ -294,17 +294,23 @@ fn no_bundle_ever_carries_anything_that_opens_something_else() {
     let src = std::fs::read_to_string("src/sync.rs").expect("src/sync.rs");
     let body = src.split("pub enum What").nth(1).expect("What is gone");
     let body = &body[..body.find("\n}").expect("unterminated What")];
-    let carries: Vec<String> = body
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.starts_with("//") && !l.is_empty() && *l != "{")
-        .map(|l| {
-            l.chars()
+    // Variants are the lines at the enum's own depth: a struct variant a
+    // formatter has spread over several lines puts its FIELD names on lines of
+    // their own, and those are not variants.
+    let mut depth = 0i32;
+    let mut carries: Vec<String> = Vec::new();
+    for l in body.lines().map(str::trim) {
+        if depth == 1 && !l.starts_with("//") && !l.is_empty() {
+            let name: String = l
+                .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect()
-        })
-        .filter(|v: &String| !v.is_empty())
-        .collect();
+                .collect();
+            if !name.is_empty() {
+                carries.push(name);
+            }
+        }
+        depth += l.matches('{').count() as i32 - l.matches('}').count() as i32;
+    }
     assert_eq!(
         carries,
         vec!["Captured", "Said", "Finished", "Changed", "Removed"]

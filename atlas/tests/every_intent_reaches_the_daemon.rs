@@ -130,8 +130,17 @@ fn reached_by_a_test(parser: &Parser) -> BTreeSet<String> {
             }
         }
 
+        let mut previous_code = "";
         for line in text.lines() {
             let code = line.split("//").next().unwrap_or("");
+            // A formatter may leave `execute_timed(` at the end of one line and
+            // the `&Intent::Foo` argument alone on the next; that is still
+            // this line executing it.
+            let wrapped_call = {
+                let p = previous_code.trim_end();
+                p.ends_with("execute(") || p.ends_with("execute_timed(")
+            };
+            previous_code = code;
 
             // Direct: `execute(&Intent::Foo` / `execute_timed(&Intent::Foo`.
             let mut rest = code;
@@ -141,7 +150,7 @@ fn reached_by_a_test(parser: &Parser) -> BTreeSet<String> {
                 // Only when this line is actually executing it. Matching every
                 // `Intent::` would count the parser tests, which is precisely
                 // the coverage this guard exists to distinguish from.
-                if code.contains("execute(") || code.contains("execute_timed(") {
+                if wrapped_call || code.contains("execute(") || code.contains("execute_timed(") {
                     if let Some(name) = names.get(&variant) {
                         out.insert(name.clone());
                     }

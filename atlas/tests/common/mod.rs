@@ -56,6 +56,45 @@ pub fn calls(text: &str, name: &str) -> bool {
     false
 }
 
+/// Source text with its formatting taken out: every whitespace character is
+/// dropped, and so is a trailing comma before `)`, `]` or `}`.
+///
+/// Tests that look for a piece of code in the source (`.contains("self.x(a, b)")`)
+/// must not depend on where rustfmt decides to wrap a line or whether it adds
+/// a trailing comma. Normalising BOTH the text and the needle this way keeps
+/// the check exactly as strict about tokens (a renamed function, a removed
+/// argument, a dropped condition all still miss) and blind only to layout.
+pub fn norm(text: &str) -> String {
+    let squeezed: Vec<char> = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut out = String::with_capacity(squeezed.len());
+    for (i, &c) in squeezed.iter().enumerate() {
+        if c == ',' && matches!(squeezed.get(i + 1), Some(')') | Some(']') | Some('}')) {
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// `needle` appears in `haystack`, ignoring layout (see [`norm`]).
+pub fn contains_code(haystack: &str, needle: &str) -> bool {
+    norm(haystack).contains(&norm(needle))
+}
+
+/// How many times `needle` appears in `haystack`, ignoring layout.
+pub fn count_code(haystack: &str, needle: &str) -> usize {
+    let n = norm(needle);
+    if n.is_empty() {
+        return 0;
+    }
+    norm(haystack).matches(&n).count()
+}
+
+/// Byte offset of `needle` within `norm(haystack)`, ignoring layout.
+pub fn find_code(haystack: &str, needle: &str) -> Option<usize> {
+    norm(haystack).find(&norm(needle))
+}
+
 /// `needle` present, and not as the tail of a longer identifier.
 pub fn whole_word(line: &str, needle: &str) -> bool {
     let bytes = line.as_bytes();

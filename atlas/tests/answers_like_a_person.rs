@@ -339,21 +339,27 @@ fn typing_at_atlas_reaches_the_model_and_is_never_blocked_for_not_being_a_comman
     let pl = &main[main.find("fn prompt_line(").unwrap()..];
     let pl = &pl[..pl.find("\n}\n").unwrap()];
     assert!(
-        pl.contains("if !matches!(intent, Intent::Unknown(_))"),
+        crate::common::contains_code(&pl, "if !matches!(intent, Intent::Unknown(_))"),
         "an unknown line is gated before turn: it prints 'blocked'"
     );
     let h = &main[main.find("fn handle(").unwrap()..];
     let h = &h[..h.find("\n}\n").unwrap()];
     assert!(
-        h.contains("model_connection"),
+        crate::common::contains_code(&h, "model_connection"),
         "the one-shot path uses the same model connection"
     );
     assert!(
-        main.contains("Daemon::try_new(&cfg, plat.as_ref(), model_connection(tc), store"),
+        crate::common::contains_code(
+            &main,
+            "Daemon::try_new(&cfg, plat.as_ref(), model_connection(tc), store"
+        ),
         "the typing prompt's Atlas is built with the model"
     );
     assert!(
-        main.contains("Atlas could not safely open its configured output folders"),
+        crate::common::contains_code(
+            &main,
+            "Atlas could not safely open its configured output folders"
+        ),
         "failed configured-output initialization must remain visible"
     );
 }

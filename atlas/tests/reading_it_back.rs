@@ -167,25 +167,28 @@ fn the_walkthrough_is_what_asks_rather_than_these_tests() {
     // nothing in the running program ever built an `Asked`.
     let main = crate::common::source_of("main");
     assert!(
-        main.contains("confirmed::needs_reading_back(a, &ccfg)"),
+        crate::common::contains_code(&main, "confirmed::needs_reading_back(a, &ccfg)"),
         "the walkthrough still starts a security change with no read-back"
     );
     assert!(
-        main.contains("confirmed::saying_it_back("),
+        crate::common::contains_code(&main, "confirmed::saying_it_back("),
         "nothing says the change back to you"
     );
     assert!(
-        main.contains("Some(said @ (\"yes\" | \"no\"))"),
+        crate::common::contains_code(&main, "Some(said @ (\"yes\" | \"no\"))"),
         "there is no way to answer"
     );
     assert!(
-        main.contains("confirmed::record(&asked, worked, said,"),
+        crate::common::contains_code(&main, "confirmed::record(&asked, worked, said,"),
         "nothing keeps a trail of what was changed and when"
     );
     // Only the ones you agreed to are walked. A walk that still visited the
     // pages you declined would make the question decorative.
     assert!(
-        main.contains("w.stops.retain(|stop| confirmed_sites.iter().any(|s| s == &stop.site))"),
+        crate::common::contains_code(
+            &main,
+            "w.stops.retain(|stop| confirmed_sites.iter().any(|s| s == &stop.site))"
+        ),
         "the walk ignores what you said no to"
     );
 
